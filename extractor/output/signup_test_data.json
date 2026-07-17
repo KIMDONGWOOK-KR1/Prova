@@ -1,0 +1,51 @@
+{
+    "document": {
+        "screen_name": "회원가입",
+        "ui_elements": [
+            {
+                "id": "node-101",
+                "type": "INPUT_FIELD",
+                "name": "이메일 입력창",
+                "label": "이메일"
+            },
+            {
+                "id": "node-102",
+                "type": "INPUT_FIELD",
+                "name": "비밀번호 입력창",
+                "label": "비밀번호"
+            },
+            {
+                "id": "node-103",
+                "type": "BUTTON",
+                "name": "회원가입 버튼",
+                "text": "가입하기"
+            }
+        ],
+        "validation_rules": [
+            {
+                "element_id": "node-101",
+                "condition": "이메일 미입력 (빈값)",
+                "error": "필수 입력 메시지 표시"
+            },
+            {
+                "element_id": "node-101",
+                "condition": "이메일 형식 오류",
+                "error": "이메일 형식 오류 메시지 표시"
+            },
+            {
+                "element_id": "node-101",
+                "condition": "중복 이메일",
+                "error": "중복 가입 안내 메시지 표시"
+            },
+            {
+                "element_id": "node-102",
+                "condition": "짧은 비밀번호",
+                "error": "비밀번호 길이 오류 표시"
+            }
+        ],
+        "success_condition": {
+            "action": "올바른 이메일과 비밀번호 입력 후 버튼 클릭",
+            "expected_result": "가입 성공 후 로그인 화면 이동"
+        }
+    }
+}
