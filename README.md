@@ -89,14 +89,20 @@ src/prova/
 
 sut/                          테스트 대상 미니 로그인 앱 (good / bad)
 fixtures/specs/               로그인 화면기획서 md / pdf / 정답(golden)
-docs/teaching/                팀원 티칭 노트
+docs/
+├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
+├── reference/                계획서·주제개요서·멘토링보고서
+├── teaching/                 팀원 티칭 노트
+├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
+└── README.md                 문서 안내
 ```
 
 ---
 
 ## 설계 판단 (명세서와 다르게 한 것)
 
-명세서(`Prova_서비스명세서.md`)를 구현하면서 세 군데를 바꿨다. 각각 이유가 있다.
+명세서([`docs/specs/Prova_서비스명세서.md`](docs/specs/Prova_서비스명세서.md))를
+구현하면서 세 군데를 바꿨다. 각각 이유가 있다.
 
 ### 1. negative 케이스는 규칙을 하나씩만 위반시킨다
 
