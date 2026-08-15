@@ -22,7 +22,7 @@ login_spec.pdf ──S1──> ScreenSpec ──S2──> TestCase[] ──S3+S4
                           report.html <──S6── Verdict[] <──S5────────┘
 ```
 
-같은 기획서로 두 구현을 검증한 결과:
+같은 기획서로 두 구현을 검증한 결과 (CHEETAH의 로컬 Qwen2.5-7B-AWQ 사용, 2026-08-15 실측):
 
 | 대상 | 결과 |
 |---|---|
@@ -31,6 +31,10 @@ login_spec.pdf ──S1──> ScreenSpec ──S2──> TestCase[] ──S3+S4
 
 `bad`에서도 `required` 검증은 구현돼 있어 PASS로 나온다. 한 리포트 안에
 "구현된 규칙은 PASS, 누락된 규칙은 FAIL"이 함께 나오는 것이 판정을 신뢰할 근거다.
+
+S1 추출 정확도도 골든 데이터와 대조해 확인했다 — **10/10 통과**. 로컬 7B가 기획서에서
+`constraints`(`min_length`, `require_uppercase`, `require_special`)를 키 이름까지 정확히
+뽑아내므로, 계획 단계에서 우려했던 "7B가 검증 규칙을 놓칠 위험"은 해소됐다. Claude API가 필요하지 않다.
 
 ---
 
@@ -166,6 +170,17 @@ WITCHES 실물 PDF가 오면 `pdf_parser.py`만 교체하면 된다.
 비밀번호가 아니다. 그래서 정상 케이스가 **구현 결함 없이** 실패했다.
 
 → `UIElement.sample_value` 필드를 추가하고, 기획서 §5 테스트 계정을 정상 케이스에 쓴다.
+
+### `guided_json`은 오류 없이 조용히 무시된다
+
+vLLM 0.24에서 `guided_json`이 제거됐는데, **에러가 나지 않는다.** 요청한 필드명
+(`screen_name`)이 아니라 모델이 지어낸 이름(`screenName`)이 돌아오고 응답이 마크다운
+코드펜스로 감싸진다. 스키마가 강제되지 않으면 S1이 `constraints` 키를 흔들고, 그러면
+`rule_expander`가 규칙을 인식하지 못해 **검증이 조용히 무력해진다.**
+
+→ OpenAI 표준 `response_format={"type": "json_schema", ...}`로 교체했다. 표준이라
+버전 업그레이드에 강건하고, `prova check`는 연결뿐 아니라 **필드명을 대조해 스키마가
+실제로 걸렸는지**까지 확인한다.
 
 ### mock 백엔드는 조용히 쓰이면 안 된다
 
