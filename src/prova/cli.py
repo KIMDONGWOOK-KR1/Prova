@@ -174,27 +174,41 @@ def check(config: Path = typer.Option(DEFAULT_CONFIG, "--config")) -> None:
 
     typer.secho(f"연결 정상 · 모델 {model}", fg=typer.colors.GREEN)
 
-    # 구조화 출력이 실제로 걸리는지 확인한다. 연결만 되고 guided_json 이
-    # 동작하지 않으면 S1/S2 가 조용히 불안정해진다.
-    typer.echo("guided_json 확인 중...")
+    # 정형 출력이 실제로 걸리는지 확인한다. 연결만 되고 스키마가 무시되면
+    # S1/S2 가 조용히 불안정해진다 — 그게 가장 위험한 실패다.
+    typer.echo("정형 출력(response_format) 확인 중...")
+    # 필드명을 모델이 자연스럽게 지어낼 이름과 다르게 잡는다. 스키마가 무시되면
+    # 다른 이름이 돌아오므로 무시 여부를 확실히 판별할 수 있다.
     schema = {
         "title": "SmokeTest",
         "type": "object",
-        "properties": {"ok": {"type": "boolean"}, "note": {"type": "string"}},
-        "required": ["ok", "note"],
+        "properties": {"ok": {"type": "boolean"}, "note_text": {"type": "string"}},
+        "required": ["ok", "note_text"],
+        "additionalProperties": False,
     }
     try:
         result = client.complete_json(
             system="당신은 JSON 만 출력합니다.",
-            user="ok=true 로 하고 note 에 '정상' 이라고 써서 JSON 을 출력하세요.",
+            user="ok 은 true, note_text 는 '정상' 으로 채워 JSON 을 출력하세요.",
             schema=schema,
             max_tokens=128,
         )
     except LLMError as exc:
-        typer.secho(f"guided_json 실패:\n{exc}", fg=typer.colors.RED)
+        typer.secho(f"정형 출력 실패:\n{exc}", fg=typer.colors.RED)
         raise typer.Exit(1)
 
-    typer.secho(f"guided_json 정상 · 응답 {result}", fg=typer.colors.GREEN)
+    # 파싱이 됐다고 끝이 아니다. 스키마가 무시되면 모델이 지어낸 필드명이
+    # 돌아오는데(note_text -> note 등) JSON 자체는 유효하다. 필드명을 대조해야
+    # 정형 출력이 실제로 걸렸는지 알 수 있다.
+    if set(result) != {"ok", "note_text"}:
+        typer.secho(
+            f"정형 출력이 무시된 것 같습니다 — 기대 필드 {{ok, note_text}}, "
+            f"실제 {set(result)}",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(1)
+
+    typer.secho(f"정형 출력 정상 · 응답 {result}", fg=typer.colors.GREEN)
 
 
 if __name__ == "__main__":

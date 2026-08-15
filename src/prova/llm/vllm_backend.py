@@ -13,11 +13,21 @@ http://localhost:8000/v1 이다.
 
 GPU 서버에 브라우저를 설치할 필요가 없고, Playwright 는 로컬에서 돌아간다.
 
-## guided_json
+## 정형 출력은 response_format(json_schema) 으로 건다
 
-vLLM 은 OpenAI 호환 API 에 extra_body 로 guided_json 을 받는다. 스키마를 벗어난
-토큰이 생성 단계에서 차단되므로, 7B 급 모델도 JSON 을 깨뜨리지 않는다.
-이게 없으면 재프롬프트 루프 구현과 디버깅에 개발 시간을 다 쓰게 된다.
+OpenAI 표준인 response_format={"type":"json_schema", ...} 를 쓴다. 스키마를 벗어난
+토큰이 생성 단계에서 차단되므로 7B 급 모델도 JSON 을 깨뜨리지 않는다. 이게 없으면
+재프롬프트 루프 구현과 디버깅에 개발 시간을 다 쓰게 된다.
+
+vLLM 확장인 guided_json 을 쓰지 않는 이유: vLLM 0.24 에서 제거됐다. 실제로
+extra_body={"guided_json": ...} 로 보내면 **오류 없이 조용히 무시된다** — 요청한
+필드명(screen_name)이 아니라 모델이 지어낸 이름(screenName)이 돌아오고 응답이
+마크다운 코드펜스로 감싸진다. QA 도구에서 이런 무성 실패는 위험하다. 스키마가
+강제되지 않으면 S1 이 constraints 키를 흔들고, 그러면 rule_expander 가 규칙을
+인식하지 못해 검증이 조용히 무력해진다.
+
+response_format 은 OpenAI 표준이라 vLLM 버전이 올라가도 유지될 가능성이 높고,
+Claude API 백엔드를 붙일 때도 같은 개념을 쓴다.
 
 ## VRAM 10GiB 에서의 서빙 명령
 
@@ -109,7 +119,16 @@ class VLLMClient:
                 ],
                 max_tokens=max_tokens,
                 temperature=temperature,
-                extra_body={"guided_json": schema, "guided_decoding_backend": "outlines"},
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        # 이름은 서버 로그와 디버깅에만 쓰인다. pydantic 스키마의
+                        # title(모델 클래스명)을 그대로 넘겨 어느 단계의 호출인지
+                        # 알 수 있게 한다.
+                        "name": schema.get("title") or "Output",
+                        "schema": schema,
+                    },
+                },
             )
         except Exception as exc:
             raise LLMError(f"vLLM 호출 실패: {exc}") from exc

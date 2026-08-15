@@ -5,3 +5,9 @@ __pycache__/
 runs/
 *.egg-info/
 .env
+
+# SSH 개인키 — 절대 커밋하지 않는다.
+# 저장소를 팀원과 공유하거나 GitHub 에 올리는 순간 GPU 서버 접근권이 유출된다.
+*.pem
+*.key
+id_rsa*
