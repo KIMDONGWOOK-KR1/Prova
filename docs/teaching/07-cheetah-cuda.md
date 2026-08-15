@@ -329,7 +329,7 @@ if set(result) != {"ok", "note_text"}:
 
 ```powershell
 # 터널 (이 창은 열어둔다)
-ssh -N -L 8000:localhost:8000 -i private.pem -p 32067 jovyan@168.131.30.102
+ssh -N -L 8000:localhost:8000 -i private.pem -p <port> <user>@<cheetah-host>
 
 # 연결 + 정형 출력 확인
 uv run prova check
@@ -341,7 +341,7 @@ uv run pytest tests/test_s1_golden.py -v
 서버 상태를 보려면:
 
 ```bash
-ssh jovyan@168.131.30.102 -p 32067 -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i private.pem
 tmux attach -t vllm          # 로그 보기 (Ctrl+B, D 로 나오기)
 nvidia-smi                    # GPU 사용량
 ```

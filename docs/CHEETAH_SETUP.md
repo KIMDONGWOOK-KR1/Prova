@@ -6,11 +6,15 @@
 ## 접속 정보
 
 ```
-ssh jovyan@168.131.30.102 -p 32067 -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i private.pem
 ```
 
-PEM 키는 `C:\dev\prova\private.pem`에 있고 `.gitignore`로 제외돼 있다.
-**저장소를 팀원과 공유하거나 GitHub에 올릴 때 이 키가 함께 나가면 GPU 서버 접근권이 유출된다.**
+**실제 주소·포트·계정은 이 저장소에 두지 않는다.** 저장소가 public 이라 학교 인프라 주소를
+공개하면 불필요한 공격 표면이 된다. `.env.example` 을 `.env` 로 복사해 채워 쓰고, 실제 값은
+팀 채널에서 공유한다.
+
+PEM 키(`private.pem`)도 `.gitignore` 로 제외돼 있다.
+**이 키가 저장소에 함께 올라가면 GPU 서버 접근권이 그대로 유출된다.**
 
 ## 구조
 
@@ -29,7 +33,7 @@ GPU 서버에는 브라우저를 설치하지 않는다. 코드 입장에서 GPU
 
 ```powershell
 # 1. 터널 (이 창은 열어둔다)
-ssh -N -L 8000:localhost:8000 -i private.pem -p 32067 jovyan@168.131.30.102
+ssh -N -L 8000:localhost:8000 -i private.pem -p <port> <user>@<cheetah-host>
 
 # 2. 서버가 살아 있는지
 uv run prova check
@@ -119,7 +123,7 @@ vLLM 0.24에서 `guided_json`이 사라졌다. 문제는 **에러가 나지 않�
 pod이 재시작되면 `/tmp`가 비어 venv가 사라진다. 모델은 홈에 남아 있으므로 재다운로드하지 않는다.
 
 ```bash
-ssh jovyan@168.131.30.102 -p 32067 -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i private.pem
 
 # 1) 환경 구축 (약 2분. 모델이 이미 있으면 재다운로드 없음)
 tmux new -d -s setup 'bash ~/setup_vllm.sh > /tmp/setup.log 2>&1'
