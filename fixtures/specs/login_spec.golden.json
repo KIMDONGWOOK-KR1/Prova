@@ -1,0 +1,39 @@
+{
+  "screen_id": "login",
+  "screen_name": "로그인",
+  "url_path": "/login",
+  "elements": [
+    {
+      "element_id": "email",
+      "type": "input",
+      "label": "이메일",
+      "required": true,
+      "constraints": {"format": "email"},
+      "error_message": "올바른 이메일 형식을 입력하세요."
+    },
+    {
+      "element_id": "password",
+      "type": "input",
+      "label": "비밀번호",
+      "required": true,
+      "constraints": {"min_length": 8, "require_uppercase": 1, "require_special": 1},
+      "error_message": "비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다."
+    },
+    {
+      "element_id": "login_btn",
+      "type": "button",
+      "label": "로그인",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    }
+  ],
+  "success_condition": "/dashboard 로 이동하고 \"환영합니다\" 문구를 노출한다",
+  "failure_conditions": [
+    "필수 입력값이 비어 있으면 \"필수 입력 항목입니다.\" 노출, 이동하지 않음",
+    "이메일 형식이 올바르지 않으면 \"올바른 이메일 형식을 입력하세요.\" 노출, 이동하지 않음",
+    "비밀번호 검증 규칙 위반 시 \"비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.\" 노출, 이동하지 않음",
+    "등록되지 않은 계정이면 \"이메일 또는 비밀번호가 올바르지 않습니다.\" 노출, 이동하지 않음"
+  ],
+  "warnings": []
+}
