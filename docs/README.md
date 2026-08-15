@@ -22,10 +22,25 @@
 
 ## teaching/ — 티칭 노트
 
-팀원에게 전달할 기술 노트. 마일스톤별로 추가한다.
+팀장·팀원이 코드를 이해하기 위한 자료. **읽는 순서대로 번호가 붙어 있다.**
 
-주제 순서: 데이터 계약(pydantic) → vLLM guided_json 구조화 출력 →
-LLM에 맡길 일과 코드로 짤 일의 경계 → Playwright locator 전략 → LangGraph 상태 그래프.
+| 파일 | 다루는 것 |
+|---|---|
+| `overview.html` | **여기서 시작.** 파이프라인 다이어그램·good/bad 대조·VRAM 배분을 그림으로 |
+| `00-overview.md` | 전체 그림 + 용어 사전 + 코드 읽는 순서 |
+| `01-data-contract.md` | `models.py`가 왜 파이프라인의 "계약"인가 |
+| `02-s1-spec-extraction.md` | PDF에서 기획서를 뽑는 방법과 함정 두 개 |
+| `03-llm-vs-code.md` | **AI에 맡길 일과 코드로 짤 일의 경계** — 가장 중요한 설계 판단 |
+| `04-grounding-execution.md` | 자연어 라벨 → 실제 요소, 브라우저 조작 |
+| `05-verdict-report.md` | 판정의 뒤집힌 논리(에러가 떠야 PASS)와 리포트 |
+| `06-langgraph.md` | LangGraph를 관통 이후로 미룬 판단 |
+| `07-cheetah-cuda.md` | GPU 서버에서 실제로 막힌 세 지점 |
+
+각 노트는 어려운 용어를 먼저 풀고, 코드 위치를 가리키고, "이걸 안 했으면 무슨 일이
+벌어지는가"를 함께 적었다. 끝에 직접 실행해볼 수 있는 명령이 있다 — 모두 동작을 확인했다.
+
+`overview.html`은 발행된 웹페이지로도 볼 수 있다(링크는 팀 채널 참고). 멘토링·중간보고에
+그대로 쓸 수 있게 만들었다.
 
 ## CHEETAH_SETUP.md
 
