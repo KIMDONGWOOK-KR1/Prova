@@ -15,6 +15,7 @@ dependencies = [
     "reportlab>=4.2",
     "typer>=0.15",
     "python-multipart>=0.0.32",
+    "langgraph>=1.2.11",
 ]
 
 [project.optional-dependencies]

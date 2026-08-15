@@ -69,6 +69,8 @@ def run(
     run_id: Optional[str] = typer.Option(None, "--run-id"),
     headed: bool = typer.Option(False, "--headed", help="브라우저 창을 띄워서 실행"),
     runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+    engine: str = typer.Option("pipeline", "--engine",
+                               help="pipeline | graph (같은 노드를 LangGraph 로 실행)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     if not pdf.exists():
@@ -83,6 +85,7 @@ def run(
     typer.echo(f"  설계 문서 : {pdf}")
     typer.echo(f"  대상 URL  : {url}")
     typer.echo(f"  백엔드    : {backend}")
+    typer.echo(f"  실행 엔진 : {engine}")
     typer.echo("")
 
     try:
@@ -95,10 +98,8 @@ def run(
         )
         raise typer.Exit(1)
 
-    from prova.pipeline import run_pipeline
-
     exec_cfg = cfg.get("execution", {})
-    report, run_dir = run_pipeline(
+    common = dict(
         pdf_path=str(pdf),
         base_url=url,
         llm=llm,
@@ -107,8 +108,20 @@ def run(
         headless=not headed and exec_cfg.get("headless", True),
         viewport=exec_cfg.get("viewport"),
         step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
-        on_progress=lambda m: typer.echo(f"  {m}"),
     )
+
+    if engine == "graph":
+        from prova.graph import run_graph
+
+        report, run_dir = run_graph(**common)
+    elif engine == "pipeline":
+        from prova.pipeline import run_pipeline
+
+        report, run_dir = run_pipeline(
+            **common, on_progress=lambda m: typer.echo(f"  {m}")
+        )
+    else:
+        raise typer.BadParameter(f"지원하지 않는 엔진: {engine} (pipeline | graph)")
 
     _print_summary(report, run_dir)
     # 실패가 있으면 0 이 아닌 코드로 끝낸다. CI 에서 회귀 검증에 쓸 수 있게 하는
