@@ -9,8 +9,12 @@
 ssh <user>@<cheetah-host> -p <port> -i private.pem
 ```
 
-PEM 키는 `C:\dev\prova\private.pem`에 있고 `.gitignore`로 제외돼 있다.
-**저장소를 팀원과 공유하거나 GitHub에 올릴 때 이 키가 함께 나가면 GPU 서버 접근권이 유출된다.**
+**실제 주소·포트·계정은 이 저장소에 두지 않는다.** 저장소가 public 이라 학교 인프라 주소를
+공개하면 불필요한 공격 표면이 된다. `.env.example` 을 `.env` 로 복사해 채워 쓰고, 실제 값은
+팀 채널에서 공유한다.
+
+PEM 키(`private.pem`)도 `.gitignore` 로 제외돼 있다.
+**이 키가 저장소에 함께 올라가면 GPU 서버 접근권이 그대로 유출된다.**
 
 ## 구조
 
