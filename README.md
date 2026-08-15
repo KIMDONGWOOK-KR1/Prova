@@ -38,6 +38,15 @@ S1 추출 정확도도 골든 데이터와 대조해 확인했다 — **10/10 �
 
 ---
 
+## 저장소에 있는 다른 도구
+
+`extract_auth_search_json.py`는 이 파이프라인보다 먼저 만들어진 독립 추출 도구다.
+**HWPX 파싱과 OCR**을 지원하는데 이 파이프라인에는 없는 능력이라 그대로 둔다.
+`feature/figma-extractor` 브랜치에는 Figma 추출기가 있다.
+자세한 내용은 [docs/reference/legacy-extractors.md](docs/reference/legacy-extractors.md).
+
+---
+
 ## 코드를 처음 보는 사람은
 
 `docs/teaching/overview.html`을 브라우저로 열면 파이프라인 구조와 결과를 그림으로 볼 수 있다.
