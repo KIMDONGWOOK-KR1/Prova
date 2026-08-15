@@ -38,6 +38,13 @@ S1 추출 정확도도 골든 데이터와 대조해 확인했다 — **10/10 �
 
 ---
 
+## 코드를 처음 보는 사람은
+
+`docs/teaching/overview.html`을 브라우저로 열면 파이프라인 구조와 결과를 그림으로 볼 수 있다.
+그다음 `docs/teaching/00-overview.md`부터 번호 순으로 읽으면 각 단계의 설계 판단을 알 수 있다.
+
+---
+
 ## 빨리 돌려보기
 
 ```powershell
@@ -96,7 +103,7 @@ fixtures/specs/               로그인 화면기획서 md / pdf / 정답(golden
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
 ├── reference/                계획서·주제개요서·멘토링보고서
-├── teaching/                 팀원 티칭 노트
+├── teaching/                 티칭 노트 8개 + overview.html (그림 자료)
 ├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
 └── README.md                 문서 안내
 ```
