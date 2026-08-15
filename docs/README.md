@@ -26,7 +26,8 @@
 
 | 파일 | 다루는 것 |
 |---|---|
-| `overview.html` | **여기서 시작.** 파이프라인 다이어그램·good/bad 대조·VRAM 배분을 그림으로 |
+| `overview.html` | **여기서 시작.** 파이프라인 다이어그램·실행 GIF·good/bad 대조·VRAM 배분 |
+| `overview.src.html` | 위 파일의 편집용 원본. 이미지 자리에 `<!-- MEDIA:… -->` 자리표시자만 있다 |
 | `00-overview.md` | 전체 그림 + 용어 사전 + 코드 읽는 순서 |
 | `01-data-contract.md` | `models.py`가 왜 파이프라인의 "계약"인가 |
 | `02-s1-spec-extraction.md` | PDF에서 기획서를 뽑는 방법과 함정 두 개 |
@@ -41,6 +42,10 @@
 
 `overview.html`은 발행된 웹페이지로도 볼 수 있다(링크는 팀 채널 참고). 멘토링·중간보고에
 그대로 쓸 수 있게 만들었다.
+
+**내용을 고칠 때는 `overview.src.html`을 고친다.** 발행되는 페이지는 이미지를 base64 로
+문서 안에 담아야 해서(외부 파일을 불러올 수 없다) 수십만 자가 되고 손으로 편집할 수 없다.
+원본을 고친 뒤 `uv run python scripts/embed_media.py` 로 `overview.html`을 다시 만든다.
 
 ## CHEETAH_SETUP.md
 

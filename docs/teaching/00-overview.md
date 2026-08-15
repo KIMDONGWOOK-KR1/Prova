@@ -191,6 +191,51 @@ GPU가 필요한 부분과 브라우저가 필요한 부분을 나눠 놓았습�
 
 ---
 
+## 직접 눈으로 보기
+
+숫자와 로그만 보면 실감이 안 난다. 브라우저를 띄워 Prova 가 스스로 입력하고 클릭하는 것을
+지켜볼 수 있다.
+
+```powershell
+# 테스트 대상 웹앱 (별 터미널)
+uv run uvicorn sut.app:app --port 8100
+
+# bad 구현에 한 케이스만 천천히 실행 — 브라우저 창이 뜬다
+uv run prova run --pdf fixtures/specs/login_spec.pdf `
+  --url http://localhost:8100/bad `
+  --only require_uppercase --headed --slow 500
+```
+
+| 옵션 | 하는 일 |
+|---|---|
+| `--headed` | 브라우저 창을 띄운다 (기본은 화면 없이 실행) |
+| `--slow 500` | 동작 사이 0.5초 지연. 없으면 0.1초에 끝나 눈으로 못 따라간다 |
+| `--only <패턴>` | `case_id` 에 패턴이 든 케이스만 실행 |
+| `--video` | 실행 영상(webm)을 `runs/<run-id>/video/` 에 녹화 |
+
+`--url` 을 `.../good` 으로 바꿔 한 번 더 실행하면 차이가 분명해진다. 같은 값을 넣었는데
+한쪽은 기획서가 지정한 에러 문구가, 다른 쪽은 엉뚱한 문구가 뜬다.
+
+**주의**: `--only` 가 아무 케이스도 고르지 못하면 실행을 멈춘다. 빈 목록으로 진행하면
+"0건 실행, 통과율 100%" 리포트가 나오는데, 그건 아무것도 검증하지 않은 상태다.
+
+### 자료로 남기기
+
+```powershell
+# 영상 → GIF
+uv run python scripts/make_demo_gif.py runs/<run-id> --out runs/demo.gif
+
+# good/bad 비교 이미지 (이미 저장된 스크린샷을 쓴다. 재실행 불필요)
+uv run python scripts/make_comparison.py
+
+# 웹페이지에 삽입
+uv run python scripts/embed_media.py
+```
+
+`docs/teaching/overview.html` 을 브라우저로 열면 이 자료들이 들어간 페이지를 볼 수 있다.
+
+---
+
 ## 코드를 읽는 순서
 
 처음 볼 때는 이 순서를 권합니다.

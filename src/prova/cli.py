@@ -71,6 +71,11 @@ def run(
     runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
     engine: str = typer.Option("pipeline", "--engine",
                                help="pipeline | graph (같은 노드를 LangGraph 로 실행)"),
+    slow: int = typer.Option(0, "--slow", metavar="MS",
+                             help="동작 사이 지연(ms). 눈으로 따라가려면 400~600"),
+    video: bool = typer.Option(False, "--video", help="실행 영상(webm) 녹화"),
+    only: Optional[str] = typer.Option(None, "--only", metavar="패턴",
+                                       help="case_id 에 패턴이 든 케이스만 실행"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     if not pdf.exists():
@@ -110,6 +115,16 @@ def run(
         step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
     )
 
+    # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로
+    # 실행 조건을 바꾸는 옵션을 받지 않는다 — 두 경로를 같은 조건으로 비교해야 한다.
+    if engine == "graph" and (slow or video or only):
+        typer.secho(
+            "--slow / --video / --only 는 pipeline 엔진에서만 동작합니다 "
+            "(graph 는 결과 동일성 대조용).",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2)
+
     if engine == "graph":
         from prova.graph import run_graph
 
@@ -117,9 +132,20 @@ def run(
     elif engine == "pipeline":
         from prova.pipeline import run_pipeline
 
-        report, run_dir = run_pipeline(
-            **common, on_progress=lambda m: typer.echo(f"  {m}")
-        )
+        try:
+            report, run_dir = run_pipeline(
+                **common,
+                slow_mo=slow,
+                record_video=video,
+                only=only,
+                on_progress=lambda m: typer.echo(f"  {m}"),
+            )
+        except ValueError as exc:
+            # 케이스 필터가 아무것도 고르지 못한 경우가 대표적이다. 사용자 입력 실수에
+            # 파이썬 스택을 보여줄 이유가 없으므로 메시지만 전달한다.
+            typer.echo("")
+            typer.secho(str(exc), fg=typer.colors.RED)
+            raise typer.Exit(2)
     else:
         raise typer.BadParameter(f"지원하지 않는 엔진: {engine} (pipeline | graph)")
 
@@ -137,6 +163,13 @@ def _print_summary(report, run_dir: Path) -> None:
         f"· 통과율 {s['pass_rate']}%",
         bold=True,
     )
+
+    if s.get("filtered_by"):
+        typer.secho(
+            f"  ! 부분 실행: 필터 '{s['filtered_by']}' 로 전체 "
+            f"{s.get('cases_available', '?')}건 중 {s['total']}건만 실행했습니다.",
+            fg=typer.colors.YELLOW,
+        )
 
     for warning in s.get("spec_warnings", []):
         typer.secho(f"  ! 설계 문서 경고: {warning}", fg=typer.colors.YELLOW)
