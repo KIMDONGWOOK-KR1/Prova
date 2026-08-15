@@ -76,6 +76,8 @@ def run(
     video: bool = typer.Option(False, "--video", help="실행 영상(webm) 녹화"),
     only: Optional[str] = typer.Option(None, "--only", metavar="패턴",
                                        help="case_id 에 패턴이 든 케이스만 실행"),
+    hold: float = typer.Option(0.0, "--hold", metavar="초",
+                               help="끝난 뒤 마지막 화면을 유지할 초 (--headed 로 볼 때)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     if not pdf.exists():
@@ -117,9 +119,9 @@ def run(
 
     # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로
     # 실행 조건을 바꾸는 옵션을 받지 않는다 — 두 경로를 같은 조건으로 비교해야 한다.
-    if engine == "graph" and (slow or video or only):
+    if engine == "graph" and (slow or video or only or hold):
         typer.secho(
-            "--slow / --video / --only 는 pipeline 엔진에서만 동작합니다 "
+            "--slow / --video / --only / --hold 는 pipeline 엔진에서만 동작합니다 "
             "(graph 는 결과 동일성 대조용).",
             fg=typer.colors.RED,
         )
@@ -138,6 +140,7 @@ def run(
                 slow_mo=slow,
                 record_video=video,
                 only=only,
+                hold_sec=hold,
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
         except ValueError as exc:

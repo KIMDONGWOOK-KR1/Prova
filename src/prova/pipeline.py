@@ -15,6 +15,7 @@ Playwright 는 컨텍스트 매니저로 열고 닫아야 프로세스가 남지
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -65,6 +66,7 @@ def run_pipeline(
     slow_mo: int = 0,
     record_video: bool = False,
     only: Optional[str] = None,
+    hold_sec: float = 0.0,
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
@@ -73,6 +75,9 @@ def run_pipeline(
         slow_mo: 동작 사이 지연(ms). 사람이 눈으로 따라가려면 400~600 정도가 적당하다.
         record_video: 실행 영상(webm) 녹화. run_dir/video/ 에 저장된다.
         only: case_id 에 이 문자열이 든 케이스만 실행 (filter_cases 참고).
+        hold_sec: 마지막 케이스가 끝난 뒤 브라우저를 닫기 전 기다릴 초.
+            판정의 근거가 되는 마지막 화면(에러 문구)을 사람이 읽을 시간을 준다.
+            --headed 로 지켜볼 때만 의미가 있다.
 
     Returns:
         (TestReport, 리포트가 저장된 디렉터리)
@@ -125,6 +130,11 @@ def run_pipeline(
         state.page = page
         try:
             state = run_cases(state)
+            if hold_sec > 0:
+                # 마지막 클릭 직후 브라우저가 닫히면 정작 봐야 하는 화면(에러 문구)을
+                # 놓친다. 지켜보는 사람을 위해 잠시 남겨 둔다.
+                progress(f"     마지막 화면을 {hold_sec:g}초 유지합니다")
+                time.sleep(hold_sec)
         finally:
             # 판정이 중간에 실패해도 브라우저를 반드시 닫는다.
             # 영상은 컨텍스트를 닫는 시점에 파일로 기록되므로, 경로 조회는 close() 뒤에
