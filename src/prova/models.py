@@ -50,6 +50,15 @@ class UIElement(BaseModel):
     constraints: dict = Field(default_factory=dict)
     error_message: Optional[str] = None
     placeholder: Optional[str] = None
+    # 기획서가 제시한 유효 입력 예시 (테스트 계정, 샘플 데이터 등).
+    #
+    # 왜 필요한가: constraints 를 만족하는 값을 코드로 만들 수는 있지만, 그 값이
+    # 시스템에 '등록된' 값인지는 알 수 없다. 로그인 화면이 대표적이다 — 규칙을
+    # 다 지킨 비밀번호라도 등록된 계정의 것이 아니면 로그인은 실패한다. 그러면
+    # 정상 케이스가 구현 결함 없이도 FAIL 이 되어 오탐이 된다.
+    # 기획서에 테스트 계정·예시 데이터가 있으면 S1 이 여기에 담고, 정상 케이스는
+    # 그 값을 쓴다.
+    sample_value: Optional[str] = None
 
 
 class ScreenSpec(BaseModel):
@@ -65,6 +74,15 @@ class ScreenSpec(BaseModel):
     elements: list[UIElement] = Field(default_factory=list)
     success_condition: str = ""
     failure_conditions: list[str] = Field(default_factory=list)
+    # 필수 입력 누락 시 노출하는 화면 공통 문구.
+    #
+    # 왜 요소가 아니라 화면에 두는가: 기획서는 요소별 error_message 를 '그 요소의
+    # 형식 검증 실패' 문구로 쓰고, 필수값 누락은 화면 단위 공통 문구로 따로
+    # 적는 경우가 많다. 실제 로그인 기획서도 그렇다 (§2 표의 에러 메시지는
+    # 형식 검증용, §4 실패 조건 표에 "필수 입력 항목입니다." 가 따로 있다).
+    # 이 값이 없으면 required 위반 케이스는 문구를 특정하지 않고
+    # error_shown 으로 검증한다 — 문구를 억측하면 오탐이 된다.
+    required_message: Optional[str] = None
     warnings: list[str] = Field(default_factory=list)
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
@@ -79,7 +97,12 @@ ActionType = Literal["navigate", "fill", "click", "select", "wait", "assert"]
 CaseType = Literal["positive", "negative", "boundary"]
 
 # expected.type 이 가질 수 있는 값
-ExpectedType = Literal["toast_or_redirect", "error_message", "redirect", "text_visible"]
+#   error_message  특정 문구가 노출돼야 한다 (기획서에 문구가 명시된 경우)
+#   error_shown    문구는 특정하지 않고, 에러가 노출되고 이동하지 않아야 한다
+#                  (기획서에 문구가 없어 문구까지 못 박으면 오탐이 되는 경우)
+ExpectedType = Literal[
+    "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible"
+]
 
 
 class Expectation(BaseModel):
@@ -92,6 +115,7 @@ class Expectation(BaseModel):
 
     type: ExpectedType
     value: str = ""
+    url_contains: Optional[str] = None  # 기대하는 URL 조각 (예: "/dashboard")
 
 
 class TestStep(BaseModel):

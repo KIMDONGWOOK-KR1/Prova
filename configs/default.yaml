@@ -1,0 +1,34 @@
+# Prova 실행 설정
+#
+# llm.backend 를 바꾸면 S1·S2·S6 의 모델이 한꺼번에 교체된다. 단계별로 다른
+# 백엔드를 쓰려면 stages 에서 개별 지정한다 (명세서 §10-2 의 단계별 배치 판단을
+# 정량 평가로 확정한 뒤 여기에 반영).
+llm:
+  backend: vllm          # vllm | mock | claude
+  base_url: http://localhost:8000/v1
+  model: Qwen/Qwen2.5-7B-Instruct-AWQ
+  timeout: 180
+  max_tokens: 3072
+  temperature: 0.0
+
+# 단계별 백엔드 덮어쓰기 (비어 있으면 위 기본값을 따른다)
+stages: {}
+  # s1: {backend: claude}     # 예: PDF 추출만 API 로
+
+grounding:
+  # selector 탐지 전략 우선순위 (명세서 §5-1)
+  strategies: [label, placeholder, role, text]
+  timeout_ms: 5000
+  # VLM fallback 은 2차. confidence 임계값 자리만 남겨둔다.
+  vlm_enabled: false
+  vlm_confidence_threshold: 0.5
+
+execution:
+  headless: true
+  viewport: {width: 1280, height: 800}
+  step_timeout_ms: 10000
+  screenshot_every_step: true
+
+agent:
+  max_heal: 2      # 스텝당 self-heal 재탐색 상한 (2차)
+  max_retry: 1     # 일시적 오류 재실행 상한
