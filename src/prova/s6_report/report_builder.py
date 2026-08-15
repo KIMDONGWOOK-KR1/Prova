@@ -236,6 +236,18 @@ def render_html(report: TestReport) -> str:
             f"{items}</div>"
         )
 
+    # 부분 실행 경고. --only 로 일부만 돌린 결과를 전체 결과로 착각하면
+    # "통과율 100%" 가 실제 상태를 뜻하지 않게 된다.
+    filtered = s.get("filtered_by")
+    filter_warn = ""
+    if filtered:
+        avail = s.get("cases_available", "?")
+        filter_warn = (
+            "<div class='warn'><b>일부 케이스만 실행된 리포트입니다</b>"
+            f"<div>필터 <code>{_esc(filtered)}</code> 로 전체 {_esc(avail)}건 중 "
+            f"{total}건만 실행했습니다. 이 통과율은 전체 상태를 뜻하지 않습니다.</div></div>"
+        )
+
     backend = s.get("llm_backend", "")
     mock_warn = ""
     if backend.startswith("mock"):
@@ -266,7 +278,7 @@ def render_html(report: TestReport) -> str:
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
 </div>
-{mock_warn}{warn_html}
+{mock_warn}{filter_warn}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>
