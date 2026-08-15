@@ -126,6 +126,10 @@ class TestStep(BaseModel):
     같은 TestCase를 selector 방식과 VLM 방식 양쪽으로 실행해 비교할 수 있다.
     """
 
+    # pytest 가 이름 때문에 테스트 클래스로 오인해 수집하려 하는 것을 막는다.
+    # 명세서 §3 의 용어이므로 클래스 이름은 바꾸지 않는다.
+    __test__ = False
+
     seq: int
     action: ActionType
     target: str = ""
@@ -141,6 +145,10 @@ class TestCase(BaseModel):
     떴을 때 어느 규칙이 미구현인지 분리되지 않는다. 규칙당 케이스 하나가
     원칙이다 (계획서 '핵심 설계 판단 1').
     """
+
+    # pytest 가 이름 때문에 테스트 클래스로 오인해 수집하려 하는 것을 막는다.
+    # 명세서 §3 의 용어이므로 클래스 이름은 바꾸지 않는다.
+    __test__ = False
 
     case_id: str
     screen_id: str
@@ -230,6 +238,10 @@ class Verdict(BaseModel):
 
 class TestReport(BaseModel):
     """실행 전체의 최종 리포트. S6의 출력."""
+
+    # pytest 가 이름 때문에 테스트 클래스로 오인해 수집하려 하는 것을 막는다.
+    # 명세서 §3 의 용어이므로 클래스 이름은 바꾸지 않는다.
+    __test__ = False
 
     run_id: str
     target_url: str
