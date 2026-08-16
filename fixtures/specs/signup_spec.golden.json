@@ -55,7 +55,11 @@
       "label": "가입 경로",
       "required": true,
       "constraints": {},
-      "options": ["검색", "지인 추천", "광고"],
+      "options": [
+        "검색",
+        "지인 추천",
+        "광고"
+      ],
       "error_message": "가입 경로를 선택하세요."
     },
     {
@@ -70,6 +74,14 @@
       "element_id": "signup_btn",
       "type": "button",
       "label": "가입하기",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "to_login",
+      "type": "link",
+      "label": "로그인하러 가기",
       "required": false,
       "constraints": {},
       "error_message": null

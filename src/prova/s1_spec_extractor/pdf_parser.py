@@ -66,6 +66,10 @@ _EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|
 # 표 칸 안의 인용된 문구. 기획서가 쓰는 인용부호가 여러 가지다.
 _QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,60})[\"'“”‘’]")
 
+# 흐름 표의 '화면 순서'·'이동 방법' 칸에서 항목을 가르는 구분자.
+# 화살표 표현이 기획서마다 다르고(->, →, >, 쉼표) PDF 변환에서 모양이 바뀌기도 한다.
+_FLOW_SEP = r"→|->|—>|>|,|·"
+
 # 기획서 '유형' 열의 한국어 표현 -> models.ElementType.
 # 여기 없는 표현은 매핑하지 않는다 (declared_element_types 설명 참고).
 ELEMENT_TYPE_WORDS = {
@@ -401,9 +405,17 @@ class ParsedDocument:
             )
             if id_col is None or order_col is None or id_col == order_col:
                 continue
+            # '이동 방법' 을 '확인 문구' 보다 먼저 고른다. 둘 다 남은 열에서 찾는데
+            # '확인' 조건이 넓어서, 순서를 바꾸면 '이동 방법 확인' 같은 제목을
+            # 문구 열로 집어 갈 수 있다.
+            via_col = next(
+                (i for i, h in enumerate(header)
+                 if i not in (id_col, order_col) and ("이동" in h or "방법" in h)), None
+            )
             text_col = next(
                 (i for i, h in enumerate(header)
-                 if i not in (id_col, order_col) and ("문구" in h or "확인" in h)), None
+                 if i not in (id_col, order_col, via_col)
+                 and ("문구" in h or "확인" in h)), None
             )
             for row in table.rows[1:]:
                 if len(row) <= max(id_col, order_col):
@@ -415,6 +427,8 @@ class ParsedDocument:
                 flows.append({
                     "flow_id": flow_id,
                     "screen_ids": screen_ids,
+                    "via": (_split_flow_cell(row[via_col])
+                            if via_col is not None and via_col < len(row) else []),
                     "expect_text": (row[text_col].strip()
                                     if text_col is not None and text_col < len(row)
                                     else ""),
@@ -653,5 +667,18 @@ def _split_screen_order(cell: str) -> list[str]:
     (->, →, >, 쉼표), PDF 변환 과정에서 모양이 바뀌기도 한다. 구분자 하나를
     놓치면 흐름이 화면 하나로 읽혀 조용히 사라진다.
     """
-    parts = re.split(r"→|->|—>|>|,|·", normalize_ws(cell))
+    parts = re.split(_FLOW_SEP, normalize_ws(cell))
     return [p.strip().replace(" ", "") for p in parts if p.strip()]
+
+
+def _split_flow_cell(cell: str) -> list[str]:
+    """'이동 방법' 칸을 전이별 라벨 목록으로.
+
+    화면 ID 와 달리 **공백을 지우지 않는다.** 여기 들어오는 값은 슬러그가 아니라
+    화면에 보이는 라벨이고('로그인하러 가기'), 공백이 라벨의 일부다. 지우면 S3 가
+    요소를 못 찾는다.
+    """
+    parts = re.split(_FLOW_SEP, normalize_ws(cell))
+    # '-' 는 기획서에서 '해당 없음' 을 뜻하는 관례다. 라벨로 받으면 S3 가 화면에서
+    # '-' 라는 요소를 찾다 실패해, 이동 방법을 안 적은 흐름이 전부 끊긴다.
+    return [p.strip() for p in parts if p.strip() and p.strip() not in ("-", "—")]

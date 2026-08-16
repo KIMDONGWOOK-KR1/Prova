@@ -412,6 +412,32 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
     carried: dict[str, str] = {}
 
     for i, screen in enumerate(screens):
+        if i > 0:
+            # 이 화면으로 '어떻게' 왔는지가 검증 대상이 될 수 있다.
+            #
+            # 기획서가 이동 방법을 적어 두지 않으면 주소로 직접 들어간다. 그때는
+            # 화면을 잇는 요소가 검증되지 않는다 — 도구가 스스로 주소를 치므로
+            # 완료 화면의 링크가 엉뚱한 곳을 가리켜도 흐름은 통과한다.
+            via = flow.via[i - 1] if i - 1 < len(flow.via) else ""
+            if via:
+                steps.append(TestStep(seq=seq, action="click", target=via))
+                seq += 1
+                # 눌렀더니 정말 그 화면에 왔는지 본다. 링크가 엉뚱한 경로를
+                # 가리키면 여기서 걸린다. 문구가 아니라 경로만 보는 이유: 도착
+                # 직후의 화면은 아직 아무 동작도 하지 않은 상태이므로 기획서의
+                # 성공 조건(제출 후 결과)을 요구하면 항상 실패한다.
+                steps.append(TestStep(
+                    seq=seq, action="assert",
+                    target=f"{screen.screen_id} 도착",
+                    expected=Expectation(type="redirect",
+                                         url_contains=screen.url_path),
+                ))
+                seq += 1
+            else:
+                steps.append(TestStep(seq=seq, action="navigate",
+                                      target=screen.url_path))
+                seq += 1
+
         inputs = _fillable_inputs(screen)
         # 이어받은 값을 element_id 기준 override 로 바꾼다. resolve_values 를
         # 거치는 이유: 이어받은 값이 same_as 참조 대상이면 그 의존값(비밀번호 확인)도
@@ -421,8 +447,9 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
         }
         values, _ = resolve_values(inputs, overrides=overrides)
 
-        steps.append(TestStep(seq=seq, action="navigate", target=screen.url_path))
-        seq += 1
+        if i == 0:
+            steps.append(TestStep(seq=seq, action="navigate", target=screen.url_path))
+            seq += 1
         for element in inputs:
             steps.append(_input_step(seq, element, values.get(element.element_id, "")))
             seq += 1
@@ -448,11 +475,17 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
                 if flow.expect_text else parse_success_expectation(last))
     path = " → ".join(s.screen_id for s in screens)
 
+    # 이동 방법을 제목에 넣는다. 같은 화면 쌍을 두 흐름이 밟을 수 있고(하나는
+    # 링크를 눌러, 하나는 주소로), 그때 제목이 같으면 리포트에서 어느 쪽이
+    # 실패했는지 구분할 수 없다. 둘이 확인하는 것은 서로 다르다 —
+    # 하나는 화면을 잇는 요소, 하나는 이어진 상태다.
+    how = (f"'{', '.join(flow.via)}' 를 눌러 이동" if flow.via else "주소로 이동")
+
     return TestCase(
         case_id=f"flow-{_slug(flow.flow_id)}-001",
         screen_id=last.screen_id,
         flow_id=flow.flow_id,
-        title=flow.title or f"흐름 {path} — 화면을 이어서 밟았을 때",
+        title=flow.title or f"흐름 {path} ({how})",
         type="positive",
         steps=steps,
         expected=expected,

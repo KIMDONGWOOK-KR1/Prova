@@ -35,7 +35,12 @@ from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from prova.models import ElementLocation, Expectation, ScreenSpec, StepResult, TestStep
-from prova.s3_grounder.dom_locator import GroundingError, ground, resolve_locator
+from prova.s3_grounder.dom_locator import (
+    GroundingError,
+    SpecTypeMismatch,
+    ground,
+    resolve_locator,
+)
 from prova.text_utils import contains_loose
 
 
@@ -222,6 +227,10 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         else:
             raise ValueError(f"알 수 없는 action: {step.action}")
 
+    except SpecTypeMismatch as exc:
+        # 탐지 실패가 아니라 기획-구현 불일치다. element_not_found 로 묶으면
+        # 개발자가 라벨을 고치려 든다 — 고쳐야 할 것은 요소의 종류다.
+        status, error_code, error_detail = "error", "assertion_mismatch", exc.reason
     except GroundingError as exc:
         status, error_code, error_detail = "error", "element_not_found", exc.reason
     except PlaywrightTimeout as exc:

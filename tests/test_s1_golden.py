@@ -328,7 +328,7 @@ class TestMultiScreenDocument:
     def test_화면마다_요소가_온전하다(self, multi_doc):
         """화면 경계가 어긋나면 뒤 화면의 요소 표가 앞 화면 것으로 추출된다.
         그러면 두 화면의 검증이 모두 조용히 틀린다."""
-        want = {"login": 3, "signup": 7, "search": 3}
+        want = {"login": 3, "signup": 8, "search": 3}
         got = {s.screen_id: len(s.elements) for s in multi_doc.screens}
         assert got == want
 
@@ -362,10 +362,13 @@ class TestMultiScreenDocument:
         assert got_scen == want_scen, f"{stem} 시나리오 불일치"
 
     def test_흐름을_읽는다(self, multi_doc):
-        assert len(multi_doc.flows) == 1
-        flow = multi_doc.flows[0]
-        assert flow.flow_id == "signup_then_login"
-        assert flow.screen_ids == ["signup", "login"]
+        """두 흐름이 같은 화면 쌍을 밟는데 확인하는 것이 다르다 — 하나는 화면을
+        잇는 요소, 하나는 이어진 상태다."""
+        by_id = {f.flow_id: f for f in multi_doc.flows}
+        assert set(by_id) == {"signup_link_to_login", "signup_then_login"}
+        assert by_id["signup_link_to_login"].screen_ids == ["signup", "login"]
+        assert by_id["signup_link_to_login"].via == ["로그인하러 가기"]
+        assert by_id["signup_then_login"].via == [], "주소로 이동하는 흐름"
 
     def test_흐름이_없는_화면을_가리키지_않는다(self, multi_doc):
         """흐름이 없는 화면을 가리키면 그 흐름은 만들어지지 않는다. 조용히 빠지면

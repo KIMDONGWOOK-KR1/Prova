@@ -106,7 +106,7 @@ class TestDeclaredElementIds:
             pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
         assert parse_pdf(pdf).declared_element_ids() == [
             "email", "password", "password_confirm", "nickname",
-            "signup_path", "agree_terms", "signup_btn",
+            "signup_path", "agree_terms", "signup_btn", "to_login",
         ]
 
     def test_ID_열이_없으면_빈_목록이다(self, tmp_path):
@@ -271,8 +271,34 @@ class TestDeclaredFlows:
     def test_흐름_표를_읽는다(self):
         doc = _doc([[["흐름 ID", "화면 순서"], ["signup_then_login", "signup → login"]]])
         assert doc.declared_flows() == [
-            {"flow_id": "signup_then_login",
-             "screen_ids": ["signup", "login"], "expect_text": ""}]
+            {"flow_id": "signup_then_login", "screen_ids": ["signup", "login"],
+             "via": [], "expect_text": ""}]
+
+    def test_이동_방법_열을_읽는다(self):
+        """이 열이 없으면 도구가 주소를 직접 쳐서 들어가므로, 화면을 잇는 요소가
+        아예 검증되지 않는다."""
+        doc = _doc([[["흐름 ID", "화면 순서", "이동 방법"],
+                     ["f", "signup → login", "로그인하러 가기"]]])
+        assert doc.declared_flows()[0]["via"] == ["로그인하러 가기"]
+
+    def test_이동_방법의_공백을_지우지_않는다(self):
+        """화면 ID 와 달리 여기 오는 값은 화면에 보이는 라벨이고 공백이 라벨의
+        일부다. 지우면 S3 가 요소를 못 찾는다."""
+        doc = _doc([[["흐름 ID", "화면 순서", "이동 방법"],
+                     ["f", "a → b", "로그인하러 가기"]]])
+        assert doc.declared_flows()[0]["via"] == ["로그인하러 가기"]
+
+    def test_하이픈은_해당_없음으로_본다(self):
+        """'-' 를 라벨로 받으면 S3 가 화면에서 '-' 를 찾다 실패해, 이동 방법을
+        안 적은 흐름이 전부 끊긴다."""
+        doc = _doc([[["흐름 ID", "화면 순서", "이동 방법"], ["f", "a → b", "-"]]])
+        assert doc.declared_flows()[0]["via"] == []
+
+    def test_이동_방법을_확인_문구로_착각하지_않는다(self):
+        doc = _doc([[["흐름 ID", "화면 순서", "이동 방법", "확인 문구"],
+                     ["f", "a → b", "링크", "환영합니다"]]])
+        flow = doc.declared_flows()[0]
+        assert flow["via"] == ["링크"] and flow["expect_text"] == "환영합니다"
 
     def test_확인_문구_열이_있으면_읽는다(self):
         doc = _doc([[["흐름 ID", "화면 순서", "확인 문구"],
