@@ -149,6 +149,73 @@ def _role_for(hint: UIElement | None) -> str:
     }.get(hint.type, "button")
 
 
+# 기획서가 선언한 유형과 화면의 실제 role 을 대조할 유형.
+#
+# ## 왜 버튼·링크만인가
+#
+# role 매핑을 신뢰할 수 있는 유형만 넣는다. 입력란은 넣을 수 없다 —
+# input[type=password] 는 ARIA 에서 textbox role 을 갖지 않으므로, 대조하면
+# 비밀번호 칸마다 '유형 불일치' 가 떠서 전부 오탐이 된다.
+#
+# 버튼과 링크는 그 대조가 정확하고, **가장 값진 대조이기도 하다.** 둘의 차이가
+# 사용자에게 실제로 드러나기 때문이다 — 링크는 새 탭으로 열 수 있고 주소를
+# 복사할 수 있고 스크린리더가 '링크' 로 읽는다. 기획서가 링크라고 적었는데
+# 버튼으로 구현했다면 그건 기획-구현 불일치다.
+ROLE_CHECKED_TYPES = ("button", "link")
+
+# ElementType -> 기획서가 쓰는 낱말. 실패 사유를 기획서와 같은 낱말로 쓴다.
+TYPE_WORDS = {"button": "버튼", "link": "링크"}
+
+
+class SpecTypeMismatch(RuntimeError):
+    """요소는 찾았지만 기획서가 적은 유형이 아니다.
+
+    GroundingError 와 나눠 둔 이유: 이건 탐지 실패가 아니라 **기획-구현 불일치**다.
+    같은 실패로 묶으면 리포트에서 '요소를 못 찾았다' 로 분류되어, 개발자가 라벨을
+    고치려 들게 된다. 고쳐야 할 것은 요소의 종류다.
+    """
+
+    def __init__(self, target: str, declared: str, role: str) -> None:
+        self.target = target
+        self.declared = declared
+        self.role = role
+        # 기획서가 쓴 낱말로 말한다. 'link' 가 아니라 '링크' 다 — 리포트를 읽는
+        # 사람이 기획서와 대조할 때 같은 낱말이어야 찾는 시간이 줄어든다.
+        self.declared_word = TYPE_WORDS.get(declared, declared)
+        super().__init__(
+            f"기획서는 '{target}' 을 '{self.declared_word}'(으)로 적었는데 화면의 "
+            f"그 요소는 {role} role 이 아닙니다"
+        )
+
+    @property
+    def reason(self) -> str:
+        return (
+            f"기획서의 유형('{self.declared_word}')과 구현이 다릅니다 — "
+            f"{self.role} role 로는 찾을 수 없고 다른 종류의 요소로 구현돼 있습니다"
+        )
+
+
+def _check_declared_role(page, target: str, hint: UIElement | None) -> None:
+    """기획서가 선언한 유형대로 구현됐는지 본다. 아니면 예외를 던진다.
+
+    role 로 찾히면 통과다. 탐지 자체는 다른 전략(텍스트 일치 등)으로 성공할 수
+    있으므로, 여기서 막지 않으면 **버튼으로 구현된 링크를 아무 말 없이 눌러 준다.**
+    그러면 기획서가 유형을 적어 둔 것이 검증에 아무 영향을 주지 않는다.
+
+    조회 자체가 실패하면 통과로 둔다. 도구 문제로 기획-구현 불일치를 보고하면
+    개발자가 없는 결함을 찾게 된다.
+    """
+    if hint is None or hint.type not in ROLE_CHECKED_TYPES:
+        return
+    role = _role_for(hint)
+    try:
+        found = page.get_by_role(role, name=target, exact=True).count()
+    except Exception:
+        return
+    if found == 0:
+        raise SpecTypeMismatch(target, hint.type, role)
+
+
 def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
     """target 라벨에 해당하는 요소를 확정한다.
 
@@ -159,10 +226,15 @@ def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
 
     Raises:
         GroundingError: 확정 실패. 2차에서 self-heal 트리거가 된다.
+        SpecTypeMismatch: 찾았지만 기획서가 적은 유형이 아니다 (기획-구현 불일치).
     """
     locator, strategy, attempts = _try_strategies(page, target, hint)
     if locator is None:
         raise GroundingError(target, attempts)
+
+    # 탐지 뒤에 본다. 먼저 보면 요소가 아예 없는 경우까지 '유형 불일치' 로
+    # 보고하게 되는데, 그 둘은 개발자가 할 일이 다르다.
+    _check_declared_role(page, target, hint)
 
     return ElementLocation(
         target=target,
