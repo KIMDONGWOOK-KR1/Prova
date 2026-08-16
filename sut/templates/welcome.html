@@ -10,12 +10,26 @@
             box-shadow:0 2px 12px rgba(0,0,0,.08); }
     h1 { font-size:24px; margin:0 0 10px; }
     p { color:#666; font-size:14px; margin:0; }
+    a.go { display:inline-block; margin-top:20px; font-size:14px; color:#2f6fed; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>가입이 완료되었습니다</h1>
     <p>{{ nickname }} 님, 환영합니다.</p>
+
+    <!-- 기획서 §2 가 '로그인하러 가기' 를 링크(유형: 링크)로 정의한다.
+         이 요소가 회원가입 화면과 로그인 화면을 잇는다.
+
+         E2: bad 는 이 링크가 엉뚱한 경로를 가리킨다 (/search).
+         마크업은 양쪽 모두 <a> 로 동일하고 href 만 다르다 — 유형까지 바꾸면
+         '링크가 아니다' 와 '경로가 틀렸다' 가 한 요소에서 동시에 터져 어느 쪽을
+         고쳐야 하는지 흐려진다. 결함은 하나씩 심는다.
+
+         이 링크는 화면 단위 케이스로는 검증되지 않는다. 회원가입 화면의
+         url_path(/signup)에 없고 제출 뒤에야 나타나므로, 흐름 케이스가
+         눌러 봐야만 확인된다. -->
+    <a class="go" href="/{{ variant }}/{{ 'login' if variant == 'good' else 'search' }}">로그인하러 가기</a>
   </div>
 </body>
 </html>
