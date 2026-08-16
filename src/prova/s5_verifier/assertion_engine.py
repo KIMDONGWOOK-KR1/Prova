@@ -53,6 +53,9 @@ class PageState:
     # 선택 요소가 화면에 담고 있는 항목들 (type="options_present" 에서만 채워진다).
     # None 은 '읽지 못했다' 이고 빈 목록은 '항목이 하나도 없다' 다 — 다른 사실이다.
     options: list[str] | None = None
+    # 라벨 -> 화면의 안내 문구 (type="placeholders_match" 에서만 채워진다).
+    # 키가 없으면 그 요소를 못 찾은 것이고, 빈 문자열이면 요소는 있고 속성이 없는 것이다.
+    placeholders: dict[str, str] | None = None
 
 
 def capture_page_state(
@@ -60,6 +63,7 @@ def capture_page_state(
     console_errors: list[str] | None = None,
     collection: CollectionCount | None = None,
     options: list[str] | None = None,
+    placeholders: dict[str, str] | None = None,
 ) -> PageState:
     """Playwright Page 에서 판정에 필요한 정보만 뽑는다.
 
@@ -88,6 +92,7 @@ def capture_page_state(
         console_errors=list(console_errors or []),
         collection=collection,
         options=options,
+        placeholders=placeholders,
     )
 
 
@@ -244,6 +249,47 @@ def _judge_options_present(expected: Expectation, state: PageState) -> tuple[boo
     )
 
 
+def _judge_placeholders_match(
+    expected: Expectation, state: PageState
+) -> tuple[bool, str]:
+    """입력 안내 문구가 기획서와 같은가.
+
+    ## 왜 이걸 확인하는가
+
+    안내 문구는 사용자가 **가장 먼저 읽는 글자**다. 그런데 이 프로젝트에서 오랫동안
+    기획서가 그 문구를 적지 않았고, 그래서 아무도 확인하지 않았다 — 구현이 '이메일을
+    입력하세요' 를 '아이디를 입력하세요' 로 바꿔도 통과했다.
+
+    ## 없는 요소와 다른 문구를 구별한다
+
+    요소를 못 찾은 것과 문구가 다른 것은 개발자가 할 일이 다르다. 사유에 나눠 적는다.
+    """
+    want = expected.placeholders
+    got = state.placeholders
+
+    if not want:
+        return False, "기대 안내 문구가 지정되지 않았습니다 (케이스 생성 오류)"
+    if got is None:
+        return False, "화면의 안내 문구를 읽지 않았습니다 (실행 단계에서 수집되지 않음)"
+
+    missing = [label for label in want if label not in got]
+    differing = [
+        f"{label!r}: 기대 {want[label]!r}, 화면 {got[label]!r}"
+        for label in want
+        if label in got and normalize_ws(got[label]) != normalize_ws(want[label])
+    ]
+
+    if not missing and not differing:
+        return True, f"안내 문구 {len(want)}건 모두 일치"
+
+    parts = []
+    if differing:
+        parts.append("문구가 다름 — " + "; ".join(differing))
+    if missing:
+        parts.append(f"요소를 찾지 못함: {missing}")
+    return False, " / ".join(parts)
+
+
 _JUDGES = {
     "error_message": _judge_error_message,
     "error_shown": _judge_error_shown,
@@ -252,6 +298,7 @@ _JUDGES = {
     "text_visible": _judge_text_visible,
     "result_count": _judge_result_count,
     "options_present": _judge_options_present,
+    "placeholders_match": _judge_placeholders_match,
 }
 
 
@@ -318,6 +365,8 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         "screenshot": last_shot,
         "error_texts": state.error_texts,
     }
+    if state.placeholders is not None:
+        evidence["screen_placeholders"] = dict(state.placeholders)
     if state.options is not None:
         evidence["screen_options"] = list(state.options)
     if state.collection is not None:
@@ -350,6 +399,8 @@ def _expected_summary(expected: Expectation) -> str:
         parts.append(f"건수={expected.count} (대상={expected.count_target!r})")
     if expected.options:
         parts.append(f"선택 항목={expected.options} (대상={expected.option_target!r})")
+    if expected.placeholders:
+        parts.append(f"안내 문구 {len(expected.placeholders)}건")
     return " ".join(parts)
 
 

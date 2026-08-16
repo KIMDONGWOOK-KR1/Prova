@@ -12,7 +12,7 @@ LLM에게 남는 일은 '텍스트 -> JSON 구조화' 뿐이다. 그 정도면 �
 2) LLM에 넘기는 입력이 작아져 10GiB VRAM 환경에서도 컨텍스트가 넉넉하다.
 3) WITCHES 실물 PDF가 이미지 기반이어도 이 파일만 교체하면 된다.
 
-## 표에서 읽어 내는 사실이 일곱 가지다
+## 표에서 읽어 내는 사실이 여덟 가지다
 
 확장 과정에서 같은 실패를 반복해 겪고 얻은 결론이다 — **표에 그대로 적힌 사실은 LLM
 에 맡기지 않는다.** 프롬프트로 부탁해 본 것들이 문서가 길어지거나 few-shot 예시를
@@ -23,6 +23,7 @@ LLM에게 남는 일은 '텍스트 -> JSON 구조화' 뿐이다. 그 정도면 �
     declared_screen_meta        화면 ID · 경로
     declared_sample_values      예시값
     declared_scenarios          입력-결과 짝 + 결과 건수
+    declared_placeholders       입력 안내 문구
     declared_required_message   필수 입력 문구
     declared_flows              화면 흐름
 
@@ -127,16 +128,34 @@ class ParsedDocument:
         """UI 요소 정의 표. '요소 ID' 와 '유형' 열이 함께 있는 표로 판별한다.
 
         둘 중 하나만 보면 다른 표(실패 조건 등)와 구분되지 않는다.
+
+        ## 페이지를 넘어간 표를 이어 붙인다
+
+        표가 길어 다음 페이지로 넘어가면 PDF 는 헤더를 다시 그린다. pdfplumber 는
+        그것을 **별개의 표 두 개**로 읽으므로, 첫 표만 쓰면 넘어간 행이 조용히
+        사라진다.
+
+        실제로 겪었다. 요소 표에 '안내 문구' 열을 추가해 표가 넓어지자 회원가입
+        기획서의 마지막 행(로그인하러 가기)이 다음 페이지로 밀렸고, `declared_element_ids`
+        가 그 요소를 빠뜨렸다. 그러면 프롬프트에도 안 들어가고 누락 경고도 안 뜬다 —
+        **행을 빠뜨리지 않기 위해 만든 장치가 같은 이유로 무력해진다.**
+
+        헤더가 같은 표만 이어 붙인다. 다른 표를 잘못 붙이면 없는 요소를 만들어낸다.
         """
+        merged: Optional[ParsedTable] = None
         for table in self.all_tables:
             header = [normalize_ws(h) for h in table.header]
             if not header:
                 continue
             has_id = any("요소" in h and "ID" in h.upper() for h in header)
             has_type = any("유형" in h for h in header)
-            if has_id and has_type:
-                return table
-        return None
+            if not (has_id and has_type):
+                continue
+            if merged is None:
+                merged = ParsedTable(rows=[list(r) for r in table.rows])
+            elif [normalize_ws(h) for h in merged.header] == header:
+                merged.rows.extend(list(r) for r in table.rows[1:])
+        return merged
 
     def _column(self, table: ParsedTable, match) -> list[str]:
         header = [normalize_ws(h) for h in table.header]
@@ -247,6 +266,40 @@ class ParsedDocument:
             if label and element_id:
                 mapping[label] = element_id.replace(" ", "")
         return mapping
+
+    def declared_placeholders(self) -> dict[str, str]:
+        """UI 요소 표의 '안내 문구' 열. 라벨 -> placeholder 다.
+
+        ## 왜 기획서가 이걸 적게 했는가
+
+        SUT 에는 placeholder 가 있는데 **기획서에는 없었다.** 구현에 있는 UI 문구가
+        기획서 관할 밖이라는 뜻이고, 그러면 아무도 그 문구를 검증하지 않는다 —
+        '아이디를 입력하세요' 로 바뀌어도 통과한다. 입력 안내 문구는 사용자가 가장
+        먼저 읽는 글자이므로 기획-구현 대조 대상이 맞다.
+
+        ## '-' 는 해당 없음이다
+
+        버튼·체크박스·목록에는 placeholder 가 없다. '-' 를 값으로 받으면 화면에서
+        placeholder="-" 를 찾다 실패해 없는 결함을 보고하게 된다.
+        """
+        table = self._element_table()
+        if table is None:
+            return {}
+        header = [normalize_ws(h) for h in table.header]
+        col = next((i for i, h in enumerate(header)
+                    if "안내" in h or "placeholder" in h.lower()), None)
+        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
+        if col is None or label_col is None:
+            return {}
+
+        found: dict[str, str] = {}
+        for row in table.rows[1:]:
+            if len(row) <= max(col, label_col):
+                continue
+            label, text = row[label_col].strip(), normalize_ws(row[col])
+            if label and text and text not in ("-", "—"):
+                found[label] = text
+        return found
 
     def declared_required_message(self) -> Optional[str]:
         """실패 조건 표에서 '값이 비어 있을 때' 노출하는 문구를 읽는다.

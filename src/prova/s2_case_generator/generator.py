@@ -237,6 +237,7 @@ def generate_cases(
             seq += 1
 
     cases.extend(_option_cases(spec, start_seq=seq))
+    cases.extend(_placeholder_case(spec))
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
 
     if llm is not None:
@@ -531,3 +532,35 @@ def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             ),
         ))
     return cases
+
+
+def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
+    """입력 안내 문구가 기획서와 같은지 확인하는 케이스. 화면당 한 건.
+
+    ## 왜 요소마다가 아니라 화면당 한 건인가
+
+    선택 목록(_option_cases)은 요소마다 한 건인데 여기는 화면당 한 건이다. 기준은
+    '무엇이 한 가지 확인인가' 다.
+
+    선택 목록은 요소 하나가 목록 하나를 갖는다. 목록이 길고, 어느 항목이 빠졌는지가
+    그 요소만의 사실이므로 요소가 곧 확인 단위다.
+
+    안내 문구는 요소마다 짧은 문구 하나다. 요소마다 케이스를 만들면 회원가입에서만
+    4건이 늘어나는데, 각 케이스가 확인하는 것은 문구 한 줄이다. **리포트에 늘어나는
+    줄 수가 그 정보량보다 많다.** 대신 실패 사유에 어느 요소가 다른지 모두 적어,
+    한 건으로도 고칠 곳이 좁혀지게 한다.
+
+    스텝은 navigate 하나뿐이다 — 안내 문구는 입력 전에 보이는 글자이므로 채우고
+    제출할 이유가 없다. 오히려 값을 채우면 placeholder 가 가려진다.
+    """
+    declared = {e.label: e.placeholder for e in spec.elements if e.placeholder}
+    if not declared:
+        return []
+    return [TestCase(
+        case_id=f"{spec.screen_id}-placeholders-001",
+        screen_id=spec.screen_id,
+        title="입력 안내 문구가 기획서와 같은지 확인",
+        type="positive",
+        steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+        expected=Expectation(type="placeholders_match", placeholders=declared),
+    )]
