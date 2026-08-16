@@ -367,4 +367,4 @@ MIG 추가 할당 없이 2차가 가능합니다. 실측 후 결정할 예정입
 
 ---
 
-처음으로: [00-overview.md](00-overview.md)
+다음: [08-screen-expansion.md](08-screen-expansion.md) — 화면을 늘릴 때 실제로 깨진 것들
