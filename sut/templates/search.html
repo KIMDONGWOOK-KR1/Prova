@@ -52,8 +52,19 @@
     <div class="count">검색 결과 {{ count }}건</div>
     {% endif %}
 
+    <!-- aria-label 이 있어야 Prova 가 이 목록을 지목해 항목 수를 셀 수 있다.
+         기획서 §2 의 라벨('검색 결과 목록')과 같은 문자열이다.
+
+         이건 검증을 위한 장치가 아니라 원래 있어야 하는 접근성 이름이다.
+         list-style:none 인 목록은 스크린리더 사용자에게도 이름이 없으면 무엇의
+         목록인지 알 수 없다. 반대로 말하면, 실물 화면에 이 이름이 없으면 Prova
+         가 목록을 못 찾고 그 사실 자체가 접근성 결함 보고가 된다.
+
+         good/bad 는 이 마크업이 동일하다. 결과가 0건일 때 목록을 아예 렌더하지
+         않는 것도 양쪽 같다 — 그게 정상 구현이고, Prova 의 건수 판정은 '목록
+         없음 = 0건' 을 기대값 0 일 때만 통과로 본다. -->
     {% if results %}
-    <ul class="results">
+    <ul class="results" aria-label="검색 결과 목록">
       {% for name in results %}<li>{{ name }}</li>{% endfor %}
     </ul>
     {% endif %}

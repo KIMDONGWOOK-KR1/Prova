@@ -71,7 +71,9 @@ same_as 는 값 하나만 봐서는 판정할 수 없는 규칙이므로 특히 
   password_confirm 입니다). 기획서에 ID 가 없으면 라벨에서 영문 snake_case 로
   만드세요 (이메일 -> email, 로그인 버튼 -> login_btn).
 - type: 입력란은 "input", 버튼은 "button", 링크는 "link", 선택은 "select",
-  체크박스는 "checkbox", 표시 전용 텍스트는 "text".
+  체크박스는 "checkbox", 표시 전용 텍스트는 "text", **반복 목록은 "list"**.
+  요소 표의 '유형' 열에 적힌 그대로 옮기세요 (목록 -> list). 검색 결과 목록처럼
+  항목이 여러 개 반복되는 영역이 "list" 입니다.
 - required: 기획서에 '필수' 로 표시된 요소만 true.
 - options: type 이 "select" 인 요소의 선택 항목을 순서대로 담으세요. 기획서의
   '선택 목록: A, B, C' 같은 표현에서 A, B, C 를 뽑습니다. '선택하세요' 처럼
@@ -92,9 +94,12 @@ same_as 는 값 하나만 봐서는 판정할 수 없는 규칙이므로 특히 
 - scenarios: 기획서가 **입력과 그 결과를 짝으로** 제시한 예시. '예시 검색',
   '예시 동작' 처럼 **입력값 열과 '노출돼야 하는 문구' 열이 함께 있는 표**가
   그것입니다. 각 행을 하나씩 넣으세요.
-      given       그 행의 입력값. 열 제목이 요소의 라벨이므로, 해당 요소의
-                  element_id 를 키로 씁니다 ({"query": "notebook"}).
-      expect_text 그 행의 '노출돼야 하는 문구' 를 기획서에 적힌 그대로.
+      given        그 행의 입력값. 열 제목이 요소의 라벨이므로, 해당 요소의
+                   element_id 를 키로 씁니다 ({"query": "notebook"}).
+      expect_text  그 행의 '노출돼야 하는 문구' 를 기획서에 적힌 그대로.
+      expect_count 그 행에 **숫자만 적힌 열**(결과 건수 등)이 있으면 그 숫자.
+                   없으면 null. "검색 결과 3건" 같은 문구에서 숫자를 뽑아내지
+                   마세요 — 숫자만 있는 열이 따로 있을 때만 채웁니다.
   **입력값 열만 있고 결과 문구 열이 없는 표는 scenarios 가 아니라 sample_value
   입니다.** 두 표를 혼동하지 마세요 — 결과 문구 열의 유무로 구분합니다.
   또한 **검증 규칙 위반 예시는 여기 넣지 마세요.** 규칙 위반은 constraints 에서
@@ -290,6 +295,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     spec = ScreenSpec.model_validate(raw)
 
     _normalize_element_ids(spec)
+    _apply_declared_types(spec, doc.declared_element_types())
     _apply_declared_scenarios(spec, declared_scenarios)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
@@ -331,6 +337,30 @@ def _normalize_element_ids(spec: ScreenSpec) -> None:
             element.constraints["same_as"] = renames[ref]
 
 
+def _apply_declared_types(spec: ScreenSpec, declared: dict[str, str]) -> None:
+    """요소 유형을 기획서 표의 '유형' 열로 맞춘다 (라벨 -> 유형).
+
+    표에 적힌 사실이므로 LLM 결과를 덮어쓴다 (declared_element_types 설명 참고).
+    다만 여기서는 경고를 남긴다 — _normalize_element_ids 와 다른 점이다. 공백
+    제거는 표기 복원이지만, 유형이 달랐다는 것은 모델이 표를 잘못 읽었다는
+    뜻이고 그건 프롬프트가 나빠지고 있다는 신호다.
+
+    표에 없는 라벨의 요소는 건드리지 않는다. LLM 이 표에 없는 요소를 추가한
+    경우인데, 그 누락·추가는 structural_warnings 가 따로 알린다.
+    """
+    if not declared:
+        return
+    for element in spec.elements:
+        want = declared.get(element.label)
+        if want is None or want == element.type:
+            continue
+        spec.warnings.append(
+            f"'{element.label}' 의 유형을 기획서 표대로 {want!r} 로 맞췄습니다 "
+            f"(모델: {element.type!r}). 프롬프트를 확인하세요."
+        )
+        element.type = want
+
+
 def _apply_declared_scenarios(
     spec: ScreenSpec, declared: list[dict] | None
 ) -> None:
@@ -353,8 +383,18 @@ def _apply_declared_scenarios(
     if declared is None:
         return
 
+    # 비교는 필드를 갖춘 형태로 맞춰서 한다. 표에서 읽은 dict 에 expect_count 가
+    # 없고 모델 쪽에는 None 이 있으면, 값이 같은데도 다르다고 판정되어 매 실행마다
+    # 경고가 뜬다. 매번 뜨는 경고는 정작 중요한 경고를 묻는다.
+    declared = [
+        {"given": dict(d.get("given", {})), "expect_text": d.get("expect_text", ""),
+         "expect_count": d.get("expect_count")}
+        for d in declared
+    ]
     llm_scenarios = [
-        {"given": dict(s.given), "expect_text": s.expect_text} for s in spec.scenarios
+        {"given": dict(s.given), "expect_text": s.expect_text,
+         "expect_count": s.expect_count}
+        for s in spec.scenarios
     ]
     spec.scenarios = [Scenario.model_validate(item) for item in declared]
 

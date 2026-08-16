@@ -133,3 +133,84 @@ class TestDeclaredElementIds:
             ],
         )])
         assert doc.declared_element_ids() == ["email"]
+
+
+class TestDeclaredElementTypes:
+    """요소 유형도 표에서 읽는다 — 확장 과정에서 네 번 같은 실패를 겪은 결론의 적용.
+
+    유형이 틀리면 검증이 조용히 사라진다. 목록 요소를 text 로 읽으면 건수 검증이
+    아예 만들어지지 않고(미탐), 입력란을 목록으로 읽으면 값을 채우지 않아 정상
+    케이스까지 실패한다(오탐).
+    """
+
+    def test_로그인_기획서의_유형을_읽는다(self, doc):
+        assert doc.declared_element_types() == {
+            "이메일": "input", "비밀번호": "input", "로그인": "button"}
+
+    def test_목록_유형을_읽는다(self):
+        pdf = Path("fixtures/specs/search_spec.pdf")
+        if not pdf.exists():
+            pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+        assert parse_pdf(pdf).declared_element_types()["검색 결과 목록"] == "list"
+
+    def test_모르는_표현은_매핑하지_않는다(self):
+        """새 유형을 억지로 매핑하면 틀린 유형을 확신을 갖고 덮어쓴다.
+        모르면 LLM 의 판단을 남겨 두는 편이 낫다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[ParsedTable(rows=[
+                ["요소 ID", "유형", "라벨"],
+                ["a", "입력", "가"],
+                ["b", "멀티셀렉트", "나"],
+            ])],
+        )])
+        assert doc.declared_element_types() == {"가": "input"}
+
+
+class TestDeclaredScenarioCounts:
+    """예시 표의 건수 열.
+
+    열 제목이 아니라 값의 모양으로 찾는다. 기획서마다 '결과 건수'·'개수'·'건수'
+    로 다르게 쓰는데, 표현을 하나 놓칠 때마다 건수 검증이 조용히 빠진다.
+    """
+
+    def test_검색_기획서의_건수를_읽는다(self):
+        pdf = Path("fixtures/specs/search_spec.pdf")
+        if not pdf.exists():
+            pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+        scenarios = parse_pdf(pdf).declared_scenarios()
+        assert [(s["given"]["query"], s["expect_count"]) for s in scenarios] == [
+            ("notebook", 3), ("zzzz", 0)]
+
+    def test_문구_열의_숫자를_건수로_읽지_않는다(self):
+        """"검색 결과 3건" 은 정수가 아니므로 건수 열이 아니다. 여기서 숫자를
+        뽑아내면 화면이 문구를 안 찍을 때 건수 검증이 사라진다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[
+                ParsedTable(rows=[["요소 ID", "유형", "라벨"], ["query", "입력", "검색어"]]),
+                ParsedTable(rows=[["검색어", "노출돼야 하는 문구"],
+                                  ["notebook", "검색 결과 3건"]]),
+            ],
+        )])
+        assert doc.declared_scenarios() == [
+            {"given": {"query": "notebook"}, "expect_text": "검색 결과 3건",
+             "expect_count": None}]
+
+    def test_건수_열만_있고_문구_열이_없으면_시나리오가_아니다(self):
+        """기대 문구가 없으면 대조할 문구 케이스를 만들 수 없다. 그 표는 예시
+        시나리오 표가 아니므로 여기서 걸러진다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[
+                ParsedTable(rows=[["요소 ID", "유형", "라벨"], ["query", "입력", "검색어"]]),
+                ParsedTable(rows=[["검색어", "결과 건수"], ["notebook", "3"]]),
+            ],
+        )])
+        assert doc.declared_scenarios() == []

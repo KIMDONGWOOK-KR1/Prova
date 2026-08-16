@@ -527,4 +527,17 @@ def _scenario_defects(spec: ScreenSpec) -> list[str]:
                 f"기획서 예시 {i}번에 노출돼야 하는 문구가 비어 있습니다. "
                 f"비교할 대상이 없어 이 케이스는 항상 실패합니다."
             )
+
+    # 건수를 적어 두고 목록 요소는 정의하지 않은 경우.
+    #
+    # 이건 조용히 **미탐**을 만든다. 위 두 경우와 반대 방향이다 — 건수 케이스가
+    # 아예 만들어지지 않으므로 리포트에는 아무 흔적도 남지 않고, 전부 통과한
+    # 것처럼 보인다. 확인하지 않은 것과 확인해서 통과한 것은 다르다.
+    counted = [i for i, s in enumerate(spec.scenarios, 1) if s.expect_count is not None]
+    if counted and not any(e.type == "list" for e in spec.elements):
+        defects.append(
+            f"기획서 예시 {', '.join(map(str, counted))}번에 결과 건수가 있으나 "
+            f"UI 요소 표에 목록(유형 '목록') 요소가 없습니다. 무엇을 셀지 알 수 "
+            f"없어 건수 검증을 만들지 못했습니다 — 목록 요소를 추가하세요."
+        )
     return defects

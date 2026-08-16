@@ -299,5 +299,71 @@ class TestScenarioCases:
         """로그인 화면은 시나리오가 없다 — 회귀 확인."""
         assert not any("scenario" in c.case_id for c in generate_cases(login_spec))
 
-    def test_검색_케이스가_6건이다(self, search_spec):
-        assert len(generate_cases(search_spec)) == 6
+    def test_검색_케이스가_8건이다(self, search_spec):
+        """정상 1 + 규칙 위반 3(required·min_length·max_length) + 시나리오 2
+        + 건수 2 = 8. 시나리오 하나가 문구 케이스와 건수 케이스로 나뉜다."""
+        assert len(generate_cases(search_spec)) == 8
+
+
+class TestResultCountCases:
+    """건수를 DOM 에서 직접 세는 케이스.
+
+    문구 확인(text_visible)과 나란히 놓는 별도 경로다. 화면이 "검색 결과 3건" 을
+    안 찍고 목록만 렌더해도 검증이 성립해야 한다 — 실물 화면이 건수를 문구로
+    보여주지 않으면 문구 경로는 아무것도 확인하지 못한다.
+    """
+
+    def test_건수가_있는_시나리오마다_케이스가_생긴다(self, search_spec):
+        cases = [c for c in generate_cases(search_spec) if "-count-" in c.case_id]
+        assert len(cases) == 2
+        assert {c.expected.count for c in cases} == {3, 0}
+
+    def test_기대는_목록_라벨을_가리킨다(self, search_spec):
+        """무엇을 셀지가 기대값에 담겨야 한다. 없으면 S3 가 화면에서 목록을
+        추측해야 하고, 추측해서 센 숫자는 신뢰할 수 없다."""
+        case = next(c for c in generate_cases(search_spec) if "-count-" in c.case_id)
+        assert case.expected.type == "result_count"
+        assert case.expected.count_target == "검색 결과 목록"
+
+    def test_문구_케이스와_건수_케이스가_따로다(self, search_spec):
+        """합치면 FAIL 하나가 두 가지를 뜻한다 — 문구가 틀렸는지 개수가 틀렸는지.
+        원인도 고칠 곳도 다르므로 케이스를 나눈다."""
+        cases = generate_cases(search_spec)
+        text_cases = [c for c in cases if c.expected.type == "text_visible"]
+        count_cases = [c for c in cases if c.expected.type == "result_count"]
+        assert len(text_cases) == len(count_cases) == 2
+        # 같은 입력을 쓰지만 확인하는 것이 다르다
+        assert {tuple(s.value for s in c.steps if s.action == "fill")
+                for c in text_cases} == \
+               {tuple(s.value for s in c.steps if s.action == "fill")
+                for c in count_cases}
+
+    def test_건수_0도_케이스를_만든다(self, search_spec):
+        """0 은 '건수 검증 없음'(None)이 아니라 '아무것도 나오지 않아야 한다' 다.
+        None 으로 뭉개면 결과가 있어도 통과하는 미탐이 된다."""
+        counts = [c.expected.count for c in generate_cases(search_spec)
+                  if "-count-" in c.case_id]
+        assert 0 in counts
+
+    def test_목록_요소가_없으면_건수_케이스를_만들지_않는다(self, search_spec):
+        """무엇을 셀지 모르는 상태에서 추측하지 않는다. 대신 spec_defects 가
+        기획서 결함으로 알린다 — 조용히 빠뜨리지는 않는다."""
+        from prova.s2_case_generator.rule_expander import spec_defects
+
+        spec = search_spec.model_copy(deep=True)
+        spec.elements = [e for e in spec.elements if e.type != "list"]
+
+        assert not any("-count-" in c.case_id for c in generate_cases(spec))
+        assert any("목록" in d for d in spec_defects(spec))
+
+    def test_목록_요소는_입력_스텝에_들어가지_않는다(self, search_spec):
+        """목록은 값을 채우는 대상이 아니다. fill 을 부르면 Playwright 가 조작
+        오류를 내고, 그 케이스는 검증하려던 것과 무관하게 실패한다."""
+        for case in generate_cases(search_spec):
+            targets = [s.target for s in case.steps if s.action in ("fill", "select")]
+            assert "검색 결과 목록" not in targets
+
+    def test_로그인은_건수_케이스가_없다(self, login_spec):
+        """건수 경로를 추가해도 기존 화면의 케이스 구성이 바뀌지 않아야 한다."""
+        assert not any(c.expected.type == "result_count"
+                       for c in generate_cases(login_spec))

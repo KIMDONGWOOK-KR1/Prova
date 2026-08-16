@@ -24,7 +24,10 @@ from pydantic import BaseModel, Field
 # S1 · 설계 문서에서 추출한 화면 명세
 # ---------------------------------------------------------------------------
 
-ElementType = Literal["input", "button", "link", "select", "checkbox", "text"]
+# "list" 는 반복 목록(검색 결과 목록 등)이다. 다른 유형과 성질이 다르다 —
+# 값을 채우는 대상이 아니고, 화면에 몇 개가 렌더됐는지를 세는 대상이다.
+# 그래서 S2 의 _fillable_inputs 에서 빠지고, S3 는 별도 경로로 다룬다.
+ElementType = Literal["input", "button", "link", "select", "checkbox", "text", "list"]
 
 
 class UIElement(BaseModel):
@@ -93,12 +96,27 @@ class Scenario(BaseModel):
     나중에 건수를 DOM 에서 직접 세거나 URL 을 확인해야 하면 **필드를 추가**한다.
     이 필드의 의미를 넓혀 재해석하면 안 된다 — 필드 이름이 할 수 있는 일을
     말하고 있어야 한다.
+
+    ## expect_count 를 나중에 추가한 이유
+
+    위 문단이 예고한 그 확장이다. expect_text 는 화면이 건수를 **문구로 보여줄
+    때만** 쓸 수 있다. "검색 결과 3건" 을 안 찍고 목록만 렌더하는 화면에서는
+    문구 비교가 아무것도 확인하지 못한다. 그때 건수를 확인하려면 DOM 의 반복
+    요소를 직접 세야 한다.
+
+    expect_text 를 "3" 으로 두고 재해석하지 않은 이유가 여기 있다 — 그러면 화면
+    아무 곳의 "3" 에나 걸린다(가격, 페이지 번호). 세는 것과 문구를 찾는 것은
+    다른 일이므로 필드도 다르다.
     """
 
     # element_id -> 입력값. 여기 없는 입력 요소는 정상값으로 채운다.
     given: dict[str, str] = Field(default_factory=dict)
     # 화면에 노출돼야 하는 문구 (공백 무시 비교)
     expect_text: str
+    # 반복 목록에 렌더돼야 하는 항목 수. 기획서가 건수를 표로 적어 둔 경우만
+    # 채워진다. None 이면 건수 검증을 만들지 않는다 — 0 과 구별해야 한다.
+    # (0 은 '아무것도 나오지 않아야 한다' 는 확인할 값이 있는 상태다)
+    expect_count: Optional[int] = None
 
 
 class ScreenSpec(BaseModel):
@@ -151,8 +169,10 @@ CaseType = Literal["positive", "negative", "boundary"]
 #   error_message  특정 문구가 노출돼야 한다 (기획서에 문구가 명시된 경우)
 #   error_shown    문구는 특정하지 않고, 에러가 노출되고 이동하지 않아야 한다
 #                  (기획서에 문구가 없어 문구까지 못 박으면 오탐이 되는 경우)
+#   result_count   반복 목록에 정확히 N 개가 렌더돼야 한다 (문구가 아니라 개수)
 ExpectedType = Literal[
-    "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible"
+    "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
+    "result_count",
 ]
 
 
@@ -167,6 +187,14 @@ class Expectation(BaseModel):
     type: ExpectedType
     value: str = ""
     url_contains: Optional[str] = None  # 기대하는 URL 조각 (예: "/dashboard")
+    # --- type="result_count" 전용 ---
+    #
+    # count 를 value 에 문자열로 담지 않은 이유: value 는 '화면에서 찾을 문구' 다.
+    # 개수를 거기 넣으면 판정 함수가 value 를 유형에 따라 다르게 해석해야 하고,
+    # 그 순간 필드 이름이 거짓말을 시작한다. count_target 도 마찬가지다 —
+    # 세는 대상(목록의 라벨)은 기대값이 아니라 '어디를 볼 것인가' 다.
+    count: Optional[int] = None
+    count_target: Optional[str] = None  # 셀 반복 목록의 라벨
 
 
 class TestStep(BaseModel):
