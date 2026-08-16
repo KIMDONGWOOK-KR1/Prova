@@ -33,8 +33,12 @@ def _load_config(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _make_llm(backend: str, cfg: dict):
-    """설정에 맞는 LLM 백엔드를 만든다."""
+def _make_llm(backend: str, cfg: dict, pdf: Path):
+    """설정에 맞는 LLM 백엔드를 만든다.
+
+    mock 은 어느 기획서를 검증하는지에 따라 다른 정답을 돌려줘야 하므로 PDF
+    경로를 받는다. 화면이 늘어나도 여기에 분기가 생기지 않는다.
+    """
     llm_cfg = cfg.get("llm", {})
 
     if backend == "mock":
@@ -44,7 +48,7 @@ def _make_llm(backend: str, cfg: dict):
             "  mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다.",
             fg=typer.colors.YELLOW,
         )
-        return MockLLM.with_login_fixtures()
+        return MockLLM.for_spec(pdf)
 
     if backend == "vllm":
         from prova.llm.vllm_backend import VLLMClient
@@ -96,7 +100,7 @@ def run(
     typer.echo("")
 
     try:
-        llm = _make_llm(backend, cfg)
+        llm = _make_llm(backend, cfg, pdf)
     except LLMError as exc:
         typer.secho(f"\nLLM 백엔드를 준비할 수 없습니다:\n{exc}", fg=typer.colors.RED)
         typer.secho(

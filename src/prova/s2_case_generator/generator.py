@@ -33,7 +33,7 @@ from prova.llm.base import LLMClient, LLMError
 from prova.models import Expectation, ScreenSpec, TestCase, TestStep, UIElement
 from prova.s2_case_generator.rule_expander import (
     RULE_LABELS,
-    valid_value_for,
+    resolve_values,
     violations_for_element,
 )
 
@@ -78,12 +78,29 @@ def parse_success_expectation(spec: ScreenSpec) -> Expectation:
     )
 
 
+def _required_message_for(element: UIElement, spec: ScreenSpec) -> Optional[str]:
+    """필수 입력 위반 시 기대할 문구.
+
+    기본은 화면 공통 문구다 (§4 실패 조건). 요소의 error_message 는 대개 형식
+    검증용 문구이므로 required 에 쓰면 어긋난다.
+
+    예외가 하나 있다. **그 요소에 다른 검증 규칙이 없으면 error_message 는
+    필수 여부에 대한 문구일 수밖에 없다.** 회원가입 화면의 '약관 동의' 가
+    그렇다 — 체크박스에 형식 검증이 있을 수 없으니 "약관에 동의해야 합니다." 는
+    미동의 상태의 문구다. 이때 화면 공통 문구를 쓰면 구현이 옳아도 문구가 달라
+    FAIL 이 되어 오탐이 된다.
+    """
+    if element.error_message and not element.constraints:
+        return element.error_message
+    return spec.required_message or element.error_message
+
+
 def _expectation_for_violation(
     element: UIElement, rule: str, spec: ScreenSpec
 ) -> Expectation:
     """위반 케이스의 기대. 문구 출처가 규칙에 따라 다르다 (모듈 설명 참고)."""
     if rule == "required":
-        message = spec.required_message or element.error_message
+        message = _required_message_for(element, spec)
     else:
         message = element.error_message
 
@@ -92,6 +109,22 @@ def _expectation_for_violation(
     # 문구를 모를 때는 격하한다. 억측한 문구로 오탐을 만드는 것보다,
     # '에러가 떴고 이동하지 않았다' 만 확인하는 편이 낫다.
     return Expectation(type="error_shown", value="")
+
+
+def _input_step(seq: int, element: UIElement, value: str) -> TestStep:
+    """요소 유형에 맞는 입력 스텝 하나.
+
+    체크박스에 fill() 을 부르면 Playwright 가 조작 오류로 실패한다. 그러면
+    '약관 미동의 시 에러가 뜨는가' 를 검증하려던 케이스가 요소 조작 실패로
+    뭉개져, 구현에 결함이 있는지 없는지 알 수 없게 된다. 그래서 유형별로
+    액션을 나눈다. 빈 값은 '체크 해제 / 선택 안 함' 을 뜻한다.
+    """
+    if element.type == "checkbox":
+        return TestStep(seq=seq, action="check" if value else "uncheck",
+                        target=element.label)
+    if element.type == "select":
+        return TestStep(seq=seq, action="select", target=element.label, value=value)
+    return TestStep(seq=seq, action="fill", target=element.label, value=value)
 
 
 def _steps_for_case(
@@ -105,10 +138,7 @@ def _steps_for_case(
     steps = [TestStep(seq=1, action="navigate", target=spec.url_path)]
     seq = 2
     for element in _fillable_inputs(spec):
-        steps.append(TestStep(
-            seq=seq, action="fill", target=element.label,
-            value=values.get(element.element_id, ""),
-        ))
+        steps.append(_input_step(seq, element, values.get(element.element_id, "")))
         seq += 1
     submit = _submit_element(spec)
     if submit:
@@ -125,6 +155,10 @@ def _slug(text: str) -> str:
 def _title_for_violation(element: UIElement, rule: str, value: str) -> str:
     label = RULE_LABELS.get(rule, rule)
     if rule == "required":
+        if element.type == "checkbox":
+            return f"{element.label} 미체크 — 필수 동의 검증 확인"
+        if element.type == "select":
+            return f"{element.label} 미선택 — 필수 선택 검증 확인"
         return f"{element.label} 미입력 — 필수 입력 검증 확인"
     return f"{element.label} {label} 규칙 위반 (입력값 {value!r}) — 규칙 강제 여부 확인"
 
@@ -144,7 +178,7 @@ def generate_cases(
     inputs = _fillable_inputs(spec)
 
     # --- 정상 케이스: 모든 규칙을 만족하는 값 ---
-    valid_values = {e.element_id: valid_value_for(e) for e in inputs}
+    valid_values, _ = resolve_values(inputs)
     cases.append(TestCase(
         case_id=f"{spec.screen_id}-valid-001",
         screen_id=spec.screen_id,
@@ -157,11 +191,18 @@ def generate_cases(
     # --- 위반 케이스: 규칙 하나당 한 건 ---
     seq = 2
     for element in inputs:
-        for violation in violations_for_element(element):
+        ref_id = element.constraints.get("same_as")
+        ref_value = valid_values.get(ref_id) if ref_id else None
+
+        for violation in violations_for_element(element, ref_value):
             # 대상 요소만 위반값으로 바꾸고 나머지는 정상값을 넣는다.
             # 이렇게 해야 실패 원인이 이 요소의 이 규칙으로 좁혀진다.
-            values = dict(valid_values)
-            values[element.element_id] = violation.value
+            #
+            # 값을 다시 해석하는 이유(dict 복사가 아닌 이유): 이 요소를 참조하는
+            # same_as 값이 있으면 그것도 위반값 기준으로 다시 계산돼야 한다.
+            # 비밀번호에 위반값을 넣고 비밀번호 확인을 원래 값으로 두면 일치
+            # 규칙까지 함께 깨져 FAIL 원인이 둘로 갈린다.
+            values, _ = resolve_values(inputs, overrides={element.element_id: violation.value})
 
             cases.append(TestCase(
                 case_id=f"{spec.screen_id}-{_slug(element.element_id)}"

@@ -70,6 +70,33 @@ class ParsedDocument:
     def all_tables(self) -> list[ParsedTable]:
         return [t for p in self.pages for t in p.tables]
 
+    def declared_element_ids(self) -> list[str]:
+        """UI 요소 표의 '요소 ID' 열에 적힌 값들. LLM 을 쓰지 않는다.
+
+        왜 필요한가: LLM 이 표의 행 하나를 조용히 빠뜨릴 수 있다. 실측에서 7행
+        표에서 버튼 행이 누락된 일이 있었는데, 제출 버튼이 없으면 테스트가
+        아무것도 제출하지 못해 **구현이 멀쩡해도 전 케이스가 실패로 보고된다.**
+        경고 없이 그런 리포트가 나오는 것이 이 도구에서 가장 위험한 결과다.
+
+        표에 ID 열이 없으면 빈 목록을 돌려준다 — 대조할 근거가 없으면 검사하지
+        않는 것이 맞다. 있는 것처럼 추측하면 없는 누락을 경고하게 된다.
+        """
+        for table in self.all_tables:
+            header = [normalize_ws(h) for h in table.header]
+            if not header:
+                continue
+            # '요소 ID' 와 '유형' 이 함께 있는 표를 UI 요소 정의 표로 본다.
+            # 둘 중 하나만으로는 다른 표(실패 조건 등)와 구분되지 않는다.
+            has_id = any("요소" in h and "ID" in h.upper() for h in header)
+            has_type = any("유형" in h for h in header)
+            if not (has_id and has_type):
+                continue
+            col = next(i for i, h in enumerate(header)
+                       if "요소" in h and "ID" in h.upper())
+            return [row[col].replace(" ", "") for row in table.rows[1:]
+                    if len(row) > col and row[col].strip()]
+        return []
+
     def to_llm_text(self) -> str:
         """LLM 프롬프트에 넣을 형태로 직렬화.
 

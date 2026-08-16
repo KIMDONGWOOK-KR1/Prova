@@ -86,3 +86,50 @@ class TestParsePdf:
     def test_없는_파일은_명확한_에러(self):
         with pytest.raises(FileNotFoundError):
             parse_pdf("fixtures/specs/nope.pdf")
+
+
+class TestDeclaredElementIds:
+    """LLM 없이 표에서 읽어 낸 요소 ID 목록.
+
+    이 목록의 용도는 두 가지다. 프롬프트에 넣어 LLM 이 행을 빠뜨리지 않게 하고,
+    추출 결과와 대조해 빠진 요소를 경고한다. 실측에서 7B 가 7행 표의 버튼 행을
+    빠뜨린 일이 있었고, 제출 버튼이 없으면 **구현이 옳아도 전 케이스가 실패로
+    보고된다** — 경고 없이 나오면 가장 위험한 리포트가 된다.
+    """
+
+    def test_로그인_기획서의_요소_ID를_순서대로_읽는다(self, doc):
+        assert doc.declared_element_ids() == ["email", "password", "login_btn"]
+
+    def test_회원가입_기획서의_요소_ID를_순서대로_읽는다(self):
+        pdf = Path("fixtures/specs/signup_spec.pdf")
+        if not pdf.exists():
+            pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+        assert parse_pdf(pdf).declared_element_ids() == [
+            "email", "password", "password_confirm", "nickname",
+            "signup_path", "agree_terms", "signup_btn",
+        ]
+
+    def test_ID_열이_없으면_빈_목록이다(self, tmp_path):
+        """대조할 근거가 없으면 검사하지 않는 것이 맞다. 있는 것처럼 추측하면
+        없는 누락을 경고하게 된다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[ParsedTable(rows=[["상황", "처리"], ["비어 있음", "에러 노출"]])],
+        )])
+        assert doc.declared_element_ids() == []
+
+    def test_요소_표와_다른_표를_섞어_보지_않는다(self):
+        """'요소 ID' 와 '유형' 이 함께 있는 표만 요소 정의 표로 본다.
+        하나만으로 판단하면 실패 조건 표를 요소 표로 착각한다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[
+                ParsedTable(rows=[["항목", "내용"], ["화면 ID", "login"]]),
+                ParsedTable(rows=[["요소 ID", "유형"], ["email", "입력"]]),
+            ],
+        )])
+        assert doc.declared_element_ids() == ["email"]

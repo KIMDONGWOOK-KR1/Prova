@@ -17,10 +17,22 @@ S1 이 조용히 실패하면 파이프라인 전체가 무의미해진다. cons
 vLLM 에 연결되지 않으면 skip 한다. 실패로 처리하면 GPU 없는 환경에서 전체
 테스트가 빨간불이 되어, 정작 중요한 파이프라인 회귀를 못 보게 된다.
 
+## 화면마다 같은 검사를 돌린다
+
+SPECS 에 화면을 추가하면 그 화면에도 같은 강도의 대조가 걸린다. 화면을 늘릴 때
+정확도 측정이 함께 늘어나지 않으면, 확장된 부분만 측정되지 않은 상태가 된다.
+회원가입 화면은 로그인에 없던 규칙(same_as·options·체크박스)을 갖고 있어
+특히 여기서 확인해야 한다.
+
+프롬프트의 few-shot 예시는 이 두 화면과 겹치지 않는 화면('비밀번호 변경')을
+쓴다. 예시가 측정 대상과 같으면 기획서를 읽어서 맞힌 것인지 예시를 베낀 것인지
+구분할 수 없어, 정확도 숫자가 실물 기획서에 대한 근거가 되지 못한다.
+
 ## 비교 강도를 필드마다 다르게 둔다
 
     constraints    엄격 비교 — 키 이름과 값이 정확히 같아야 한다.
                    키가 흔들리면(min_len 등) rule_expander 가 규칙을 인식하지 못한다.
+    options        엄격 비교 — 정상 케이스가 여기서 값을 고른다.
     error_message  공백 무시 비교 — PDF 추출 문구는 줄바꿈 위치가 다르다.
     screen_name 등 공백 무시 비교.
     success_condition  포함 비교 — 문장 표현은 달라도 핵심 정보(경로·문구)가
@@ -40,18 +52,20 @@ from prova.models import ScreenSpec
 from prova.s1_spec_extractor.extractor import extract_from_pdf
 from prova.text_utils import contains_loose, loosen
 
-SPEC_PDF = "fixtures/specs/login_spec.pdf"
-GOLDEN = Path("fixtures/specs/login_spec.golden.json")
+SPEC_DIR = Path("fixtures/specs")
+SPECS = ["login", "signup"]
+
+# 성공 조건에서 S2 가 정규식으로 뽑아 쓰는 조각. 이 두 개가 빠지면 정상 케이스의
+# 기대가 비어 버려서, 화면이 망가져도 '에러 없음' 만으로 PASS 가 된다.
+SUCCESS_TOKENS = {
+    "login": ["/dashboard", "환영합니다"],
+    "signup": ["/welcome", "가입이 완료되었습니다"],
+}
 
 
 @pytest.fixture(scope="module")
-def golden() -> ScreenSpec:
-    return ScreenSpec.model_validate(json.loads(GOLDEN.read_text(encoding="utf-8")))
-
-
-@pytest.fixture(scope="module")
-def extracted() -> ScreenSpec:
-    """실제 LLM 으로 추출한 ScreenSpec. 연결 안 되면 skip."""
+def client():
+    """vLLM 클라이언트. 연결 안 되면 이 파일 전체를 skip."""
     import yaml
 
     cfg = yaml.safe_load(Path("configs/default.yaml").read_text(encoding="utf-8"))
@@ -63,49 +77,66 @@ def extracted() -> ScreenSpec:
 
     from prova.llm.vllm_backend import VLLMClient
 
-    client = VLLMClient(
+    inst = VLLMClient(
         base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
         model=llm_cfg.get("model", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
         timeout=float(llm_cfg.get("timeout", 180)),
     )
     try:
-        client.health(timeout=4.0)  # skip 판단은 빨라야 한다
+        inst.health(timeout=4.0)  # skip 판단은 빨라야 한다
     except LLMError as exc:
         pytest.skip(f"vLLM 에 연결할 수 없습니다 — {exc}")
+    return inst
 
+
+@pytest.fixture(scope="module", params=SPECS)
+def pair(request, client) -> tuple[ScreenSpec, ScreenSpec, str]:
+    """(추출 결과, 정답, 화면 이름). 화면마다 한 번만 추출한다."""
+    stem = request.param
+    golden = ScreenSpec.model_validate(
+        json.loads((SPEC_DIR / f"{stem}_spec.golden.json").read_text(encoding="utf-8"))
+    )
     try:
-        return extract_from_pdf(SPEC_PDF, client)
+        extracted = extract_from_pdf(str(SPEC_DIR / f"{stem}_spec.pdf"), client)
     except LLMError as exc:
-        pytest.fail(f"S1 추출이 실패했습니다: {exc}")
+        pytest.fail(f"{stem}: S1 추출이 실패했습니다: {exc}")
+    return extracted, golden, stem
 
 
 class TestScreenLevel:
-    def test_화면_식별정보(self, extracted, golden):
+    def test_화면_식별정보(self, pair):
+        extracted, golden, _ = pair
         assert extracted.screen_id == golden.screen_id
         assert loosen(extracted.screen_name) == loosen(golden.screen_name)
         assert extracted.url_path == golden.url_path
 
-    def test_요소를_빠뜨리지_않는다(self, extracted, golden):
+    def test_요소를_빠뜨리지_않는다(self, pair):
+        extracted, golden, _ = pair
         got = {e.element_id for e in extracted.elements}
         want = {e.element_id for e in golden.elements}
         assert not (want - got), f"놓친 요소: {want - got}"
 
-    def test_필수입력_공통문구(self, extracted, golden):
+    def test_필수입력_공통문구(self, pair):
         """required 위반 케이스의 기대 문구가 여기서 온다."""
+        extracted, golden, _ = pair
         if golden.required_message:
             assert extracted.required_message, "required_message 를 추출하지 못했다"
             assert loosen(extracted.required_message) == loosen(golden.required_message)
 
-    def test_성공조건에_경로와_문구가_들어있다(self, extracted, golden):
+    def test_성공조건에_경로와_문구가_들어있다(self, pair):
         """S2 가 여기서 정상 케이스의 기대를 뽑는다. 문장 표현은 달라도 된다."""
-        assert contains_loose(extracted.success_condition, "/dashboard")
-        assert contains_loose(extracted.success_condition, "환영합니다")
+        extracted, _, stem = pair
+        for token in SUCCESS_TOKENS[stem]:
+            assert contains_loose(extracted.success_condition, token), (
+                f"성공 조건에 {token!r} 가 없다: {extracted.success_condition!r}"
+            )
 
 
 class TestConstraints:
     """가장 중요한 비교. 여기가 틀리면 검증이 조용히 무력해진다."""
 
-    def test_검증규칙이_정확히_일치한다(self, extracted, golden):
+    def test_검증규칙이_정확히_일치한다(self, pair):
+        extracted, golden, _ = pair
         for want in golden.elements:
             got = extracted.element_by_id(want.element_id)
             assert got is not None, f"{want.element_id} 요소 없음"
@@ -116,21 +147,39 @@ class TestConstraints:
                 f"  -> 키 이름이 다르면 rule_expander 가 규칙을 인식하지 못한다"
             )
 
-    def test_필수여부가_일치한다(self, extracted, golden):
+    def test_필수여부가_일치한다(self, pair):
+        extracted, golden, _ = pair
         for want in golden.elements:
             got = extracted.element_by_id(want.element_id)
             assert got.required == want.required, f"{want.element_id}.required"
 
-    def test_요소_유형이_일치한다(self, extracted, golden):
+    def test_요소_유형이_일치한다(self, pair):
+        """유형이 틀리면 액션이 틀린다 — 체크박스를 input 으로 뽑으면 fill()
+        이 불려 조작 오류가 나고, 그 케이스의 판정이 뭉개진다."""
+        extracted, golden, _ = pair
         for want in golden.elements:
             got = extracted.element_by_id(want.element_id)
             assert got.type == want.type, f"{want.element_id}.type"
+
+    def test_선택_목록이_일치한다(self, pair):
+        """정상 케이스가 여기서 값을 고른다. 비어 있으면 빈 값을 선택해
+        필수 선택 검증에 걸리고, 정상 케이스가 오탐 FAIL 이 된다."""
+        extracted, golden, _ = pair
+        for want in golden.elements:
+            if not want.options:
+                continue
+            got = extracted.element_by_id(want.element_id)
+            assert got.options == want.options, (
+                f"{want.element_id} 의 선택 목록 불일치\n"
+                f"  기대: {want.options}\n  실제: {got.options}"
+            )
 
 
 class TestErrorMessages:
     """문구가 판정 근거이므로 정확해야 한다. 공백 차이만 허용한다."""
 
-    def test_에러문구가_일치한다(self, extracted, golden):
+    def test_에러문구가_일치한다(self, pair):
+        extracted, golden, _ = pair
         for want in golden.elements:
             if not want.error_message:
                 continue
@@ -144,9 +193,10 @@ class TestErrorMessages:
 
 
 class TestSampleValues:
-    def test_테스트계정을_추출한다(self, extracted, golden):
+    def test_예시값을_추출한다(self, pair):
         """정상 케이스가 이 값을 쓴다. 없으면 코드가 만든 값이 쓰이고, 그 값은
         규칙은 만족하지만 등록된 계정이 아니어서 정상 케이스가 오탐 FAIL 이 된다."""
+        extracted, golden, _ = pair
         for want in golden.elements:
             if not want.sample_value:
                 continue
@@ -159,8 +209,9 @@ class TestSampleValues:
 
 
 class TestNoSilentFailure:
-    def test_추출_실패를_경고로_알린다(self, extracted):
+    def test_추출_실패를_경고로_알린다(self, pair):
         """constraints 가 하나도 없으면 extractor 가 경고를 남겨야 한다.
         경고 없이 빈 결과가 지나가면 리포트가 근거 없이 초록불이 된다."""
+        extracted, _, _ = pair
         if not any(e.constraints for e in extracted.elements):
             assert extracted.warnings, "추출 실패인데 경고가 없다"

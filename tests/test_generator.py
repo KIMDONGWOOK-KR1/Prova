@@ -150,3 +150,83 @@ class TestTitlePolish:
         assert len(cases) == 7
         assert all(c.title for c in cases)
         assert any("제목 다듬기" in w for w in login_spec.warnings)
+
+
+SIGNUP_GOLDEN = Path("fixtures/specs/signup_spec.golden.json")
+
+
+@pytest.fixture
+def signup_spec() -> ScreenSpec:
+    return ScreenSpec.model_validate(json.loads(SIGNUP_GOLDEN.read_text(encoding="utf-8")))
+
+
+class TestElementTypeActions:
+    """요소 유형마다 다른 액션을 낸다.
+
+    체크박스에 fill() 을 부르면 Playwright 가 조작 오류로 실패한다. 그러면
+    '약관 미동의 시 에러가 뜨는가' 를 검증하려던 케이스가 요소 조작 실패로
+    뭉개져, 구현에 결함이 있는지 없는지 알 수 없게 된다.
+    """
+
+    def test_정상케이스의_액션이_유형별로_갈린다(self, signup_spec):
+        steps = generate_cases(signup_spec)[0].steps
+        by_target = {s.target: s.action for s in steps}
+        assert by_target["이메일"] == "fill"
+        assert by_target["가입 경로"] == "select"
+        assert by_target["약관 동의"] == "check"
+        assert by_target["가입하기"] == "click"
+
+    def test_체크박스_미체크_케이스는_uncheck를_쓴다(self, signup_spec):
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.target_element == "agree_terms")
+        action = next(s.action for s in case.steps if s.target == "약관 동의")
+        assert action == "uncheck"
+
+    def test_선택요소_미선택_케이스는_빈값을_고른다(self, signup_spec):
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.target_element == "signup_path")
+        step = next(s for s in case.steps if s.target == "가입 경로")
+        assert step.action == "select" and step.value == ""
+
+    def test_체크박스에는_fill_액션이_나오지_않는다(self, signup_spec):
+        for c in generate_cases(signup_spec):
+            for s in c.steps:
+                if s.target == "약관 동의":
+                    assert s.action in ("check", "uncheck"), s.action
+
+
+class TestRequiredMessageSource:
+    """필수 입력 문구의 출처 — 오탐이 가장 나기 쉬운 지점."""
+
+    def test_검증규칙이_있는_요소는_화면_공통문구를_쓴다(self, signup_spec):
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.violates == "required" and c.target_element == "email")
+        assert case.expected.value == "필수 입력 항목입니다."
+
+    def test_다른_규칙이_없는_요소는_자기_문구를_쓴다(self, signup_spec):
+        """체크박스에 형식 검증이 있을 수 없으니 "약관에 동의해야 합니다." 는
+        미동의 상태의 문구다. 화면 공통 문구를 쓰면 구현이 옳아도 FAIL 이 된다."""
+        cases = generate_cases(signup_spec)
+        agree = next(c for c in cases if c.target_element == "agree_terms")
+        assert agree.expected.value == "약관에 동의해야 합니다."
+        path = next(c for c in cases if c.target_element == "signup_path")
+        assert path.expected.value == "가입 경로를 선택하세요."
+
+
+class TestCrossFieldCases:
+    def test_교차필드_위반_케이스가_생긴다(self, signup_spec):
+        cases = generate_cases(signup_spec)
+        case = next(c for c in cases if c.violates == "same_as")
+        values = {s.target: s.value for s in case.steps if s.action == "fill"}
+        assert values["비밀번호 확인"] != values["비밀번호"]
+        assert case.expected.value == "비밀번호가 일치하지 않습니다."
+
+    def test_참조_요소_위반시_의존값이_함께_바뀐다(self, signup_spec):
+        """한 케이스가 두 규칙을 동시에 깨지 않게 하는 지점."""
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.violates == "require_uppercase")
+        values = {s.target: s.value for s in case.steps if s.action == "fill"}
+        assert values["비밀번호 확인"] == values["비밀번호"]
+
+    def test_회원가입_케이스가_14건이다(self, signup_spec):
+        assert len(generate_cases(signup_spec)) == 14
