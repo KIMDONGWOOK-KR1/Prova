@@ -76,7 +76,7 @@ class TestGoodVariant:
     def test_케이스가_생성됐다(self, good_run):
         """0건 통과를 100% 통과로 착각하지 않게 한다."""
         report, _ = good_run
-        assert report.summary["total"] == 7
+        assert report.summary["total"] == 8
         assert sum(1 for v in report.cases if v.type == "negative") == 6
 
 
@@ -90,11 +90,26 @@ class TestBadVariant:
         assert not missed, f"놓친 불일치(미탐): {missed}"
 
     def test_오탐이_없다(self, bad_run):
-        """심지 않은 항목이 FAIL 로 나오면 안 된다. 오탐은 미탐보다 치명적이다."""
+        """심지 않은 항목이 FAIL 로 나오면 안 된다. 오탐은 미탐보다 치명적이다.
+
+        규칙 위반 케이스만 본다. 기획서 예시(B3 의 문구 불일치)는 어긴 규칙이 없어
+        violates 가 비어 있으므로, 규칙 이름으로 세면 오탐처럼 보인다."""
         report, _ = bad_run
-        failed_rules = {v.violates for v in report.cases if v.verdict == "FAIL"}
+        failed_rules = {v.violates for v in report.cases
+                        if v.verdict == "FAIL" and v.type == "negative"}
         false_positives = failed_rules - EXPECTED_BAD_FAILURES
         assert not false_positives, f"오탐: {false_positives}"
+
+    def test_미등록_계정_문구도_잡는다(self, bad_run):
+        """B3 — 기획서와 다른 에러 문구. 커버리지 검출기가 찾아낸 구멍이었다.
+
+        규칙을 다 지켰지만 등록되지 않은 계정이라는 상황은 위반값으로 만들 수 없어,
+        기획서가 예시를 제시할 때까지 **이 문구는 아무 케이스도 확인하지 않았다.**
+        그동안 로그인은 7/7 통과로 보고됐다."""
+        report, _ = bad_run
+        case = next(v for v in report.cases if "-scenario-" in v.case_id)
+        assert case.verdict == "FAIL"
+        assert "이메일 또는 비밀번호가 올바르지 않습니다." in case.evidence["expected"]
 
     def test_구현된_규칙은_통과한다(self, bad_run):
         """bad 에도 required 검증은 있다. 같은 리포트 안에 '구현된 규칙은 PASS,
@@ -112,9 +127,13 @@ class TestBadVariant:
         assert positive.verdict == "PASS", positive.failure_detail
 
     def test_실패에_위반규칙과_분류가_붙는다(self, bad_run):
-        """개발자가 어느 검증 로직을 추가해야 하는지 알 수 있어야 한다."""
+        """개발자가 어느 검증 로직을 추가해야 하는지 알 수 있어야 한다.
+
+        규칙 위반 케이스에만 요구한다. 기획서 예시·선택 목록·건수 케이스는 어긴
+        규칙이 없고(positive), 그 대신 기대와 실제가 근거에 남는다."""
         report, _ = bad_run
-        for v in (c for c in report.cases if c.verdict == "FAIL"):
+        for v in (c for c in report.cases
+                  if c.verdict == "FAIL" and c.type == "negative"):
             assert v.violates, f"{v.case_id}: 위반 규칙이 없다"
             assert v.failure_category, f"{v.case_id}: 실패 분류가 없다"
             assert v.violates in v.failure_detail, f"{v.case_id}: 설명에 규칙이 없다"
@@ -153,7 +172,7 @@ class TestReportCompleteness:
         assert (run_dir / "report.json").exists()
         html = (run_dir / "report.html").read_text(encoding="utf-8")
         assert "Prova 검증 리포트" in html
-        assert "실패 케이스 (4)" in html
+        assert "실패 케이스 (5)" in html
 
     def test_백엔드가_리포트에_기록된다(self, bad_run):
         """mock 으로 돌린 결과를 실제 검증 결과로 착각하는 사고를 막는다."""

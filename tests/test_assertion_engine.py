@@ -38,9 +38,10 @@ def positive_case(expected: Expectation) -> TestCase:
 
 
 def state(url="http://h/good/login", text="", errors=None, console=None,
-          collection=None) -> PageState:
+          collection=None, options=None) -> PageState:
     return PageState(url=url, text=text or "", error_texts=errors or [],
-                     console_errors=console or [], collection=collection)
+                     console_errors=console or [], collection=collection,
+                     options=options)
 
 
 class TestNegativeErrorMessage:
@@ -314,3 +315,49 @@ class TestSummaryBuckets:
         assert s["by_screen"]["login"] == {"total": 1, "pass": 1, "fail": 0}
         assert s["by_flow"]["f"] == {"total": 1, "pass": 0, "fail": 1}
         assert s["total"] == 2 and s["fail"] == 1
+
+
+class TestOptionsPresent:
+    """선택 항목 판정 — 빠진 것만 본다."""
+
+    def case(self, want: list[str]) -> TestCase:
+        return positive_case(Expectation(
+            type="options_present", options=want, option_target="가입 경로"))
+
+    def test_다_있으면_PASS(self):
+        v = verify(self.case(["검색", "지인 추천", "광고"]), steps_ok(),
+                   state(options=["선택하세요", "검색", "지인 추천", "광고"]))
+        assert v.verdict == "PASS"
+
+    def test_빠지면_FAIL하고_무엇이_빠졌는지_남긴다(self):
+        v = verify(self.case(["검색", "지인 추천", "광고"]), steps_ok(),
+                   state(options=["선택하세요", "검색", "광고"]))
+        assert v.verdict == "FAIL"
+        assert "지인 추천" in v.evidence["actual"]
+
+    def test_항목이_더_있어도_PASS(self):
+        """안내용 첫 항목을 걸러내려면 무엇이 안내인지 추측해야 하고, 추측하면
+        기획서에 있는 항목을 안내로 착각해 없다고 보고할 수 있다."""
+        v = verify(self.case(["검색"]), steps_ok(),
+                   state(options=["선택하세요", "검색", "기타"]))
+        assert v.verdict == "PASS"
+
+    def test_읽지_못했으면_FAIL(self):
+        """None 은 '읽지 못했다' 이고 빈 목록은 '항목이 하나도 없다' 다."""
+        v = verify(self.case(["검색"]), steps_ok(), state(options=None))
+        assert v.verdict == "FAIL"
+        assert "읽지 못했습니다" in v.evidence["actual"]
+
+    def test_항목이_하나도_없으면_FAIL(self):
+        v = verify(self.case(["검색"]), steps_ok(), state(options=[]))
+        assert v.verdict == "FAIL"
+        assert "검색" in v.evidence["actual"]
+
+    def test_화면의_항목을_근거에_남긴다(self):
+        v = verify(self.case(["검색"]), steps_ok(), state(options=["검색", "광고"]))
+        assert v.evidence["screen_options"] == ["검색", "광고"]
+
+    def test_다른_기대유형에는_근거가_붙지_않는다(self):
+        case = positive_case(Expectation(type="text_visible", value="환영합니다"))
+        v = verify(case, steps_ok(), state(text="환영합니다"))
+        assert "screen_options" not in v.evidence
