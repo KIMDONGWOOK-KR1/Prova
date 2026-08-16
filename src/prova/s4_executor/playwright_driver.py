@@ -34,8 +34,9 @@ from urllib.parse import urljoin
 from playwright.sync_api import Error as PlaywrightError
 from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
-from prova.models import ElementLocation, ScreenSpec, StepResult, TestStep
+from prova.models import ElementLocation, Expectation, ScreenSpec, StepResult, TestStep
 from prova.s3_grounder.dom_locator import GroundingError, ground, resolve_locator
+from prova.text_utils import contains_loose
 
 
 @dataclass
@@ -44,12 +45,27 @@ class ExecutionContext:
 
     page: Page
     base_url: str
-    spec: ScreenSpec
+    # 이 케이스가 밟는 화면들. **첫 항목이 이 케이스의 화면**이고, 흐름 케이스에서는
+    # 뒤따라 밟을 화면들이 이어진다.
+    #
+    # 왜 목록인가: 흐름 케이스는 한 케이스가 여러 화면을 밟으므로, 라벨 힌트를
+    # 화면 하나에서만 찾으면 뒤 화면의 요소에 힌트가 붙지 않는다. 힌트가 없으면
+    # S3 가 role 을 버튼으로 가정해 탐지가 흔들린다.
+    #
+    # 순서가 중요한 이유: 라벨이 두 화면에 같이 있으면(로그인과 회원가입의 '이메일')
+    # 이 케이스의 화면 것을 먼저 쓴다. 뒤 화면 것을 집으면 타입이 달라 role 추정이
+    # 틀릴 수 있다.
+    specs: list[ScreenSpec]
     run_dir: Path
     case_id: str
     step_timeout_ms: int = 10000
     screenshot_every_step: bool = True
     console_errors: list[str] = field(default_factory=list)
+
+    @property
+    def spec(self) -> ScreenSpec:
+        """이 케이스의 화면. 스크린샷 경로·진행 메시지 등에서 쓴다."""
+        return self.specs[0]
 
     @property
     def case_dir(self) -> Path:
@@ -59,7 +75,54 @@ class ExecutionContext:
 
     def hint_for(self, label: str):
         """라벨로 UIElement 를 찾는다. 탐지 전략을 좁히는 데 쓴다."""
-        return next((e for e in self.spec.elements if e.label == label), None)
+        for spec in self.specs:
+            found = next((e for e in spec.elements if e.label == label), None)
+            if found is not None:
+                return found
+        return None
+
+
+def arrival_check(page, expected: Expectation) -> tuple[bool, str]:
+    """흐름의 중간 단계에서 '여기까지 제대로 왔는가' 만 본다.
+
+    ## 왜 S5 의 판정 함수를 부르지 않는가
+
+    이건 판정이 아니라 **선행 조건 확인**이다. 목적은 다음 화면으로 넘어가도 되는지,
+    넘어가지 못했으면 어느 화면에서 끊겼는지를 남기는 것뿐이다. navigate 스텝이
+    4xx 를 실패로 확정하는 것과 같은 성질의 확인이고, 그래서 실행 단계에 있다.
+
+    S5 의 판정보다 **일부러 좁다.** 에러 영역과 화면 텍스트를 구분하지 않고, 실패
+    분류도 하지 않는다. 여기서 필요한 사실은 '도착했는가' 하나이고, 그 이상을 이
+    자리에서 판단하면 판정 책임이 두 단계로 흩어진다.
+
+    Returns:
+        (도착했는가, 사유). 사유는 실패 시 리포트에 그대로 들어간다.
+    """
+    reasons: list[str] = []
+    ok = True
+
+    if expected.url_contains:
+        arrived = expected.url_contains in page.url
+        ok = ok and arrived
+        reasons.append(
+            f"경로 {expected.url_contains!r} "
+            + ("이동 확인" if arrived else f"미이동 (현재 {page.url})")
+        )
+    if expected.value:
+        try:
+            text = page.inner_text("body")
+        except Exception:
+            text = ""
+        shown = contains_loose(text, expected.value)
+        ok = ok and shown
+        reasons.append(f"문구 {expected.value!r} " + ("노출 확인" if shown else "미노출"))
+
+    if not reasons:
+        # 성공 조건을 기획서에서 못 뽑은 경우. 확인할 것이 없으면 통과로 본다 —
+        # 여기서 실패로 만들면 기획서가 성공 조건을 안 적은 화면의 흐름이 전부
+        # 끊겨, 흐름 자체를 검증할 수 없게 된다. 그 누락은 S1 이 경고로 알린다.
+        return True, "확인할 성공 조건이 기획서에 없어 통과로 봄"
+    return ok, "; ".join(reasons)
 
 
 def _capture(ctx: ExecutionContext, seq: int) -> tuple[str | None, str | None]:
@@ -148,8 +211,13 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
                 locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
 
         elif step.action == "assert":
-            # 판정은 S5 의 일이다. 스텝 수준 assert 는 1차 범위에서 쓰지 않는다.
-            pass
+            # 흐름의 중간 도착 확인. 여기서 끊기면 그 화면이 지목되고, 마지막
+            # 화면이 애먼 소리를 듣지 않는다 (arrival_check 설명 참고).
+            if step.expected is not None:
+                arrived, reason = arrival_check(ctx.page, step.expected)
+                if not arrived:
+                    status, error_code = "error", "assertion_mismatch"
+                    error_detail = reason
 
         else:
             raise ValueError(f"알 수 없는 action: {step.action}")

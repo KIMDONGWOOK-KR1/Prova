@@ -101,14 +101,19 @@ def run_pipeline(
     # --- S1: 설계 문서 -> ScreenSpec (브라우저 없이 가능) ---
     progress("S1 설계 문서 추출")
     state = extract_spec(state)
-    progress(f"     화면 '{state.spec.screen_name}' · 요소 {len(state.spec.elements)}개")
+    for screen in state.doc.screens:
+        progress(f"     화면 '{screen.screen_name}' · 요소 {len(screen.elements)}개")
+    if state.doc.flows:
+        progress(f"     흐름 {len(state.doc.flows)}개")
 
     # --- S2: ScreenSpec -> TestCase[] ---
     progress("S2 테스트 케이스 생성")
     state = generate_test_cases(state)
     n_all = len(state.cases)
     n_neg = sum(1 for c in state.cases if c.type == "negative")
-    progress(f"     케이스 {n_all}개 (정상 {n_all - n_neg} · 위반 {n_neg})")
+    n_flow = sum(1 for c in state.cases if c.flow_id)
+    progress(f"     케이스 {n_all}개 (정상 {n_all - n_neg - n_flow} · 위반 {n_neg}"
+             + (f" · 흐름 {n_flow}" if n_flow else "") + ")")
 
     state.cases = filter_cases(state.cases, only)
     if only:

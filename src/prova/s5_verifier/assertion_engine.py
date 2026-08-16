@@ -233,6 +233,7 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
     elapsed = sum(r.elapsed_ms for r in step_results)
     base = dict(
         case_id=case.case_id, title=case.title, type=case.type,
+        screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
         elapsed_ms=elapsed, step_results=step_results,
         healed=any(r.location.healed for r in step_results if r.location),
@@ -240,12 +241,17 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
 
     failed_step = next((r for r in step_results if r.status == "error"), None)
     if failed_step is not None:
+        # 흐름 케이스에서 이 분기가 결정적이다. 중간 화면에서 끊기면 그 스텝이
+        # 지목되고, 마지막 화면이 애먼 소리를 듣지 않는다. 흐름임을 문장에
+        # 밝히는 이유: '검색이 실패했다' 로 읽히면 개발자가 검색 코드를 보게 된다.
+        where = f"흐름 '{case.flow_id}' 가 " if case.flow_id else ""
         return Verdict(
             **base,
             verdict="FAIL",
             failure_category=failed_step.error_code or "unknown",
             failure_detail=(
-                f"스텝 {failed_step.seq}({failed_step.action} {failed_step.target!r}) "
+                f"{where}스텝 {failed_step.seq}"
+                f"({failed_step.action} {failed_step.target!r}) "
                 f"실패: {failed_step.error_detail}"
             ),
             evidence={
@@ -332,5 +338,15 @@ def _failure_detail(case: TestCase, reason: str) -> str:
         return (
             f"기획서에 적힌 {where}'{case.violates}' 검증 규칙이 구현에서 "
             f"확인되지 않았습니다. ({reason})"
+        )
+    if case.flow_id:
+        # 흐름은 중간 스텝을 다 통과하고 마지막에서 어긋났다 — 화면 하나의 결함이
+        # 아니라 화면 사이의 결함일 수 있다. 그 가능성을 먼저 짚어 주지 않으면
+        # 개발자가 마지막 화면 코드만 뒤지게 된다.
+        return (
+            f"흐름 '{case.flow_id}' 가 마지막 화면에서 기대와 어긋났습니다. "
+            f"({reason}) 각 화면의 케이스가 모두 통과했다면 결함은 화면 안이 아니라 "
+            f"**화면 사이**에 있습니다 — 앞 화면이 남긴 상태가 뒤 화면에 이어지지 "
+            f"않는 경우입니다."
         )
     return reason

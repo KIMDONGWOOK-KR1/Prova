@@ -214,3 +214,128 @@ class TestDeclaredScenarioCounts:
             ],
         )])
         assert doc.declared_scenarios() == []
+
+
+def _doc(*pages):
+    """페이지별 표 목록으로 ParsedDocument 를 만든다."""
+    from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+    return ParsedDocument(source="x", pages=[
+        ParsedPage(page_no=i, tables=[ParsedTable(rows=rows) for rows in tables])
+        for i, tables in enumerate(pages, 1)
+    ])
+
+
+def _overview(screen_id):
+    return [["항목", "내용"], ["화면 ID", screen_id], ["화면 경로", f"/{screen_id}"]]
+
+
+class TestSplitScreens:
+    """한 문서에 여러 화면 — 경계는 화면 개요 표의 등장으로 정한다."""
+
+    def test_개요_표가_없으면_한_화면이다(self):
+        """화면당 PDF 하나였던 기존 기획서가 그대로 동작해야 한다."""
+        doc = _doc([[["요소 ID", "유형"], ["email", "입력"]]])
+        docs, warns = doc.split_screens()
+        assert len(docs) == 1 and docs[0] is doc and warns == []
+
+    def test_페이지마다_새_화면을_시작한다(self):
+        doc = _doc([_overview("login")], [_overview("signup")])
+        docs, warns = doc.split_screens()
+        assert [d.declared_screen_meta()["screen_id"] for d in docs] == ["login", "signup"]
+        assert warns == []
+
+    def test_이어지는_페이지는_앞_화면에_붙는다(self):
+        doc = _doc([_overview("login")], [], [_overview("signup")])
+        docs, _ = doc.split_screens()
+        assert [len(d.pages) for d in docs] == [2, 1]
+
+    def test_표지_페이지는_첫_화면에_붙는다(self):
+        """별도 문서로 떼면 요소가 없는 빈 '화면' 이 하나 생긴다. 버리면 앞머리에
+        적힌 화면 공통 규칙이 조용히 사라진다."""
+        doc = _doc([], [_overview("login")])
+        docs, _ = doc.split_screens()
+        assert len(docs) == 1
+        assert [p.page_no for p in docs[0].pages] == [1, 2]
+
+    def test_한_페이지에_두_화면이면_경고한다(self):
+        """페이지 단위로는 가를 수 없다. 앞 화면에 몰아 넣으면 뒤 화면의 요소 표가
+        앞 화면 것으로 추출되어 두 화면의 검증이 모두 조용히 어긋난다."""
+        doc = _doc([_overview("login"), _overview("signup")])
+        docs, warns = doc.split_screens()
+        assert len(docs) == 1
+        assert warns and "2개" in warns[0]
+
+
+class TestDeclaredFlows:
+    def test_흐름_표를_읽는다(self):
+        doc = _doc([[["흐름 ID", "화면 순서"], ["signup_then_login", "signup → login"]]])
+        assert doc.declared_flows() == [
+            {"flow_id": "signup_then_login",
+             "screen_ids": ["signup", "login"], "expect_text": ""}]
+
+    def test_확인_문구_열이_있으면_읽는다(self):
+        doc = _doc([[["흐름 ID", "화면 순서", "확인 문구"],
+                     ["a_b", "a -> b", "환영합니다"]]])
+        assert doc.declared_flows()[0]["expect_text"] == "환영합니다"
+
+    def test_화면이_하나면_흐름이_아니다(self):
+        """한 화면만 밟는 것은 그 화면의 정상 케이스와 같다. 흐름으로 또 만들면
+        같은 것을 두 번 검증하고, 실패가 두 곳에 뜬다."""
+        doc = _doc([[["흐름 ID", "화면 순서"], ["only", "login"]]])
+        assert doc.declared_flows() == []
+
+    def test_구분자가_달라도_읽는다(self):
+        """화살표 표현이 기획서마다 다르고 PDF 변환에서 모양이 바뀌기도 한다.
+        하나를 놓치면 흐름이 화면 하나로 읽혀 조용히 사라진다."""
+        for sep in ("→", "->", ">", ","):
+            doc = _doc([[["흐름 ID", "화면 순서"], ["f", f"a {sep} b"]]])
+            assert doc.declared_flows()[0]["screen_ids"] == ["a", "b"], sep
+
+    def test_흐름_표가_없으면_빈_목록이다(self):
+        doc = _doc([_overview("login")])
+        assert doc.declared_flows() == []
+
+
+class TestDeclaredRequiredMessage:
+    """필수 입력 문구도 실패 조건 표에 그대로 적혀 있다.
+
+    화면을 한 문서에 모으자 7B 가 이 값을 few-shot 예시의 문구로 채웠고, 그것이
+    오탐으로 이어졌다 — 구현이 올바른 문구를 노출하는데 기대 문구가 달라 FAIL 이 된다.
+    """
+
+    def test_실패_조건_표에서_읽는다(self):
+        doc = _doc([[["상황", "처리"],
+                     ["검색어가 비어 있음", '"검색어를 입력하세요." 노출'],
+                     ["길이 규칙 위반", '"2자 이상 입력하세요." 노출']]])
+        assert doc.declared_required_message() == "검색어를 입력하세요."
+
+    def test_후보가_여럿이면_판별을_포기한다(self):
+        """어느 것이 화면 공통 문구인지 알 수 없다. 억측한 문구는 오탐이 된다."""
+        doc = _doc([[["상황", "처리"],
+                     ["이메일이 비어 있음", '"이메일을 입력하세요." 노출'],
+                     ["비밀번호가 비어 있음", '"비밀번호를 입력하세요." 노출']]])
+        assert doc.declared_required_message() is None
+
+    def test_실제_기획서_세_화면(self):
+        for stem, want in (("login", "필수 입력 항목입니다."),
+                           ("signup", "필수 입력 항목입니다."),
+                           ("search", "검색어를 입력하세요.")):
+            pdf = Path(f"fixtures/specs/{stem}_spec.pdf")
+            if not pdf.exists():
+                pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+            assert parse_pdf(pdf).declared_required_message() == want, stem
+
+    def test_개요_표를_실패_조건_표로_착각하지_않는다(self):
+        """둘 다 2열이므로 열 제목으로 갈라야 한다 — 개요는 '항목|내용' 이다."""
+        doc = _doc([_overview("login")])
+        assert doc.declared_required_message() is None
+
+    def test_선택_미이행은_공통_문구로_보지_않는다(self):
+        """'가입 경로를 선택하지 않음' 은 요소 하나의 상태에 대한 문구다. 공통
+        문구 후보에 넣으면 회원가입 기획서에서 후보가 셋이 되어 판별을 포기한다."""
+        doc = _doc([[["상황", "처리"],
+                     ["필수 입력값이 비어 있음", '"필수 입력 항목입니다." 노출'],
+                     ["가입 경로를 선택하지 않음", '"가입 경로를 선택하세요." 노출'],
+                     ["약관에 동의하지 않음", '"약관에 동의해야 합니다." 노출']]])
+        assert doc.declared_required_message() == "필수 입력 항목입니다."

@@ -367,3 +367,135 @@ class TestResultCountCases:
         """건수 경로를 추가해도 기존 화면의 케이스 구성이 바뀌지 않아야 한다."""
         assert not any(c.expected.type == "result_count"
                        for c in generate_cases(login_spec))
+
+
+class TestFlowCases:
+    """화면을 이어서 밟는 케이스.
+
+    회원가입 케이스가 전부 통과하고 로그인 케이스도 전부 통과하는데 가입한 계정으로
+    로그인이 안 되는 구현이 있을 수 있다. 결함이 화면 안이 아니라 화면 사이에 있으므로
+    이어서 밟아 봐야만 드러난다.
+    """
+
+    def doc(self, **kw):
+        from prova.models import Flow, SpecDocument
+
+        signup = ScreenSpec(
+            screen_id="signup", screen_name="회원가입", url_path="/signup",
+            elements=[
+                UIElement(element_id="email", type="input", label="이메일",
+                          required=True, constraints={"format": "email"},
+                          sample_value="newuser@test.com"),
+                UIElement(element_id="pw", type="input", label="비밀번호",
+                          required=True, constraints={"min_length": 8},
+                          sample_value="Signup1!"),
+                UIElement(element_id="pw2", type="input", label="비밀번호 확인",
+                          required=True, constraints={"same_as": "pw"}),
+                UIElement(element_id="btn", type="button", label="가입하기"),
+            ],
+            success_condition='/welcome 으로 이동하고 "가입이 완료되었습니다" 노출',
+        )
+        login = ScreenSpec(
+            screen_id="login", screen_name="로그인", url_path="/login",
+            elements=[
+                UIElement(element_id="email", type="input", label="이메일",
+                          required=True, constraints={"format": "email"},
+                          sample_value="user@test.com"),
+                UIElement(element_id="pw", type="input", label="비밀번호",
+                          required=True, constraints={"min_length": 8},
+                          sample_value="Abcd123!"),
+                UIElement(element_id="btn", type="button", label="로그인"),
+            ],
+            success_condition='/dashboard 로 이동하고 "환영합니다" 노출',
+        )
+        base = dict(
+            screens=[signup, login],
+            flows=[Flow(flow_id="signup_then_login", screen_ids=["signup", "login"])],
+        )
+        base.update(kw)
+        return SpecDocument(**base)
+
+    def flow_case(self, **kw):
+        from prova.s2_case_generator.generator import generate_flow_cases
+
+        cases = generate_flow_cases(self.doc(**kw))
+        assert len(cases) == 1
+        return cases[0]
+
+    def test_두_화면을_순서대로_밟는다(self):
+        case = self.flow_case()
+        paths = [s.target for s in case.steps if s.action == "navigate"]
+        assert paths == ["/signup", "/login"]
+
+    def test_가입에_쓴_값을_로그인에_다시_넣는다(self):
+        """라벨이 같으면 같은 값을 쓴다 — 사람이 손으로 확인할 때 하는 일이다.
+        이어지지 않으면 흐름이 확인하는 것이 '가입한 계정으로 로그인되는가' 가
+        아니게 되고, 등록되지 않은 계정으로 로그인을 시도해 항상 실패한다."""
+        case = self.flow_case()
+        emails = [s.value for s in case.steps if s.action == "fill" and s.target == "이메일"]
+        assert emails == ["newuser@test.com", "newuser@test.com"], (
+            "로그인의 sample_value(user@test.com)가 아니라 가입에 쓴 값을 써야 한다"
+        )
+
+    def test_이어받은_값의_의존값도_다시_계산한다(self):
+        """비밀번호를 이어받으면 '비밀번호 확인' 도 그 값이어야 한다. dict 를 그대로
+        덮으면 일치 규칙이 깨져 흐름이 첫 화면에서부터 실패한다."""
+        case = self.flow_case()
+        by_label = {s.target: s.value for s in case.steps if s.action == "fill"}
+        assert by_label["비밀번호 확인"] == by_label["비밀번호"]
+
+    def test_중간_화면마다_도착을_확인한다(self):
+        """이 스텝이 없으면 앞 화면에서 끊겨도 마지막 화면이 지목된다."""
+        case = self.flow_case()
+        asserts = [s for s in case.steps if s.action == "assert"]
+        assert len(asserts) == 1
+        assert asserts[0].target == "signup 성공"
+        assert asserts[0].expected.url_contains == "/welcome"
+
+    def test_마지막_화면에는_도착_확인을_넣지_않는다(self):
+        """마지막은 케이스의 기대(expected)가 확인한다. 스텝으로 또 넣으면 같은
+        것을 두 번 보고, 실패가 '스텝 끊김' 으로 기록되어 판정 사유가 흐려진다."""
+        case = self.flow_case()
+        seqs = [s.seq for s in case.steps]
+        assert case.steps[-1].action == "click"
+        assert seqs == sorted(seqs)
+
+    def test_기대는_마지막_화면의_성공조건이다(self):
+        case = self.flow_case()
+        assert case.expected.url_contains == "/dashboard"
+        assert case.expected.value == "환영합니다"
+
+    def test_확인_문구가_지정되면_그것을_쓴다(self):
+        from prova.models import Flow
+
+        case = self.flow_case(flows=[Flow(
+            flow_id="signup_then_login", screen_ids=["signup", "login"],
+            expect_text="직접 지정한 문구")])
+        assert case.expected.type == "text_visible"
+        assert case.expected.value == "직접 지정한 문구"
+
+    def test_흐름_케이스는_positive다(self):
+        """규칙을 어긴 값이 아니라 정상 입력이다. negative 로 두면 S5 의 판정이
+        뒤집혀 '에러가 떠야 PASS' 가 된다."""
+        case = self.flow_case()
+        assert case.type == "positive" and case.violates is None
+
+    def test_screen_id는_마지막_화면이다(self):
+        """흐름의 목적이 '마지막 화면에 제대로 도달했는가' 이기 때문이다."""
+        case = self.flow_case()
+        assert case.screen_id == "login"
+        assert case.flow_id == "signup_then_login"
+
+    def test_없는_화면을_가리키면_만들지_않는다(self):
+        """추측해서 만들면 그 케이스가 무엇을 확인하는지 알 수 없다. 그 사실은
+        S1 의 _document_warnings 가 경고로 남긴다."""
+        from prova.models import Flow
+        from prova.s2_case_generator.generator import generate_flow_cases
+
+        doc = self.doc(flows=[Flow(flow_id="f", screen_ids=["signup", "없는화면"])])
+        assert generate_flow_cases(doc) == []
+
+    def test_흐름이_없으면_케이스도_없다(self):
+        from prova.s2_case_generator.generator import generate_flow_cases
+
+        assert generate_flow_cases(self.doc(flows=[])) == []

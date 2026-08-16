@@ -149,6 +149,74 @@ class ScreenSpec(BaseModel):
         return next((e for e in self.elements if e.element_id == element_id), None)
 
 
+class Flow(BaseModel):
+    """화면을 이어서 밟는 한 흐름. 기획서가 '화면 흐름' 표로 적어 둔 것.
+
+    ## 왜 화면별 검증만으로는 부족한가
+
+    회원가입 화면의 케이스는 전부 통과하고, 로그인 화면의 케이스도 전부 통과하는데,
+    **가입한 계정으로 로그인이 안 되는** 구현이 있을 수 있다. 가입 화면은 입력을
+    올바르게 검증하고 완료 화면까지 보여주지만 계정을 실제로 등록하지 않은 경우다.
+
+    화면 하나만 보면 어느 쪽도 결함이 아니다. 결함은 **두 화면 사이**에 있고,
+    그래서 화면을 이어서 밟아 봐야만 드러난다.
+
+    ## 무엇을 담고 무엇을 담지 않는가
+
+    담는 것은 화면 순서(screen_ids)와 마지막에 확인할 문구뿐이다. 중간 화면이
+    성공했는지는 **그 화면의 성공 조건**으로 확인한다 — 이미 ScreenSpec 에 있는
+    것을 흐름 표에 다시 적게 하면 두 곳이 어긋날 수 있다.
+
+    입력값도 담지 않는다. 각 화면의 정상값(sample_value 기반)을 쓰고, **앞 화면에
+    넣은 값을 뒤 화면의 같은 라벨에 다시 넣는다.** 사람이 손으로 확인할 때 하는 일이
+    정확히 그것이다 — 가입에 쓴 이메일로 로그인한다. 라벨이 다르면 이어지지 않으므로
+    기획서가 라벨을 일관되게 쓴다는 전제가 깔린다. 그 전제가 깨지면 값이 이어지지
+    않아 흐름이 실패하는데, 그건 기획서의 문제이므로 경고로 알린다.
+    """
+
+    flow_id: str
+    title: str = ""
+    # 밟을 화면의 screen_id 순서. 2개 이상이어야 흐름이다.
+    screen_ids: list[str] = Field(default_factory=list)
+    # 마지막 화면에서 확인할 문구. 비면 마지막 화면의 성공 조건을 쓴다.
+    expect_text: str = ""
+
+
+class SpecDocument(BaseModel):
+    """설계 문서 하나. 화면이 여럿일 수 있다.
+
+    ## 왜 ScreenSpec 을 감싸는 타입을 따로 뒀는가
+
+    1차에서는 화면당 PDF 한 개를 전제했다. 실물 기획서는 그렇게 오지 않는다 —
+    한 문서에 여러 화면이 들어 있고, 화면 사이의 흐름도 그 문서에 적혀 있다.
+
+    ScreenSpec 에 화면 목록을 담게 만들지 않은 이유: ScreenSpec 은 '화면 하나' 라는
+    이름이고, 거기에 다른 화면을 담으면 이름이 거짓말을 시작한다. 그리고 흐름은
+    어느 한 화면의 성질이 아니라 문서의 성질이다.
+
+    warnings 는 **문서 수준** 경고다 (화면 분리 실패, 흐름이 없는 화면 참조 등).
+    화면 하나에 대한 경고는 그 ScreenSpec.warnings 에 남는다 — 어디를 고쳐야 하는지
+    가 경고의 위치로 드러나야 한다.
+    """
+
+    source: str = ""
+    screens: list[ScreenSpec] = Field(default_factory=list)
+    flows: list[Flow] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+    def screen_by_id(self, screen_id: str) -> Optional[ScreenSpec]:
+        return next((s for s in self.screens if s.screen_id == screen_id), None)
+
+    @property
+    def all_warnings(self) -> list[str]:
+        """문서 경고 + 화면별 경고. 리포트가 한 곳에 모아 보여주는 데 쓴다."""
+        out = list(self.warnings)
+        for screen in self.screens:
+            prefix = f"[{screen.screen_id}] " if len(self.screens) > 1 else ""
+            out.extend(f"{prefix}{w}" for w in screen.warnings)
+        return out
+
+
 # ---------------------------------------------------------------------------
 # S2 · 테스트 케이스
 # ---------------------------------------------------------------------------
@@ -230,9 +298,15 @@ class TestCase(BaseModel):
     __test__ = False
 
     case_id: str
+    # 이 케이스가 검증하는 화면. 흐름 케이스에서는 **마지막 화면**을 적는다 —
+    # 흐름의 목적이 '마지막 화면에 제대로 도달했는가' 이기 때문이다. 중간 화면에서
+    # 끊기면 그건 스텝 실패로 기록되고 그 스텝이 어느 화면인지도 함께 남는다.
     screen_id: str
     title: str
     type: CaseType
+    # 이 케이스가 밟는 흐름의 id. 흐름 케이스가 아니면 None.
+    # 리포트에서 화면별 구획과 흐름 구획을 나누는 데 쓴다.
+    flow_id: Optional[str] = None
     violates: Optional[str] = None
     target_element: Optional[str] = None  # violates 대상 element_id
     steps: list[TestStep] = Field(default_factory=list)
@@ -305,6 +379,11 @@ class Verdict(BaseModel):
     case_id: str
     title: str = ""
     type: CaseType = "positive"
+    # 리포트를 화면별로 묶는 데 쓴다. case_id 접두사에서 잘라낼 수도 있지만,
+    # 문자열을 다시 파싱해야 하는 값은 필드로 남기는 편이 낫다 — screen_id 에
+    # 하이픈이 들어가면 파싱이 조용히 틀린다.
+    screen_id: str = ""
+    flow_id: Optional[str] = None
     verdict: Literal["PASS", "FAIL"]
     violates: Optional[str] = None
     # 어느 요소의 규칙이었는지. violates 만으로는 부족하다 — 회원가입 화면처럼
@@ -337,10 +416,28 @@ class TestReport(BaseModel):
     def summarize(verdicts: list[Verdict]) -> dict:
         total = len(verdicts)
         passed = sum(1 for v in verdicts if v.verdict == "PASS")
-        return {
+        summary = {
             "total": total,
             "pass": passed,
             "fail": total - passed,
             "healed": sum(1 for v in verdicts if v.healed),
             "pass_rate": round(passed / total * 100, 1) if total else 0.0,
         }
+        # 화면별 내역. 화면이 여럿이면 전체 통과율만으로는 어디가 문제인지 알 수
+        # 없다 — 29건 중 4건 실패가 한 화면에 몰린 것과 세 화면에 퍼진 것은
+        # 읽는 사람이 취할 행동이 다르다.
+        #
+        # 흐름은 화면 칸에 넣지 않고 따로 센다. 흐름 케이스의 screen_id 는 마지막
+        # 화면인데, 그걸 그 화면의 실패로 합치면 **그 화면에 결함이 하나 더 있는
+        # 것처럼 읽힌다.** 실제로는 화면 사이의 결함이고 고칠 곳도 다르다.
+        by_screen: dict[str, dict] = {}
+        by_flow: dict[str, dict] = {}
+        for v in verdicts:
+            bucket = by_flow if v.flow_id else by_screen
+            key = v.flow_id or v.screen_id or "?"
+            slot = bucket.setdefault(key, {"total": 0, "pass": 0, "fail": 0})
+            slot["total"] += 1
+            slot["pass" if v.verdict == "PASS" else "fail"] += 1
+        summary["by_screen"] = by_screen
+        summary["by_flow"] = by_flow
+        return summary

@@ -26,9 +26,9 @@ from typing import Optional
 from playwright.sync_api import Page
 
 from prova.llm.base import LLMClient
-from prova.models import ScreenSpec, TestCase, TestReport, Verdict
-from prova.s1_spec_extractor.extractor import extract_from_pdf
-from prova.s2_case_generator.generator import generate_cases
+from prova.models import ScreenSpec, SpecDocument, TestCase, TestReport, Verdict
+from prova.s1_spec_extractor.extractor import extract_document
+from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
 from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s3_grounder.dom_locator import CollectionCount, count_items
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
@@ -54,7 +54,10 @@ class AgentState:
     page: Optional[Page] = None
 
     # 산출물
-    spec: Optional[ScreenSpec] = None
+    #
+    # doc 이 단일 진실이다. 화면 하나짜리 기획서도 screens 가 1개인 SpecDocument 로
+    # 담긴다 — 화면 수에 따라 상태 모양이 갈리면 노드마다 분기가 생긴다.
+    doc: Optional[SpecDocument] = None
     cases: list[TestCase] = field(default_factory=list)
     verdicts: list[Verdict] = field(default_factory=list)
     report: Optional[TestReport] = None
@@ -73,38 +76,48 @@ class AgentState:
 
 
 def extract_spec(state: AgentState) -> AgentState:
-    """S1 — PDF 에서 ScreenSpec 을 추출한다.
+    """S1 — PDF 에서 SpecDocument 를 추출한다 (화면 하나 이상).
 
     읽는 필드: pdf_path, llm
-    쓰는 필드: spec
+    쓰는 필드: doc
     """
     if state.llm is None:
         raise ValueError("extract_spec 에는 LLM 백엔드가 필요합니다")
 
-    state.spec = extract_from_pdf(state.pdf_path, state.llm)
+    state.doc = extract_document(state.pdf_path, state.llm)
 
     # 기획서 내부 모순을 여기서 걸러 리포트로 올린다. 구현 결함이 아니라 기획
     # 결함이므로, 케이스 FAIL 이 아니라 경고로 알리는 것이 맞다.
-    state.spec.warnings.extend(spec_defects(state.spec))
+    # 화면별 경고는 그 화면에 남긴다 — 어디를 고쳐야 하는지가 경고의 위치로 드러난다.
+    for screen in state.doc.screens:
+        screen.warnings.extend(spec_defects(screen))
     return state
 
 
 def generate_test_cases(state: AgentState) -> AgentState:
-    """S2 — ScreenSpec 을 TestCase 목록으로 전개한다.
+    """S2 — 화면마다 케이스를 전개하고, 흐름 케이스를 뒤에 붙인다.
 
-    읽는 필드: spec, llm
+    읽는 필드: doc, llm
     쓰는 필드: cases
+
+    흐름을 마지막에 두는 이유: 흐름이 실패했을 때 그것이 화면 자체의 결함인지
+    화면 사이의 결함인지는 앞선 화면별 결과를 봐야 판단할 수 있다. 리포트를 읽는
+    사람이 위에서 아래로 읽으면 그 순서로 근거가 쌓인다.
     """
-    if state.spec is None:
+    if state.doc is None:
         raise ValueError("generate_test_cases 전에 extract_spec 이 실행돼야 합니다")
-    state.cases = generate_cases(state.spec, llm=state.llm)
+    cases: list[TestCase] = []
+    for screen in state.doc.screens:
+        cases.extend(generate_cases(screen, llm=state.llm))
+    cases.extend(generate_flow_cases(state.doc))
+    state.cases = cases
     return state
 
 
 def run_cases(state: AgentState) -> AgentState:
     """S3+S4+S5 — 케이스를 실행하고 판정한다.
 
-    읽는 필드: cases, spec, page, base_url, run_dir
+    읽는 필드: cases, doc, page, base_url, run_dir
     쓰는 필드: verdicts
 
     한 케이스가 실패해도 다음 케이스를 계속 실행한다. 한 번 돌려서 전체 상태를
@@ -114,8 +127,8 @@ def run_cases(state: AgentState) -> AgentState:
     verify -> next_case)로 펼쳐진다. 1차에서는 self-heal 분기가 없어 루프를
     노드로 쪼갤 이득이 없으므로 한 노드에 담는다.
     """
-    if state.page is None or state.spec is None:
-        raise ValueError("run_cases 에는 page 와 spec 이 필요합니다")
+    if state.page is None or state.doc is None:
+        raise ValueError("run_cases 에는 page 와 doc 이 필요합니다")
 
     console_errors: list[str] = []
     state.page.on("console", lambda msg: (
@@ -127,7 +140,7 @@ def run_cases(state: AgentState) -> AgentState:
         ctx = ExecutionContext(
             page=state.page,
             base_url=state.base_url,
-            spec=state.spec,
+            specs=_specs_for(state, case),
             run_dir=state.run_dir,
             case_id=case.case_id,
             step_timeout_ms=state.step_timeout_ms,
@@ -140,6 +153,25 @@ def run_cases(state: AgentState) -> AgentState:
         state.verdicts.append(verify(case, step_results, page_state))
 
     return state
+
+
+def _specs_for(state: AgentState, case: TestCase) -> list[ScreenSpec]:
+    """이 케이스가 밟는 화면들. 자기 화면이 첫 항목이다.
+
+    흐름 케이스는 여러 화면을 밟으므로 뒤 화면의 요소도 힌트로 찾을 수 있어야
+    한다. 자기 화면을 앞에 두는 이유는 라벨이 겹칠 때(로그인과 회원가입의
+    '이메일') 자기 화면 것을 쓰게 하기 위해서다.
+    """
+    own = state.doc.screen_by_id(case.screen_id)
+    ordered = [own] if own else []
+    if case.flow_id:
+        flow = next((f for f in state.doc.flows if f.flow_id == case.flow_id), None)
+        if flow:
+            for sid in flow.screen_ids:
+                screen = state.doc.screen_by_id(sid)
+                if screen is not None and screen not in ordered:
+                    ordered.append(screen)
+    return ordered or list(state.doc.screens)
 
 
 def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
@@ -158,7 +190,8 @@ def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
     if expected.type != "result_count" or not expected.count_target:
         return None
     hint = next(
-        (e for e in state.spec.elements if e.label == expected.count_target), None
+        (e for screen in state.doc.screens for e in screen.elements
+         if e.label == expected.count_target), None
     )
     return count_items(state.page, expected.count_target, hint)
 
@@ -166,14 +199,14 @@ def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
 def build_final_report(state: AgentState) -> AgentState:
     """S6 — 판정을 집계해 리포트를 만든다.
 
-    읽는 필드: verdicts, spec, run_id, base_url, pdf_path, llm
+    읽는 필드: verdicts, doc, run_id, base_url, pdf_path, llm
     쓰는 필드: report
     """
     state.report = build_report(
         run_id=state.run_id,
         target_url=state.base_url,
         verdicts=state.verdicts,
-        spec=state.spec,
+        doc=state.doc,
         spec_source=state.pdf_path,
         backend=getattr(state.llm, "name", "") if state.llm else "",
     )

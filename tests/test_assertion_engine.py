@@ -237,3 +237,80 @@ class TestResultCount:
         case = positive_case(Expectation(type="text_visible", value="환영합니다"))
         v = verify(case, steps_ok(), state(text="환영합니다"))
         assert "counted" not in v.evidence
+
+
+class TestFlowVerdict:
+    """흐름 케이스의 판정 — 원인을 어느 화면에 돌리는가가 이 기능의 신뢰 근거다."""
+
+    def flow_case(self, expected: Expectation) -> TestCase:
+        return TestCase(
+            case_id="flow-signup-login-001", screen_id="login",
+            flow_id="signup_then_login", title="흐름", type="positive",
+            steps=[TestStep(seq=1, action="navigate", target="/signup")],
+            expected=expected,
+        )
+
+    def test_중간_도착_실패는_그_화면을_지목한다(self):
+        """마지막 화면이 애먼 소리를 듣지 않아야 한다. 흐름의 FAIL 이 '검색이
+        실패했다' 로 읽히면 개발자가 검색 코드를 뒤진다."""
+        results = steps_ok(4) + [
+            StepResult(seq=5, action="assert", target="signup 성공", status="error",
+                       error_code="assertion_mismatch",
+                       error_detail="경로 '/welcome' 미이동", elapsed_ms=3)
+        ]
+        v = verify(self.flow_case(Expectation(type="toast_or_redirect",
+                                             url_contains="/dashboard")),
+                   results, state())
+        assert v.verdict == "FAIL"
+        assert v.failure_category == "assertion_mismatch"
+        assert "signup 성공" in v.failure_detail
+        assert "흐름 'signup_then_login'" in v.failure_detail
+
+    def test_마지막에서_어긋나면_화면_사이를_가리킨다(self):
+        """중간 도착은 다 통과했다 — 각 화면이 제 몫을 했는데 결과가 틀렸다면
+        결함은 화면 안이 아니라 화면 사이에 있을 수 있다."""
+        v = verify(self.flow_case(Expectation(type="toast_or_redirect",
+                                             url_contains="/dashboard",
+                                             value="환영합니다")),
+                   steps_ok(), state(url="http://h/bad/login"))
+        assert v.verdict == "FAIL"
+        assert "화면 사이" in v.failure_detail
+
+    def test_판정에_흐름_정보가_남는다(self):
+        v = verify(self.flow_case(Expectation(type="text_visible", value="환영합니다")),
+                   steps_ok(), state(text="환영합니다"))
+        assert v.verdict == "PASS"
+        assert v.flow_id == "signup_then_login" and v.screen_id == "login"
+
+
+class TestSummaryBuckets:
+    """화면별·흐름별 집계 — 흐름 실패를 화면 실패와 섞으면 진단이 틀린다."""
+
+    def verdicts(self):
+        from prova.models import TestReport
+
+        return TestReport, [
+            verify(positive_case(Expectation(type="text_visible", value="ok")),
+                   steps_ok(), state(text="ok")),
+        ]
+
+    def test_흐름은_화면_칸에_들어가지_않는다(self):
+        from prova.models import TestReport
+
+        screen_v = verify(
+            TestCase(case_id="login-valid-001", screen_id="login", title="t",
+                     type="positive",
+                     steps=[TestStep(seq=1, action="navigate", target="/login")],
+                     expected=Expectation(type="text_visible", value="ok")),
+            steps_ok(), state(text="ok"))
+        flow_v = verify(
+            TestCase(case_id="flow-f-001", screen_id="login", flow_id="f", title="t",
+                     type="positive",
+                     steps=[TestStep(seq=1, action="navigate", target="/login")],
+                     expected=Expectation(type="text_visible", value="ok")),
+            steps_ok(), state(text=""))
+
+        s = TestReport.summarize([screen_v, flow_v])
+        assert s["by_screen"]["login"] == {"total": 1, "pass": 1, "fail": 0}
+        assert s["by_flow"]["f"] == {"total": 1, "pass": 0, "fail": 1}
+        assert s["total"] == 2 and s["fail"] == 1
