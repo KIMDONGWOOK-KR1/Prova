@@ -79,6 +79,10 @@ same_as 는 값 하나만 봐서는 판정할 수 없는 규칙이므로 특히 
   '선택 목록: A, B, C' 같은 표현에서 A, B, C 를 뽑습니다. '선택하세요' 처럼
   값이 아닌 안내 문구는 넣지 마세요. select 가 아닌 요소는 빈 배열로 두세요.
   이 목록이 비면 정상 케이스가 무엇을 골라야 할지 알 수 없게 됩니다.
+- placeholder: 요소 표의 '안내 문구' 열에 적힌 문구를 그대로 옮기세요. 입력란에
+  회색으로 미리 보이는 안내 글자입니다. '-' 인 요소는 null 로 두세요.
+  에러 메시지와 혼동하지 마세요 — 안내 문구는 입력 전에 보이고, 에러 메시지는
+  검증 실패 후에 보입니다.
 - error_message: 그 요소의 검증 실패 시 노출할 문구를 **기획서에 적힌 그대로**
   옮기세요. 문구를 다듬거나 요약하지 마세요. 이 문구가 실제 화면과 일치하는지
   대조하는 것이 검증의 근거입니다.
@@ -140,14 +144,14 @@ FEW_SHOT = """\
 비밀번호 변경
 
 [표 1-1]
-| 요소 ID | 유형 | 라벨 | 필수 | 입력 검증 규칙 | 에러 메시지 |
-|---|---|---|---|---|---|
-| current_pw | 입력 | 현재 비밀번호 | 필수 | - | 현재 비밀번호를 입력하세요. |
-| new_pw | 입력 | 새 비밀번호 | 필수 | 10자 이상, 숫자 1자 이상 | 새 비밀번호는 10자 이상이며 숫자를 1자 이상 포함해야 합니다. |
-| new_pw_confirm | 입력 | 새 비밀번호 확인 | 필수 | 새 비밀번호와 동일한 값 | 새 비밀번호가 일치하지 않습니다. |
-| reason | 선택 | 변경 사유 | 필수 | 선택 목록: 정기 변경, 분실 우려 | 변경 사유를 선택하세요. |
-| logout_all | 체크박스 | 모든 기기에서 로그아웃 | - | - | - |
-| submit | 버튼 | 변경하기 | - | - | - |
+| 요소 ID | 유형 | 라벨 | 필수 | 입력 검증 규칙 | 안내 문구 | 에러 메시지 |
+|---|---|---|---|---|---|---|
+| current_pw | 입력 | 현재 비밀번호 | 필수 | - | 현재 비밀번호 입력 | 현재 비밀번호를 입력하세요. |
+| new_pw | 입력 | 새 비밀번호 | 필수 | 10자 이상, 숫자 1자 이상 | 새 비밀번호 입력 | 새 비밀번호는 10자 이상이며 숫자를 1자 이상 포함해야 합니다. |
+| new_pw_confirm | 입력 | 새 비밀번호 확인 | 필수 | 새 비밀번호와 동일한 값 | 한 번 더 입력 | 새 비밀번호가 일치하지 않습니다. |
+| reason | 선택 | 변경 사유 | 필수 | 선택 목록: 정기 변경, 분실 우려 | - | 변경 사유를 선택하세요. |
+| logout_all | 체크박스 | 모든 기기에서 로그아웃 | - | - | - | - |
+| submit | 버튼 | 변경하기 | - | - | - | - |
 
 변경이 완료되면 /settings 로 이동하고 "비밀번호를 변경했습니다" 를 노출한다.
 필수 항목이 비어 있으면 "필수 항목을 입력하세요." 를 노출한다.
@@ -170,23 +174,24 @@ FEW_SHOT = """\
   "elements": [
     {"element_id": "current_pw", "type": "input", "label": "현재 비밀번호", "required": true,
      "constraints": {}, "error_message": "현재 비밀번호를 입력하세요.",
-     "options": [], "sample_value": "Old12345678"},
+     "placeholder": "현재 비밀번호 입력", "options": [], "sample_value": "Old12345678"},
     {"element_id": "new_pw", "type": "input", "label": "새 비밀번호", "required": true,
      "constraints": {"min_length": 10, "require_digit": 1},
      "error_message": "새 비밀번호는 10자 이상이며 숫자를 1자 이상 포함해야 합니다.",
-     "options": [], "sample_value": "New98765432"},
+     "placeholder": "새 비밀번호 입력", "options": [], "sample_value": "New98765432"},
     {"element_id": "new_pw_confirm", "type": "input", "label": "새 비밀번호 확인",
      "required": true, "constraints": {"same_as": "new_pw"},
      "error_message": "새 비밀번호가 일치하지 않습니다.",
-     "options": [], "sample_value": null},
+     "placeholder": "한 번 더 입력", "options": [], "sample_value": null},
     {"element_id": "reason", "type": "select", "label": "변경 사유", "required": true,
      "constraints": {}, "error_message": "변경 사유를 선택하세요.",
-     "options": ["정기 변경", "분실 우려"], "sample_value": null},
+     "placeholder": null, "options": ["정기 변경", "분실 우려"], "sample_value": null},
     {"element_id": "logout_all", "type": "checkbox", "label": "모든 기기에서 로그아웃",
      "required": false, "constraints": {}, "error_message": null,
-     "options": [], "sample_value": null},
+     "placeholder": null, "options": [], "sample_value": null},
     {"element_id": "submit", "type": "button", "label": "변경하기", "required": false,
-     "constraints": {}, "error_message": null, "options": [], "sample_value": null}
+     "constraints": {}, "error_message": null, "placeholder": null,
+     "options": [], "sample_value": null}
   ],
   "scenarios": [
     {"given": {"reason": "정기 변경"}, "expect_text": "90일 후 다시 안내합니다"}
@@ -296,6 +301,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
 
     _normalize_element_ids(spec)
     _apply_declared_types(spec, doc.declared_element_types())
+    _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message())
     _apply_declared_scenarios(spec, declared_scenarios)
 
@@ -360,6 +366,26 @@ def _apply_declared_types(spec: ScreenSpec, declared: dict[str, str]) -> None:
             f"(모델: {element.type!r}). 프롬프트를 확인하세요."
         )
         element.type = want
+
+
+def _apply_declared_placeholders(spec: ScreenSpec, declared: dict[str, str]) -> None:
+    """입력 안내 문구를 기획서 표의 '안내 문구' 열로 맞춘다 (라벨 -> 문구).
+
+    표에 적힌 사실이므로 덮어쓴다. 표에 없는 라벨은 건드리지 않는다 — 기획서가
+    안내 문구를 적지 않은 요소(버튼 등)까지 지우면, 실물 기획서가 그 열을 쓰지
+    않을 때 LLM 이 본문에서 읽어낸 값을 잃는다.
+    """
+    if not declared:
+        return
+    for element in spec.elements:
+        want = declared.get(element.label)
+        if want is None or want == element.placeholder:
+            continue
+        spec.warnings.append(
+            f"'{element.label}' 의 안내 문구를 기획서 표대로 {want!r} 로 맞췄습니다 "
+            f"(모델: {element.placeholder!r}). 프롬프트를 확인하세요."
+        )
+        element.placeholder = want
 
 
 def _apply_declared_required_message(spec: ScreenSpec, declared: str | None) -> None:

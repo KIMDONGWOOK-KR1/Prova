@@ -393,3 +393,30 @@ def read_options(page, target: str, hint: UIElement | None = None) -> list[str] 
     except Exception:
         return None
     return [t.strip() for t in texts]
+
+
+def read_placeholders(page, labels: list[str]) -> dict[str, str]:
+    """라벨별로 화면의 입력 안내 문구(placeholder)를 읽는다.
+
+    ## 없는 키와 빈 값을 구별한다
+
+        키가 없다   그 라벨의 요소를 화면에서 찾지 못했다
+        빈 문자열   요소는 있는데 placeholder 가 없다
+
+    둘은 개발자가 할 일이 다르다 — 하나는 요소를 만들거나 라벨을 맞춰야 하고, 하나는
+    속성을 넣어야 한다. 합치면 리포트가 엉뚱한 곳을 가리킨다.
+
+    라벨로만 찾는다(get_by_label). placeholder 를 가진 요소는 폼 입력란이고, 이
+    프로젝트의 기획서는 입력란마다 라벨을 정의하기 때문이다. 라벨 연결이 없는 화면은
+    애초에 S3 의 첫 전략이 통하지 않으므로 그 자체가 먼저 드러난다.
+    """
+    found: dict[str, str] = {}
+    for label in labels:
+        try:
+            locator = page.get_by_label(label, exact=True)
+            if locator.count() != 1:
+                continue
+            found[label] = locator.get_attribute("placeholder") or ""
+        except Exception:
+            continue
+    return found

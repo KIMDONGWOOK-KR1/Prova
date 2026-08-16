@@ -254,9 +254,10 @@ CaseType = Literal["positive", "negative", "boundary"]
 #                  (기획서에 문구가 없어 문구까지 못 박으면 오탐이 되는 경우)
 #   result_count   반복 목록에 정확히 N 개가 렌더돼야 한다 (문구가 아니라 개수)
 #   options_present 선택 요소에 기획서가 적은 항목이 모두 있어야 한다
+#   placeholders_match 입력 안내 문구가 기획서와 같아야 한다
 ExpectedType = Literal[
     "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
-    "result_count", "options_present",
+    "result_count", "options_present", "placeholders_match",
 ]
 
 
@@ -287,6 +288,11 @@ class Expectation(BaseModel):
     # value 를 유형에 따라 다르게 해석해야 한다.
     options: list[str] = Field(default_factory=list)
     option_target: Optional[str] = None  # 확인할 선택 요소의 라벨
+    # --- type="placeholders_match" 전용 ---
+    #
+    # 라벨 -> 기대 안내 문구. 요소마다 케이스를 만들지 않고 화면 하나에 모으는 이유는
+    # generator._placeholder_case 에 적어 뒀다.
+    placeholders: dict[str, str] = Field(default_factory=dict)
 
 
 class TestStep(BaseModel):

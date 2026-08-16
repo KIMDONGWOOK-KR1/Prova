@@ -12,7 +12,8 @@
         "format": "email"
       },
       "error_message": "올바른 이메일 형식을 입력하세요.",
-      "sample_value": "user@test.com"
+      "sample_value": "user@test.com",
+      "placeholder": "이메일을 입력하세요"
     },
     {
       "element_id": "password",
@@ -25,7 +26,8 @@
         "require_special": 1
       },
       "error_message": "비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.",
-      "sample_value": "Abcd123!"
+      "sample_value": "Abcd123!",
+      "placeholder": "비밀번호를 입력하세요"
     },
     {
       "element_id": "login_btn",

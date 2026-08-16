@@ -107,7 +107,7 @@ class TestDeclaredElementIds:
         assert parse_pdf(pdf).declared_element_ids() == [
             "email", "password", "password_confirm", "nickname",
             "signup_path", "agree_terms", "signup_btn", "to_login",
-        ]
+        ], "표가 페이지를 넘어가도 행을 빠뜨리지 않아야 한다"
 
     def test_ID_열이_없으면_빈_목록이다(self, tmp_path):
         """대조할 근거가 없으면 검사하지 않는 것이 맞다. 있는 것처럼 추측하면

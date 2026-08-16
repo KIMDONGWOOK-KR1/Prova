@@ -99,7 +99,7 @@ class TestGoodVariant:
             agree_terms      required                                         = 1
         """
         report, _ = good_run
-        assert report.summary["total"] == 15
+        assert report.summary["total"] == 16
         assert sum(1 for v in report.cases if v.type == "negative") == 13
 
     def test_기획서_결함_경고가_없다(self, good_run):

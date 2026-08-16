@@ -13,7 +13,8 @@
         "max_length": 50
       },
       "error_message": "검색어는 2자 이상 50자 이하로 입력하세요.",
-      "sample_value": "Notebook"
+      "sample_value": "Notebook",
+      "placeholder": "상품명을 입력하세요"
     },
     {
       "element_id": "search_btn",
@@ -34,12 +35,16 @@
   ],
   "scenarios": [
     {
-      "given": { "query": "notebook" },
+      "given": {
+        "query": "notebook"
+      },
       "expect_text": "검색 결과 3건",
       "expect_count": 3
     },
     {
-      "given": { "query": "zzzz" },
+      "given": {
+        "query": "zzzz"
+      },
       "expect_text": "검색 결과가 없습니다.",
       "expect_count": 0
     }

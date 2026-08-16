@@ -31,7 +31,12 @@ from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
 from prova.s2_case_generator.rule_expander import spec_defects
-from prova.s3_grounder.dom_locator import CollectionCount, count_items, read_options
+from prova.s3_grounder.dom_locator import (
+    CollectionCount,
+    count_items,
+    read_options,
+    read_placeholders,
+)
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
@@ -166,6 +171,7 @@ def run_cases(state: AgentState) -> AgentState:
         page_state = capture_page_state(
             state.page, console_errors,
             _count_for(state, case), _options_for(state, case),
+            _placeholders_for(state, case),
         )
         state.verdicts.append(verify(case, step_results, page_state))
 
@@ -227,6 +233,13 @@ def _options_for(state: AgentState, case: TestCase) -> Optional[list[str]]:
          if e.label == expected.option_target), None
     )
     return read_options(state.page, expected.option_target, hint)
+
+
+def _placeholders_for(state: AgentState, case: TestCase) -> Optional[dict[str, str]]:
+    """안내 문구 확인 케이스면 화면의 placeholder 를 읽는다. 그 외에는 읽지 않는다."""
+    if case.expected.type != "placeholders_match" or not case.expected.placeholders:
+        return None
+    return read_placeholders(state.page, list(case.expected.placeholders))
 
 
 def build_final_report(state: AgentState) -> AgentState:

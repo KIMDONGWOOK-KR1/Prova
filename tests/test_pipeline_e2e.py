@@ -76,7 +76,7 @@ class TestGoodVariant:
     def test_케이스가_생성됐다(self, good_run):
         """0건 통과를 100% 통과로 착각하지 않게 한다."""
         report, _ = good_run
-        assert report.summary["total"] == 8
+        assert report.summary["total"] == 9
         assert sum(1 for v in report.cases if v.type == "negative") == 6
 
 
@@ -172,7 +172,7 @@ class TestReportCompleteness:
         assert (run_dir / "report.json").exists()
         html = (run_dir / "report.html").read_text(encoding="utf-8")
         assert "Prova 검증 리포트" in html
-        assert "실패 케이스 (5)" in html
+        assert "실패 케이스 (6)" in html
 
     def test_백엔드가_리포트에_기록된다(self, bad_run):
         """mock 으로 돌린 결과를 실제 검증 결과로 착각하는 사고를 막는다."""

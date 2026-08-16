@@ -157,7 +157,7 @@ class TestTitlePolish:
 
         broken = MockLLM()  # CaseTitles 응답이 등록되지 않아 LLMError 를 던진다
         cases = generate_cases(login_spec, llm=broken)
-        assert len(cases) == 8
+        assert len(cases) == 9
         assert all(c.title for c in cases)
         assert any("제목 다듬기" in w for w in login_spec.warnings)
 
@@ -238,9 +238,9 @@ class TestCrossFieldCases:
         values = {s.target: s.value for s in case.steps if s.action == "fill"}
         assert values["비밀번호 확인"] == values["비밀번호"]
 
-    def test_회원가입_케이스가_15건이다(self, signup_spec):
-        """정상 1 + 규칙 위반 13 + 선택 목록 확인 1 = 15."""
-        assert len(generate_cases(signup_spec)) == 15
+    def test_회원가입_케이스가_16건이다(self, signup_spec):
+        """정상 1 + 규칙 위반 13 + 선택 목록 1 + 안내 문구 1 = 16."""
+        assert len(generate_cases(signup_spec)) == 16
 
 
 SEARCH_GOLDEN = Path("fixtures/specs/search_spec.golden.json")
@@ -316,10 +316,11 @@ class TestScenarioCases:
         assert spec.scenarios == []
         assert not any("scenario" in c.case_id for c in generate_cases(spec))
 
-    def test_검색_케이스가_8건이다(self, search_spec):
+    def test_검색_케이스가_9건이다(self, search_spec):
         """정상 1 + 규칙 위반 3(required·min_length·max_length) + 시나리오 2
-        + 건수 2 = 8. 시나리오 하나가 문구 케이스와 건수 케이스로 나뉜다."""
-        assert len(generate_cases(search_spec)) == 8
+        + 건수 2 + 안내 문구 1 = 9. 시나리오 하나가 문구 케이스와 건수 케이스로
+        나뉜다."""
+        assert len(generate_cases(search_spec)) == 9
 
 
 class TestResultCountCases:
@@ -565,4 +566,39 @@ class TestOptionCases:
             UIElement(element_id="btn", type="button", label="확인"),
         ])
         assert not any(c.expected.type == "options_present"
+                       for c in generate_cases(spec))
+
+
+class TestPlaceholderCase:
+    """입력 안내 문구 — 기획서가 그 열을 적기 전까지 아무도 확인하지 않던 것.
+
+    안내 문구는 사용자가 가장 먼저 읽는 글자인데, SUT 에는 있고 기획서에는 없었다.
+    구현에 있는 UI 문구가 기획서 관할 밖이면 아무도 검증하지 않는다.
+    """
+
+    def test_화면당_한_건이다(self, signup_spec):
+        """요소마다 만들면 회원가입에서만 4건이 늘어나는데, 각 케이스가 확인하는
+        것은 문구 한 줄이다. 리포트에 늘어나는 줄 수가 정보량보다 많다."""
+        cases = [c for c in generate_cases(signup_spec)
+                 if c.expected.type == "placeholders_match"]
+        assert len(cases) == 1
+
+    def test_선언된_문구를_모두_담는다(self, signup_spec):
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.expected.type == "placeholders_match")
+        declared = {e.label: e.placeholder for e in signup_spec.elements if e.placeholder}
+        assert case.expected.placeholders == declared
+        assert len(declared) >= 3, "회원가입 기획서는 안내 문구를 여럿 적는다"
+
+    def test_스텝은_navigate_하나뿐이다(self, signup_spec):
+        """안내 문구는 입력 전에 보이는 글자다. 값을 채우면 오히려 가려진다."""
+        case = next(c for c in generate_cases(signup_spec)
+                    if c.expected.type == "placeholders_match")
+        assert [s.action for s in case.steps] == ["navigate"]
+
+    def test_안내_문구가_없으면_케이스도_없다(self):
+        """기획서가 적지 않은 것을 확인한다고 하면 억측이 된다."""
+        spec = minimal_spec()
+        assert all(e.placeholder is None for e in spec.elements)
+        assert not any(c.expected.type == "placeholders_match"
                        for c in generate_cases(spec))
