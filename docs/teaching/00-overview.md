@@ -72,8 +72,8 @@ FAIL [require_uppercase] 비밀번호 대문자 검증
 | 로그인 | `bad` — 검증을 일부러 빼먹은 구현 | **3 PASS / 4 FAIL** |
 | 회원가입 | `good` | **14건 전부 PASS** |
 | 회원가입 | `bad` | **11 PASS / 3 FAIL** |
-| 검색 | `good` | **6건 전부 PASS** |
-| 검색 | `bad` | **3 PASS / 3 FAIL** |
+| 검색 | `good` | **8건 전부 PASS** |
+| 검색 | `bad` | **4 PASS / 4 FAIL** |
 
 로그인 `bad`에서 FAIL로 잡힌 것: 이메일 형식 검증 · 비밀번호 길이 · 대문자 · 특수문자 —
 **정확히 빼먹은 것 4개**입니다.
@@ -95,6 +95,8 @@ FAIL [require_uppercase] 비밀번호 대문자 검증
 
 화면 확장에서 무엇이 새로 필요했는지는 [08-screen-expansion.md](08-screen-expansion.md)
 (회원가입)와 [09-search-scenarios.md](09-search-scenarios.md)(검색)에 있습니다.
+검색의 확인 경로를 문구에서 DOM 으로 넓힌 이야기는 [10-counting-dom.md](10-counting-dom.md)
+에 있습니다 — 통과하고 있었지만 실은 아무것도 확인하지 않던 케이스를 찾은 기록입니다.
 
 ---
 
@@ -303,3 +305,4 @@ uv run python scripts/embed_media.py
 | [07-cheetah-cuda.md](07-cheetah-cuda.md) | GPU 서버에서 실제로 막힌 세 지점 |
 | [08-screen-expansion.md](08-screen-expansion.md) | 화면을 늘릴 때 실제로 깨진 것들 (회원가입) |
 | [09-search-scenarios.md](09-search-scenarios.md) | 규칙으로 표현할 수 없는 검증, 그리고 AI에 맡기면 안 되는 것 |
+| [10-counting-dom.md](10-counting-dom.md) | 화면이 말해 주지 않는 것을 확인하기 (건수를 DOM에서 센다) |
