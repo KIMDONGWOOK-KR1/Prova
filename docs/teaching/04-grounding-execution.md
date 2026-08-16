@@ -197,6 +197,72 @@ if step.action == "fill":
 "값이 비었으니 건너뛰자"고 최적화하면 `required` 검증 케이스가 사라집니다. 빈 값을 넣는
 것이 그 케이스의 목적입니다.
 
+### 체크박스에 `fill()`을 부르면 안 된다
+
+회원가입 화면을 추가하면서 바로 터진 부분입니다. 처음 코드는 값을 채울 수 있는 요소
+전부에 `fill`을 썼는데, 체크박스에 `fill()`을 부르면 Playwright가 이렇게 실패합니다.
+
+```
+Element is not an <input> that can be filled
+```
+
+이 실패는 "요소 조작 오류(`input_error`)"로 기록됩니다. **문제는 판정이 뭉개진다는
+것입니다.** 그 케이스가 확인하려던 것은 "약관에 동의하지 않으면 에러가 뜨는가"였는데,
+결과는 "요소를 조작할 수 없었다"가 됩니다. 구현에 검증이 있는지 없는지 알 수 없습니다.
+
+→ 요소 유형마다 액션을 나눴습니다.
+
+```python
+# generator.py 의 _input_step()
+if element.type == "checkbox":
+    return TestStep(seq=seq, action="check" if value else "uncheck", target=element.label)
+if element.type == "select":
+    return TestStep(seq=seq, action="select", target=element.label, value=value)
+return TestStep(seq=seq, action="fill", target=element.label, value=value)
+```
+
+```python
+# playwright_driver.py
+elif step.action == "check":
+    locator.check(timeout=ctx.step_timeout_ms)
+elif step.action == "uncheck":
+    locator.uncheck(timeout=ctx.step_timeout_ms)
+else:
+    locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
+```
+
+**빈 값 = "체크 해제 / 선택 안 함"** 이라는 규칙을 두어, `fill`과 같은 방식으로
+`required` 위반을 표현합니다.
+
+`uncheck`는 이미 해제된 체크박스에 대해 아무 일도 하지 않습니다. 그래도 스텝으로
+남깁니다 — 스텝이 없으면 그 케이스가 **무엇을 확인했는지** 나중에 알 수 없습니다.
+리포트에서 "체크하지 않았다"는 사실이 검증 조건으로 읽혀야 합니다.
+
+### 새 요소 유형도 라벨로 찾힌다
+
+다행히 S3는 손볼 데가 없었습니다. `get_by_label("약관 동의")`이 체크박스를,
+`get_by_label("가입 경로")`이 `<select>`를 그대로 찾아냅니다. `<label for="...">`로
+연결돼 있으면 요소 종류와 무관하게 동작합니다.
+
+`_role_for()`에 이미 매핑이 있었던 것도 도움이 됐습니다 — `checkbox → "checkbox"`,
+`select → "combobox"`. **1차에서 쓰지 않는 유형까지 미리 적어둔 것이 여기서 값을 했습니다.**
+
+### 브라우저가 값을 잘라내면 서버 검증을 확인할 수 없다
+
+SUT의 닉네임 입력란에 `maxlength` 속성을 **일부러 넣지 않았습니다.**
+
+```html
+<!-- maxlength="10" 을 넣으면 안 된다 -->
+<input type="text" id="nickname" name="nickname">
+```
+
+넣으면 브라우저가 11자를 10자로 잘라서 전송합니다. 그러면 서버는 규칙을 어긴 값을 아예
+받지 못하고, **"서버에 최대 길이 검증이 있는가"를 확인할 방법이 사라집니다.**
+
+기획서의 규칙은 서버가 강제해야 하는 것이고, Prova가 보려는 것도 그것입니다. 실무에서
+프론트엔드에만 `maxlength`를 걸고 서버 검증을 잊는 것이 바로 이 프로젝트가 잡으려는
+불일치 유형입니다.
+
 ### URL 조립
 
 기획서에는 `/login`이라고 적혀 있고, 실제 주소는 `http://localhost:8100/good/login`입니다.
