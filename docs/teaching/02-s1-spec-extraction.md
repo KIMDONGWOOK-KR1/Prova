@@ -32,8 +32,8 @@ login_spec.pdf  →  ScreenSpec(screen_id="login", elements=[이메일, 비밀�
 `pdfplumber`라는 라이브러리가 이런 PDF에서 글자와 표를 **정확히** 뽑아냅니다. 그러면
 AI에게 남는 일은 "이 글자를 JSON으로 정리해"뿐이고, 그건 로컬 7B 모델로 충분합니다.
 
-실제로 확인했습니다 — `tests/test_s1_golden.py`가 **10/10 통과**했습니다. Claude API가
-필요 없습니다.
+실제로 확인했습니다 — `tests/test_s1_golden.py`가 두 화면(로그인·회원가입)에서
+**22/22 통과**했습니다. Claude API가 필요 없습니다.
 
 **이렇게 나눠두면 이득이 세 개 있습니다.**
 
@@ -213,6 +213,118 @@ if not any(e.constraints for e in spec.elements):
 
 ---
 
+## 함정 3: 7B는 표의 행을 조용히 빠뜨린다
+
+회원가입 화면(요소 7개)을 추가했을 때 실제로 일어난 일입니다. 로컬 7B가 **버튼 행을
+빼먹었습니다.**
+
+```
+기획서 표:  email, password, password_confirm, nickname, signup_path, agree_terms, signup_btn
+추출 결과:  email, password, password_confirm, nickname, signup_path, agree_terms
+                                                                     ↑ signup_btn 없음
+```
+
+검증 규칙과 에러 메시지가 모두 `-`인 행이라 중요하지 않다고 판단한 것으로 보입니다.
+요소 3개인 로그인 화면에서는 일어나지 않았습니다.
+
+### 왜 이게 최악인가
+
+제출 버튼이 없으면 **폼이 제출되지 않습니다.** 그러면 에러가 뜰 일도 없어서 모든 위반
+케이스가 FAIL이 되고, 정상 케이스도 이동하지 않아 FAIL이 됩니다. 리포트는
+"구현이 전부 틀렸다"고 보고하는데 **실제 원인은 기획서 읽기 단계**입니다.
+
+개발자는 자기 코드를 몇 시간 뒤지게 됩니다. 거기엔 아무 문제가 없습니다.
+
+출력 길이 제한 때문도 아니었습니다. 응답이 1,635자로 상한(3,072 토큰)에 한참 못 미쳤습니다.
+모델이 **스스로 생략한** 것입니다.
+
+### 두 겹으로 막았다
+
+**1. 예방 — 코드가 확실히 아는 사실을 추론에 맡기지 않는다**
+
+`pdfplumber`는 이미 표를 정확히 읽고 있습니다. 표의 첫 열이 요소 ID라는 건 괘선으로
+정해져 있어서 **추론할 여지가 없습니다.** 그 목록을 프롬프트에 직접 박았습니다.
+
+```python
+# pdf_parser.py — LLM 없이 표에서 읽는다
+doc.declared_element_ids()
+# -> ['email', 'password', 'password_confirm', 'nickname',
+#     'signup_path', 'agree_terms', 'signup_btn']
+```
+
+```
+## 반드시 지킬 것
+
+이 기획서의 UI 요소 표에는 요소가 7개 있습니다. elements 배열을 정확히 7개로 만드세요.
+요소 ID 는 순서대로 다음과 같습니다 — 하나도 빠뜨리지 말고, 이름을 바꾸지 말고 그대로 쓰세요:
+email, password, password_confirm, nickname, signup_path, agree_terms, signup_btn
+```
+
+이걸 넣은 뒤 7개 전부 정확히 나왔습니다.
+
+**2. 검출 — 그래도 빠지면 알린다**
+
+```python
+# extractor.py 의 structural_warnings()
+missing = [eid for eid in declared if eid not in got]
+if missing:
+    warnings.append(
+        f"기획서 UI 요소 표에는 {len(declared)}개 요소가 있는데 추출된 것은 "
+        f"{len(got)}개입니다. 빠진 요소: {', '.join(missing)}. "
+        f"S1 추출 실패이며, 구현 결함이 아닙니다."
+    )
+```
+
+마지막 문장이 이 경고의 핵심입니다. **원인이 어디인지 알려주는 것**이 목적입니다.
+
+### 왜 둘 다 필요한가
+
+- 예방만 두면 → 모델이나 버전이 바뀔 때 조용히 다시 깨집니다.
+- 검출만 두면 → 매번 망가진 리포트를 받아 놓고 경고만 읽게 됩니다.
+
+프롬프트는 **보장이 아니라 부탁**입니다. 부탁이 지켜졌는지는 코드로 확인해야 합니다.
+
+### 곁가지: element_id에 공백이 섞인다
+
+같은 화면에서 7B가 `password_confirm`을 `password_confir m`으로 낸 적도 있습니다.
+그러면 `same_as` 참조가 어긋나 교차 필드 검증 케이스가 아예 생성되지 않고,
+`case_id`에 공백이 들어가 스크린샷 저장 경로도 깨집니다.
+
+→ `element_id`의 공백을 지우고 `same_as` 참조도 함께 고칩니다. 이건 **표기 복원**이라
+경고 없이 처리합니다. `element_id`는 슬러그라서 공백이 들어갈 여지가 없고, 고칠 방법도
+하나뿐(지우기)입니다. 매 실행마다 뜨는 경고는 정작 중요한 경고를 묻습니다.
+
+**판단 기준**: 고칠 방법이 하나뿐이면 조용히 고쳐도 됩니다. 여러 가지면 사람에게 물어야
+합니다. 검증을 약하게 만드는 방향이면 절대 조용히 넘기면 안 됩니다.
+
+---
+
+## 함정 4: 프롬프트는 전역 상태다
+
+회원가입 화면을 추가하면서 프롬프트의 few-shot 예시를 바꿨습니다. 원래 예시가 회원가입
+화면이었는데, 그대로 두면 회원가입 정확도 측정이 **예시를 베낀 결과**를 재는 셈이라
+'비밀번호 변경'이라는 다른 화면으로 교체했습니다.
+
+그 교체가 **로그인의 `sample_value` 추출을 깨뜨렸습니다.**
+
+```
+교체 전:  이메일 sample='user@test.com'   비밀번호 sample='Abcd123!'
+교체 후:  이메일 sample=None              비밀번호 sample=None
+```
+
+새 예시에서 `sample_value`가 대부분 `null`이었던 것이 원인으로 보입니다. 그러면 정상
+케이스가 등록되지 않은 계정 값을 쓰게 되어 **구현 결함 없이 실패**합니다 — 이미 한 번
+겪은 오탐이 되돌아온 것입니다.
+
+→ 예시의 데이터 표를 2열로 만들어 '열 제목 = 라벨' 대응이 보이게 하고, 두 요소에 실제
+값을 채웠습니다. 설명도 표 제목 예시("테스트 계정", "입력 예시 데이터")를 열거해 강화했습니다.
+
+**교훈**: 한 화면을 위해 고친 프롬프트가 다른 화면의 **다른 필드**를 조용히 망가뜨립니다.
+프롬프트를 건드렸으면 화면별 골든 테스트를 **전부** 돌려야 합니다. 이게 화면마다 골든
+데이터를 두는 이유입니다.
+
+---
+
 ## 확인해보기
 
 ```powershell
@@ -231,8 +343,19 @@ b = '비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이�
 print('같은가?', loosen(a) == loosen(b))
 "
 
+# 표에서 요소 ID를 읽어내는 부분 (AI 없이 동작한다)
+uv run python -c "
+from prova.s1_spec_extractor.pdf_parser import parse_pdf
+for stem in ('login', 'signup'):
+    ids = parse_pdf(f'fixtures/specs/{stem}_spec.pdf').declared_element_ids()
+    print(f'{stem:7} {ids}')
+"
+
 # 테스트
-uv run pytest tests/test_pdf_parser.py tests/test_text_utils.py -v
+uv run pytest tests/test_pdf_parser.py tests/test_text_utils.py tests/test_extractor_guards.py -v
+
+# 실제 모델로 정확도 측정 (vLLM 연결 필요, 없으면 자동 skip)
+uv run pytest tests/test_s1_golden.py -v
 ```
 
 ---

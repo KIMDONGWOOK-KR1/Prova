@@ -185,7 +185,7 @@ uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100
 uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/bad
 ```
 
-2026-08-15 실측 결과: **S1 골든 10/10 통과**, good **7/7 PASS**, bad **3 PASS / 4 FAIL**(오탐 0건).
+2026-08-16 실측 결과: **S1 골든 22/22 통과**(로그인·회원가입 두 화면), 로그인 good **7/7 PASS** / bad **3 PASS · 4 FAIL**, 회원가입 good **14/14 PASS** / bad **11 PASS · 3 FAIL**. 오탐 0건.
 로컬 7B가 기획서에서 `constraints`를 정확히 추출했으므로 Claude API 없이 진행할 수 있다.
 
 ---

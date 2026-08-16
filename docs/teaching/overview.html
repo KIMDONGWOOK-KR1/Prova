@@ -452,7 +452,7 @@
     </p>
     <p class="byline">
       <span>의뢰 · ㈜WITCHES</span>
-      <span>1차 관통 완료 · 2026-08-15</span>
+      <span>회원가입 확장 완료 · 2026-08-16</span>
       <span>로컬 Qwen2.5-7B-AWQ on CHEETAH</span>
     </p>
   </header>
@@ -741,7 +741,7 @@
   <!-- ═══ 3. 증명 ════════════════════════════════════════ -->
   <section>
     <h2 class="col">같은 기획서, 다른 구현, 다른 결과</h2>
-    <p class="sub col">이 대조가 1차 목표의 완료 조건이었다</p>
+    <p class="sub col">두 화면 · 네 번의 실행으로 확인한 것</p>
 
     <div class="col">
       <p>
@@ -788,6 +788,51 @@
       </p>
       <p>
         전부 FAIL이 나오면 도구가 고장난 것인지 구현이 잘못된 것인지 구분할 수 없다.
+      </p>
+    </div>
+
+    <h3 class="col">회원가입 화면 — 같은 방식으로 한 번 더</h3>
+
+    <div class="col">
+      <p>
+        화면을 늘리면서 <code>bad</code>에 심는 결함은 <strong>로그인에서 확인할 수 없었던
+        종류</strong>로 골랐다. 같은 종류를 한 번 더 심으면 화면을 늘린 만큼의 검증력을 얻지
+        못한다.
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card good">
+        <h4><code>/good/signup</code> <span class="tag pass">전부 통과</span></h4>
+        <div class="score">14 / 14</div>
+        <p>입력란이 6개로 늘어 케이스가 14개가 됐다. 통과율 100%.</p>
+      </div>
+      <div class="card bad">
+        <h4><code>/bad/signup</code> <span class="tag fail">3건 실패</span></h4>
+        <div class="score">11 / 14</div>
+        <p>심은 결함 3건을 정확히 지목했고 <strong>오탐은 0건</strong>이었다.</p>
+        <ul>
+          <li><span class="tag fail">FAIL</span> 비밀번호 확인 일치 검증 없음 — 값 하나만 봐선 판정 못 하는 규칙</li>
+          <li><span class="tag fail">FAIL</span> 약관 동의 필수 검증 없음 — 입력이 아니라 '체크 상태'</li>
+          <li><span class="tag fail">FAIL</span> 닉네임 최대 길이 검증 없음 (최소만 구현)</li>
+          <li><span class="tag pass">PASS</span> 나머지 필수 입력 검증 5건은 있음</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="label">회원가입이 더 강하게 보여주는 것</span>
+      <p>
+        이 화면에는 <strong>"필수 입력" 규칙을 가진 요소가 6개</strong>인데 검증이 빠진 것은
+        약관 동의 하나뿐이다. Prova는 <span class="mark">그 하나만</span> FAIL로 지목한다.
+        규칙 이름만 보고 판정하면 알 수 없는 구분이라, 판정에 <code>target_element</code>를
+        함께 담았다.
+      </p>
+      <p>
+        닉네임은 더 미묘하다. <code>min_length</code>는 PASS이고 <code>max_length</code>만
+        FAIL이다 — <strong>한 입력란의 규칙 중 일부만 구현된 경우</strong>다. 최소·최대를
+        한 케이스로 묶어 검사했다면 최소 쪽이 걸려 에러가 뜨고, 최대 검증이 없다는 사실은
+        가려졌을 것이다. "규칙 하나당 케이스 하나"라는 설계 판단이 값을 한 지점이다.
       </p>
     </div>
 
@@ -1081,7 +1126,7 @@
             <td>🔴 API 후보 — 강한 멀티모달 추론 필요</td>
             <td>
               <code>pdfplumber</code>(결정적) + LLM(구조화) 2단계. 텍스트 레이어가 있는 PDF는
-              로컬 7B로 충분했다 — <strong>골든 비교 10/10 통과</strong>.
+              로컬 7B로 충분했다 — <strong>두 화면 골든 비교 22/22 통과</strong>.
             </td>
           </tr>
         </tbody>
@@ -1151,39 +1196,52 @@
     </div>
   </section>
 
-  <!-- ═══ 7. 다음 ════════════════════════════════════════ -->
+  <!-- ═══ 7. 화면 확장 ══════════════════════════════════ -->
   <section>
-    <h2 class="col">다음에 할 일</h2>
-    <p class="sub col">화면 확장을 VLM보다 먼저 하는 이유</p>
+    <h2 class="col">화면 하나 늘리는 일은 설계 변경이었다</h2>
+    <p class="sub col">예측한 결함 네 개, 예측하지 못한 결함 세 개</p>
 
     <div class="col">
       <p>
-        지금은 로그인 화면 하나만 검증한다. 다음은 <strong>회원가입과 검색</strong>으로 넓힌다.
-        VLM(프로젝트의 핵심 차별점)을 먼저 붙일 수도 있지만, 코드를 익혀야 하는 시점에 새 기술을
-        얹기보다 기존 구조를 확장하며 이해하는 편이 낫다. 그리고 확장하면 약한 부분이 드러난다.
+        VLM(프로젝트의 핵심 차별점)을 먼저 붙일 수도 있었지만, 코드를 익혀야 하는 시점에
+        새 기술을 얹기보다 <strong>기존 구조를 확장하며 이해하는 편</strong>을 택했다.
+        그리고 확장하면 약한 부분이 드러난다 — 실제로 드러났다.
       </p>
-      <p>실제로 회원가입 화면을 검토하니 결함 네 개가 나왔다.</p>
+      <p>
+        회원가입 화면은 <em>단순 반복</em>처럼 보였다. 코드를 열기 전에 검토했더니 막히는
+        곳이 <strong>네 군데</strong> 나왔고, 실제로 붙이는 과정에서 문서로 예측하지 못한
+        것이 <strong>세 개 더</strong> 나왔다.
+      </p>
     </div>
+
+    <h3 class="col">검토로 미리 찾은 네 개</h3>
 
     <div class="tablebox">
       <table>
         <thead>
           <tr>
-            <th style="width: 34%">결함</th>
-            <th style="width: 66%">어디서 터지나 / 무엇이 필요한가</th>
+            <th style="width: 34%">막힌 곳</th>
+            <th style="width: 66%">어떻게 풀었나</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td>체크박스에 <code>fill()</code>을 호출한다</td>
             <td>
-              회원가입의 "약관 동의"에서 즉시. <code>check</code>/<code>uncheck</code> 액션을
-              추가해야 한다.
+              Playwright가 조작 오류로 실패하고, 그러면 "약관 미동의 시 에러가 뜨는가"를
+              검증하려던 케이스가 <strong>조작 실패로 뭉개진다.</strong>
+              <code>check</code>/<code>uncheck</code> 액션을 추가하고
+              <em>빈 값 = 체크 해제</em>로 규칙을 통일했다.
             </td>
           </tr>
           <tr>
             <td><code>select</code>의 선택지를 담을 곳이 없다</td>
-            <td>드롭다운이 있는 화면. <code>UIElement.options</code> 추가.</td>
+            <td>
+              <code>constraints</code>에 넣지 않고 <code>UIElement.options</code>를 새로 뒀다.
+              <code>constraints</code>는 <strong>위반값을 만들 수 있는 규칙</strong>만 담는
+              곳이다. 선택지는 규칙이 아니라 값의 후보라서, 섞으면
+              <code>rule_expander</code>가 이것도 전개하려 든다.
+            </td>
           </tr>
           <tr>
             <td>
@@ -1191,16 +1249,17 @@
               <span class="tag rule">가장 어려움</span>
             </td>
             <td>
-              "비밀번호 확인"은 <em>다른 필드와 같아야 한다</em>는 제약인데 현재
-              <code>constraints</code>는 단일 필드 규칙만 표현한다.
-              <code>same_as</code> 키를 추가하고 값 생성 순서를 정렬해야 한다.
+              <code>same_as</code> 키를 추가했다. 값 생성이 요소 단위로 끝나지 않아
+              화면 단위 해석(<code>resolve_values</code>)이 필요해졌다. 아래 상자 참고.
             </td>
           </tr>
           <tr>
             <td><code>ScreenSpec</code>이 1화면만 담는다</td>
             <td>
-              한 기획서에 두 화면이 있으면 하나만 추출한다. 이번엔 화면별 PDF로 분리하고,
-              다중 화면 추출은 실물 기획서가 올 때 다룬다.
+              화면별 PDF로 분리했다(<code>login_spec.pdf</code>,
+              <code>signup_spec.pdf</code>). mock 백엔드도 PDF 이름에서 정답 파일을 찾게 바꿔,
+              화면이 늘어도 <code>if</code>문이 늘지 않는다. 다중 화면 추출은 실물 기획서를
+              받고 판단한다.
             </td>
           </tr>
         </tbody>
@@ -1208,18 +1267,167 @@
     </div>
 
     <div class="note">
+      <span class="label">교차 필드 규칙이 계약을 깰 뻔했다</span>
+      <p>
+        '한 케이스는 한 규칙만 위반한다'가 이 프로젝트의 핵심 계약이다. 그런데 비밀번호에
+        위반값을 넣으면 <strong>비밀번호 확인 값도 함께 어긋나</strong> 두 규칙이 동시에
+        깨진다. 명세서 예시가 가진 문제가 다른 경로로 되돌아온 것이다.
+      </p>
+      <p>
+        해법은 위반값을 <strong>먼저 고정하고 그것에 의존하는 값을 다시 계산</strong>하는
+        것이었다. 비밀번호 확인은 위반값과 같은 값이 되어, 깨지는 규칙은 여전히 하나다.
+      </p>
+      <p>
+        AI를 부를 유혹이 있던 지점이지만 부르지 않았다. 필요한 것은 추론이 아니라
+        <span class="mark">순서</span>였기 때문이다.
+      </p>
+    </div>
+
+    <h3 class="col">돌려보고서야 알게 된 세 개</h3>
+
+    <div class="tablebox">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 34%">문제</th>
+            <th style="width: 66%">무엇이 위험했나 / 어떻게 막았나</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>필수 입력 문구의 출처가 요소마다 다르다</td>
+            <td>
+              로그인에서 배운 규칙("필수 위반은 화면 공통 문구")을 그대로 적용하면
+              약관 동의에서 <strong>오탐</strong>이 난다. 체크박스에 형식 검증이 있을 수 없으니
+              "약관에 동의해야 합니다."는 미동의 상태의 문구다.
+              <br>→ "<strong>그 요소에 다른 검증 규칙이 없으면</strong> 자기 문구를 쓴다"로
+              규칙을 좁혔다. 체크박스·선택뿐 아니라 "필수인데 다른 규칙은 없는 입력란"까지
+              한 규칙으로 덮인다.
+            </td>
+          </tr>
+          <tr>
+            <td>닉네임 "2자 이상" 위반 케이스가 생성되지 않았다</td>
+            <td>
+              값을 읽기 좋게 만들려고 넣은 <em>소문자·숫자 최소 1자</em> 정책 때문에 1자짜리
+              값을 만들 수 없었다. 규칙 충돌이 없는데도 "만들 수 없으면 건너뛴다"는 안전장치가
+              발동해 <strong>검증이 조용히 사라졌다.</strong>
+              <br>→ 정책용 하한과 규칙상 필요한 개수를 갈라, 정책 때문에 막힌 경우에만 정책을
+              내려놓는다. 비밀번호 위반값은 한 글자도 변하지 않았다.
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <strong>7B가 버튼 행을 빠뜨렸다</strong>
+              <span class="tag rule">가장 위험</span>
+            </td>
+            <td>
+              요소가 3개→7개로 늘자 S1이 흔들렸다. 검증 규칙이 모두 <code>-</code>인 버튼 행을
+              모델이 스스로 생략했다(길이 제한 때문이 아니었다 — 응답은 상한의 절반도 안 됐다).
+              제출 버튼이 없으면 폼이 제출되지 않아 <strong>전 케이스가 FAIL</strong>이 된다.
+              원인은 추출인데 리포트는 "구현이 전부 틀렸다"고 말한다.
+              <br>→ <strong>예방</strong>: 표에서 읽은 요소 ID 목록을 프롬프트에 직접 박는다.
+              <strong>검출</strong>: 결과를 그 목록과 대조해 빠진 요소를 경고한다.
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">프롬프트는 전역 상태다</span>
+      <p>
+        회원가입 정확도를 정직하게 재려면 few-shot 예시가 측정 대상과 겹치면 안 된다(원래
+        예시가 회원가입 화면이었다). 다른 화면으로 교체했더니 <strong>로그인의
+        <code>sample_value</code> 추출이 깨졌다</strong> — 새 예시에 <code>null</code>이 많았던
+        것이 원인으로 보인다. 정상 케이스가 등록되지 않은 값을 쓰게 되는, 이미 한 번 겪은
+        오탐이 되돌아왔다.
+      </p>
+      <p>
+        한 화면을 위해 고친 프롬프트가 <span class="mark">다른 화면의 다른 필드</span>를
+        조용히 망가뜨린다. 화면마다 골든 데이터를 두고 전부 돌려야 확인된다.
+      </p>
+    </div>
+
+    <div class="note">
       <span class="label">확장의 완료 조건</span>
       <p>
         회원가입이 통과하는 것만으로는 부족하다. <strong>로그인 결과가 그대로 유지</strong>돼야
-        한다. 회원가입을 지원하려고 위반값 생성 로직의 계약을 건드리는데, 그 변경이 로그인
-        검증을 조용히 망가뜨리면 확장이 아니라 후퇴다. 회귀 테스트가 그 안전망이다.
+        한다. 회원가입을 지원하려고 위반값 생성 로직의 계약을 건드렸는데, 그 변경이 로그인
+        검증을 조용히 망가뜨리면 확장이 아니라 후퇴다.
+      </p>
+      <p>
+        확인했다 — 로그인은 여전히 <code>good</code> 7/7, <code>bad</code> 3 PASS·4 FAIL이고
+        위반값도 한 글자 그대로다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 8. 다음 ════════════════════════════════════════ -->
+  <section>
+    <h2 class="col">다음은 검색 화면</h2>
+    <p class="sub col">이번엔 검증 축 자체가 다르다</p>
+
+    <div class="col">
+      <p>
+        회원가입에서 배운 것은 <strong>코드를 열기 전에 검토하면 절반은 미리 찾는다</strong>는
+        것이다. 검색 화면을 붙이기 전에 확인할 것을 먼저 적어 둔다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead>
+          <tr>
+            <th style="width: 34%">확인할 것</th>
+            <th style="width: 66%">왜</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>검증 축이 다르다</td>
+            <td>
+              지금까지는 "에러가 뜨는가"였는데 검색은 <strong>"결과 건수가 맞는가"</strong>다.
+              <code>Expectation</code>에 <code>error_message</code>/<code>error_shown</code>
+              밖의 유형이 필요하다.
+            </td>
+          </tr>
+          <tr>
+            <td>'위반값'이라는 개념이 흐려진다</td>
+            <td>
+              검색어에 규칙이 있나? "빈 검색어", "결과 없는 검색어"는 규칙 위반이라기보다
+              <strong>상태</strong>다. <code>rule_expander</code>의 모델에 맞는지 먼저 봐야 한다.
+            </td>
+          </tr>
+          <tr>
+            <td>SUT에 데이터가 필요하다</td>
+            <td>
+              지금 SUT는 상태가 없다(회원가입도 계정을 저장하지 않는다). 검색은 검색될 데이터가
+              있어야 하고, 그러면 테스트 간 상태 공유를 생각해야 한다 — SUT 픽스처를 세션
+              범위로 둔 근거가 흔들린다.
+            </td>
+          </tr>
+          <tr>
+            <td>완료 조건은 같다</td>
+            <td>로그인·회원가입 결과가 그대로 유지되어야 한다.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">VLM은 언제</span>
+      <p>
+        MIG 추가 할당은 불가능하다. 그런데 코드를 확인한 결과
+        <strong>LLM과 VLM이 동시에 필요한 시점이 없다</strong> — LLM은 S1·S2에서만, VLM은
+        S3에서만 쓰인다. 시간을 나눠 쓰면 추가 할당 없이 가능하다.
+        <code>LocateAnything-3B</code>는 BF16으로 약 12GB라 4bit 양자화가 필수다.
       </p>
     </div>
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 103개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 8개,
+    코드 <code>C:\dev\prova</code> · 테스트 170개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 9개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
