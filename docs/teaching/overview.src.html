@@ -1173,7 +1173,7 @@
             <td>🔴 API 후보 — 강한 멀티모달 추론 필요</td>
             <td>
               <code>pdfplumber</code>(결정적) + LLM(구조화) 2단계. 텍스트 레이어가 있는 PDF는
-              로컬 7B로 충분했다 — <strong>세 화면 골든 비교 45/45 통과</strong>.
+              로컬 7B로 충분했다 — <strong>골든 비교 54/54 통과</strong>.
             </td>
           </tr>
         </tbody>
@@ -1534,7 +1534,168 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     </div>
   </section>
 
-  <!-- ═══ 9. 다음 ════════════════════════════════════════ -->
+  <!-- ═══ 9. 화면 사이 ══════════════════════════════════ -->
+  <section>
+    <h2 class="col">어느 화면도 틀리지 않았는데 안 된다</h2>
+    <p class="sub col">화면 단위 검증의 구조적 사각지대</p>
+
+    <div class="col">
+      <p>
+        1차 내내 <strong>기획서 PDF 하나 = 화면 하나</strong>를 전제로 만들었다. 실물
+        기획서는 그렇게 오지 않는다 — 한 문서에 화면이 여럿 들어 있고, <strong>화면 사이의
+        흐름도 그 문서에 적혀 있다.</strong>
+      </p>
+      <p>
+        둘 다 붙였다. 다중 화면은 배관 작업이고, 흐름은 <span class="mark">지금까지 잡을 수
+        없던 종류의 결함</span>에 닿는다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">bad 에 심은 결함 — 화면 하나만 보면 결함이 아니다</span>
+      <p>
+        회원가입이 입력을 다 검증하고 완료 화면까지 보여주는데 <strong>계정을 실제로 등록하지
+        않는다.</strong>
+      </p>
+      <div class="tablebox" style="margin:14px 0 6px;">
+        <table>
+          <thead><tr><th>검증</th><th>결과</th></tr></thead>
+          <tbody>
+            <tr><td>회원가입 화면 케이스 14건</td>
+                <td><span class="tag pass">PASS</span> 입력 검증도 하고 완료 화면도 뜬다</td></tr>
+            <tr><td>로그인 화면 케이스 7건</td>
+                <td><span class="tag pass">PASS</span> 등록된 계정으로는 정상 동작한다</td></tr>
+            <tr><td>흐름 signup → login</td>
+                <td><span class="tag fail">FAIL</span> 가입한 계정으로 로그인이 안 된다</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        실무에서 troubles 로 이어지는 기획-구현 불일치가 대개 이 모양이다. 화면 단위로
+        리뷰하면 다 맞는데 이어 붙이면 안 되는 것.
+      </p>
+    </div>
+
+    <h3 class="col">이 기능은 처음에 권하지 않았다</h3>
+
+    <div class="col">
+      <p>
+        이유가 하나였다 — <strong>로그인 → 검색 흐름이 실패했을 때 로그인이 깨진 건가 검색이
+        깨진 건가?</strong> 앞 화면이 깨지면 뒤 화면의 결과는 무의미해지는데, 리포트는 마지막
+        화면의 이름을 달고 FAIL 을 보고한다. 개발자는 검색 코드를 뒤지고, 아무것도 못 찾고,
+        도구를 신뢰하지 않게 된다. <span class="mark">지목이 틀린 FAIL 은 오탐보다 나쁘다.</span>
+      </p>
+      <p>그래서 기능보다 <strong>오진 방지를 먼저</strong> 만들었다.</p>
+    </div>
+
+<pre class="out"><code>1 navigate /signup
+2 fill 이메일 newuser@test.com
+3 fill 비밀번호 Signup1!
+4 fill 비밀번호 확인 Signup1!
+5 click 가입하기
+6 assert  signup 성공          &lt;- 여기가 핵심
+7 navigate /login
+8 fill 이메일 newuser@test.com   &lt;- 가입에 쓴 값을 다시 넣는다
+9 fill 비밀번호 Signup1!
+10 click 로그인
+   기대: /dashboard 이동 + "환영합니다"</code></pre>
+
+    <div class="note">
+      <span class="label">새 판정 로직을 만들지 않았다</span>
+      <p>
+        6번 스텝이 끊기면 S5 의 <strong>기존</strong> 규칙("스텝이 끊기면 그 원인이 케이스
+        실패 원인")이 그 화면을 지목한다. 그 규칙은 요소를 못 찾아 스텝이 끊긴 경우를 위해
+        만든 것인데, 흐름의 중간 끊김에 그대로 맞았다.
+      </p>
+      <p>
+        <strong>이미 있는 규칙이 새 요구에 맞는지 먼저 보는 것</strong>이 확장할 때마다
+        값을 낸다. 각 단계의 확인 기준도 그 화면의 <code>success_condition</code>을 쓴다 —
+        흐름 표에 또 적게 하면 같은 사실이 두 곳에 있고 언젠가 한쪽만 고쳐진다.
+      </p>
+    </div>
+
+    <h3 class="col">값은 라벨로 이어진다</h3>
+
+    <div class="col">
+      <p>
+        회원가입에 쓴 계정으로 로그인해야 하는데 두 화면의 예시값이 다르다(가입
+        <code>newuser@test.com</code>, 로그인 <code>user@test.com</code>). 로그인의 예시값을
+        쓰면 흐름이 확인하는 것이 '가입한 계정으로 로그인되는가'가 아니게 된다.
+      </p>
+      <p>
+        그래서 <strong>앞 화면에 넣은 값을 뒤 화면의 같은 라벨에 다시 넣는다.</strong>
+        사람이 손으로 확인할 때 하는 일이 정확히 그것이다. 이어받은 값의 <code>same_as</code>
+        의존값('비밀번호 확인')도 다시 계산한다 — 회원가입 확장에서 만든
+        <code>resolve_values</code>가 그대로 쓰인다.
+      </p>
+    </div>
+
+    <h3 class="col">집계 단위가 진단을 만든다</h3>
+
+    <div class="col">
+      <p>
+        처음엔 흐름 케이스를 마지막 화면(<code>login</code>) 칸에 넣었다. 그러자 로그인이
+        '실패 5'로 표시됐는데 <strong>로그인 자체의 결함은 4개</strong>다. 다섯 번째는 화면
+        사이의 결함이고 고칠 곳이 다르다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>대상</th><th>종류</th><th>전체</th><th>통과</th><th>실패</th></tr></thead>
+        <tbody>
+          <tr><td>로그인 <code>login</code></td><td>화면</td>
+              <td class="num">7</td><td class="num">3</td><td class="num">4</td></tr>
+          <tr><td>회원가입 <code>signup</code></td><td>화면</td>
+              <td class="num">14</td><td class="num">11</td><td class="num">3</td></tr>
+          <tr><td>상품 검색 <code>search</code></td><td>화면</td>
+              <td class="num">8</td><td class="num">4</td><td class="num">4</td></tr>
+          <tr><td>화면 사이 <code>signup_then_login</code></td><td>흐름</td>
+              <td class="num">1</td><td class="num">0</td><td class="num">1</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p>
+        같은 표에 두되 행을 구분한다. 나란히 놓여야 <strong>'화면은 다 통과인데 흐름만
+        실패'</strong>라는 모양이 한눈에 보이고, 그 모양이 곧 '결함은 화면 사이에 있다'는
+        진단이다. 숫자를 어디에 넣느냐가 읽는 사람의 행동을 바꾼다.
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card good">
+        <h4>통합 문서 <code>/good</code> <span class="tag pass">전부 통과</span></h4>
+        <div class="score">30 / 30</div>
+        <p>3화면 29건 + 흐름 1건. 통과율 100%.</p>
+      </div>
+      <div class="card bad">
+        <h4>통합 문서 <code>/bad</code> <span class="tag fail">12건 실패</span></h4>
+        <div class="score">18 / 30</div>
+        <p>
+          화면별로 뜯어 보면 <strong>단일 문서로 돌렸을 때와 정확히 같다.</strong>
+          거기에 화면 사이 결함 1건이 더 잡혔다.
+        </p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="label">수용 기준은 '기존 결과가 그대로인가'였다</span>
+      <p>
+        문서를 합친 것만으로 화면별 판정이 달라지면 그건 확장이 아니라 후퇴다. 실제로 한 번
+        어긋났다 — 7B 가 검색 화면의 필수 입력 문구를 <strong>few-shot 예시의 문구로</strong>
+        채워 오탐이 하나 났다. 프롬프트에 "예시를 베끼지 마세요"라고 적어 둔 것이 문서가
+        길어지자 무력해졌다. <span class="mark">프롬프트는 보장이 아니라 부탁이다.</span>
+      </p>
+      <p>
+        그 값도 결국 실패 조건 표에 그대로 적혀 있었다. 코드가 읽게 바꿨고, 표에서 읽는
+        사실이 이제 일곱 가지다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 10. 다음 ═══════════════════════════════════════ -->
   <section>
     <h2 class="col">다음</h2>
     <p class="sub col">남은 화면보다 값이 큰 것</p>
@@ -1592,13 +1753,15 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
       </p>
     </div>
 
-    <p class="sub col">그다음 — 한 PDF에 여러 화면</p>
+    <p class="sub col">그다음 — VLM 요소 탐지</p>
 
     <div class="col">
       <p>
-        WITCHES 실물 기획서가 화면당 파일로 올 가능성은 낮다. 그러면 <code>ScreenSpec</code>이
-        1화면 1객체라는 전제부터 갈리고, <strong>화면 경계를 찾는 일</strong>이 새로 생긴다.
-        그건 표 구조만으로는 안 풀리는, 지금까지와 성질이 다른 문제다.
+        지금 S3 는 접근성 속성에 의존한다. 실물 화면이 라벨을 <code>&lt;label for&gt;</code> 로
+        연결하지 않거나 목록에 접근성 이름이 없으면 탐지가 막힌다. 건수 검증에서 이미 그
+        경계를 만났다 — 목록에 <code>aria-label</code> 이 없으면 세지 못하고, 그 사실을
+        <span class="mark">'결과가 0건이거나 접근성 이름이 없다'</span> 로만 보고할 수 있다.
+        그 지점이 2차 VLM fallback 의 진입점이다.
       </p>
     </div>
 
@@ -1614,8 +1777,8 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 246개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 11개,
+    코드 <code>C:\dev\prova</code> · 테스트 314개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 12개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
