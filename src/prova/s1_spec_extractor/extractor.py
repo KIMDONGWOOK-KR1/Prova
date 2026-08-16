@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import ScreenSpec, Scenario
+from prova.models import Flow, Scenario, ScreenSpec, SpecDocument
 from prova.s1_spec_extractor.pdf_parser import ParsedDocument, parse_pdf
 
 SYSTEM_PROMPT = """\
@@ -296,6 +296,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
 
     _normalize_element_ids(spec)
     _apply_declared_types(spec, doc.declared_element_types())
+    _apply_declared_required_message(spec, doc.declared_required_message())
     _apply_declared_scenarios(spec, declared_scenarios)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
@@ -359,6 +360,25 @@ def _apply_declared_types(spec: ScreenSpec, declared: dict[str, str]) -> None:
             f"(모델: {element.type!r}). 프롬프트를 확인하세요."
         )
         element.type = want
+
+
+def _apply_declared_required_message(spec: ScreenSpec, declared: str | None) -> None:
+    """필수 입력 누락 문구를 실패 조건 표의 값으로 맞춘다.
+
+    화면을 한 문서에 모으자 7B 가 검색 화면의 이 값을 **few-shot 예시의 문구로**
+    채웠다("필수 항목을 입력하세요."). 기획서에는 "검색어를 입력하세요." 라고 적혀
+    있었고, 그 차이가 곧 오탐이다 — 구현이 올바른 문구를 노출하는데 FAIL 이 된다.
+
+    표에서 후보를 하나로 특정하지 못하면 declared 가 None 이고, 그때는 손대지
+    않는다 (declared_required_message 참고).
+    """
+    if declared is None or declared == spec.required_message:
+        return
+    spec.warnings.append(
+        f"필수 입력 문구를 기획서 실패 조건 표대로 {declared!r} 로 맞췄습니다 "
+        f"(모델: {spec.required_message!r}). 프롬프트를 확인하세요."
+    )
+    spec.required_message = declared
 
 
 def _apply_declared_scenarios(
@@ -461,5 +481,71 @@ def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
 
 
 def extract_from_pdf(pdf_path: str | Path, llm: LLMClient, max_tokens: int = 3072) -> ScreenSpec:
-    """PDF 경로 하나로 S1 전체를 수행한다 (파싱 + 구조화)."""
-    return extract_screen_spec(parse_pdf(pdf_path), llm, max_tokens=max_tokens)
+    """PDF 경로 하나로 S1 전체를 수행한다 (파싱 + 구조화). 화면이 하나인 문서용.
+
+    화면이 여럿이면 예외를 던진다. 첫 화면만 돌려주면 나머지 화면의 검증이
+    **아무 흔적도 남기지 않고 사라진다** — 리포트에는 첫 화면이 전부 통과한 것으로
+    보이고, 읽는 사람은 다른 화면이 검증되지 않았다는 사실을 알 방법이 없다.
+    """
+    doc = parse_pdf(pdf_path)
+    screens, _ = doc.split_screens()
+    if len(screens) > 1:
+        raise LLMError(
+            f"이 PDF 에는 화면이 {len(screens)}개 있습니다: {pdf_path}. "
+            f"extract_document() 를 쓰세요."
+        )
+    return extract_screen_spec(doc, llm, max_tokens=max_tokens)
+
+
+def extract_document(
+    pdf_path: str | Path, llm: LLMClient, max_tokens: int = 3072
+) -> SpecDocument:
+    """PDF 경로 하나로 문서 전체를 추출한다. 화면이 여럿이어도 된다.
+
+    화면 분리는 코드가 하고(split_screens), 화면 하나를 구조화하는 일만 LLM 에
+    맡긴다. 화면마다 따로 부르는 이유가 두 가지 있다.
+
+    1) 컨텍스트. 세 화면을 한 번에 넣으면 8192 토큰 창을 금세 넘긴다. 넘치지
+       않더라도 입력이 길어질수록 7B 가 행을 빠뜨리는 빈도가 올라간다 —
+       이미 7행 표에서 버튼 행을 놓친 적이 있다.
+    2) 실패 격리. 한 화면의 추출이 흔들려도 다른 화면의 결과가 오염되지 않는다.
+       한 번에 넣으면 어느 화면의 요소인지 모델이 섞을 위험이 생긴다.
+
+    흐름은 문서 수준이므로 화면을 다 읽은 뒤 한 번만 읽는다.
+    """
+    doc = parse_pdf(pdf_path)
+    screen_docs, warnings = doc.split_screens()
+
+    screens = [
+        extract_screen_spec(sub, llm, max_tokens=max_tokens) for sub in screen_docs
+    ]
+    flows = [Flow.model_validate(f) for f in doc.declared_flows()]
+
+    result = SpecDocument(source=str(pdf_path), screens=screens, flows=flows,
+                          warnings=warnings)
+    result.warnings.extend(_document_warnings(result))
+    return result
+
+
+def _document_warnings(doc: SpecDocument) -> list[str]:
+    """문서 수준 대조. 화면 하나만 봐서는 알 수 없는 어긋남을 찾는다."""
+    warnings: list[str] = []
+
+    ids = [s.screen_id for s in doc.screens]
+    duplicated = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicated:
+        # case_id 접두사가 겹치면 스크린샷 경로가 서로를 덮어쓴다. 증거가 사라지는데
+        # 리포트에는 정상으로 보인다.
+        warnings.append(
+            f"화면 ID 가 중복됩니다: {', '.join(duplicated)}. "
+            f"case_id 와 스크린샷 경로가 겹쳐 증거가 서로를 덮어씁니다."
+        )
+
+    for flow in doc.flows:
+        missing = [sid for sid in flow.screen_ids if doc.screen_by_id(sid) is None]
+        if missing:
+            warnings.append(
+                f"흐름 '{flow.flow_id}' 가 이 문서에 없는 화면을 가리킵니다: "
+                f"{', '.join(missing)}. 이 흐름은 검증하지 못했습니다."
+            )
+    return warnings

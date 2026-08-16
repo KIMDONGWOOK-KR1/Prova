@@ -17,6 +17,7 @@ LLM 없이도 S1~S6 전체를 끝까지 실행해 볼 수 있고, CI 에서도 �
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from prova.llm.base import LLMError
@@ -33,10 +34,16 @@ class MockLLM:
 
     def __init__(self, responses: dict[str, dict] | None = None) -> None:
         self._responses = responses or {}
+        # 화면이 여럿인 문서용. screen_id -> ScreenSpec 응답.
+        self._by_screen: dict[str, dict] = {}
         self.calls: list[dict] = []  # 테스트에서 호출 내역을 확인할 수 있게 남긴다
 
     def register(self, schema_title: str, response: dict) -> None:
         self._responses[schema_title] = response
+
+    def register_screen(self, screen_id: str, response: dict) -> None:
+        """화면 하나의 ScreenSpec 응답. 프롬프트 내용을 보고 골라 쓴다."""
+        self._by_screen[screen_id] = response
 
     @classmethod
     def for_spec(cls, pdf_path: str | Path) -> "MockLLM":
@@ -60,6 +67,30 @@ class MockLLM:
         return inst
 
     @classmethod
+    def for_document(cls, *pdf_paths: str | Path) -> "MockLLM":
+        """화면이 여럿인 문서용. 화면마다 골든을 등록한다.
+
+        ## 순서가 아니라 내용으로 고른다
+
+        호출 순서대로 돌려주면 **화면 분리가 뒤바뀌어도 테스트가 통과한다** —
+        mock 은 첫 번째 호출에 로그인을 주고, 파이프라인은 그것을 로그인 화면의
+        명세로 받아들인다. 정작 넘긴 텍스트가 회원가입 것이었어도 알 수 없다.
+
+        그래서 프롬프트에 그 화면의 screen_id 가 들어 있는지 보고 고른다. 화면 개요
+        표의 '화면 ID' 값이 프롬프트에 그대로 실려 있으므로(pdf_parser 가 표를
+        마크다운으로 재조립한다) 판별이 가능하다. 못 고르면 오류를 낸다 — 조용히
+        아무 응답이나 돌려주면 이 테스트가 무엇을 확인했는지 알 수 없게 된다.
+        """
+        inst = cls()
+        for path in pdf_paths:
+            golden = Path(path).with_suffix(".golden.json")
+            if not golden.exists():
+                raise FileNotFoundError(f"골든 파일이 없습니다: {golden}")
+            data = json.loads(golden.read_text(encoding="utf-8"))
+            inst.register_screen(data["screen_id"], data)
+        return inst
+
+    @classmethod
     def with_login_fixtures(cls) -> "MockLLM":
         """로그인 기획서 전용 단축 생성자 (기존 호출부 호환)."""
         return cls.for_spec("fixtures/specs/login_spec.pdf")
@@ -75,9 +106,31 @@ class MockLLM:
     ) -> dict:
         title = schema.get("title", "")
         self.calls.append({"schema_title": title, "user_len": len(user)})
+
+        if title == "ScreenSpec" and self._by_screen:
+            return self._pick_screen(user)
+
         if title not in self._responses:
             raise LLMError(
                 f"mock 백엔드에 '{title}' 응답이 등록되지 않았습니다. "
                 f"등록된 것: {sorted(self._responses)}"
             )
         return self._responses[title]
+
+    def _pick_screen(self, user: str) -> dict:
+        """프롬프트에 실린 화면 ID 로 응답을 고른다 (for_document 설명 참고).
+
+        '화면 ID | login' 형태를 찾는다. 화면 ID 문자열이 프롬프트 다른 곳에도
+        나타날 수 있으므로(url_path 등) 표의 행 모양을 요구한다 — 그러지 않으면
+        '/login' 만 스쳐도 로그인 화면으로 골라 버린다.
+        """
+        matched = [
+            sid for sid in self._by_screen
+            if re.search(r"화면\s*ID\s*\|\s*" + re.escape(sid) + r"\s*\|", user)
+        ]
+        if len(matched) != 1:
+            raise LLMError(
+                f"프롬프트에서 화면을 하나로 특정하지 못했습니다: {matched or '없음'}. "
+                f"등록된 화면: {sorted(self._by_screen)}"
+            )
+        return self._by_screen[matched[0]]

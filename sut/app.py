@@ -82,6 +82,26 @@ D1 이 두 경로에 동시에 잡힌다. 'notebook' 의 건수 문구가 안 �
 
 D2 는 반대로 문구 경로에만 잡힌다. 0건일 때 목록이 없는 것은 정상이므로 건수
 케이스는 PASS 다. 건수 경로가 D2 까지 잡겠다고 나서면 오탐이 된다.
+
+## bad 에 심은 '화면 사이' 불일치 1종
+
+    E1  회원가입이 계정을 실제로 등록하지 않는다
+        → 가입은 완료되고 환영 화면까지 보여주는데, 그 계정으로 로그인이 안 된다.
+
+**화면 하나만 보면 어느 쪽도 결함이 아니다.** 회원가입 화면은 입력을 검증하고
+완료 화면을 띄우므로 회원가입 케이스 14건이 이 결함과 무관하게 통과한다. 로그인
+화면도 등록된 계정(user@test.com)으로는 정상 동작하므로 로그인 케이스 7건이
+통과한다. 결함은 두 화면 사이에 있고, 이어서 밟아야만 드러난다.
+
+E1 이 흐름 검증(models.Flow)을 만든 이유다. 실무에서 troubles 로 이어지는
+기획-구현 불일치가 대개 이 모양이다 — 화면 단위로는 다 맞는데 이어 붙이면
+안 되는 것.
+
+## 변형별로 상태를 나눠 두는 이유
+
+REGISTERED 를 good/bad 가 공유하면 good 이 가입시킨 계정을 bad 의 로그인이
+찾아내고, **E1 이 good 을 한 번 돌린 뒤에는 사라진다.** 실행 순서에 따라 결과가
+달라지는 테스트는 결과를 신뢰할 수 없다.
 """
 
 from __future__ import annotations
@@ -98,8 +118,15 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Prova SUT — 미니 로그인·회원가입·검색 앱")
 
-# 기획서 §5 테스트 계정
-REGISTERED = {"user@test.com": "Abcd123!"}
+# 기획서 §5 테스트 계정.
+#
+# 변형별로 따로 둔다. 공유하면 good 이 가입시킨 계정을 bad 의 로그인이 찾아내,
+# **bad 에 심은 결함이 good 을 한 번 돌린 뒤에는 사라진다.** 실행 순서에 따라
+# 결과가 달라지는 테스트는 결과를 신뢰할 수 없다.
+REGISTERED = {
+    "good": {"user@test.com": "Abcd123!"},
+    "bad": {"user@test.com": "Abcd123!"},
+}
 
 # 로그인 기획서에 정의된 에러 메시지 (good 버전이 사용)
 MSG_REQUIRED = "필수 입력 항목입니다."
@@ -229,7 +256,7 @@ def good_login_submit(
         return render_login(request, "good", MSG_EMAIL_FORMAT)
     if not check_password_rules(password):
         return render_login(request, "good", MSG_PASSWORD_RULE)
-    if REGISTERED.get(email) != password:
+    if REGISTERED["good"].get(email) != password:
         return render_login(request, "good", MSG_NO_ACCOUNT)
     # 성공: POST-Redirect-GET. URL이 실제로 /good/dashboard 로 전이돼야
     # 기획서의 "/dashboard 로 이동" 조건을 검증할 수 있다.
@@ -263,7 +290,7 @@ def bad_login_submit(
     # B2: 이메일 형식 검증이 없다 (check_email_format 호출 누락)
     # B1: 비밀번호 복잡도 검증이 없다 (check_password_rules 호출 누락)
 
-    if REGISTERED.get(email) != password:
+    if REGISTERED["bad"].get(email) != password:
         # B3: 기획서와 다른 문구를 쓴다
         return render_login(request, "bad", MSG_NO_ACCOUNT_WRONG)
     return RedirectResponse("/bad/dashboard", status_code=303)
@@ -316,6 +343,9 @@ def good_signup_submit(
         return render_signup(request, "good", MSG_PASSWORD_MISMATCH)
     if not (2 <= len(nickname) <= 10):
         return render_signup(request, "good", MSG_NICKNAME_LENGTH)
+    # 계정을 실제로 등록한다. 기획서 §7 이 "가입한 계정으로 로그인할 수 있다" 고
+    # 적어 둔 흐름이 성립하려면 이 한 줄이 있어야 한다.
+    REGISTERED["good"][email] = password
     return RedirectResponse("/good/welcome", status_code=303)
 
 
@@ -362,6 +392,11 @@ def bad_signup_submit(
     if len(nickname) < 2:
         return render_signup(request, "bad", MSG_NICKNAME_LENGTH)
 
+    # E1: 계정을 등록하지 않는다.
+    #
+    # 화면 하나만 보면 결함이 아니다 — 입력 검증도 하고 완료 화면도 보여준다.
+    # 회원가입 화면의 케이스는 이 줄이 없어도 전부 통과한다. 결함은 회원가입과
+    # 로그인 '사이' 에 있고, 두 화면을 이어서 밟아야만 드러난다.
     return RedirectResponse("/bad/welcome", status_code=303)
 
 

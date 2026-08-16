@@ -24,6 +24,7 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -143,7 +144,15 @@ def md_to_flowables(md: str, styles: dict, avail_width: float) -> list:
                 flow.append(Spacer(1, 8))
             continue
 
-        if line.startswith("### "):
+        # 화면 경계를 명시하는 마커.
+        #
+        # 한 문서에 화면이 여럿일 때 S1 은 페이지 단위로 화면을 나눈다
+        # (pdf_parser.split_screens). 화면이 페이지 중간에서 시작하면 앞 화면과
+        # 섞여 두 화면의 추출이 모두 어긋나므로, 기획서 원문이 경계를 직접
+        # 지정할 수 있게 한다. 실물 기획서도 화면마다 페이지를 새로 시작한다.
+        if line == "<!-- page -->":
+            flush_bullets(); flow.append(PageBreak())
+        elif line.startswith("### "):
             flush_bullets(); flow.append(Paragraph(inline_markup(line[4:]), styles["h3"]))
         elif line.startswith("## "):
             flush_bullets(); flow.append(Paragraph(inline_markup(line[3:]), styles["h2"]))

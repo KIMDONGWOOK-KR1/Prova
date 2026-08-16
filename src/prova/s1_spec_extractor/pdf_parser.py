@@ -12,6 +12,24 @@ LLM에게 남는 일은 '텍스트 -> JSON 구조화' 뿐이다. 그 정도면 �
 2) LLM에 넘기는 입력이 작아져 10GiB VRAM 환경에서도 컨텍스트가 넉넉하다.
 3) WITCHES 실물 PDF가 이미지 기반이어도 이 파일만 교체하면 된다.
 
+## 표에서 읽어 내는 사실이 일곱 가지다
+
+확장 과정에서 같은 실패를 반복해 겪고 얻은 결론이다 — **표에 그대로 적힌 사실은 LLM
+에 맡기지 않는다.** 프롬프트로 부탁해 본 것들이 문서가 길어지거나 few-shot 예시를
+고칠 때마다 조용히 틀렸다.
+
+    declared_element_ids        요소 ID
+    declared_element_types      유형 (목록 -> list)
+    declared_screen_meta        화면 ID · 경로
+    declared_sample_values      예시값
+    declared_scenarios          입력-결과 짝 + 결과 건수
+    declared_required_message   필수 입력 문구
+    declared_flows              화면 흐름
+
+공통 원칙이 하나 있다. **확신할 수 있을 때만 답한다.** 판별 근거가 없거나 후보가
+여럿이면 None/빈 값을 돌려주고 LLM 의 판단을 남긴다. 억측한 값으로 덮어쓰면 오탐이
+되고, 오탐은 미탐보다 도구의 신뢰를 빨리 무너뜨린다.
+
 ## 표를 따로 뽑는 이유
 
 extract_text() 는 표 안 글자까지 함께 쏟아낸다. 그러면 "email 입력 이메일 필수
@@ -34,6 +52,19 @@ from prova.text_utils import normalize_ws
 
 # 건수 열을 값의 모양으로 찾을 때 쓴다. 음수·소수는 건수가 아니다.
 _INT_RE = re.compile(r"\d+")
+
+# 실패 조건 표에서 '값이 없는 상황' 을 가리키는 표현.
+#
+# 표현을 열거하는 것이 못마땅하지만, 프롬프트에 "표현이 아니라 의미로 찾으세요"
+# 라고 적어 둔 것을 코드로 옮긴 것이다. 여기서 못 찾으면 LLM 의 판단을 그대로
+# 쓰므로(declared_required_message 참고), 표현을 놓치는 것이 검증을 없애지 않는다.
+# '선택하지 않음' · '동의하지 않음' 은 넣지 않는다. 그것들은 요소 하나의 상태에
+# 대한 문구이고(가입 경로 미선택, 약관 미동의), required_message 는 **화면 공통**
+# 문구다. 넣으면 회원가입 기획서에서 후보가 셋이 되어 판별을 포기하게 된다.
+_EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|누락|공백")
+
+# 표 칸 안의 인용된 문구. 기획서가 쓰는 인용부호가 여러 가지다.
+_QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,60})[\"'“”‘’]")
 
 # 기획서 '유형' 열의 한국어 표현 -> models.ElementType.
 # 여기 없는 표현은 매핑하지 않는다 (declared_element_types 설명 참고).
@@ -212,6 +243,183 @@ class ParsedDocument:
             if label and element_id:
                 mapping[label] = element_id.replace(" ", "")
         return mapping
+
+    def declared_required_message(self) -> Optional[str]:
+        """실패 조건 표에서 '값이 비어 있을 때' 노출하는 문구를 읽는다.
+
+        ## 왜 이것도 코드가 읽는가
+
+        같은 실패를 또 겪었다. 화면 세 개를 한 문서에 담자 7B 가 검색 화면의
+        required_message 를 **few-shot 예시의 문구("필수 항목을 입력하세요.")로**
+        채웠다. 기획서에는 "검색어를 입력하세요." 라고 적혀 있었다.
+
+        그 결과가 오탐이다 — 구현은 올바른 문구를 노출하는데 기대 문구가 달라
+        FAIL 이 된다. 프롬프트에 "표현이 아니라 의미로 찾으세요" 라고 적어 뒀지만,
+        프롬프트는 보장이 아니라 부탁이다. 그리고 이 값도 결국 **표에 그대로 적혀
+        있다.**
+
+        ## 확신할 수 있을 때만 답한다
+
+        후보가 정확히 하나일 때만 값을 돌려준다. 여러 행이 '비어 있음' 을 다루면
+        (요소별로 다른 문구를 쓰는 기획서) 어느 것이 화면 공통 문구인지 알 수
+        없으므로 None 을 돌려주고 LLM 의 판단을 남긴다. 억측한 문구는 오탐이 된다.
+        """
+        table = self._failure_table()
+        if table is None:
+            return None
+        header = [normalize_ws(h) for h in table.header]
+        cond_col = next((i for i, h in enumerate(header)
+                         if "상황" in h or "조건" in h), None)
+        act_col = next((i for i, h in enumerate(header)
+                        if i != cond_col and ("처리" in h or "동작" in h)), None)
+        if cond_col is None or act_col is None:
+            return None
+
+        found: list[str] = []
+        for row in table.rows[1:]:
+            if len(row) <= max(cond_col, act_col):
+                continue
+            if not _EMPTY_INPUT_RE.search(normalize_ws(row[cond_col])):
+                continue
+            quoted = _QUOTED_RE.search(row[act_col])
+            if quoted:
+                found.append(normalize_ws(quoted.group(1)))
+        return found[0] if len(found) == 1 else None
+
+    def _failure_table(self) -> Optional[ParsedTable]:
+        """실패 조건 표. '상황|처리' 2열로 판별한다.
+
+        화면 개요 표도 2열이므로 열 제목으로 갈라야 한다 — 개요는 '항목|내용' 이다.
+        """
+        for table in self.all_tables:
+            header = [normalize_ws(h) for h in table.header]
+            if len(header) < 2:
+                continue
+            has_cond = any("상황" in h or "조건" in h for h in header)
+            has_act = any("처리" in h or "동작" in h for h in header)
+            if has_cond and has_act:
+                return table
+        return None
+
+    def _overview_screen_ids(self, page: ParsedPage) -> list[str]:
+        """그 페이지의 '화면 개요' 표들이 선언한 화면 ID.
+
+        화면 개요 표는 '항목 | 내용' 2열이고 '화면 ID' 행을 가진다. 이 표의 등장이
+        곧 새 화면의 시작이다 — 기획서가 화면마다 개요를 먼저 적기 때문이다.
+        """
+        found: list[str] = []
+        for table in page.tables:
+            if len(table.header) != 2:
+                continue
+            for row in table.rows[1:]:
+                if len(row) < 2:
+                    continue
+                key, value = normalize_ws(row[0]), row[1].strip()
+                if value and "화면" in key and "ID" in key.upper():
+                    found.append(value.replace(" ", ""))
+        return found
+
+    def split_screens(self) -> tuple[list["ParsedDocument"], list[str]]:
+        """화면 개요 표를 기준으로 문서를 화면별로 나눈다. LLM 을 쓰지 않는다.
+
+        ## 왜 페이지 단위인가
+
+        경계를 페이지 시작으로만 잡는다. 개요 표가 페이지 중간에 있어도 그 페이지
+        전체를 새 화면의 것으로 본다.
+
+        페이지 안까지 쪼개려면 본문과 표를 순서 있는 블록으로 다시 읽어야 하는데
+        (지금 ParsedPage 는 본문을 페이지당 한 덩어리로 담는다), 그러면 이미
+        검증된 세 화면의 추출 경로가 전부 영향권에 들어간다. 실물 기획서는 화면마다
+        페이지를 새로 시작하는 것이 보통이므로, 이득이 확실할 때까지 미룬다.
+
+        ## 나누지 못하는 경우를 조용히 넘기지 않는다
+
+        한 페이지에 개요 표가 둘 이상이면 그 페이지의 내용이 두 화면 것이 섞여
+        있다는 뜻이고, 페이지 단위로는 가를 수 없다. 그때 앞 화면에 몰아 넣으면
+        뒤 화면의 요소 표가 앞 화면 것으로 추출되어 **두 화면의 검증이 모두
+        조용히 어긋난다.** 그래서 경고로 알린다.
+
+        Returns:
+            (화면별 ParsedDocument 목록, 경고 목록).
+            개요 표를 하나도 못 찾으면 문서 전체를 한 화면으로 보고 돌려준다 —
+            화면당 PDF 하나인 기존 기획서가 그대로 동작해야 한다.
+        """
+        warnings: list[str] = []
+        # 각 페이지가 새 화면을 시작하는가
+        starts: list[Optional[str]] = []
+        for page in self.pages:
+            ids = self._overview_screen_ids(page)
+            if len(ids) > 1:
+                warnings.append(
+                    f"{page.page_no}페이지에 화면 개요 표가 {len(ids)}개 있습니다 "
+                    f"({', '.join(ids)}). 페이지 단위로는 가를 수 없어 한 화면으로 "
+                    f"묶었습니다 — 화면마다 페이지를 새로 시작하세요."
+                )
+            starts.append(ids[0] if ids else None)
+
+        if not any(starts):
+            return [self], warnings
+
+        # 첫 개요 표 앞의 페이지(표지·문서 정보)는 첫 화면에 붙인다.
+        #
+        # 별도 문서로 떼면 화면 개요가 없는 '화면' 이 하나 생기고, 그것을 구조화하면
+        # 요소가 없는 빈 화면이 되어 리포트에 정체 불명의 항목이 늘어난다. 버리는
+        # 것도 답이 아니다 — 앞머리에 화면 공통 규칙이 적혀 있으면 그 규칙이
+        # 조용히 사라진다. 화면당 PDF 하나였던 기존 기획서도 표지와 첫 화면이 같은
+        # 페이지에 있었으므로, 붙이는 쪽이 기존 동작과도 일치한다.
+        docs: list[ParsedDocument] = []
+        front: list[ParsedPage] = []
+        for page, start in zip(self.pages, starts):
+            if start is not None:
+                docs.append(ParsedDocument(source=self.source, pages=list(front)))
+                front = []
+            if docs:
+                docs[-1].pages.append(page)
+            else:
+                front.append(page)
+        return docs, warnings
+
+    def declared_flows(self) -> list[dict]:
+        """'화면 흐름' 표를 그대로 흐름으로 옮긴다. LLM 을 쓰지 않는다.
+
+        표를 고르는 기준은 열 제목이다 — '흐름' 이 들어간 열과 화면 순서를 담은
+        열이 함께 있는 표. 순서 열은 화면 ID 를 화살표나 쉼표로 이어 적는다.
+
+            | 흐름 ID | 화면 순서 | 확인 문구 |
+            | signup_then_login | signup -> login | 환영합니다 |
+
+        캡션이 아니라 열 제목으로 고르는 이유는 다른 표들과 같다 — 기획서마다
+        제목 표현이 다르고, 표현을 하나 놓칠 때마다 검증이 조용히 사라진다.
+        """
+        flows: list[dict] = []
+        for table in self.all_tables:
+            header = [normalize_ws(h) for h in table.header]
+            id_col = next((i for i, h in enumerate(header) if "흐름" in h), None)
+            order_col = next(
+                (i for i, h in enumerate(header)
+                 if "순서" in h or ("화면" in h and "흐름" not in h)), None
+            )
+            if id_col is None or order_col is None or id_col == order_col:
+                continue
+            text_col = next(
+                (i for i, h in enumerate(header)
+                 if i not in (id_col, order_col) and ("문구" in h or "확인" in h)), None
+            )
+            for row in table.rows[1:]:
+                if len(row) <= max(id_col, order_col):
+                    continue
+                flow_id = row[id_col].strip().replace(" ", "")
+                screen_ids = _split_screen_order(row[order_col])
+                if not flow_id or len(screen_ids) < 2:
+                    continue
+                flows.append({
+                    "flow_id": flow_id,
+                    "screen_ids": screen_ids,
+                    "expect_text": (row[text_col].strip()
+                                    if text_col is not None and text_col < len(row)
+                                    else ""),
+                })
+        return flows
 
     def declared_element_types(self) -> dict[str, str]:
         """UI 요소 표의 '유형' 열을 ElementType 으로 옮긴다. 라벨 -> 유형 이다.
@@ -436,3 +644,14 @@ def _is_integer_column(rows: list[list[str]], col: int) -> bool:
     """
     values = [row[col].strip() for row in rows if col < len(row) and row[col].strip()]
     return bool(values) and all(_INT_RE.fullmatch(v) for v in values)
+
+
+def _split_screen_order(cell: str) -> list[str]:
+    """'signup -> login' 같은 칸을 화면 ID 목록으로.
+
+    기획서가 쓸 수 있는 구분자를 모두 받는다. 화살표 표현이 기획서마다 다르고
+    (->, →, >, 쉼표), PDF 변환 과정에서 모양이 바뀌기도 한다. 구분자 하나를
+    놓치면 흐름이 화면 하나로 읽혀 조용히 사라진다.
+    """
+    parts = re.split(r"→|->|—>|>|,|·", normalize_ws(cell))
+    return [p.strip().replace(" ", "") for p in parts if p.strip()]
