@@ -38,10 +38,10 @@ def positive_case(expected: Expectation) -> TestCase:
 
 
 def state(url="http://h/good/login", text="", errors=None, console=None,
-          collection=None, options=None) -> PageState:
+          collection=None, options=None, placeholders=None) -> PageState:
     return PageState(url=url, text=text or "", error_texts=errors or [],
                      console_errors=console or [], collection=collection,
-                     options=options)
+                     options=options, placeholders=placeholders)
 
 
 class TestNegativeErrorMessage:
@@ -361,3 +361,55 @@ class TestOptionsPresent:
         case = positive_case(Expectation(type="text_visible", value="환영합니다"))
         v = verify(case, steps_ok(), state(text="환영합니다"))
         assert "screen_options" not in v.evidence
+
+
+class TestPlaceholdersMatch:
+    """안내 문구 판정 — 없는 요소와 다른 문구를 구별한다."""
+
+    def case(self, want: dict) -> TestCase:
+        return positive_case(Expectation(type="placeholders_match", placeholders=want))
+
+    def test_모두_같으면_PASS(self):
+        want = {"이메일": "이메일을 입력하세요", "비밀번호": "비밀번호를 입력하세요"}
+        v = verify(self.case(want), steps_ok(), state(placeholders=dict(want)))
+        assert v.verdict == "PASS"
+
+    def test_다르면_FAIL하고_기대와_화면을_함께_남긴다(self):
+        v = verify(self.case({"이메일": "이메일을 입력하세요"}), steps_ok(),
+                   state(placeholders={"이메일": "아이디를 입력하세요"}))
+        assert v.verdict == "FAIL"
+        assert "이메일을 입력하세요" in v.evidence["actual"]
+        assert "아이디를 입력하세요" in v.evidence["actual"]
+
+    def test_요소를_못_찾은_것과_문구가_다른_것을_구별한다(self):
+        """개발자가 할 일이 다르다 — 하나는 요소나 라벨을 고치고, 하나는 속성을
+        고친다. 합치면 리포트가 엉뚱한 곳을 가리킨다."""
+        v = verify(self.case({"이메일": "이메일을 입력하세요"}), steps_ok(),
+                   state(placeholders={}))
+        assert v.verdict == "FAIL"
+        assert "찾지 못함" in v.evidence["actual"]
+
+    def test_속성이_비어_있으면_다른_것으로_본다(self):
+        """요소는 있는데 placeholder 가 없는 경우. 기획서가 문구를 적었으므로
+        비어 있는 것은 불일치다."""
+        v = verify(self.case({"이메일": "이메일을 입력하세요"}), steps_ok(),
+                   state(placeholders={"이메일": ""}))
+        assert v.verdict == "FAIL"
+        assert "문구가 다름" in v.evidence["actual"]
+
+    def test_공백_배치가_달라도_같은_문구로_본다(self):
+        """PDF 에서 뽑은 문구는 줄바꿈 위치가 화면과 다르다."""
+        v = verify(self.case({"이메일": "이메일을\n입력하세요"}), steps_ok(),
+                   state(placeholders={"이메일": "이메일을 입력하세요"}))
+        assert v.verdict == "PASS"
+
+    def test_여러_요소가_다르면_모두_남긴다(self):
+        """한 건으로도 고칠 곳이 좁혀져야 화면당 한 케이스가 정당해진다."""
+        v = verify(self.case({"가": "A", "나": "B"}), steps_ok(),
+                   state(placeholders={"가": "X", "나": "Y"}))
+        assert "'가'" in v.evidence["actual"] and "'나'" in v.evidence["actual"]
+
+    def test_화면의_문구를_근거에_남긴다(self):
+        v = verify(self.case({"이메일": "A"}), steps_ok(),
+                   state(placeholders={"이메일": "A"}))
+        assert v.evidence["screen_placeholders"] == {"이메일": "A"}

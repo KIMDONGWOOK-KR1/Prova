@@ -12,7 +12,8 @@
         "format": "email"
       },
       "error_message": "올바른 이메일 형식을 입력하세요.",
-      "sample_value": "newuser@test.com"
+      "sample_value": "newuser@test.com",
+      "placeholder": "이메일을 입력하세요"
     },
     {
       "element_id": "password",
@@ -25,7 +26,8 @@
         "require_special": 1
       },
       "error_message": "비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.",
-      "sample_value": "Signup1!"
+      "sample_value": "Signup1!",
+      "placeholder": "비밀번호를 입력하세요"
     },
     {
       "element_id": "password_confirm",
@@ -35,7 +37,8 @@
       "constraints": {
         "same_as": "password"
       },
-      "error_message": "비밀번호가 일치하지 않습니다."
+      "error_message": "비밀번호가 일치하지 않습니다.",
+      "placeholder": "비밀번호를 다시 입력하세요"
     },
     {
       "element_id": "nickname",
@@ -47,7 +50,8 @@
         "max_length": 10
       },
       "error_message": "닉네임은 2자 이상 10자 이하로 입력하세요.",
-      "sample_value": "테스터"
+      "sample_value": "테스터",
+      "placeholder": "닉네임을 입력하세요"
     },
     {
       "element_id": "signup_path",

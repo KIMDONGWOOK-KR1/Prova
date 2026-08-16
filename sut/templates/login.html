@@ -26,7 +26,14 @@
          두 실행의 차이가 검증 로직의 유무에서만 나오게 하기 위한 것이다. -->
     <form method="post" action="/{{ variant }}/login" novalidate>
       <label for="email">이메일</label>
-      <input type="text" id="email" name="email" placeholder="이메일을 입력하세요">
+      <!-- B4: bad 는 안내 문구가 기획서와 다르다.
+           기획서 §2 '안내 문구' 열은 "이메일을 입력하세요" 다.
+
+           안내 문구는 사용자가 가장 먼저 읽는 글자인데, 기획서가 그 열을 적기
+           전까지 아무도 확인하지 않았다. S3 는 라벨로 요소를 찾으므로 이 값이
+           달라도 탐지는 그대로 된다 — 그래서 조용히 지나갔다. -->
+      <input type="text" id="email" name="email"
+             placeholder="{{ '이메일을 입력하세요' if variant == 'good' else '아이디를 입력하세요' }}">
 
       <label for="password">비밀번호</label>
       <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요">

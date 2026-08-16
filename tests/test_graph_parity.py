@@ -75,8 +75,8 @@ class TestParity:
     def test_그래프도_실제로_검증을_수행했다(self, both_runs):
         """양쪽이 똑같이 0건이어도 '같다' 는 성립한다. 그 허위 통과를 막는다."""
         _, graph = both_runs
-        assert graph.summary["total"] == 8
-        assert graph.summary["fail"] == 5
+        assert graph.summary["total"] == 9
+        assert graph.summary["fail"] == 6
 
 
 class TestGraphStructure:
