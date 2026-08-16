@@ -230,3 +230,74 @@ class TestCrossFieldCases:
 
     def test_회원가입_케이스가_14건이다(self, signup_spec):
         assert len(generate_cases(signup_spec)) == 14
+
+
+SEARCH_GOLDEN = Path("fixtures/specs/search_spec.golden.json")
+
+
+@pytest.fixture
+def search_spec() -> ScreenSpec:
+    return ScreenSpec.model_validate(json.loads(SEARCH_GOLDEN.read_text(encoding="utf-8")))
+
+
+class TestScenarioCases:
+    """기획서가 제시한 입력-결과 예시 — 규칙으로 표현할 수 없는 검증.
+
+    로그인·회원가입은 '값이 규칙을 어겼는가' 였고, 그래서 규칙에서 위반값을 만들 수
+    있었다. 검색은 '정상 입력에 정해진 결과가 나오는가' 다. 규칙이 없으니 위반값도
+    만들 수 없고, 기획서가 데이터를 주지 않으면 검증 자체가 불가능하다.
+    """
+
+    def test_시나리오마다_케이스가_생긴다(self, search_spec):
+        cases = generate_cases(search_spec)
+        scenario_cases = [c for c in cases if "scenario" in c.case_id]
+        assert len(scenario_cases) == len(search_spec.scenarios) == 2
+
+    def test_시나리오는_positive다(self, search_spec):
+        """negative 로 두면 S5 의 판정이 뒤집혀 '에러가 떠야 PASS' 가 된다.
+        시나리오는 규칙을 어긴 값이 아니라 정상 입력이다."""
+        for c in generate_cases(search_spec):
+            if "scenario" in c.case_id:
+                assert c.type == "positive"
+                assert c.violates is None
+
+    def test_기대는_문구_노출이다(self, search_spec):
+        case = next(c for c in generate_cases(search_spec) if "scenario" in c.case_id)
+        assert case.expected.type == "text_visible"
+        assert case.expected.value == "검색 결과 3건"
+
+    def test_지정한_입력값이_그대로_들어간다(self, search_spec):
+        """위반값 생성을 거치지 않는다 — 'notebook' 은 규칙에서 유도되지 않는다."""
+        cases = generate_cases(search_spec)
+        values = [
+            {s.target: s.value for s in c.steps if s.action == "fill"}
+            for c in cases if "scenario" in c.case_id
+        ]
+        assert {"검색어": "notebook"} in values
+        assert {"검색어": "zzzz"} in values
+
+    def test_지정하지_않은_입력은_정상값으로_채운다(self):
+        """입력이 여럿인 화면에서 시나리오가 하나만 지정하면, 나머지가 비어 있으면
+        필수 검증에 먼저 걸려 시나리오가 확인되지 않는다."""
+        from prova.models import Scenario
+
+        spec = minimal_spec(
+            elements=[
+                UIElement(element_id="a", type="input", label="가", required=True,
+                          constraints={"min_length": 2}, sample_value="유효값"),
+                UIElement(element_id="b", type="input", label="나", required=True,
+                          constraints={"min_length": 2}, sample_value="다른값"),
+                UIElement(element_id="btn", type="button", label="확인"),
+            ],
+            scenarios=[Scenario(given={"a": "특정값"}, expect_text="안내 문구")],
+        )
+        case = next(c for c in generate_cases(spec) if "scenario" in c.case_id)
+        values = {s.target: s.value for s in case.steps if s.action == "fill"}
+        assert values == {"가": "특정값", "나": "다른값"}
+
+    def test_시나리오가_없으면_케이스도_없다(self, login_spec):
+        """로그인 화면은 시나리오가 없다 — 회귀 확인."""
+        assert not any("scenario" in c.case_id for c in generate_cases(login_spec))
+
+    def test_검색_케이스가_6건이다(self, search_spec):
+        assert len(generate_cases(search_spec)) == 6

@@ -217,8 +217,42 @@ def generate_cases(
             ))
             seq += 1
 
+    cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
+
     if llm is not None:
         _polish_titles(cases, spec, llm)
+    return cases
+
+
+def _scenario_cases(
+    spec: ScreenSpec, inputs: list[UIElement], start_seq: int
+) -> list[TestCase]:
+    """기획서가 제시한 입력-결과 예시를 케이스로 만든다.
+
+    위반값 생성을 거치지 않는다. 시나리오의 입력값은 기획서가 준 것이고, 코드가
+    만들 수 있는 종류의 값이 아니다 — '노트북을 검색하면 3건' 은 규칙에서 유도되지
+    않는다(Scenario 설명 참고).
+
+    type 은 negative 가 아니라 positive 다. 규칙을 어긴 값이 아니라 **정상 입력에
+    대한 정해진 결과**를 확인하는 것이기 때문이다. S5 의 판정이 케이스 유형으로
+    뒤집히지 않게 하려면 이 구분이 맞아야 한다.
+
+    시나리오에 없는 입력 요소는 정상값으로 채운다. 검색처럼 입력이 하나면 차이가
+    없지만, 여러 입력 중 하나만 지정한 시나리오에서는 나머지가 비어 있으면 필수
+    검증에 먼저 걸려 시나리오가 확인되지 않는다.
+    """
+    cases: list[TestCase] = []
+    for i, scenario in enumerate(spec.scenarios):
+        values, _ = resolve_values(inputs, overrides=dict(scenario.given))
+        shown = ", ".join(f"{k}={v!r}" for k, v in scenario.given.items()) or "기본값"
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-scenario-{start_seq + i:03d}",
+            screen_id=spec.screen_id,
+            title=f"기획서 예시: {shown} → {scenario.expect_text!r} 노출 확인",
+            type="positive",
+            steps=_steps_for_case(spec, values),
+            expected=Expectation(type="text_visible", value=scenario.expect_text),
+        ))
     return cases
 
 

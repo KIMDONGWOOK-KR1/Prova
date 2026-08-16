@@ -255,3 +255,33 @@ class TestMinLengthWithoutCharRules:
         e = elem(constraints=c)
         v = next(v for v in violations_for_element(e) if v.rule == "min_length")
         assert v.value == "Aa1!aaa"
+
+
+class TestScenarioDefects:
+    """기획서 예시가 실행 가능한 형태인지 — 둘 다 조용히 오탐을 만드는 경우다."""
+
+    @staticmethod
+    def spec_with_scenario(**kw) -> ScreenSpec:
+        from prova.models import Scenario
+
+        return ScreenSpec(
+            screen_id="s", screen_name="화면", url_path="/s",
+            elements=[UIElement(element_id="query", type="input", label="검색어",
+                                required=True, constraints={"min_length": 2})],
+            scenarios=[Scenario(**kw)],
+        )
+
+    def test_없는_요소를_가리키면_경고한다(self):
+        """지정한 값이 무시되므로 시나리오가 의도한 것을 확인하지 못한다 —
+        대개 통과해 버려서 미탐이 된다."""
+        spec = self.spec_with_scenario(given={"없는요소": "값"}, expect_text="문구")
+        assert any("없는요소" in d for d in spec_defects(spec))
+
+    def test_기대_문구가_비면_경고한다(self):
+        """비교할 대상이 없어 그 케이스는 항상 실패한다 — 오탐이다."""
+        spec = self.spec_with_scenario(given={"query": "값"}, expect_text="   ")
+        assert any("항상 실패" in d for d in spec_defects(spec))
+
+    def test_정상_시나리오는_경고가_없다(self):
+        spec = self.spec_with_scenario(given={"query": "노트북"}, expect_text="검색 결과 3건")
+        assert spec_defects(spec) == []

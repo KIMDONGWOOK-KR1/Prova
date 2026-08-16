@@ -69,6 +69,38 @@ class UIElement(BaseModel):
     sample_value: Optional[str] = None
 
 
+class Scenario(BaseModel):
+    """기획서가 직접 제시한 '이 값을 넣으면 이렇게 된다' 한 건.
+
+    ## 왜 규칙(constraints)으로 표현할 수 없는가
+
+    검색 화면에서 드러난 것이다. 로그인·회원가입의 검증은 모두 '값 자체가 규칙을
+    어겼는가'였다. 그래서 규칙에서 위반값을 만들어낼 수 있었다. 검색은 다르다 —
+    '노트북을 검색하면 3건이 나와야 한다' 는 값의 흠이 아니라 **시스템 상태에
+    대한 기대**다. 규칙이 없으므로 위반값을 만들 수도 없다.
+
+    그래서 rule_expander 를 거치지 않는 별도 경로로 둔다. 기획서가 데이터를
+    제시하지 않으면 이 검증은 불가능하고, 그건 기획서의 한계이지 도구의 한계가
+    아니다.
+
+    ## expect_text 하나로 좁힌 이유
+
+    Expectation 전체를 담으면 표현력은 늘지만 S1 이 type 열거값까지 골라야 한다.
+    로컬 7B 에 선택지를 늘리면 추출이 흔들리고, S1 이 흔들리면 검증이 조용히
+    무력해진다. 기획서가 '노출돼야 하는 문구' 를 적어 두는 형태면 문구 비교만으로
+    충분하므로, 모델이 표에서 문구를 옮기기만 하면 되게 만들었다.
+
+    나중에 건수를 DOM 에서 직접 세거나 URL 을 확인해야 하면 **필드를 추가**한다.
+    이 필드의 의미를 넓혀 재해석하면 안 된다 — 필드 이름이 할 수 있는 일을
+    말하고 있어야 한다.
+    """
+
+    # element_id -> 입력값. 여기 없는 입력 요소는 정상값으로 채운다.
+    given: dict[str, str] = Field(default_factory=dict)
+    # 화면에 노출돼야 하는 문구 (공백 무시 비교)
+    expect_text: str
+
+
 class ScreenSpec(BaseModel):
     """설계 문서에서 추출한 화면 단위 명세. S1의 출력.
 
@@ -80,6 +112,8 @@ class ScreenSpec(BaseModel):
     screen_name: str
     url_path: str
     elements: list[UIElement] = Field(default_factory=list)
+    # 기획서가 제시한 입력-결과 예시. 규칙으로 표현할 수 없는 검증이 여기 담긴다.
+    scenarios: list[Scenario] = Field(default_factory=list)
     success_condition: str = ""
     failure_conditions: list[str] = Field(default_factory=list)
     # 필수 입력 누락 시 노출하는 화면 공통 문구.
