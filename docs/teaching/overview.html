@@ -754,17 +754,18 @@
     <div class="versus">
       <div class="card good">
         <h4><code>/good/login</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">8 / 8</div>
+        <div class="score">9 / 9</div>
         <p>기획서를 그대로 구현한 버전. 통과율 100%.</p>
       </div>
       <div class="card bad">
-        <h4><code>/bad/login</code> <span class="tag fail">5건 실패</span></h4>
-        <div class="score">3 / 8</div>
+        <h4><code>/bad/login</code> <span class="tag fail">6건 실패</span></h4>
+        <div class="score">3 / 9</div>
         <p>일부러 검증을 빼먹은 버전. 빼먹은 것을 정확히 4건 지목했고 <strong>오탐은 0건</strong>이었다.</p>
         <ul>
           <li><span class="tag fail">FAIL</span> 이메일 형식 검증 없음</li>
           <li><span class="tag fail">FAIL</span> 비밀번호 길이·대문자·특수문자 검증 없음</li>
           <li><span class="tag fail">FAIL</span> 미등록 계정 에러 문구가 기획서와 다름</li>
+          <li><span class="tag fail">FAIL</span> 입력 안내 문구가 기획서와 다름</li>
           <li><span class="tag pass">PASS</span> 필수 입력 검증은 있음 (2건)</li>
         </ul>
       </div>
@@ -1648,11 +1649,11 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
         <thead><tr><th>대상</th><th>종류</th><th>전체</th><th>통과</th><th>실패</th></tr></thead>
         <tbody>
           <tr><td>로그인 <code>login</code></td><td>화면</td>
-              <td class="num">8</td><td class="num">3</td><td class="num">5</td></tr>
+              <td class="num">9</td><td class="num">3</td><td class="num">6</td></tr>
           <tr><td>회원가입 <code>signup</code></td><td>화면</td>
-              <td class="num">15</td><td class="num">11</td><td class="num">4</td></tr>
+              <td class="num">16</td><td class="num">12</td><td class="num">4</td></tr>
           <tr><td>상품 검색 <code>search</code></td><td>화면</td>
-              <td class="num">8</td><td class="num">4</td><td class="num">4</td></tr>
+              <td class="num">9</td><td class="num">5</td><td class="num">4</td></tr>
           <tr><td>화면 사이 <code>signup_link_to_login</code></td><td>흐름</td>
               <td class="num">1</td><td class="num">0</td><td class="num">1</td></tr>
           <tr><td>화면 사이 <code>signup_then_login</code></td><td>흐름</td>
@@ -1672,12 +1673,12 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     <div class="versus">
       <div class="card good">
         <h4>통합 문서 <code>/good</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">33 / 33</div>
-        <p>3화면 31건 + 흐름 2건. 통과율 100%.</p>
+        <div class="score">36 / 36</div>
+        <p>3화면 34건 + 흐름 2건. 통과율 100%.</p>
       </div>
       <div class="card bad">
-        <h4>통합 문서 <code>/bad</code> <span class="tag fail">15건 실패</span></h4>
-        <div class="score">18 / 33</div>
+        <h4>통합 문서 <code>/bad</code> <span class="tag fail">16건 실패</span></h4>
+        <div class="score">20 / 36</div>
         <p>
           화면별로 뜯어 보면 <strong>단일 문서로 돌렸을 때와 정확히 같다.</strong>
           거기에 화면 사이 결함 1건이 더 잡혔다.
@@ -1756,6 +1757,8 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
               <td><span class="tag fail">쓰이기만 함</span> ← 구멍</td></tr>
           <tr><td><code>failure_conditions</code></td>
               <td><span class="tag fail">일부만</span> ← 구멍</td></tr>
+          <tr><td><code>placeholder</code> (입력 안내 문구)</td>
+              <td><span class="tag fail">기획서가 아예 안 적음</span> ← 반대 방향의 구멍</td></tr>
         </tbody>
       </table>
     </div>
@@ -1795,7 +1798,7 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
       <span class="label">확인하지 않은 것을 리포트에 쓴다</span>
       <p>
         이 도구가 낼 수 있는 가장 위험한 리포트는 FAIL 이 아니다.
-        <strong>"33/33 통과" 인데 실은 기획서의 일부를 확인하지 않은 리포트</strong>다.
+        <strong>"36/36 통과" 인데 실은 기획서의 일부를 확인하지 않은 리포트</strong>다.
         FAIL 은 눈에 띄지만 '확인하지 않음' 은 아무 흔적도 남기지 않는다.
       </p>
       <p>
@@ -1803,6 +1806,19 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
         섞지 않는다 — 이건 기획서의 결함도 구현의 결함도 아니라 <strong>검증 범위</strong>에
         대한 사실이고, 고칠 곳이 기획서일 수도 도구일 수도 있다. 통과율 바로 옆에 놓아
         그 숫자의 범위를 알 수 있게 한다.
+      </p>
+      <p>
+        <code>placeholder</code>는 <strong>반대 방향</strong>의 구멍이었다 — 기획서가 아예
+        적지 않았다. 필드는 처음부터 있었지만 S3의 탐지 폴백으로만 쓰였다.
+        <span class="mark">필드가 있다는 것과 그 값이 검증된다는 것은 별개다.</span>
+        기획서 요소 표에 <code>안내 문구</code> 열을 추가하고 대조하게 했다.
+      </p>
+      <p>
+        그 열을 더하자 표가 넓어져 회원가입 요소 표의 마지막 행이 <strong>다음 페이지로
+        밀렸다.</strong> PDF는 표가 페이지를 넘어가면 헤더를 다시 그리고, pdfplumber는
+        그것을 별개의 표로 읽는다. 첫 표만 돌려줘 그 행이 사라졌다 — 행 누락을 막으려고
+        만든 장치가 같은 이유로 무력해진 것이다. 내가 만든 버그가 아니라 요소가 많은
+        실물 기획서에서 먼저 터질 버그였다.
       </p>
       <p>
         한계도 적어 둔다. 문구가 없는 요구("정렬은 최신순")는 이 방식으로 보이지 않는다.
@@ -1893,7 +1909,7 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 355개 통과 ·
+    코드 <code>C:\dev\prova</code> · 테스트 366개 통과 ·
     자세한 설명은 <code>docs/teaching/</code>의 노트 13개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
