@@ -17,9 +17,18 @@ S4 가 매 스텝 스크린샷을 남기도록 만들어 둔 것이 여기서 �
 카드 영역의 **합집합**으로 잘라 좌표를 통일하면, 정렬은 맞으면서 카드 크기 차이는 그대로
 보인다.
 
+## 문구는 인자로 받는다
+
+기본값은 로그인 화면(대문자 규칙)이라 인자 없이 실행하면 지금까지와 같은 이미지가
+나온다. 다른 화면·규칙은 문구를 넘겨 쓴다 — 코드에 박아 두면 화면을 늘릴 때마다 이
+스크립트를 고쳐야 한다.
+
 사용법:
     uv run python scripts/make_comparison.py
     uv run python scripts/make_comparison.py --case require_uppercase --out runs/cmp.png
+
+    # 회원가입 — 약관 동의(체크박스) 필수 검증
+    uv run python scripts/make_comparison.py       --good-run runs/watch-1-good-agree --bad-run runs/watch-2-bad-agree       --case signup-agree_terms-required-014 --step step8.png       --sub "약관 동의를 체크하지 않고 가입을 눌렀을 때"       --bad-head "bad — 약관 동의 검증이 빠진 구현"       --bad-note "에러 없이 가입이 완료됐다 → 규칙이 강제되지 않는다"       --out runs/cmp-signup-agree.png
 """
 
 from __future__ import annotations
@@ -92,8 +101,10 @@ def build(
     good_shot: Path,
     bad_shot: Path,
     out: Path,
-    input_value: str,
-    rule_label: str,
+    sub: str,
+    bad_head: str,
+    good_note: str,
+    bad_note: str,
 ) -> Path:
     good = Image.open(good_shot)
     bad = Image.open(bad_shot)
@@ -124,17 +135,11 @@ def build(
 
     # 표제
     d.text((PAD, PAD - 4), "같은 기획서 · 같은 입력값 · 다른 구현", font=f_title, fill=INK)
-    d.text(
-        (PAD, PAD + 30),
-        f"비밀번호에 {input_value} 을 넣었을 때 — {rule_label} 규칙만 어긴 값이다",
-        font=f_sub, fill=MUTED,
-    )
+    d.text((PAD, PAD + 30), sub, font=f_sub, fill=MUTED)
 
     panels = [
-        (g_img, "good — 기획서를 지킨 구현", "PASS", PASS,
-         "기획서가 지정한 에러 문구가 그대로 노출됐다"),
-        (b_img, "bad — 대문자 검증이 빠진 구현", "FAIL", FAIL,
-         "기획서와 다른 문구가 노출됐다 → 규칙이 강제되지 않는다"),
+        (g_img, "good — 기획서를 지킨 구현", "PASS", PASS, good_note),
+        (b_img, bad_head, "FAIL", FAIL, bad_note),
     ]
 
     for i, (shot, head, tag, color, note) in enumerate(panels):
@@ -170,8 +175,15 @@ def main() -> None:
     ap.add_argument("--good-run", type=Path, default=Path("runs/real-good"))
     ap.add_argument("--bad-run", type=Path, default=Path("runs/real-bad"))
     ap.add_argument("--out", type=Path, default=Path("runs/comparison.png"))
-    ap.add_argument("--value", default="a1!aaaaa")
-    ap.add_argument("--rule", default="대문자 포함")
+    # 문구 기본값은 로그인 화면(대문자 규칙)이다. 인자 없이 실행하면 지금까지와
+    # 같은 이미지가 나오고, 다른 화면·규칙은 문구를 넘겨 쓴다. 문구를 코드에 박아
+    # 두면 화면을 늘릴 때마다 이 스크립트를 고쳐야 한다.
+    ap.add_argument("--sub",
+                    default="비밀번호에 a1!aaaaa 을 넣었을 때 — 대문자 포함 규칙만 어긴 값이다")
+    ap.add_argument("--bad-head", default="bad — 대문자 검증이 빠진 구현")
+    ap.add_argument("--good-note", default="기획서가 지정한 에러 문구가 그대로 노출됐다")
+    ap.add_argument("--bad-note",
+                    default="기획서와 다른 문구가 노출됐다 → 규칙이 강제되지 않는다")
     args = ap.parse_args()
 
     good_shot = args.good_run / args.case / args.step
@@ -185,7 +197,8 @@ def main() -> None:
                 f"--run-id {p.parts[1]}"
             )
 
-    out = build(good_shot, bad_shot, args.out, args.value, args.rule)
+    out = build(good_shot, bad_shot, args.out, args.sub, args.bad_head,
+                args.good_note, args.bad_note)
     print(f"  {out}  ({out.stat().st_size / 1024:,.0f} KB, {Image.open(out).size})")
 
 
