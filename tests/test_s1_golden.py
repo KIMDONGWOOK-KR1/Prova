@@ -21,12 +21,15 @@ vLLM 에 연결되지 않으면 skip 한다. 실패로 처리하면 GPU 없는 �
 
 SPECS 에 화면을 추가하면 그 화면에도 같은 강도의 대조가 걸린다. 화면을 늘릴 때
 정확도 측정이 함께 늘어나지 않으면, 확장된 부분만 측정되지 않은 상태가 된다.
-회원가입 화면은 로그인에 없던 규칙(same_as·options·체크박스)을 갖고 있어
-특히 여기서 확인해야 한다.
+화면마다 로그인에 없던 것을 갖고 있어 특히 여기서 확인해야 한다.
 
-프롬프트의 few-shot 예시는 이 두 화면과 겹치지 않는 화면('비밀번호 변경')을
+    회원가입   same_as · options · 체크박스
+    검색       scenarios (규칙으로 표현할 수 없는 입력-결과 짝)
+
+프롬프트의 few-shot 예시는 이 화면들과 겹치지 않는 화면('비밀번호 변경')을
 쓴다. 예시가 측정 대상과 같으면 기획서를 읽어서 맞힌 것인지 예시를 베낀 것인지
 구분할 수 없어, 정확도 숫자가 실물 기획서에 대한 근거가 되지 못한다.
+**화면을 추가할 때 그 예시와 주제가 겹치지 않는지 확인해야 한다.**
 
 ## 비교 강도를 필드마다 다르게 둔다
 
@@ -50,16 +53,22 @@ import pytest
 from prova.llm.base import LLMError
 from prova.models import ScreenSpec
 from prova.s1_spec_extractor.extractor import extract_from_pdf
+from prova.s2_case_generator.rule_expander import satisfies
 from prova.text_utils import contains_loose, loosen
 
 SPEC_DIR = Path("fixtures/specs")
-SPECS = ["login", "signup"]
+SPECS = ["login", "signup", "search"]
 
-# 성공 조건에서 S2 가 정규식으로 뽑아 쓰는 조각. 이 두 개가 빠지면 정상 케이스의
-# 기대가 비어 버려서, 화면이 망가져도 '에러 없음' 만으로 PASS 가 된다.
+# 성공 조건에서 S2 가 정규식으로 뽑아 쓰는 조각. 이게 빠지면 정상 케이스의 기대가
+# 비어 버려서, 화면이 망가져도 '에러 없음' 만으로 PASS 가 된다.
+#
+# 검색은 빈 목록이다 — 제출 후 이동하지도, 정해진 문구를 띄우지도 않는 화면이라
+# 성공 조건에서 뽑을 조각이 없다. 그 화면의 실질적 검증은 scenarios 가 맡는다
+# (TestScenarios 참고). 없는 것을 요구하면 기획서를 억지로 고치게 된다.
 SUCCESS_TOKENS = {
     "login": ["/dashboard", "환영합니다"],
     "signup": ["/welcome", "가입이 완료되었습니다"],
+    "search": [],
 }
 
 
@@ -206,6 +215,57 @@ class TestSampleValues:
                 f"(기대: {want.sample_value!r}) — 정상 케이스가 오탐 실패할 수 있다"
             )
             assert loosen(got.sample_value) == loosen(want.sample_value)
+
+
+class TestScenarios:
+    """기획서가 제시한 입력-결과 예시.
+
+    규칙으로 표현할 수 없는 검증이 여기 담긴다. 이걸 놓치면 '검사는 하는데 방법이
+    기획서와 다르다' 는 종류의 결함(검색의 대소문자 처리 등)에 도달할 경로가
+    아예 없어진다 — 위반값 생성으로는 만들 수 없는 케이스이기 때문이다.
+
+    given 의 키는 element_id 여야 한다. 라벨을 넣으면 그 값이 조용히 무시되고,
+    시나리오가 의도한 것과 다른 것을 확인한 뒤 대개 통과해 버린다(미탐).
+    """
+
+    def test_건수가_일치한다(self, pair):
+        """**골든에 시나리오가 없을 때도 검사한다.** 처음에는 없으면 skip 했는데,
+        그 사이로 실제 결함이 지나갔다 — 7B 가 회원가입 기획서에 없는 시나리오를
+        하나 만들어냈고, skip 때문에 테스트가 통과했다. 파이프라인 케이스 수가
+        14건에서 15건으로 늘어난 것을 보고서야 알았다.
+
+        '있어야 할 것이 있는가' 만 보면 '없어야 할 것이 없는가' 를 놓친다."""
+        extracted, golden, _ = pair
+        assert len(extracted.scenarios) == len(golden.scenarios), (
+            f"기대 {len(golden.scenarios)}건, 실제 {len(extracted.scenarios)}건\n"
+            f"  실제: {[s.model_dump() for s in extracted.scenarios]}"
+        )
+
+    def test_입력값과_기대문구가_일치한다(self, pair):
+        extracted, golden, _ = pair
+        got = {(tuple(sorted(s.given.items())), loosen(s.expect_text))
+               for s in extracted.scenarios}
+        want = {(tuple(sorted(s.given.items())), loosen(s.expect_text))
+                for s in golden.scenarios}
+        assert got == want, (
+            f"예시 시나리오 불일치\n"
+            f"  기대: {sorted(want)}\n"
+            f"  실제: {sorted(got)}"
+        )
+
+    def test_규칙_위반을_시나리오에_넣지_않는다(self, pair):
+        """규칙 위반은 constraints 에서 자동 전개된다. 시나리오에 또 넣으면 같은
+        것을 두 번 검증하고, 리포트에서 규칙과 실패의 1:1 대응이 흐려진다."""
+        extracted, _, _ = pair
+        for scenario in extracted.scenarios:
+            for element_id, value in scenario.given.items():
+                element = extracted.element_by_id(element_id)
+                if element is None or not element.constraints:
+                    continue
+                assert satisfies(value, element.constraints), (
+                    f"시나리오 입력 {value!r} 이 {element_id} 의 검증 규칙을 "
+                    f"위반한다 — 규칙 위반 예시가 시나리오로 들어왔다"
+                )
 
 
 class TestNoSilentFailure:

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>상품 검색</title>
+  <style>
+    body { font-family: "Malgun Gothic", sans-serif; background:#f4f5f7; margin:0;
+           display:flex; justify-content:center; padding:60px 20px; min-height:100vh;
+           box-sizing:border-box; }
+    .card { background:#fff; padding:32px 40px; border-radius:10px; width:460px;
+            box-shadow:0 2px 12px rgba(0,0,0,.08); height:fit-content; }
+    h1 { font-size:22px; margin:0 0 20px; }
+    label { display:block; font-size:13px; color:#444; margin:12px 0 6px; }
+    input { width:100%; padding:10px 12px; border:1px solid #ccd0d5; border-radius:6px;
+            font-size:14px; box-sizing:border-box; }
+    button { width:100%; margin-top:18px; padding:11px; border:0; border-radius:6px;
+             background:#2f6fed; color:#fff; font-size:15px; cursor:pointer; }
+    .error { margin-top:16px; padding:10px 12px; background:#fdeaea; color:#b32020;
+             border-radius:6px; font-size:13px; line-height:1.5; }
+    .count { margin-top:22px; font-size:14px; font-weight:700; color:#1c1f23; }
+    .empty { margin-top:22px; padding:10px 12px; background:#eef1f5; color:#4c5665;
+             border-radius:6px; font-size:13px; }
+    ul.results { margin:12px 0 0; padding:0; list-style:none; border-top:1px solid #e5e8ec; }
+    ul.results li { padding:11px 2px; border-bottom:1px solid #e5e8ec; font-size:14px;
+                    color:#1c1f23; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>상품 검색</h1>
+
+    <!-- 폼 마크업은 good/bad 가 완전히 동일하다 (action 의 variant 만 다름).
+         결과 영역은 '동작' 의 산물이라 달라지는 것이 정상이다 — 그 차이가 바로
+         Prova 가 찾아내야 하는 기획-구현 불일치다.
+
+         method=get 을 쓴다: 실제 검색 화면이 그렇고, 검색어가 URL 에 남아야
+         결과를 공유·재현할 수 있다. 개인정보가 아니라 검색어이므로 URL 노출이
+         문제되지 않는다. -->
+    <form method="get" action="/{{ variant }}/search" novalidate>
+      <label for="query">검색어</label>
+      <input type="text" id="query" name="query" placeholder="상품명을 입력하세요"
+             value="{{ query or '' }}">
+
+      <button type="submit">검색</button>
+    </form>
+
+    {% if error %}
+    <div class="error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    {% if count is not none %}
+    <div class="count">검색 결과 {{ count }}건</div>
+    {% endif %}
+
+    {% if results %}
+    <ul class="results">
+      {% for name in results %}<li>{{ name }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+
+    <!-- 결과 0건 안내는 에러가 아니라 안내다. role=alert 를 붙이지 않는 이유:
+         붙이면 정상 케이스가 '에러가 노출됐다' 로 판정된다. 실제로 결과 0건은
+         사용자 잘못도, 구현 결함도 아니다.
+
+         주의: 기대 문구를 이 주석에 그대로 적지 않는다. 주석은 화면에 렌더되지
+         않으므로 판정(inner_text 기반)에는 영향이 없지만, page.content() 를 보는
+         검사나 사람이 하는 확인에서 '문구가 있다' 로 잘못 읽힌다. 실제로 그렇게
+         한 번 헷갈렸다. -->
+    {% if empty_message %}
+    <div class="empty">{{ empty_message }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>

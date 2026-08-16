@@ -1,0 +1,45 @@
+{
+  "screen_id": "search",
+  "screen_name": "상품 검색",
+  "url_path": "/search",
+  "elements": [
+    {
+      "element_id": "query",
+      "type": "input",
+      "label": "검색어",
+      "required": true,
+      "constraints": {
+        "min_length": 2,
+        "max_length": 50
+      },
+      "error_message": "검색어는 2자 이상 50자 이하로 입력하세요.",
+      "sample_value": "Notebook"
+    },
+    {
+      "element_id": "search_btn",
+      "type": "button",
+      "label": "검색",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    }
+  ],
+  "scenarios": [
+    {
+      "given": { "query": "notebook" },
+      "expect_text": "검색 결과 3건"
+    },
+    {
+      "given": { "query": "zzzz" },
+      "expect_text": "검색 결과가 없습니다."
+    }
+  ],
+  "success_condition": "검색어가 입력 검증을 통과하면 검색을 수행하고 결과 개수와 목록을 노출한다",
+  "failure_conditions": [
+    "검색어가 비어 있으면 \"검색어를 입력하세요.\" 노출, 검색하지 않음",
+    "검색어 길이 규칙 위반 시 \"검색어는 2자 이상 50자 이하로 입력하세요.\" 노출, 검색하지 않음",
+    "일치하는 상품이 없으면 \"검색 결과가 없습니다.\" 노출"
+  ],
+  "required_message": "검색어를 입력하세요.",
+  "warnings": []
+}

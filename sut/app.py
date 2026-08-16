@@ -1,4 +1,4 @@
-"""테스트 대상 웹앱(SUT) — 미니 로그인·회원가입 앱, 두 가지 버전.
+"""테스트 대상 웹앱(SUT) — 미니 로그인·회원가입·검색 앱, 두 가지 버전.
 
 ## 이 앱의 목적
 
@@ -10,6 +10,8 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
     /bad/login     의도적으로 3가지를 빠뜨린 구현                   → 4건 FAIL 기대
     /good/signup   fixtures/specs/signup_spec.md 를 전부 지킨 구현  → 전 케이스 PASS 기대
     /bad/signup    의도적으로 3가지를 빠뜨린 구현                   → 3건 FAIL 기대
+    /good/search   fixtures/specs/search_spec.md 를 전부 지킨 구현  → 전 케이스 PASS 기대
+    /bad/search    의도적으로 3가지를 빠뜨린 구현                   → 3건 FAIL 기대
 
 ## 중요: 두 버전의 HTML 마크업은 완전히 동일하다
 
@@ -49,6 +51,27 @@ B1·B2는 '규칙 누락'(에러가 떠야 하는데 안 뜬다), B3는 '문구 
 C3 는 특히 '규칙 하나당 케이스 하나' 설계의 근거가 된다. min_length 와
 max_length 를 한 케이스로 묶어 검증하면 min 쪽이 걸려 에러가 뜨고, 그러면
 max 검증이 없다는 사실이 가려진다.
+
+## bad 검색에 심은 의도적 불일치 3종
+
+검색 화면은 검증 축이 다르다. 지금까지는 '규칙을 어긴 값에 에러가 뜨는가' 였는데,
+검색은 '정상 입력에 정해진 결과가 나오는가' 다. 그래서 규칙 위반으로 표현할 수 없는
+결함을 심을 수 있다.
+
+    D1  영문 대소문자를 구분한다 (기획서는 구분하지 않는다고 명시)
+        → 'notebook' 으로 검색하면 0건. 값에 흠이 없는데 결과가 틀린 사례로,
+           규칙 위반으로는 표현할 수 없다. 기획서 예시(scenarios)만이 잡아낸다.
+    D2  결과가 0건일 때 안내 문구를 노출하지 않는다
+        → 빈 화면이 된다. '틀린 것을 보여준다' 가 아니라 '보여줘야 할 것을 안
+           보여준다' 는 누락이다.
+    D3  검색어 최소 길이 검증 미구현 (최대 길이만 확인)
+        → 회원가입 C3 와 같은 종류지만, 규칙 기반 경로가 이 화면에서도 도는지
+           확인하는 역할을 한다.
+
+D1 이 이 화면을 추가한 이유다. 로그인·회원가입의 결함은 모두 '값을 검사하지
+않았다' 였고 위반값 생성으로 잡혔다. D1 은 검사 자체는 하는데 **검사 방법이
+기획서와 다르다.** 그걸 잡으려면 기획서가 입력과 기대 결과를 짝으로 제시해야
+한다 — models.Scenario 가 그 자리다.
 """
 
 from __future__ import annotations
@@ -63,7 +86,7 @@ from fastapi.templating import Jinja2Templates
 BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
-app = FastAPI(title="Prova SUT — 미니 로그인·회원가입 앱")
+app = FastAPI(title="Prova SUT — 미니 로그인·회원가입·검색 앱")
 
 # 기획서 §5 테스트 계정
 REGISTERED = {"user@test.com": "Abcd123!"}
@@ -84,6 +107,27 @@ MSG_PATH_REQUIRED = "가입 경로를 선택하세요."
 MSG_AGREE_REQUIRED = "약관에 동의해야 합니다."
 
 SIGNUP_PATHS = ("검색", "지인 추천", "광고")
+
+# 검색 기획서에 정의된 문구
+MSG_QUERY_REQUIRED = "검색어를 입력하세요."
+MSG_QUERY_LENGTH = "검색어는 2자 이상 50자 이하로 입력하세요."
+MSG_NO_RESULTS = "검색 결과가 없습니다."
+
+# 검색 대상 데이터.
+#
+# 읽기 전용이다 — 검색은 상태를 바꾸지 않으므로 테스트끼리 간섭하지 않고, SUT 를
+# 세션당 한 번만 띄워도 된다(tests/conftest.py 의 픽스처 범위 근거).
+#
+# 'Notebook' 3건은 기획서 §6 예시("notebook -> 검색 결과 3건")를 성립시키는
+# 데이터다. 대소문자를 구분하지 않아야 소문자 검색으로도 3건이 나온다.
+PRODUCTS = (
+    "Notebook Pro 15",
+    "Notebook Air 13",
+    "Notebook Slim 14",
+    "무선 마우스",
+    "기계식 키보드",
+    "USB-C 허브",
+)
 
 SPECIAL_CHARS = r"""!@#$%^&*()_+-=[]{};':\"\|,.<>/?~`"""
 
@@ -122,6 +166,26 @@ def render_signup(request: Request, variant: str, error: str | None = None) -> H
         request=request,
         name="signup.html",
         context={"variant": variant, "error": error},
+    )
+
+
+def render_search(
+    request: Request,
+    variant: str,
+    query: str | None = None,
+    error: str | None = None,
+    results: list[str] | None = None,
+    count: int | None = None,
+    empty_message: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="search.html",
+        context={
+            "variant": variant, "query": query, "error": error,
+            "results": results or [], "count": count,
+            "empty_message": empty_message,
+        },
     )
 
 
@@ -296,6 +360,71 @@ def bad_welcome(request: Request):
     return render_welcome(request, "bad", "테스터")
 
 
+# ---------------------------------------------------------------------------
+# good/search — 기획서를 전부 지킨 구현
+# ---------------------------------------------------------------------------
+
+
+def find_products(term: str, *, case_sensitive: bool) -> list[str]:
+    """상품명에 term 이 포함된 항목. 기획서 §2-2 는 대소문자를 구분하지 않는다.
+
+    case_sensitive 를 인자로 둔 이유: bad 변형이 이 규칙을 어기는 것이 심어 둔
+    결함(D1)이다. 두 변형이 같은 함수를 쓰되 이 한 가지만 다르게 해서, 결과 차이가
+    '대소문자 처리' 에서만 나오도록 한다.
+    """
+    if case_sensitive:
+        return [name for name in PRODUCTS if term in name]
+    lowered = term.lower()
+    return [name for name in PRODUCTS if lowered in name.lower()]
+
+
+@app.get("/good/search", response_class=HTMLResponse)
+def good_search(request: Request, query: str | None = None):
+    """검색어가 오지 않았으면(첫 진입) 폼만 보여준다.
+
+    'query 파라미터가 없다' 와 'query 가 빈 문자열이다' 를 구분하는 것이 중요하다.
+    첫 진입에도 필수 입력 에러를 띄우면, 아무 조작도 하지 않은 화면에 에러가 떠
+    있게 된다. 빈 검색어로 버튼을 누른 경우에만 에러가 맞다.
+    """
+    if query is None:
+        return render_search(request, "good")
+
+    if not query:
+        return render_search(request, "good", query, error=MSG_QUERY_REQUIRED)
+    if not (2 <= len(query) <= 50):
+        return render_search(request, "good", query, error=MSG_QUERY_LENGTH)
+
+    found = find_products(query, case_sensitive=False)
+    if not found:
+        return render_search(request, "good", query, empty_message=MSG_NO_RESULTS)
+    return render_search(request, "good", query, results=found, count=len(found))
+
+
+# ---------------------------------------------------------------------------
+# bad/search — 의도적으로 규칙을 빠뜨린 구현
+# ---------------------------------------------------------------------------
+
+
+@app.get("/bad/search", response_class=HTMLResponse)
+def bad_search(request: Request, query: str | None = None):
+    if query is None:
+        return render_search(request, "bad")
+
+    if not query:
+        return render_search(request, "bad", query, error=MSG_QUERY_REQUIRED)
+
+    # D3: 최소 길이 검증이 없다 (최대 길이만 확인한다)
+    if len(query) > 50:
+        return render_search(request, "bad", query, error=MSG_QUERY_LENGTH)
+
+    # D1: 대소문자를 구분한다 (기획서는 구분하지 않는다고 명시)
+    found = find_products(query, case_sensitive=True)
+    if not found:
+        # D2: 결과가 없을 때 안내 문구를 노출하지 않는다 — 빈 화면이 된다
+        return render_search(request, "bad", query)
+    return render_search(request, "bad", query, results=found, count=len(found))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(
@@ -305,5 +434,7 @@ def index():
         "<li><a href='/bad/login'>/bad/login — 의도적 불일치 구현</a></li>"
         "<li><a href='/good/signup'>/good/signup — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/signup'>/bad/signup — 의도적 불일치 구현</a></li>"
+        "<li><a href='/good/search'>/good/search — 기획서 준수 구현</a></li>"
+        "<li><a href='/bad/search'>/bad/search — 의도적 불일치 구현</a></li>"
         "</ul>"
     )

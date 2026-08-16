@@ -500,4 +500,31 @@ def spec_defects(spec: ScreenSpec) -> list[str]:
                 f"'{element.label}' 은 선택 요소인데 선택 목록(options)이 "
                 f"비어 있습니다. 정상 케이스가 값을 고를 수 없습니다."
             )
+
+    defects.extend(_scenario_defects(spec))
+    return defects
+
+
+def _scenario_defects(spec: ScreenSpec) -> list[str]:
+    """기획서 예시 시나리오가 실행 가능한 형태인지 본다.
+
+    두 경우 모두 **조용히 오탐을 만든다.** 없는 요소를 가리키면 지정한 값이 그냥
+    무시되어 시나리오가 의도와 다른 것을 확인하고(대개 통과해 버린다), 기대 문구가
+    비면 비교할 대상이 없어 그 케이스가 항상 실패한다.
+    """
+    defects: list[str] = []
+    known = {e.element_id for e in spec.elements}
+
+    for i, scenario in enumerate(spec.scenarios, 1):
+        missing = sorted(set(scenario.given) - known)
+        if missing:
+            defects.append(
+                f"기획서 예시 {i}번이 가리키는 요소 {', '.join(missing)} 가 화면에 "
+                f"없습니다. 그 값은 무시되므로 시나리오가 의도한 것을 확인하지 못합니다."
+            )
+        if not scenario.expect_text.strip():
+            defects.append(
+                f"기획서 예시 {i}번에 노출돼야 하는 문구가 비어 있습니다. "
+                f"비교할 대상이 없어 이 케이스는 항상 실패합니다."
+            )
     return defects

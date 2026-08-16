@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import ScreenSpec
+from prova.models import ScreenSpec, Scenario
 from prova.s1_spec_extractor.pdf_parser import ParsedDocument, parse_pdf
 
 SYSTEM_PROMPT = """\
@@ -89,22 +89,44 @@ same_as 는 값 하나만 봐서는 판정할 수 없는 규칙이므로 특히 
   쓰이므로, 있는데 빠뜨리면 코드가 만든 값이 대신 쓰이고 그 값은 규칙은
   만족하지만 등록된 계정이 아니어서 정상 케이스가 잘못 실패합니다. 반대로 임의로
   만들어 넣어도 같은 문제가 생깁니다.
-- required_message: 필수 입력값이 비어 있을 때 노출하는 **화면 공통 문구**.
-  요소별 error_message 와 구별하세요. 기획서의 실패 조건에 "필수 입력값이 비어
-  있음" 같은 항목이 있으면 그 문구를 여기에 넣습니다. 그런 문구가 기획서에
-  없으면 null 로 두세요 — 추측한 문구를 넣으면 실제 화면과 대조할 때 잘못된
-  실패로 판정됩니다.
+- scenarios: 기획서가 **입력과 그 결과를 짝으로** 제시한 예시. '예시 검색',
+  '예시 동작' 처럼 **입력값 열과 '노출돼야 하는 문구' 열이 함께 있는 표**가
+  그것입니다. 각 행을 하나씩 넣으세요.
+      given       그 행의 입력값. 열 제목이 요소의 라벨이므로, 해당 요소의
+                  element_id 를 키로 씁니다 ({"query": "notebook"}).
+      expect_text 그 행의 '노출돼야 하는 문구' 를 기획서에 적힌 그대로.
+  **입력값 열만 있고 결과 문구 열이 없는 표는 scenarios 가 아니라 sample_value
+  입니다.** 두 표를 혼동하지 마세요 — 결과 문구 열의 유무로 구분합니다.
+  또한 **검증 규칙 위반 예시는 여기 넣지 마세요.** 규칙 위반은 constraints 에서
+  자동으로 전개됩니다. scenarios 는 규칙으로 표현할 수 없는 것(검색 결과 건수,
+  선택에 따른 안내 문구 등)만 담습니다.
+  그런 표가 없으면 빈 배열로 두세요.
+- required_message: 입력이 **비어 있을 때** 노출하는 문구. 기획서의 실패 조건
+  표에서 '~가 비어 있음', '~를 입력하지 않음', '필수 항목 누락' 처럼 **값이
+  없는 상황**을 다루는 행을 찾아 그 문구를 그대로 옮기세요. 상황 표현은
+  기획서마다 다릅니다 ("필수 입력값이 비어 있음", "검색어가 비어 있음" 등) —
+  표현이 아니라 **의미**로 찾으세요.
+  요소별 error_message 와 구별하세요. 그런 행이 없으면 null 로 두세요 —
+  추측한 문구를 넣으면 실제 화면과 대조할 때 잘못된 실패로 판정됩니다.
 - success_condition: 정상 처리 시 무엇이 일어나는지 (이동 경로, 노출 문구).
 - failure_conditions: 실패 상황별 처리를 문장 목록으로.
 - 기획서에서 판단할 수 없는 내용은 추측하지 말고 warnings 에 기록하세요.
+
+## 예시의 값을 베끼지 마세요
+
+아래 예시는 **형식**을 보여주는 것입니다. 문구·경로·값은 반드시 지금 주어진
+기획서에서 옮기세요. 예시에 있던 문구를 그대로 쓰면, 실제 화면과 대조할 때
+있지도 않은 불일치를 보고하게 됩니다. 기획서에 해당 내용이 없으면 예시를
+가져오지 말고 null 이나 빈 값으로 두세요.
 """
 
-# 예시로 쓰는 화면은 실제 검증 대상 화면(로그인·회원가입)과 겹치지 않게 고른다.
+# 예시로 쓰는 화면은 실제 검증 대상 화면(로그인·회원가입·검색)과 겹치지 않게 고른다.
 #
 # 이유: S1 정확도를 골든 데이터와 대조해 측정하는데, 예시가 측정 대상과 같으면
 # 모델이 기획서를 읽어서 맞힌 것인지 예시를 베낀 것인지 구분할 수 없다. 그러면
-# 10/10 이라는 숫자가 실물 기획서에 대한 근거가 되지 못한다.
-# 대신 확장된 규칙(same_as·options·체크박스)을 모두 한 화면에 담아 형식은 가르친다.
+# 정확도 숫자가 실물 기획서에 대한 근거가 되지 못한다.
+# 대신 확장된 형식(same_as·options·체크박스·scenarios)을 모두 한 화면에 담아
+# 형식만 가르친다. 화면을 추가할 때 이 예시와 주제가 겹치지 않는지 확인해야 한다.
 FEW_SHOT = """\
 ## 예시
 
@@ -129,6 +151,11 @@ FEW_SHOT = """\
 | 현재 비밀번호 | 새 비밀번호 |
 |---|---|
 | Old12345678 | New98765432 |
+
+[표 1-3] 예시 동작
+| 변경 사유 | 노출돼야 하는 문구 |
+|---|---|
+| 정기 변경 | 90일 후 다시 안내합니다 |
 
 출력 JSON:
 {
@@ -156,6 +183,9 @@ FEW_SHOT = """\
     {"element_id": "submit", "type": "button", "label": "변경하기", "required": false,
      "constraints": {}, "error_message": null, "options": [], "sample_value": null}
   ],
+  "scenarios": [
+    {"given": {"reason": "정기 변경"}, "expect_text": "90일 후 다시 안내합니다"}
+  ],
   "success_condition": "/settings 로 이동하고 \\"비밀번호를 변경했습니다\\" 노출",
   "failure_conditions": ["새 비밀번호 규칙 위반 시 에러 메시지 노출",
                          "새 비밀번호 확인이 다르면 \\"새 비밀번호가 일치하지 않습니다.\\" 노출",
@@ -167,28 +197,70 @@ FEW_SHOT = """\
 """
 
 
-def build_user_prompt(doc_text: str, declared_ids: list[str] | None = None) -> str:
+def build_user_prompt(
+    doc_text: str,
+    declared_ids: list[str] | None = None,
+    screen_meta: dict[str, str] | None = None,
+    sample_values: dict[str, str] | None = None,
+    scenarios: list[dict] | None = None,
+) -> str:
     """LLM 에 넘길 프롬프트. 결정적으로 알아낸 사실은 직접 알려 준다.
 
-    declared_ids 는 pdfplumber 가 표에서 읽은 요소 ID 목록이다. 이걸 넣는 이유는
-    실측에서 7B 가 7행 표의 버튼 행을 빠뜨렸기 때문이다. 제출 버튼이 없으면
-    테스트가 폼을 제출하지 못해 구현이 옳아도 전 케이스가 실패로 나온다.
+    넘기는 것은 모두 pdfplumber 가 표에서 그대로 읽은 값이다. 이걸 넣는 이유는
+    실측에서 7B 가 표에 적힌 사실을 다시 만들어내려 했기 때문이다.
+
+        declared_ids   7행 표의 버튼 행을 빠뜨렸다. 제출 버튼이 없으면 폼이
+                       제출되지 않아 구현이 옳아도 전 케이스가 실패로 나온다.
+        screen_meta    '화면 ID | search' 를 두고도 화면명에서 'product_search'
+                       를 지어냈다. screen_id 는 case_id 접두사이자 스크린샷 경로다.
+        sample_values  few-shot 예시의 표 제목을 바꾼 것만으로 추출이 두 번
+                       깨졌다. 예시값이 빠지면 정상 케이스가 오탐 실패한다.
+        scenarios      기획서에 없는 시나리오를 만들어냈다. 성공 조건과 예시
+                       입력값을 조합해 그럴듯한 것을 지었고, 체크박스 값으로
+                       'checked' 라는 규약까지 창작했다. 지어낸 기대 문구는
+                       화면에 없는 문구를 요구해 오탐이 된다.
 
     이건 LLM 이 못하는 일을 대신 해주는 것이 아니라, **코드가 확실히 아는 사실을
     추론에 맡기지 않는 것**이다. 표의 몇 번째 열이 ID 인지는 괘선으로 정해지므로
     추론할 여지가 없다. 그 사실을 프롬프트에 박아 두면 사후에 결과를 손보는
     보정(추출 실패를 가리는 종류)을 하지 않아도 된다.
     """
-    hint = ""
+    lines: list[str] = []
     if declared_ids:
-        hint = (
-            f"\n## 반드시 지킬 것\n\n"
+        lines.append(
             f"이 기획서의 UI 요소 표에는 요소가 {len(declared_ids)}개 있습니다. "
             f"elements 배열을 정확히 {len(declared_ids)}개로 만드세요.\n"
             f"요소 ID 는 순서대로 다음과 같습니다 — 하나도 빠뜨리지 말고, 이름을 "
-            f"바꾸지 말고 그대로 쓰세요:\n"
-            f"{', '.join(declared_ids)}\n"
+            f"바꾸지 말고 그대로 쓰세요:\n{', '.join(declared_ids)}"
         )
+    if screen_meta:
+        pairs = ", ".join(f"{k} = {v}" for k, v in screen_meta.items())
+        lines.append(
+            f"화면 개요 표에 적힌 값을 그대로 쓰세요 (새로 만들지 마세요): {pairs}"
+        )
+    if sample_values:
+        pairs = "\n".join(f"  라벨 '{k}' -> {v!r}" for k, v in sample_values.items())
+        lines.append(
+            "기획서가 제시한 예시 입력값입니다. 해당 라벨을 가진 요소의 "
+            f"sample_value 에 그대로 넣으세요:\n{pairs}"
+        )
+    if scenarios is not None:
+        if scenarios:
+            lines.append(
+                f"이 기획서의 입력-결과 예시는 다음 {len(scenarios)}건입니다. "
+                f"scenarios 에 이대로 넣으세요:\n"
+                + "\n".join(f"  {s}" for s in scenarios)
+            )
+        else:
+            lines.append(
+                "이 기획서에는 입력-결과 짝을 제시한 예시 표가 없습니다. "
+                "scenarios 는 빈 배열([])이어야 합니다. 성공 조건이나 예시 입력값을 "
+                "조합해 시나리오를 만들어 내지 마세요."
+            )
+
+    hint = ""
+    if lines:
+        hint = "\n## 반드시 지킬 것\n\n" + "\n\n".join(lines) + "\n"
     return (
         f"{FEW_SHOT}\n## 실제 기획서\n\n기획서 텍스트:\n{doc_text}\n"
         f"{hint}\n출력 JSON:"
@@ -201,15 +273,24 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     if not doc_text.strip():
         raise LLMError(f"PDF 에서 텍스트를 추출하지 못했습니다: {doc.source}")
 
+    declared_scenarios = doc.declared_scenarios()
+
     raw = llm.complete_json(
         system=SYSTEM_PROMPT,
-        user=build_user_prompt(doc_text, doc.declared_element_ids()),
+        user=build_user_prompt(
+            doc_text,
+            doc.declared_element_ids(),
+            doc.declared_screen_meta(),
+            doc.declared_sample_values(),
+            declared_scenarios,
+        ),
         schema=ScreenSpec.model_json_schema(),
         max_tokens=max_tokens,
     )
     spec = ScreenSpec.model_validate(raw)
 
     _normalize_element_ids(spec)
+    _apply_declared_scenarios(spec, declared_scenarios)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
     # negative 케이스가 아예 생성되지 않아 리포트가 근거 없이 초록불이 된다.
@@ -250,6 +331,41 @@ def _normalize_element_ids(spec: ScreenSpec) -> None:
             element.constraints["same_as"] = renames[ref]
 
 
+def _apply_declared_scenarios(
+    spec: ScreenSpec, declared: list[dict] | None
+) -> None:
+    """표에서 읽은 시나리오를 정답으로 삼는다.
+
+    ## 왜 LLM 결과를 덮어쓰는가
+
+    보정을 하는 것이 아니라, **애초에 LLM 이 판단할 일이 아니었다.** 열 제목에서
+    요소 ID 를 찾고 셀 값을 옮기는 데는 추론이 없다. 그걸 맡긴 대가로 실측에서
+    두 가지가 나왔다 — 기획서에 없는 시나리오를 만들어내는 것, 그리고 실패 조건
+    표의 행을 시나리오로 들여오는 것. 둘 다 오탐으로 이어진다.
+
+    검증을 약하게 만드는 방향의 보정이 아니라 **같은 문서에서 더 확실한 값으로
+    바꾸는 것**이므로 조용히 처리한다. 다만 LLM 이 다른 답을 냈다는 사실은
+    남긴다 — 프롬프트가 나빠지고 있는지 알 수 있어야 한다.
+
+    표를 판별할 근거가 없으면(declared is None) LLM 결과를 그대로 쓴다. 실물
+    기획서가 시나리오를 표가 아니라 문장으로 적어 두면 그 경로가 필요하다.
+    """
+    if declared is None:
+        return
+
+    llm_scenarios = [
+        {"given": dict(s.given), "expect_text": s.expect_text} for s in spec.scenarios
+    ]
+    spec.scenarios = [Scenario.model_validate(item) for item in declared]
+
+    if llm_scenarios != declared:
+        spec.warnings.append(
+            f"예시 시나리오를 기획서 표에서 직접 읽어 썼습니다 "
+            f"({len(declared)}건). 모델이 낸 것과 달랐습니다 — "
+            f"모델: {llm_scenarios}. 프롬프트를 확인하세요."
+        )
+
+
 def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
     """기획서 표와 추출 결과를 대조해 누락을 찾는다. LLM 을 쓰지 않는다.
 
@@ -274,6 +390,32 @@ def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
         warnings.append(
             "버튼 요소를 하나도 추출하지 못했습니다. 제출 버튼이 없으면 테스트가 "
             "폼을 제출하지 못해, 구현이 옳아도 모든 케이스가 실패로 나옵니다."
+        )
+
+    # 기획서가 예시값을 표로 줬는데 추출에서 빠진 경우. 그러면 정상 케이스가
+    # 코드가 만든 값을 쓰게 되고, 그 값은 규칙은 만족하지만 시스템에 등록된 값이
+    # 아니어서 **구현 결함 없이 실패한다**(오탐).
+    declared_samples = doc.declared_sample_values()
+    if declared_samples:
+        by_label = {e.label: e for e in spec.elements}
+        missing = [
+            f"'{label}' (기획서 예시 {value!r})"
+            for label, value in declared_samples.items()
+            if label in by_label and not by_label[label].sample_value
+        ]
+        if missing:
+            warnings.append(
+                f"기획서가 제시한 예시 입력값이 추출되지 않았습니다: "
+                f"{', '.join(missing)}. 정상 케이스가 코드로 만든 값을 쓰게 되어 "
+                f"구현 결함 없이 실패할 수 있습니다."
+            )
+
+    declared_meta = doc.declared_screen_meta()
+    if declared_meta.get("screen_id") and spec.screen_id != declared_meta["screen_id"]:
+        warnings.append(
+            f"화면 ID 가 기획서와 다릅니다 — 기획서 "
+            f"{declared_meta['screen_id']!r}, 추출 {spec.screen_id!r}. "
+            f"case_id 와 스크린샷 경로가 기획서와 어긋납니다."
         )
     return warnings
 
