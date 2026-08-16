@@ -22,16 +22,26 @@
       "required": false,
       "constraints": {},
       "error_message": null
+    },
+    {
+      "element_id": "result_list",
+      "type": "list",
+      "label": "검색 결과 목록",
+      "required": false,
+      "constraints": {},
+      "error_message": null
     }
   ],
   "scenarios": [
     {
       "given": { "query": "notebook" },
-      "expect_text": "검색 결과 3건"
+      "expect_text": "검색 결과 3건",
+      "expect_count": 3
     },
     {
       "given": { "query": "zzzz" },
-      "expect_text": "검색 결과가 없습니다."
+      "expect_text": "검색 결과가 없습니다.",
+      "expect_count": 0
     }
   ],
   "success_condition": "검색어가 입력 검증을 통과하면 검색을 수행하고 결과 개수와 목록을 노출한다",

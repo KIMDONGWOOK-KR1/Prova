@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from prova.models import ScreenSpec, UIElement
 from prova.s1_spec_extractor.extractor import (
+    _apply_declared_scenarios,
+    _apply_declared_types,
     _normalize_element_ids,
     build_user_prompt,
     structural_warnings,
@@ -118,3 +120,52 @@ class TestNormalizeElementIds:
         spec = spec_with(UIElement(element_id="login_btn", type="button", label="로그인"))
         _normalize_element_ids(spec)
         assert spec.elements[0].element_id == "login_btn"
+
+
+class TestApplyDeclaredTypes:
+    """유형은 표에 적힌 사실이므로 LLM 결과를 덮어쓴다.
+
+    다만 _normalize_element_ids 와 달리 경고를 남긴다. 공백 제거는 표기 복원이지만,
+    유형이 달랐다는 것은 모델이 표를 잘못 읽었다는 뜻이고 그건 프롬프트가
+    나빠지고 있다는 신호다.
+    """
+
+    def test_표의_유형으로_맞춘다(self):
+        spec = spec_with(UIElement(element_id="r", type="text", label="검색 결과 목록"))
+        _apply_declared_types(spec, {"검색 결과 목록": "list"})
+        assert spec.elements[0].type == "list"
+
+    def test_바꿨으면_경고를_남긴다(self):
+        spec = spec_with(UIElement(element_id="r", type="text", label="검색 결과 목록"))
+        _apply_declared_types(spec, {"검색 결과 목록": "list"})
+        assert any("검색 결과 목록" in w and "list" in w for w in spec.warnings)
+
+    def test_같으면_경고하지_않는다(self):
+        """매 실행마다 뜨는 경고는 정작 중요한 경고를 묻는다."""
+        spec = spec_with(UIElement(element_id="e", type="input", label="이메일"))
+        _apply_declared_types(spec, {"이메일": "input"})
+        assert spec.warnings == []
+
+    def test_표에_없는_라벨은_건드리지_않는다(self):
+        spec = spec_with(UIElement(element_id="x", type="input", label="없는 것"))
+        _apply_declared_types(spec, {"이메일": "input"})
+        assert spec.elements[0].type == "input"
+        assert spec.warnings == []
+
+
+class TestApplyDeclaredScenarios:
+    def test_건수까지_표의_값으로_바꾼다(self):
+        spec = spec_with(button())
+        _apply_declared_scenarios(spec, [
+            {"given": {"q": "notebook"}, "expect_text": "검색 결과 3건", "expect_count": 3}])
+        assert spec.scenarios[0].expect_count == 3
+
+    def test_값이_같으면_경고하지_않는다(self):
+        """표에서 읽은 dict 에 expect_count 키가 없고 모델 쪽에는 None 이 있을 때,
+        비교 형태를 맞추지 않으면 값이 같은데도 매 실행마다 경고가 뜬다."""
+        from prova.models import Scenario
+
+        spec = spec_with(button())
+        spec.scenarios = [Scenario(given={"q": "a"}, expect_text="문구")]
+        _apply_declared_scenarios(spec, [{"given": {"q": "a"}, "expect_text": "문구"}])
+        assert spec.warnings == []

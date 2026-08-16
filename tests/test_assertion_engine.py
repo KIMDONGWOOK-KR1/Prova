@@ -8,6 +8,7 @@ negative 케이스는 **에러가 떠야 PASS** 다. 규칙을 위반한 값을 
 import pytest
 
 from prova.models import Expectation, StepResult, TestCase, TestStep
+from prova.s3_grounder.dom_locator import CollectionCount
 from prova.s5_verifier.assertion_engine import PageState, verify
 
 PW_MESSAGE = "비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다."
@@ -36,9 +37,10 @@ def positive_case(expected: Expectation) -> TestCase:
     )
 
 
-def state(url="http://h/good/login", text="", errors=None, console=None) -> PageState:
+def state(url="http://h/good/login", text="", errors=None, console=None,
+          collection=None) -> PageState:
     return PageState(url=url, text=text or "", error_texts=errors or [],
-                     console_errors=console or [])
+                     console_errors=console or [], collection=collection)
 
 
 class TestNegativeErrorMessage:
@@ -165,3 +167,73 @@ class TestEvidence:
         case = negative_case(Expectation(type="error_shown"))
         v = verify(case, steps_ok(4), state(errors=["e"]))
         assert v.elapsed_ms == 40
+
+
+class TestResultCount:
+    """건수 판정 — 목록의 부재와 0건을 구분하는 것이 핵심이다.
+
+    검색 결과 0건일 때 목록을 렌더하지 않는 것은 정상 구현이다. 그걸 탐지 실패로
+    처리하면 완벽한 화면에서 '0건이어야 한다' 는 케이스가 오탐으로 FAIL 이 된다.
+    반대로 3건이 나와야 하는데 목록이 없는 것은 진짜 실패다. 같은 status=absent
+    인데 기대값에 따라 판정이 갈린다 — 그 갈림을 여기서 못 박는다.
+    """
+
+    def count_case(self, want: int) -> TestCase:
+        return positive_case(Expectation(
+            type="result_count", count=want, count_target="검색 결과 목록"))
+
+    def counted(self, status: str, n: int = 0) -> CollectionCount:
+        return CollectionCount(target="검색 결과 목록", status=status, count=n,
+                               detail="테스트")
+
+    def test_개수가_같으면_PASS(self):
+        v = verify(self.count_case(3), steps_ok(), state(collection=self.counted("ok", 3)))
+        assert v.verdict == "PASS"
+
+    def test_개수가_다르면_FAIL(self):
+        v = verify(self.count_case(3), steps_ok(), state(collection=self.counted("ok", 2)))
+        assert v.verdict == "FAIL"
+        assert "2개" in v.evidence["actual"] and "3건" in v.evidence["actual"]
+
+    def test_목록이_없고_0건_기대면_PASS(self):
+        """조건부 렌더링이 정상 구현이다. 여기서 FAIL 을 내면 오탐이 된다."""
+        v = verify(self.count_case(0), steps_ok(),
+                   state(collection=self.counted("absent")))
+        assert v.verdict == "PASS"
+
+    def test_목록이_없고_1건_이상_기대면_FAIL(self):
+        v = verify(self.count_case(3), steps_ok(),
+                   state(collection=self.counted("absent")))
+        assert v.verdict == "FAIL"
+
+    def test_목록이_없을때_원인을_단정하지_않는다(self):
+        """구현이 결과를 못 찾은 것인지, 목록에 접근성 이름이 없어 도구가 못 찾은
+        것인지 화면만 보고는 알 수 없다. 하나로 단정하면 개발자가 엉뚱한 곳을
+        고친다."""
+        v = verify(self.count_case(3), steps_ok(),
+                   state(collection=self.counted("absent")))
+        assert "0건" in v.evidence["actual"] and "접근성 이름" in v.evidence["actual"]
+
+    def test_목록이_여러개면_FAIL(self):
+        """컨테이너의 '정확히 1개' 계약은 세는 경로에서도 유지된다. 어느 목록을
+        세야 하는지 모르는 채로 센 숫자는 신뢰할 수 없다."""
+        v = verify(self.count_case(0), steps_ok(),
+                   state(collection=self.counted("ambiguous", 2)))
+        assert v.verdict == "FAIL", "기대값이 0 이어도 모호함은 통과가 아니다"
+
+    def test_세지_않았으면_FAIL(self):
+        """수집이 안 된 채로 통과시키면 '확인하지 않은 것' 이 '통과' 로 보고된다."""
+        v = verify(self.count_case(3), steps_ok(), state(collection=None))
+        assert v.verdict == "FAIL"
+
+    def test_센_결과가_근거에_숫자로_남는다(self):
+        v = verify(self.count_case(3), steps_ok(), state(collection=self.counted("ok", 3)))
+        assert v.evidence["counted"] == {
+            "target": "검색 결과 목록", "status": "ok", "count": 3}
+
+    def test_다른_기대유형에는_근거가_붙지_않는다(self):
+        """목록이 없는 화면(로그인 등)에서 status=absent 가 모든 케이스의 근거에
+        붙으면, 리포트를 읽는 사람이 매번 그게 문제인지 확인해야 한다."""
+        case = positive_case(Expectation(type="text_visible", value="환영합니다"))
+        v = verify(case, steps_ok(), state(text="환영합니다"))
+        assert "counted" not in v.evidence

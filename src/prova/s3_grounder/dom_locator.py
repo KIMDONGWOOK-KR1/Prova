@@ -145,6 +145,7 @@ def _role_for(hint: UIElement | None) -> str:
         "select": "combobox",
         "checkbox": "checkbox",
         "text": "paragraph",
+        "list": "list",
     }.get(hint.type, "button")
 
 
@@ -191,3 +192,99 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
     if strategy == "text":
         return page.get_by_text(target, exact=True)
     raise GroundingError(target, [Attempt(strategy=str(strategy), count=0)])
+
+
+# ---------------------------------------------------------------------------
+# 반복 목록을 세는 경로 (result_count)
+# ---------------------------------------------------------------------------
+#
+# ## 왜 별도 경로인가
+#
+# 위의 ground() 는 '정확히 1개' 만 확정한다. 그 계약이 지금까지 판정을 신뢰할
+# 근거였다 — 후보가 여럿일 때 아무거나 집으면 FAIL 이 구현 결함 때문인지 잘못된
+# 요소를 눌러서인지 구분할 수 없다.
+#
+# 건수를 세려면 여러 개를 봐야 한다. 그렇다고 ground() 를 느슨하게 만들면 기존
+# 세 화면의 판정 근거가 함께 약해진다. 그래서 계약을 건드리지 않고 경로를
+# 하나 더 둔다.
+#
+# 그리고 여기서도 계약은 유지된다. **컨테이너는 여전히 정확히 1개여야 한다.**
+# 세는 것은 그 안의 항목이다. '어디를 셀 것인가' 는 모호하지 않고, 모호한 것은
+# '그 안에 몇 개인가' 뿐이며 그건 세면 답이 나온다.
+
+# 목록 유형 -> 그 안에서 반복되는 항목의 ARIA role.
+# <ul><li> 의 li 는 listitem, <table><tr> 의 tr 은 row 다.
+ITEM_ROLES = {"list": "listitem", "table": "row"}
+
+
+@dataclass
+class CollectionCount:
+    """반복 목록의 항목 수를 센 결과.
+
+    ## status 를 count 와 나눠 둔 이유
+
+    '못 찾았다' 와 '0개다' 는 다른 사실인데 숫자로는 둘 다 0 이다. 합치면 판정이
+    거짓말을 한다.
+
+    검색 결과 0건인 화면은 목록 자체를 렌더하지 않는 것이 정상이다 (조건부
+    렌더링). 그때 컨테이너를 못 찾은 것을 탐지 실패로 처리하면, 구현이 완벽한
+    화면에서 '0건이어야 한다' 는 케이스가 오탐으로 FAIL 이 된다.
+
+    반대로 3건이 나와야 하는데 목록이 없는 것은 진짜 실패다. 같은 status=absent
+    이지만 기대값이 다르므로 판정이 갈린다 — 그 판단은 S5 가 한다. S3 는 무엇을
+    봤는지만 사실대로 보고한다.
+    """
+
+    target: str
+    status: str          # "ok" | "absent" | "ambiguous"
+    count: int = 0
+    detail: str = ""
+
+
+def count_items(page, target: str, hint: UIElement | None = None) -> CollectionCount:
+    """target 라벨의 반복 목록에 항목이 몇 개 렌더됐는지 센다.
+
+    예외를 던지지 않는다. ground() 와 다른 점이다 — 목록의 부재는 그 자체로
+    판정 재료이므로(위 설명 참고) 실패가 아니라 관측 결과로 돌려준다.
+
+    Args:
+        page: Playwright Page
+        target: 목록의 라벨 (예: "검색 결과 목록")
+        hint: 해당 UIElement. type 으로 컨테이너 role 과 항목 role 을 정한다.
+
+    Returns:
+        CollectionCount. status 가 "ok" 일 때만 count 가 의미를 가진다.
+    """
+    container_role = _role_for(hint) if hint else "list"
+    item_role = ITEM_ROLES.get(container_role, "listitem")
+
+    try:
+        container = page.get_by_role(container_role, name=target, exact=True)
+        found = container.count()
+    except Exception as exc:  # role 조회 자체가 실패한 경우
+        return CollectionCount(target=target, status="absent",
+                               detail=f"목록 조회 실패: {exc}")
+
+    if found == 0:
+        return CollectionCount(
+            target=target, status="absent",
+            detail=f"role={container_role} name={target!r} 인 목록이 화면에 없음",
+        )
+    if found > 1:
+        # 컨테이너의 '정확히 1개' 계약은 여기서도 유지한다. 어느 목록을 세야
+        # 하는지 모르는 상태에서 아무거나 세면 그 숫자를 신뢰할 수 없다.
+        return CollectionCount(
+            target=target, status="ambiguous", count=found,
+            detail=f"같은 라벨의 목록이 {found}개 — 어느 것을 셀지 확정할 수 없음",
+        )
+
+    try:
+        n = container.get_by_role(item_role).count()
+    except Exception as exc:
+        return CollectionCount(target=target, status="absent",
+                               detail=f"항목 조회 실패: {exc}")
+
+    return CollectionCount(
+        target=target, status="ok", count=n,
+        detail=f"{target!r} 안의 {item_role} {n}개",
+    )

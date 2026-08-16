@@ -30,6 +30,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from prova.models import Expectation, StepResult, TestCase, Verdict
+from prova.s3_grounder.dom_locator import CollectionCount
 from prova.text_utils import contains_loose, normalize_ws
 
 
@@ -42,9 +43,20 @@ class PageState:
     error_texts: list[str]         # 에러 영역([role=alert] 등)의 텍스트만
     console_errors: list[str]      # JS 콘솔 오류
     http_status: int | None = None
+    # 반복 목록을 센 결과 (type="result_count" 케이스에서만 채워진다).
+    #
+    # 왜 여기서 직접 세지 않는가: 무엇을 세야 하는지는 케이스의 기대값이 정하고,
+    # 세는 일은 S3 의 몫이다. PageState 는 '판정 시점의 사실' 을 담는 값 객체로
+    # 두고, 그 사실을 모으는 책임은 호출자(nodes)에 남긴다. 그래야 판정 함수를
+    # 브라우저 없이 값만으로 시험할 수 있다.
+    collection: CollectionCount | None = None
 
 
-def capture_page_state(page, console_errors: list[str] | None = None) -> PageState:
+def capture_page_state(
+    page,
+    console_errors: list[str] | None = None,
+    collection: CollectionCount | None = None,
+) -> PageState:
     """Playwright Page 에서 판정에 필요한 정보만 뽑는다.
 
     에러 영역을 따로 모으는 이유: '에러가 노출됐는가' 를 판정할 때 화면 전체
@@ -70,6 +82,7 @@ def capture_page_state(page, console_errors: list[str] | None = None) -> PageSta
         text=normalize_ws(body_text),
         error_texts=error_texts,
         console_errors=list(console_errors or []),
+        collection=collection,
     )
 
 
@@ -150,12 +163,58 @@ def _judge_text_visible(expected: Expectation, state: PageState) -> tuple[bool, 
     return False, f"문구 {expected.value!r} 미노출"
 
 
+def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, str]:
+    """반복 목록에 정확히 N 개가 렌더됐는가.
+
+    ## 문구 확인과 무엇이 다른가
+
+    text_visible 은 화면이 "검색 결과 3건" 을 찍어 줄 때만 쓸 수 있다. 이 판정은
+    화면이 건수를 한 글자도 말하지 않아도 성립한다 — 목록을 직접 세기 때문이다.
+    실물 화면이 건수를 문구로 보여주지 않는 경우가 검증에서 빠지지 않게 하려고
+    만든 경로다.
+
+    ## 목록이 없는 것을 실패로 단정하지 않는다
+
+    결과 0건일 때 목록을 렌더하지 않는 것은 정상적인 구현이다. 그래서 기대값이
+    0 이면 목록의 부재가 곧 확인이 된다. 기대값이 1 이상일 때만 부재가 실패다.
+
+    부재의 사유는 둘일 수 있다 — 구현이 결과를 못 찾았거나, 목록에 접근성 이름이
+    없어 도구가 못 찾았거나. 둘을 구분할 근거가 화면에 없으므로 단정하지 않고
+    양쪽을 사유에 함께 적는다. 억측한 원인을 적으면 개발자가 엉뚱한 곳을 고친다.
+    """
+    want = expected.count
+    target = expected.count_target or "결과 목록"
+    got = state.collection
+
+    if want is None:
+        return False, "기대 건수가 지정되지 않았습니다 (케이스 생성 오류)"
+    if got is None:
+        return False, f"{target!r} 을 세지 않았습니다 (실행 단계에서 수집되지 않음)"
+
+    if got.status == "ambiguous":
+        return False, f"건수를 셀 수 없습니다 — {got.detail}"
+
+    if got.status == "absent":
+        if want == 0:
+            return True, f"{target!r} 이 렌더되지 않음 — 0건으로 확인"
+        return False, (
+            f"{want}건이 나와야 하는데 {target!r} 을 화면에서 찾지 못했습니다. "
+            f"결과가 0건이거나, 목록에 접근성 이름({target!r})이 없습니다 "
+            f"({got.detail})"
+        )
+
+    if got.count == want:
+        return True, f"{target!r} 항목 {got.count}개 — 기대 {want}건과 일치"
+    return False, f"{target!r} 항목이 {got.count}개 — 기대는 {want}건"
+
+
 _JUDGES = {
     "error_message": _judge_error_message,
     "error_shown": _judge_error_shown,
     "redirect": _judge_redirect,
     "toast_or_redirect": _judge_toast_or_redirect,
     "text_visible": _judge_text_visible,
+    "result_count": _judge_result_count,
 }
 
 
@@ -216,6 +275,14 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         "screenshot": last_shot,
         "error_texts": state.error_texts,
     }
+    if state.collection is not None:
+        # 센 결과를 숫자로도 남긴다. 사유 문장만 남기면 리포트를 기계로 집계할 때
+        # 문장을 다시 파싱해야 한다.
+        evidence["counted"] = {
+            "target": state.collection.target,
+            "status": state.collection.status,
+            "count": state.collection.count,
+        }
 
     if passed:
         return Verdict(**base, verdict="PASS", evidence=evidence)
@@ -234,6 +301,8 @@ def _expected_summary(expected: Expectation) -> str:
         parts.append(f"문구={expected.value!r}")
     if expected.url_contains:
         parts.append(f"경로={expected.url_contains!r}")
+    if expected.count is not None:
+        parts.append(f"건수={expected.count} (대상={expected.count_target!r})")
     return " ".join(parts)
 
 

@@ -253,6 +253,20 @@ class TestScenarios:
             f"  실제: {sorted(got)}"
         )
 
+    def test_결과_건수가_일치한다(self, pair):
+        """건수는 문구와 별개로 대조한다.
+
+        둘을 한 집합에 섞어 비교하면 어느 쪽이 틀렸는지 실패 메시지에서 구분되지
+        않는다. 그리고 None 과 0 을 반드시 구별해야 한다 — None 은 '건수 검증
+        없음' 이고 0 은 '아무것도 나오지 않아야 한다' 다. None 으로 새면 건수
+        케이스가 만들어지지 않은 채 리포트가 조용히 초록불이 된다."""
+        extracted, golden, _ = pair
+        got = {tuple(sorted(s.given.items())): s.expect_count
+               for s in extracted.scenarios}
+        want = {tuple(sorted(s.given.items())): s.expect_count
+                for s in golden.scenarios}
+        assert got == want, f"결과 건수 불일치\n  기대: {want}\n  실제: {got}"
+
     def test_규칙_위반을_시나리오에_넣지_않는다(self, pair):
         """규칙 위반은 constraints 에서 자동 전개된다. 시나리오에 또 넣으면 같은
         것을 두 번 검증하고, 리포트에서 규칙과 실패의 1:1 대응이 흐려진다."""

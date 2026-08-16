@@ -30,6 +30,7 @@ from prova.models import ScreenSpec, TestCase, TestReport, Verdict
 from prova.s1_spec_extractor.extractor import extract_from_pdf
 from prova.s2_case_generator.generator import generate_cases
 from prova.s2_case_generator.rule_expander import spec_defects
+from prova.s3_grounder.dom_locator import CollectionCount, count_items
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
@@ -133,10 +134,33 @@ def run_cases(state: AgentState) -> AgentState:
             screenshot_every_step=state.screenshot_every_step,
         )
         step_results = execute_case_steps(ctx, case.steps)
-        page_state = capture_page_state(state.page, console_errors)
+        page_state = capture_page_state(
+            state.page, console_errors, _count_for(state, case)
+        )
         state.verdicts.append(verify(case, step_results, page_state))
 
     return state
+
+
+def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
+    """건수 검증 케이스면 반복 목록을 센다. 그 외에는 세지 않는다.
+
+    조건부로 세는 이유는 비용이 아니라 의미다. 목록이 없는 화면(로그인 등)에서
+    무조건 세면 status=absent 가 모든 케이스의 근거에 붙어, 리포트를 읽는 사람이
+    '이 화면에 목록이 없는 게 문제인가' 를 매번 확인해야 한다.
+
+    라벨로 요소를 찾는 이유: 기대값에는 라벨이 담겨 있고(S3 가 다루는 단위가
+    라벨이다), 힌트로 넘길 UIElement 는 그 라벨로 되찾는다. element_id 를
+    담았다면 여기서 되찾을 필요가 없지만, 그러면 S3 가 라벨과 ID 를 둘 다
+    다뤄야 해서 '탐지는 라벨로 한다' 는 규칙이 흐려진다.
+    """
+    expected = case.expected
+    if expected.type != "result_count" or not expected.count_target:
+        return None
+    hint = next(
+        (e for e in state.spec.elements if e.label == expected.count_target), None
+    )
+    return count_items(state.page, expected.count_target, hint)
 
 
 def build_final_report(state: AgentState) -> AgentState:
