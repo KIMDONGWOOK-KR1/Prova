@@ -29,7 +29,7 @@ from prova.llm.base import LLMClient
 from prova.models import ScreenSpec, TestCase, TestReport, Verdict
 from prova.s1_spec_extractor.extractor import extract_from_pdf
 from prova.s2_case_generator.generator import generate_cases
-from prova.s2_case_generator.rule_expander import sample_value_conflicts
+from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
@@ -84,10 +84,7 @@ def extract_spec(state: AgentState) -> AgentState:
 
     # 기획서 내부 모순을 여기서 걸러 리포트로 올린다. 구현 결함이 아니라 기획
     # 결함이므로, 케이스 FAIL 이 아니라 경고로 알리는 것이 맞다.
-    for element in state.spec.elements:
-        conflict = sample_value_conflicts(element)
-        if conflict:
-            state.spec.warnings.append(conflict)
+    state.spec.warnings.extend(spec_defects(state.spec))
     return state
 
 

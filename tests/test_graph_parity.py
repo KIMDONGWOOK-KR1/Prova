@@ -10,47 +10,13 @@
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
-
 import pytest
-import uvicorn
 
 from prova.graph import run_graph
 from prova.llm.mock_backend import MockLLM
 from prova.pipeline import run_pipeline
 
 SPEC_PDF = "fixtures/specs/login_spec.pdf"
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture(scope="module")
-def sut_base() -> str:
-    from sut.app import app
-
-    port = _free_port()
-    server = uvicorn.Server(
-        uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    )
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-
-    deadline = time.monotonic() + 15
-    while not server.started and time.monotonic() < deadline:
-        time.sleep(0.05)
-    if not server.started:
-        pytest.fail("SUT 서버가 기동하지 않았습니다")
-
-    yield f"http://127.0.0.1:{port}"
-
-    server.should_exit = True
-    thread.join(timeout=5)
 
 
 def _comparable(report):

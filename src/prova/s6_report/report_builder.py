@@ -187,7 +187,11 @@ def _shots_html(verdict: Verdict) -> str:
 
 def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     ev = verdict.evidence or {}
-    rule_tag = (f"<span class='tag rule'>{_esc(verdict.violates)}</span>"
+    # 요소와 규칙을 함께 보여준다. 화면에 같은 규칙을 가진 요소가 여럿이면
+    # (회원가입의 required 6개) 규칙 이름만으로는 어디를 고쳐야 할지 모른다.
+    rule_label = (f"{verdict.target_element}.{verdict.violates}"
+                  if verdict.target_element else verdict.violates)
+    rule_tag = (f"<span class='tag rule'>{_esc(rule_label)}</span>"
                 if verdict.violates else "")
 
     reason = ""

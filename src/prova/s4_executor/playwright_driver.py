@@ -125,7 +125,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         elif step.action == "wait":
             ctx.page.wait_for_timeout(int(step.value or 500))
 
-        elif step.action in ("fill", "click", "select"):
+        elif step.action in ("fill", "click", "select", "check", "uncheck"):
             hint = ctx.hint_for(step.target)
             location = ground(ctx.page, step.target, hint)
             locator = resolve_locator(ctx.page, location, hint)
@@ -136,6 +136,14 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
                 locator.fill(step.value or "", timeout=ctx.step_timeout_ms)
             elif step.action == "click":
                 locator.click(timeout=ctx.step_timeout_ms)
+            elif step.action == "check":
+                locator.check(timeout=ctx.step_timeout_ms)
+            elif step.action == "uncheck":
+                # 이미 해제된 상태면 아무 일도 하지 않는다. 그래도 스텝으로
+                # 남기는 이유는 '체크하지 않았다' 는 사실이 리포트에서 검증
+                # 조건으로 읽혀야 하기 때문이다 — 스텝이 없으면 그 케이스가
+                # 무엇을 확인했는지 나중에 알 수 없다.
+                locator.uncheck(timeout=ctx.step_timeout_ms)
             else:
                 locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
 
