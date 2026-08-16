@@ -39,17 +39,30 @@ class MockLLM:
         self._responses[schema_title] = response
 
     @classmethod
-    def with_login_fixtures(cls) -> "MockLLM":
-        """로그인 기획서의 정답 ScreenSpec 을 응답으로 등록한 인스턴스.
+    def for_spec(cls, pdf_path: str | Path) -> "MockLLM":
+        """기획서 PDF 옆의 정답(golden) 파일을 ScreenSpec 응답으로 등록한다.
 
         S1 이 LLM 을 부르면 golden ScreenSpec 이 그대로 돌아온다. 즉 'LLM 이
         완벽하게 동작했을 때' 파이프라인 나머지가 옳게 도는지 확인할 수 있다.
+
+        PDF 이름에서 golden 을 찾는 이유: 화면이 늘어날 때마다 여기에 분기를
+        추가하지 않아도 되게 하려는 것이다. login_spec.pdf 를 넘기면
+        login_spec.golden.json 을, signup_spec.pdf 를 넘기면
+        signup_spec.golden.json 을 쓴다.
+
+        golden 이 없으면 응답을 등록하지 않는다 — 그러면 S1 에서 '등록되지 않은
+        스키마' 오류가 나서, 조용히 빈 결과로 진행되는 일이 없다.
         """
-        golden = Path("fixtures/specs/login_spec.golden.json")
         inst = cls()
+        golden = Path(pdf_path).with_suffix(".golden.json")
         if golden.exists():
             inst.register("ScreenSpec", json.loads(golden.read_text(encoding="utf-8")))
         return inst
+
+    @classmethod
+    def with_login_fixtures(cls) -> "MockLLM":
+        """로그인 기획서 전용 단축 생성자 (기존 호출부 호환)."""
+        return cls.for_spec("fixtures/specs/login_spec.pdf")
 
     def complete_json(
         self,

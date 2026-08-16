@@ -41,6 +41,7 @@ class UIElement(BaseModel):
         require_uppercase / require_lowercase / require_digit / require_special
                         해당 문자 종류의 최소 개수
         pattern         정규식
+        same_as         다른 요소와 값이 같아야 한다 (값은 그 요소의 element_id)
     """
 
     element_id: str
@@ -50,6 +51,13 @@ class UIElement(BaseModel):
     constraints: dict = Field(default_factory=dict)
     error_message: Optional[str] = None
     placeholder: Optional[str] = None
+    # select 의 선택 항목. 기획서의 '선택 목록' 을 그대로 담는다.
+    #
+    # 왜 constraints 가 아니라 별도 필드인가: constraints 는 '위반값을 만들 수
+    # 있는 규칙' 을 담는 곳이다. 선택 항목은 규칙이 아니라 값의 후보 집합이고,
+    # 정상 케이스에 넣을 값을 여기서 고른다. constraints 에 섞으면
+    # rule_expander 가 이것도 위반 규칙으로 착각해 전개하려 한다.
+    options: list[str] = Field(default_factory=list)
     # 기획서가 제시한 유효 입력 예시 (테스트 계정, 샘플 데이터 등).
     #
     # 왜 필요한가: constraints 를 만족하는 값을 코드로 만들 수는 있지만, 그 값이
@@ -93,7 +101,16 @@ class ScreenSpec(BaseModel):
 # S2 · 테스트 케이스
 # ---------------------------------------------------------------------------
 
-ActionType = Literal["navigate", "fill", "click", "select", "wait", "assert"]
+# check / uncheck 를 fill 과 나눠 둔 이유
+#
+# 체크박스에 fill() 을 부르면 Playwright 가 "Element is not an <input> that can be
+# filled" 로 실패한다. 그 실패는 요소 조작 오류(input_error)로 기록되는데, 정작
+# 검증하려던 것은 '약관 미동의 시 에러가 뜨는가' 였다. 액션을 나누지 않으면
+# 회원가입 화면에서 체크박스 케이스가 전부 조작 오류로 뭉개져, 구현 결함이 있는지
+# 없는지 알 수 없게 된다.
+ActionType = Literal[
+    "navigate", "fill", "click", "select", "check", "uncheck", "wait", "assert"
+]
 CaseType = Literal["positive", "negative", "boundary"]
 
 # expected.type 이 가질 수 있는 값
@@ -228,6 +245,10 @@ class Verdict(BaseModel):
     type: CaseType = "positive"
     verdict: Literal["PASS", "FAIL"]
     violates: Optional[str] = None
+    # 어느 요소의 규칙이었는지. violates 만으로는 부족하다 — 회원가입 화면처럼
+    # required 규칙을 가진 요소가 여럿이면 'required 가 FAIL' 만 보고는 어느 입력의
+    # 검증이 빠졌는지 알 수 없다.
+    target_element: Optional[str] = None
     evidence: dict = Field(default_factory=dict)
     failure_category: Optional[FailureCategory] = None
     failure_detail: Optional[str] = None

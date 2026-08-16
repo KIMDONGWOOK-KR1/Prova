@@ -12,20 +12,18 @@
 3번이 실질적으로 가장 중요하다. 오탐이 나오는 QA 도구는 개발자가 신뢰하지 않게
 되고, 그러면 진짜 결함 보고까지 무시된다.
 
-## SUT 를 테스트가 직접 띄운다
+SUT 는 conftest.py 의 sut_base 픽스처가 띄운다.
 
-외부에서 띄워 둔 서버에 의존하면 테스트가 환경에 따라 통과·실패를 오간다.
-uvicorn 을 스레드로 올려 테스트가 수명을 소유한다.
+## 회원가입 화면은 test_signup_e2e.py 에 따로 있다
+
+같은 수용 기준을 화면마다 반복하지 않고, 화면을 늘렸을 때 **로그인 결과가 그대로
+유지되는지**를 이 파일이 계속 지키게 한다. 확장이 기존 검증을 조용히 망가뜨리면
+그건 확장이 아니라 후퇴다.
 """
 
 from __future__ import annotations
 
-import socket
-import threading
-import time
-
 import pytest
-import uvicorn
 
 from prova.llm.mock_backend import MockLLM
 from prova.pipeline import run_pipeline
@@ -40,35 +38,6 @@ SPEC_PDF = "fixtures/specs/login_spec.pdf"
 # required 는 bad 에도 구현돼 있으므로 이 목록에 없다. 그게 오탐 검증의 근거가
 # 된다 — 구현된 규칙은 PASS 로 나와야 한다.
 EXPECTED_BAD_FAILURES = {"format", "min_length", "require_uppercase", "require_special"}
-
-
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
-@pytest.fixture(scope="module")
-def sut_base() -> str:
-    """SUT 를 백그라운드 스레드로 띄우고 base URL(변형 제외)을 돌려준다."""
-    from sut.app import app
-
-    port = _free_port()
-    config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
-    server = uvicorn.Server(config)
-    thread = threading.Thread(target=server.run, daemon=True)
-    thread.start()
-
-    deadline = time.monotonic() + 15
-    while not server.started and time.monotonic() < deadline:
-        time.sleep(0.05)
-    if not server.started:
-        pytest.fail("SUT 서버가 기동하지 않았습니다")
-
-    yield f"http://127.0.0.1:{port}"
-
-    server.should_exit = True
-    thread.join(timeout=5)
 
 
 def _run(variant: str, sut_base: str, tmp_path):

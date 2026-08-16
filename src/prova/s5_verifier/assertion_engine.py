@@ -174,7 +174,8 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
     elapsed = sum(r.elapsed_ms for r in step_results)
     base = dict(
         case_id=case.case_id, title=case.title, type=case.type,
-        violates=case.violates, elapsed_ms=elapsed, step_results=step_results,
+        violates=case.violates, target_element=case.target_element,
+        elapsed_ms=elapsed, step_results=step_results,
         healed=any(r.location.healed for r in step_results if r.location),
     )
 
@@ -251,12 +252,16 @@ def _classify(case: TestCase, state: PageState) -> str:
 def _failure_detail(case: TestCase, reason: str) -> str:
     """개발자가 읽고 바로 조치할 수 있는 설명.
 
-    negative 케이스에서는 '어느 규칙의 검증이 확인되지 않았는지' 를 앞세운다.
+    negative 케이스에서는 '어느 요소의 어느 규칙이 확인되지 않았는지' 를 앞세운다.
     그게 개발자가 추가해야 하는 코드를 직접 가리키기 때문이다.
+
+    요소 이름을 함께 넣는 이유: 회원가입 화면처럼 같은 규칙(required)을 가진
+    요소가 여럿이면 규칙 이름만으로는 어디를 고쳐야 하는지 알 수 없다.
     """
     if case.type == "negative" and case.violates:
+        where = f"'{case.target_element}' 의 " if case.target_element else ""
         return (
-            f"기획서의 '{case.violates}' 검증 규칙이 구현에서 확인되지 않았습니다. "
-            f"({reason})"
+            f"기획서에 적힌 {where}'{case.violates}' 검증 규칙이 구현에서 "
+            f"확인되지 않았습니다. ({reason})"
         )
     return reason
