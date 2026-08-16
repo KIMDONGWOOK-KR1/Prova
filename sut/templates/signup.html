@@ -46,11 +46,18 @@
       <label for="nickname">닉네임</label>
       <input type="text" id="nickname" name="nickname" placeholder="닉네임을 입력하세요">
 
+      <!-- C4: bad 는 '지인 추천' 항목이 빠져 있다.
+           기획서 §2 는 '선택 목록: 검색, 지인 추천, 광고' 를 적어 뒀다.
+
+           이 결함은 화면 단위 케이스로 잡히지 않았다. 기획서의 선택 목록이
+           '정상 케이스가 넣을 값을 고르는 데만' 쓰였기 때문이다 — 첫 항목
+           '검색' 을 골라 넣고 그것이 있으니 통과했다. 기획서에 적혀 있는데
+           아무도 확인하지 않던 항목이다. -->
       <label for="signup_path">가입 경로</label>
       <select id="signup_path" name="signup_path">
         <option value="">선택하세요</option>
         <option value="검색">검색</option>
-        <option value="지인 추천">지인 추천</option>
+        {% if variant == 'good' %}<option value="지인 추천">지인 추천</option>{% endif %}
         <option value="광고">광고</option>
       </select>
 

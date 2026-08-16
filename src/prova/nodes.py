@@ -28,9 +28,10 @@ from playwright.sync_api import Page
 from prova.llm.base import LLMClient
 from prova.models import ScreenSpec, SpecDocument, TestCase, TestReport, Verdict
 from prova.s1_spec_extractor.extractor import extract_document
+from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
 from prova.s2_case_generator.rule_expander import spec_defects
-from prova.s3_grounder.dom_locator import CollectionCount, count_items
+from prova.s3_grounder.dom_locator import CollectionCount, count_items, read_options
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
@@ -59,6 +60,9 @@ class AgentState:
     # 담긴다 — 화면 수에 따라 상태 모양이 갈리면 노드마다 분기가 생긴다.
     doc: Optional[SpecDocument] = None
     cases: list[TestCase] = field(default_factory=list)
+    # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것. 판정이 아니라
+    # **검증 범위**에 대한 사실이므로 verdicts 와 따로 담는다.
+    coverage_gaps: list[str] = field(default_factory=list)
     verdicts: list[Verdict] = field(default_factory=list)
     report: Optional[TestReport] = None
 
@@ -111,6 +115,18 @@ def generate_test_cases(state: AgentState) -> AgentState:
         cases.extend(generate_cases(screen, llm=state.llm))
     cases.extend(generate_flow_cases(state.doc))
     state.cases = cases
+
+    # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것을 여기서 센다.
+    #
+    # 케이스가 다 만들어진 뒤여야 셀 수 있고, 실행 전에 알 수 있는 사실이다.
+    # '31/31 통과' 인데 실은 기획서의 일부를 확인하지 않은 리포트가 이 도구가 낼 수
+    # 있는 가장 위험한 결과다 (coverage 모듈 설명 참고).
+    for screen in state.doc.screens:
+        own = [c for c in cases if c.screen_id == screen.screen_id and not c.flow_id]
+        state.coverage_gaps.extend(
+            (f"[{screen.screen_id}] {g}" if len(state.doc.screens) > 1 else g)
+            for g in coverage_gaps(screen, own)
+        )
     return state
 
 
@@ -148,7 +164,8 @@ def run_cases(state: AgentState) -> AgentState:
         )
         step_results = execute_case_steps(ctx, case.steps)
         page_state = capture_page_state(
-            state.page, console_errors, _count_for(state, case)
+            state.page, console_errors,
+            _count_for(state, case), _options_for(state, case),
         )
         state.verdicts.append(verify(case, step_results, page_state))
 
@@ -196,6 +213,22 @@ def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
     return count_items(state.page, expected.count_target, hint)
 
 
+def _options_for(state: AgentState, case: TestCase) -> Optional[list[str]]:
+    """선택 목록 확인 케이스면 화면의 선택 항목을 읽는다. 그 외에는 읽지 않는다.
+
+    _count_for 와 같은 이유로 조건부다. 목록 확인이 아닌 케이스에까지 붙이면
+    근거에 늘 선택 항목이 실려, 리포트를 읽는 사람이 그게 뭔지 매번 확인해야 한다.
+    """
+    expected = case.expected
+    if expected.type != "options_present" or not expected.option_target:
+        return None
+    hint = next(
+        (e for screen in state.doc.screens for e in screen.elements
+         if e.label == expected.option_target), None
+    )
+    return read_options(state.page, expected.option_target, hint)
+
+
 def build_final_report(state: AgentState) -> AgentState:
     """S6 — 판정을 집계해 리포트를 만든다.
 
@@ -207,6 +240,7 @@ def build_final_report(state: AgentState) -> AgentState:
         target_url=state.base_url,
         verdicts=state.verdicts,
         doc=state.doc,
+        coverage=state.coverage_gaps,
         spec_source=state.pdf_path,
         backend=getattr(state.llm, "name", "") if state.llm else "",
     )

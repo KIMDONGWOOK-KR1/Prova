@@ -253,9 +253,10 @@ CaseType = Literal["positive", "negative", "boundary"]
 #   error_shown    문구는 특정하지 않고, 에러가 노출되고 이동하지 않아야 한다
 #                  (기획서에 문구가 없어 문구까지 못 박으면 오탐이 되는 경우)
 #   result_count   반복 목록에 정확히 N 개가 렌더돼야 한다 (문구가 아니라 개수)
+#   options_present 선택 요소에 기획서가 적은 항목이 모두 있어야 한다
 ExpectedType = Literal[
     "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
-    "result_count",
+    "result_count", "options_present",
 ]
 
 
@@ -278,6 +279,14 @@ class Expectation(BaseModel):
     # 세는 대상(목록의 라벨)은 기대값이 아니라 '어디를 볼 것인가' 다.
     count: Optional[int] = None
     count_target: Optional[str] = None  # 셀 반복 목록의 라벨
+    # --- type="options_present" 전용 ---
+    #
+    # count/count_target 과 같은 모양이다 — '무엇을 볼 것인가'(라벨)와 '무엇을
+    # 기대하는가'(항목 목록)를 나눠 담는다. value 에 쉼표로 이어 담지 않은 이유는
+    # 같다: value 는 '화면에서 찾을 문구' 이고, 목록을 거기 넣으면 판정 함수가
+    # value 를 유형에 따라 다르게 해석해야 한다.
+    options: list[str] = Field(default_factory=list)
+    option_target: Optional[str] = None  # 확인할 선택 요소의 라벨
 
 
 class TestStep(BaseModel):

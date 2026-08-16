@@ -50,12 +50,16 @@ class PageState:
     # 두고, 그 사실을 모으는 책임은 호출자(nodes)에 남긴다. 그래야 판정 함수를
     # 브라우저 없이 값만으로 시험할 수 있다.
     collection: CollectionCount | None = None
+    # 선택 요소가 화면에 담고 있는 항목들 (type="options_present" 에서만 채워진다).
+    # None 은 '읽지 못했다' 이고 빈 목록은 '항목이 하나도 없다' 다 — 다른 사실이다.
+    options: list[str] | None = None
 
 
 def capture_page_state(
     page,
     console_errors: list[str] | None = None,
     collection: CollectionCount | None = None,
+    options: list[str] | None = None,
 ) -> PageState:
     """Playwright Page 에서 판정에 필요한 정보만 뽑는다.
 
@@ -83,6 +87,7 @@ def capture_page_state(
         error_texts=error_texts,
         console_errors=list(console_errors or []),
         collection=collection,
+        options=options,
     )
 
 
@@ -208,6 +213,37 @@ def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, 
     return False, f"{target!r} 항목이 {got.count}개 — 기대는 {want}건"
 
 
+def _judge_options_present(expected: Expectation, state: PageState) -> tuple[bool, str]:
+    """기획서가 적은 선택 항목이 화면에 다 있는가.
+
+    ## 빠진 것만 본다
+
+    화면에 항목이 더 있어도 통과다. 안내용 첫 항목('선택하세요')을 걸러내려면 무엇이
+    안내인지 추측해야 하고, 추측하면 기획서에 있는 항목을 안내로 착각해 없다고 보고할
+    수 있다. 빠진 것만 보면 그 추측이 필요 없다.
+
+    항목이 더 있는 것도 기획-구현 불일치일 수 있지만, 그건 기획서가 '이 목록이 전부다'
+    라고 적어 둔 경우에만 결함이다. 그 선언이 없으므로 단정하지 않는다.
+    """
+    want = expected.options
+    target = expected.option_target or "선택 요소"
+    if not want:
+        return False, "기대 선택 항목이 지정되지 않았습니다 (케이스 생성 오류)"
+    if state.options is None:
+        return False, (
+            f"{target!r} 의 선택 항목을 읽지 못했습니다. 그 요소가 선택 요소로 "
+            f"구현되지 않았거나 라벨이 다릅니다"
+        )
+
+    missing = [o for o in want if o not in state.options]
+    if not missing:
+        return True, f"{target!r} 선택 항목 {want} 모두 확인 (화면: {state.options})"
+    return False, (
+        f"{target!r} 에서 {missing} 을(를) 찾을 수 없습니다. "
+        f"화면의 항목: {state.options}"
+    )
+
+
 _JUDGES = {
     "error_message": _judge_error_message,
     "error_shown": _judge_error_shown,
@@ -215,6 +251,7 @@ _JUDGES = {
     "toast_or_redirect": _judge_toast_or_redirect,
     "text_visible": _judge_text_visible,
     "result_count": _judge_result_count,
+    "options_present": _judge_options_present,
 }
 
 
@@ -281,6 +318,8 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         "screenshot": last_shot,
         "error_texts": state.error_texts,
     }
+    if state.options is not None:
+        evidence["screen_options"] = list(state.options)
     if state.collection is not None:
         # 센 결과를 숫자로도 남긴다. 사유 문장만 남기면 리포트를 기계로 집계할 때
         # 문장을 다시 파싱해야 한다.
@@ -309,6 +348,8 @@ def _expected_summary(expected: Expectation) -> str:
         parts.append(f"경로={expected.url_contains!r}")
     if expected.count is not None:
         parts.append(f"건수={expected.count} (대상={expected.count_target!r})")
+    if expected.options:
+        parts.append(f"선택 항목={expected.options} (대상={expected.option_target!r})")
     return " ".join(parts)
 
 

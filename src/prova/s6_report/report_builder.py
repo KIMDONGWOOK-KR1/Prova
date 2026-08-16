@@ -46,6 +46,7 @@ def build_report(
     target_url: str,
     verdicts: list[Verdict],
     doc: SpecDocument | None = None,
+    coverage: list[str] | None = None,
     spec_source: str = "",
     backend: str = "",
 ) -> TestReport:
@@ -60,6 +61,9 @@ def build_report(
         # [화면 ID] 가 붙어 어디를 고쳐야 하는지가 드러난다 (all_warnings 참고).
         summary["spec_warnings"] = doc.all_warnings
         summary["screen_names"] = {s.screen_id: s.screen_name for s in doc.screens}
+    # 확인하지 않은 것. 통과율과 나란히 놓여야 '통과' 의 범위를 알 수 있다.
+    if coverage:
+        summary["coverage_gaps"] = list(coverage)
 
     return TestReport(
         run_id=run_id,
@@ -136,6 +140,10 @@ table.kv td { padding:5px 0; word-break:break-all; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
              background:#fff; display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+.gap { background:#eef4fb; border:1px solid #b8cfe8; border-radius:6px;
+       padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
+.gap b { color:var(--accent); }
+.gap .why { color:var(--muted); margin:2px 0 8px; }
 .warn { background:#fff8e1; border:1px solid #f0d68a; border-radius:6px;
         padding:10px 14px; margin-bottom:18px; }
 .warn b { display:block; margin-bottom:4px; }
@@ -318,6 +326,19 @@ def render_html(report: TestReport) -> str:
             f"{total}건만 실행했습니다. 이 통과율은 전체 상태를 뜻하지 않습니다.</div></div>"
         )
 
+    gaps = s.get("coverage_gaps") or []
+    gap_html = ""
+    if gaps:
+        items = "".join(f"<div>· {_esc(g)}</div>" for g in gaps)
+        gap_html = (
+            "<div class='gap'><b>확인하지 않은 것 "
+            f"({len(gaps)}건)</b>"
+            "<div class='why'>기획서에 적혀 있으나 이 실행에서 대조한 케이스가 "
+            "없습니다. 아래 항목은 <b>통과한 것이 아니라 확인하지 않은 것</b>입니다."
+            "</div>"
+            f"{items}</div>"
+        )
+
     backend = s.get("llm_backend", "")
     mock_warn = ""
     if backend.startswith("mock"):
@@ -346,7 +367,7 @@ def render_html(report: TestReport) -> str:
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
 </div>
-{mock_warn}{filter_warn}{warn_html}
+{mock_warn}{filter_warn}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>

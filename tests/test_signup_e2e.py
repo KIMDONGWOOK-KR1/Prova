@@ -99,7 +99,7 @@ class TestGoodVariant:
             agree_terms      required                                         = 1
         """
         report, _ = good_run
-        assert report.summary["total"] == 14
+        assert report.summary["total"] == 15
         assert sum(1 for v in report.cases if v.type == "negative") == 13
 
     def test_기획서_결함_경고가_없다(self, good_run):
@@ -175,7 +175,8 @@ class TestBadVariant:
     def test_실패에_요소와_규칙이_함께_붙는다(self, bad_run):
         """개발자가 어느 요소의 어느 검증을 추가해야 하는지 알 수 있어야 한다."""
         report, _ = bad_run
-        for v in (c for c in report.cases if c.verdict == "FAIL"):
+        for v in (c for c in report.cases
+                  if c.verdict == "FAIL" and c.type == "negative"):
             assert v.violates, f"{v.case_id}: 위반 규칙이 없다"
             assert v.target_element, f"{v.case_id}: 대상 요소가 없다"
             assert v.failure_category, f"{v.case_id}: 실패 분류가 없다"
