@@ -452,7 +452,7 @@
     </p>
     <p class="byline">
       <span>의뢰 · ㈜WITCHES</span>
-      <span>세 화면 검증 완료 · 2026-08-16</span>
+      <span>세 화면 검증 완료 · 2026-08-17</span>
       <span>로컬 Qwen2.5-7B-AWQ on CHEETAH</span>
     </p>
   </header>
@@ -850,15 +850,16 @@
     <div class="versus">
       <div class="card good">
         <h4><code>/good/search</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">6 / 6</div>
-        <p>규칙 위반 3건 + 기획서 예시 2건 + 정상 1건. 통과율 100%.</p>
+        <div class="score">8 / 8</div>
+        <p>규칙 위반 3건 + 기획서 예시 2건 + 결과 건수 2건 + 정상 1건. 통과율 100%.</p>
       </div>
       <div class="card bad">
-        <h4><code>/bad/search</code> <span class="tag fail">3건 실패</span></h4>
-        <div class="score">3 / 6</div>
-        <p>심은 결함 3건을 정확히 지목했고 <strong>오탐은 0건</strong>이었다.</p>
+        <h4><code>/bad/search</code> <span class="tag fail">4건 실패</span></h4>
+        <div class="score">4 / 8</div>
+        <p>심은 결함 3건을 지목했고 <strong>오탐은 0건</strong>이었다.</p>
         <ul>
           <li><span class="tag fail">FAIL</span> 대소문자를 구분한다 — 기획서는 구분 안 함</li>
+          <li><span class="tag fail">FAIL</span> 같은 결함이 건수 경로에서 한 번 더</li>
           <li><span class="tag fail">FAIL</span> 0건일 때 안내 문구를 안 보여준다</li>
           <li><span class="tag fail">FAIL</span> 검색어 최소 길이 검증 없음</li>
           <li><span class="tag pass">PASS</span> 필수 입력·최대 길이 검증은 있음</li>
@@ -1172,7 +1173,7 @@
             <td>🔴 API 후보 — 강한 멀티모달 추론 필요</td>
             <td>
               <code>pdfplumber</code>(결정적) + LLM(구조화) 2단계. 텍스트 레이어가 있는 PDF는
-              로컬 7B로 충분했다 — <strong>세 화면 골든 비교 42/42 통과</strong>.
+              로컬 7B로 충분했다 — <strong>세 화면 골든 비교 45/45 통과</strong>.
             </td>
           </tr>
         </tbody>
@@ -1546,24 +1547,58 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
         회원가입에서 배운 대로, 이미 도는 기계를 한 번 더 돌리는 화면은 확장 가치가 낮다.
       </p>
       <p>
-        그래서 다음으로 값이 큰 것은 화면이 아니라 <strong>결과를 DOM에서 직접 세는
-        능력</strong>이다. 지금 검색 검증은 기획서가 "검색 결과 N건" 문구를 노출한다고
-        적어 둔 데 기대고 있다. WITCHES 실물 화면이 건수를 문구로 보여주지 않으면 그
-        경로가 막힌다.
+        그래서 화면보다 먼저 붙인 것이 <strong>결과를 DOM에서 직접 세는 능력</strong>이다.
+        검색 검증은 기획서가 "검색 결과 N건" 문구를 노출한다고 적어 둔 데 기대고 있었다.
+        그건 기획서에 대한 가정이 아니라 <span class="mark">구현에 대한 가정</span>이고,
+        건수를 문구로 안 보여주는 화면에서는 그 케이스가 아무것도 확인하지 못한 채
+        초록불이 된다. <strong>확인하지 않은 것과 확인해서 통과한 것은 다르다.</strong>
       </p>
     </div>
 
     <div class="note">
-      <span class="label">그 확장이 건드리는 계약</span>
+      <span class="label">계약을 고치지 않고 경로를 늘렸다</span>
       <p>
-        건수를 세려면 S3가 <strong>반복 요소</strong>를 찾아야 한다. 그런데 지금 S3는
+        건수를 세려면 S3가 <strong>여러 개</strong>를 봐야 한다. 그런데 S3는
         <span class="mark">'정확히 1개만 확정한다'</span>를 계약으로 삼고 있고, 그 계약이
         지금까지 판정을 신뢰할 근거였다 — 후보가 여러 개일 때 아무거나 집으면 FAIL이
         구현 결함 때문인지 잘못된 요소를 눌러서인지 구분할 수 없다.
       </p>
       <p>
-        느슨하게 만들면 기존 세 화면의 판정에 영향이 간다. 반복 요소 탐지를 별도 경로로
-        두고 기존 경로는 그대로 남기는 편이 안전하다.
+        한 겹 내려가 보니 계약을 건드릴 필요가 없었다. 층이 둘이기 때문이다.
+      </p>
+<pre class="out"><code>컨테이너   검색 결과 목록      &lt;- 1개여야 한다 (어디를 셀 것인가)
+  항목     Notebook Pro 15   &lt;- 여러 개다   (몇 개인가)
+  항목     Notebook Air 13
+  항목     Notebook Slim 14</code></pre>
+      <p>
+        '어디를 셀 것인가'는 모호하지 않고, 모호한 것은 '몇 개인가'뿐이며 그건 세면 답이
+        나온다. <code>ground()</code>는 한 줄도 고치지 않고 <code>count_items()</code>를
+        옆에 뒀다. 기존 세 화면의 판정 근거가 그대로 남는다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">가장 조심한 지점 — 0건</span>
+      <p>
+        결과가 없을 때 목록을 렌더하지 않는 것은 <strong>정상 구현</strong>이다(조건부
+        렌더링). 목록의 부재를 탐지 실패로 처리하면 완벽한 화면에서 오탐이 나고, 항상
+        0건으로 처리하면 3건이 나와야 하는데 목록이 없는 진짜 실패를 놓친다.
+      </p>
+      <p>
+        '못 찾았다'와 '0개다'는 숫자로는 둘 다 0이지만 다른 사실이다. 그래서 S3는
+        <code>status</code>와 <code>count</code>를 나눠 담아 <strong>무엇을 봤는지만</strong>
+        보고하고, 기대값과 맞춰 보는 판단은 S5가 한다. 같은 <code>absent</code>가 기대값에
+        따라 PASS와 FAIL로 갈린다.
+      </p>
+    </div>
+
+    <p class="sub col">그다음 — 한 PDF에 여러 화면</p>
+
+    <div class="col">
+      <p>
+        WITCHES 실물 기획서가 화면당 파일로 올 가능성은 낮다. 그러면 <code>ScreenSpec</code>이
+        1화면 1객체라는 전제부터 갈리고, <strong>화면 경계를 찾는 일</strong>이 새로 생긴다.
+        그건 표 구조만으로는 안 풀리는, 지금까지와 성질이 다른 문제다.
       </p>
     </div>
 
@@ -1579,8 +1614,8 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 211개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 10개,
+    코드 <code>C:\dev\prova</code> · 테스트 246개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 11개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
