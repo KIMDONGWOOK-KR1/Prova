@@ -44,5 +44,15 @@
     "등록되지 않은 계정이면 \"이메일 또는 비밀번호가 올바르지 않습니다.\" 노출, 이동하지 않음"
   ],
   "required_message": "필수 입력 항목입니다.",
-  "warnings": []
+  "warnings": [],
+  "scenarios": [
+    {
+      "given": {
+        "email": "nobody@test.com",
+        "password": "Abcd123!"
+      },
+      "expect_text": "이메일 또는 비밀번호가 올바르지 않습니다.",
+      "expect_count": null
+    }
+  ]
 }

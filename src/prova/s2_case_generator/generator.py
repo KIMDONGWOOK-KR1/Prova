@@ -236,6 +236,7 @@ def generate_cases(
             ))
             seq += 1
 
+    cases.extend(_option_cases(spec, start_seq=seq))
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
 
     if llm is not None:
@@ -490,3 +491,43 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
         steps=steps,
         expected=expected,
     )
+
+
+def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
+    """선택 요소마다 '기획서가 적은 항목이 화면에 다 있는가' 를 확인하는 케이스.
+
+    ## 왜 필요한가
+
+    기획서의 '선택 목록: 검색, 지인 추천, 광고' 는 지금까지 **정상 케이스가 넣을 값을
+    고르는 데만** 쓰였다. 첫 항목을 골라 넣고 그것이 있으면 통과한다. 그래서 화면에
+    '지인 추천' 이 빠져 있어도 아무 일도 일어나지 않았다.
+
+    기획서에 적혀 있는데 아무도 확인하지 않는 항목이 있으면 그건 도구의 구멍이다.
+
+    ## 왜 요소마다 한 건인가
+
+    선택 요소를 조작하는 케이스마다 대조하면, 항목 하나가 빠진 결함이 그 요소를 쓰는
+    모든 케이스에서 터진다(회원가입은 14건이다). 결함 하나가 FAIL 14건이 되면 리포트를
+    읽는 사람이 규모를 잘못 읽는다.
+
+    스텝은 navigate 하나뿐이다. 선택 항목은 화면에 들어간 시점에 이미 정해져 있으므로
+    입력하고 제출할 이유가 없다 — 필요 없는 스텝은 실패 지점만 늘린다.
+    """
+    cases: list[TestCase] = []
+    selects = [e for e in spec.elements if e.type == "select" and e.options]
+    for i, element in enumerate(selects):
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-options-{_slug(element.element_id)}"
+                    f"-{start_seq + i:03d}",
+            screen_id=spec.screen_id,
+            title=f"{element.label} 선택 목록이 기획서와 같은지 확인",
+            type="positive",
+            target_element=element.element_id,
+            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            expected=Expectation(
+                type="options_present",
+                options=list(element.options),
+                option_target=element.label,
+            ),
+        ))
+    return cases

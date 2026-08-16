@@ -360,3 +360,36 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
         target=target, status="ok", count=n,
         detail=f"{target!r} 안의 {item_role} {n}개",
     )
+
+
+def read_options(page, target: str, hint: UIElement | None = None) -> list[str] | None:
+    """선택 요소가 화면에 실제로 담고 있는 항목들. 못 읽으면 None.
+
+    ## 왜 이 조회가 필요한가
+
+    기획서의 '선택 목록: 검색, 지인 추천, 광고' 는 지금까지 **정상 케이스가 넣을 값을
+    고르는 데만** 쓰였다. 첫 항목을 골라 넣고 그것이 있으면 통과한다. 그래서 화면에
+    '지인 추천' 이 빠져 있어도 아무 일도 일어나지 않았다 — 선택 항목 누락은 흔한
+    결함인데 보이지 않는 구멍이었다.
+
+    ## 예외를 던지지 않는다
+
+    None 은 '읽지 못했다' 이고 빈 목록은 '항목이 하나도 없다' 다. 둘은 다른 사실이고,
+    판정이 갈린다 — 못 읽은 것을 '항목 0개' 로 보고하면 도구 문제를 구현 결함으로
+    보고하게 된다.
+
+    안내용 첫 항목('선택하세요' 등)은 걸러내지 않는다. 무엇이 안내인지 추측하면
+    기획서에 있는 항목을 안내로 착각해 없다고 보고할 수 있다. 대조는 '기획서 항목이
+    화면에 다 있는가' 만 보므로 안내 항목이 더 있어도 통과한다.
+    """
+    try:
+        locator = page.get_by_label(target, exact=True)
+        if locator.count() != 1:
+            role = _role_for(hint) if hint else "combobox"
+            locator = page.get_by_role(role, name=target, exact=True)
+            if locator.count() != 1:
+                return None
+        texts = locator.locator("option").all_text_contents()
+    except Exception:
+        return None
+    return [t.strip() for t in texts]

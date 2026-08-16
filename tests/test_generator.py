@@ -58,10 +58,20 @@ class TestParseSuccessExpectation:
 class TestGenerateCases:
     def test_정상케이스가_맨_앞에_온다(self, login_spec):
         """정상 케이스가 실패하면 화면 자체가 동작하지 않는다는 뜻이므로,
-        리포트를 읽는 사람이 그 사실을 가장 먼저 봐야 한다."""
+        리포트를 읽는 사람이 그 사실을 가장 먼저 봐야 한다.
+
+        그 뒤에 규칙 위반이 이어지고, 선택 목록·기획서 예시 케이스가 맨 뒤에 온다 —
+        뒤쪽은 규칙 위반이 아니므로 positive 다."""
         cases = generate_cases(login_spec)
         assert cases[0].type == "positive"
-        assert all(c.type == "negative" for c in cases[1:])
+        assert cases[0].case_id.endswith("valid-001")
+
+        types = [c.type for c in cases]
+        negatives = [i for i, t in enumerate(types) if t == "negative"]
+        assert negatives, "위반 케이스가 있어야 한다"
+        assert negatives == list(range(negatives[0], negatives[-1] + 1)), (
+            "위반 케이스는 한 덩어리로 이어져야 읽는 사람이 규칙 목록으로 본다"
+        )
 
     def test_규칙마다_케이스가_하나씩_생긴다(self, login_spec):
         cases = generate_cases(login_spec)
@@ -147,7 +157,7 @@ class TestTitlePolish:
 
         broken = MockLLM()  # CaseTitles 응답이 등록되지 않아 LLMError 를 던진다
         cases = generate_cases(login_spec, llm=broken)
-        assert len(cases) == 7
+        assert len(cases) == 8
         assert all(c.title for c in cases)
         assert any("제목 다듬기" in w for w in login_spec.warnings)
 
@@ -228,8 +238,9 @@ class TestCrossFieldCases:
         values = {s.target: s.value for s in case.steps if s.action == "fill"}
         assert values["비밀번호 확인"] == values["비밀번호"]
 
-    def test_회원가입_케이스가_14건이다(self, signup_spec):
-        assert len(generate_cases(signup_spec)) == 14
+    def test_회원가입_케이스가_15건이다(self, signup_spec):
+        """정상 1 + 규칙 위반 13 + 선택 목록 확인 1 = 15."""
+        assert len(generate_cases(signup_spec)) == 15
 
 
 SEARCH_GOLDEN = Path("fixtures/specs/search_spec.golden.json")
@@ -295,9 +306,15 @@ class TestScenarioCases:
         values = {s.target: s.value for s in case.steps if s.action == "fill"}
         assert values == {"가": "특정값", "나": "다른값"}
 
-    def test_시나리오가_없으면_케이스도_없다(self, login_spec):
-        """로그인 화면은 시나리오가 없다 — 회귀 확인."""
-        assert not any("scenario" in c.case_id for c in generate_cases(login_spec))
+    def test_시나리오가_없으면_케이스도_없다(self):
+        """기획서가 예시를 주지 않으면 이 검증은 불가능하다 — 도구의 한계가 아니라
+        기획서의 한계다. 없는 예시를 지어내면 화면에 없는 문구를 요구해 오탐이 된다.
+
+        (로그인 기획서는 커버리지 검출기가 찾아낸 구멍을 닫으려고 예시를 추가했으므로
+        더 이상 '시나리오 없는 화면' 이 아니다.)"""
+        spec = minimal_spec()
+        assert spec.scenarios == []
+        assert not any("scenario" in c.case_id for c in generate_cases(spec))
 
     def test_검색_케이스가_8건이다(self, search_spec):
         """정상 1 + 규칙 위반 3(required·min_length·max_length) + 시나리오 2
@@ -499,3 +516,53 @@ class TestFlowCases:
         from prova.s2_case_generator.generator import generate_flow_cases
 
         assert generate_flow_cases(self.doc(flows=[])) == []
+
+
+class TestOptionCases:
+    """선택 목록이 화면에 다 있는가 — 기획서에 적혀 있는데 아무도 확인하지 않던 것.
+
+    기획서의 '선택 목록: 검색, 지인 추천, 광고' 는 정상 케이스가 넣을 값을 고르는 데만
+    쓰였다. 첫 항목을 골라 넣고 그것이 있으면 통과하므로, 화면에 '지인 추천' 이 빠져
+    있어도 아무 일도 일어나지 않았다.
+    """
+
+    def test_선택_요소마다_케이스가_생긴다(self, signup_spec):
+        cases = [c for c in generate_cases(signup_spec) if "-options-" in c.case_id]
+        assert len(cases) == 1
+        assert cases[0].expected.type == "options_present"
+        assert cases[0].expected.options == ["검색", "지인 추천", "광고"]
+        assert cases[0].expected.option_target == "가입 경로"
+
+    def test_요소마다_한_건이다(self, signup_spec):
+        """선택 요소를 조작하는 케이스마다 대조하면 항목 하나가 빠진 결함이
+        회원가입에서 FAIL 14건이 된다. 리포트를 읽는 사람이 규모를 잘못 읽는다."""
+        cases = generate_cases(signup_spec)
+        option_cases = [c for c in cases if c.expected.type == "options_present"]
+        select_count = sum(1 for e in signup_spec.elements
+                           if e.type == "select" and e.options)
+        assert len(option_cases) == select_count
+
+    def test_스텝은_navigate_하나뿐이다(self, signup_spec):
+        """선택 항목은 화면에 들어간 시점에 정해져 있다. 입력하고 제출할 이유가
+        없고, 필요 없는 스텝은 실패 지점만 늘린다."""
+        case = next(c for c in generate_cases(signup_spec) if "-options-" in c.case_id)
+        assert [s.action for s in case.steps] == ["navigate"]
+        assert case.steps[0].target == "/signup"
+
+    def test_대상_요소를_남긴다(self, signup_spec):
+        case = next(c for c in generate_cases(signup_spec) if "-options-" in c.case_id)
+        assert case.target_element == "signup_path"
+
+    def test_선택_요소가_없으면_케이스도_없다(self, login_spec):
+        assert not any(c.expected.type == "options_present"
+                       for c in generate_cases(login_spec))
+
+    def test_선택_목록이_비면_케이스를_만들지_않는다(self):
+        """대조할 정답이 없으면 확인할 것이 없다. 빈 목록을 기대로 두면 무엇을
+        확인했는지 알 수 없는 케이스가 늘어난다."""
+        spec = minimal_spec(elements=[
+            UIElement(element_id="s", type="select", label="선택", required=True),
+            UIElement(element_id="btn", type="button", label="확인"),
+        ])
+        assert not any(c.expected.type == "options_present"
+                       for c in generate_cases(spec))
