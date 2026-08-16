@@ -28,7 +28,7 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from prova.models import ScreenSpec, TestReport, Verdict
+from prova.models import SpecDocument, TestReport, Verdict
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
 CATEGORY_LABELS = {
@@ -45,7 +45,7 @@ def build_report(
     run_id: str,
     target_url: str,
     verdicts: list[Verdict],
-    spec: ScreenSpec | None = None,
+    doc: SpecDocument | None = None,
     spec_source: str = "",
     backend: str = "",
 ) -> TestReport:
@@ -55,8 +55,11 @@ def build_report(
     # 어떤 백엔드로 실행했는지 남긴다. mock 으로 돌린 리포트를 실제 실행 결과로
     # 착각하면 QA 도구로서 최악의 사고가 된다.
     summary["llm_backend"] = backend
-    if spec is not None:
-        summary["spec_warnings"] = list(spec.warnings)
+    if doc is not None:
+        # 문서 경고와 화면별 경고를 한 곳에 모은다. 화면이 여럿이면 경고 앞에
+        # [화면 ID] 가 붙어 어디를 고쳐야 하는지가 드러난다 (all_warnings 참고).
+        summary["spec_warnings"] = doc.all_warnings
+        summary["screen_names"] = {s.screen_id: s.screen_name for s in doc.screens}
 
     return TestReport(
         run_id=run_id,
@@ -137,6 +140,13 @@ table.kv td { padding:5px 0; word-break:break-all; }
         padding:10px 14px; margin-bottom:18px; }
 .warn b { display:block; margin-bottom:4px; }
 .empty { color:var(--muted); padding:12px 0; }
+.screens { border-collapse:collapse; font-size:13px; margin:14px 0 4px; }
+.screens th, .screens td { border:1px solid var(--line); padding:5px 10px; text-align:left; }
+.screens th { background:#f0f2f5; font-weight:600; }
+.screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
+.screens td.f { color:var(--fail); font-weight:700; }
+.screens td.k { color:var(--muted); font-size:12px; }
+h3.grp { font-size:14px; margin:18px 0 6px; color:var(--muted); font-weight:600; }
 """
 
 
@@ -222,6 +232,62 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     )
 
 
+def _screens_html(by_screen: dict, by_flow: dict, names: dict) -> str:
+    """화면별·흐름별 내역 표. 나눠 볼 것이 없으면 그리지 않는다.
+
+    화면 하나에 흐름도 없으면 전체 요약과 같은 숫자를 두 번 보여주게 되고, 읽는
+    사람이 '왜 두 번 있지' 를 확인하는 데 시간을 쓴다.
+
+    흐름을 화면과 같은 표에 두되 행을 구분한다. 나란히 놓여야 '화면은 다 통과인데
+    흐름만 실패' 라는 모양이 한눈에 보이고, 그 모양이 곧 '결함은 화면 사이에
+    있다' 는 진단이다.
+    """
+    if len(by_screen) + len(by_flow) < 2:
+        return ""
+
+    def row(label: str, code: str, n: dict, kind: str) -> str:
+        fail_cls = " class='n f'" if n["fail"] else " class='n'"
+        return (
+            f"<tr><td>{_esc(label)} <code>{_esc(code)}</code></td>"
+            f"<td class='k'>{_esc(kind)}</td>"
+            f"<td class='n'>{n['total']}</td><td class='n'>{n['pass']}</td>"
+            f"<td{fail_cls}>{n['fail']}</td></tr>"
+        )
+
+    rows = [row(names.get(sid, sid), sid, n, "화면") for sid, n in by_screen.items()]
+    rows += [row("화면 사이", fid, n, "흐름") for fid, n in by_flow.items()]
+    return (
+        "<table class='screens'><thead><tr><th>대상</th><th>종류</th><th>전체</th>"
+        "<th>통과</th><th>실패</th></tr></thead><tbody>"
+        + "".join(rows) + "</tbody></table>"
+    )
+
+
+def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool) -> str:
+    """판정을 화면별로 묶어 렌더한다. 묶을 것이 하나면 소제목을 붙이지 않는다.
+
+    흐름은 별도 구획으로 떼어 맨 뒤에 둔다. 마지막 화면 구획에 섞으면 **그 화면에
+    결함이 하나 더 있는 것처럼 읽힌다** — 흐름의 실패는 화면 안이 아니라 화면
+    사이의 문제이고 고칠 곳도 다르다.
+    """
+    if not verdicts:
+        return ""
+    groups: dict[str, list[Verdict]] = {}
+    for v in verdicts:
+        key = f"흐름 {v.flow_id}" if v.flow_id else names.get(v.screen_id or "?",
+                                                             v.screen_id or "?")
+        groups.setdefault(key, []).append(v)
+
+    if len(groups) < 2:
+        return "".join(_case_html(v, open_by_default) for v in verdicts)
+
+    out = []
+    for label, items in groups.items():
+        out.append(f"<h3 class='grp'>{_esc(label)} · {len(items)}건</h3>")
+        out.extend(_case_html(v, open_by_default) for v in items)
+    return "".join(out)
+
+
 def render_html(report: TestReport) -> str:
     s = report.summary
     total = s.get("total", 0) or 0
@@ -261,14 +327,12 @@ def render_html(report: TestReport) -> str:
             "이 결과를 실제 검증 결과로 사용하지 마세요.</div></div>"
         )
 
-    fail_section = (
-        "".join(_case_html(v, True) for v in fails) if fails
-        else "<div class='empty'>실패한 케이스가 없습니다.</div>"
-    )
-    pass_section = (
-        "".join(_case_html(v, False) for v in passes) if passes
-        else "<div class='empty'>통과한 케이스가 없습니다.</div>"
-    )
+    names = s.get("screen_names") or {}
+    screens_html = _screens_html(s.get("by_screen") or {},
+                                 s.get("by_flow") or {}, names)
+
+    fail_section = _grouped_html(fails, names, open_by_default=True) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
+    pass_section = _grouped_html(passes, names, open_by_default=False) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -290,6 +354,7 @@ def render_html(report: TestReport) -> str:
   <div class="card"><div class="n">{rate}%</div><div class="k">통과율</div></div>
 </div>
 <div class="bar"><i style="width:{rate}%"></i></div>
+{screens_html}
 
 <h2>실패 케이스 ({len(fails)})</h2>
 {fail_section}

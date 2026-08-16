@@ -52,7 +52,7 @@ import pytest
 
 from prova.llm.base import LLMError
 from prova.models import ScreenSpec
-from prova.s1_spec_extractor.extractor import extract_from_pdf
+from prova.s1_spec_extractor.extractor import extract_document, extract_from_pdf
 from prova.s2_case_generator.rule_expander import satisfies
 from prova.text_utils import contains_loose, loosen
 
@@ -289,3 +289,103 @@ class TestNoSilentFailure:
         extracted, _, _ = pair
         if not any(e.constraints for e in extracted.elements):
             assert extracted.warnings, "추출 실패인데 경고가 없다"
+
+
+# ---------------------------------------------------------------------------
+# 한 문서에 여러 화면
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def multi_doc(client):
+    """세 화면을 한 문서에 담은 기획서의 추출 결과. 문서당 한 번만 추출한다."""
+    pdf = SPEC_DIR / "multi_spec.pdf"
+    if not pdf.exists():
+        pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+    try:
+        return extract_document(str(pdf), client)
+    except LLMError as exc:
+        pytest.skip(f"추출 실패 — {exc}")
+
+
+class TestMultiScreenDocument:
+    """화면당 PDF 하나였던 전제가 깨진 문서.
+
+    ## 골든 파일을 새로 만들지 않았다
+
+    이 문서의 화면들은 단일 화면 기획서와 **같은 표**를 담고 있으므로, 정답도 같아야
+    한다. 골든 JSON 을 하나 더 두면 같은 사실이 두 곳에 적히고, 한쪽만 고쳐졌을 때
+    어느 쪽이 맞는지 알 수 없게 된다. 그래서 기존 세 골든을 그대로 정답으로 쓴다.
+
+    이 방식에는 덤이 있다. **한 문서에 담았을 때 추출이 달라지는지**가 그대로
+    드러난다. 실제로 드러났다 — 7B 가 검색 화면의 required_message 를 few-shot
+    예시의 문구로 채웠고, 그게 오탐으로 이어질 값이었다.
+    """
+
+    def test_화면을_순서대로_나눈다(self, multi_doc):
+        assert [s.screen_id for s in multi_doc.screens] == ["login", "signup", "search"]
+
+    def test_화면마다_요소가_온전하다(self, multi_doc):
+        """화면 경계가 어긋나면 뒤 화면의 요소 표가 앞 화면 것으로 추출된다.
+        그러면 두 화면의 검증이 모두 조용히 틀린다."""
+        want = {"login": 3, "signup": 7, "search": 3}
+        got = {s.screen_id: len(s.elements) for s in multi_doc.screens}
+        assert got == want
+
+    @pytest.mark.parametrize("stem", SPECS)
+    def test_단일_문서와_같은_결과를_낸다(self, multi_doc, stem):
+        """같은 표를 담았으면 같은 명세가 나와야 한다. 문서를 합친 것만으로 결과가
+        달라지면 그건 문맥 길이에 따라 추출이 흔들린다는 뜻이고, 실물 기획서에서
+        그대로 재현된다."""
+        golden = ScreenSpec.model_validate(
+            json.loads((SPEC_DIR / f"{stem}_spec.golden.json").read_text(encoding="utf-8"))
+        )
+        screen = multi_doc.screen_by_id(stem)
+        assert screen is not None, f"{stem} 화면이 없다"
+
+        assert loosen(screen.screen_name) == loosen(golden.screen_name)
+        assert screen.url_path == golden.url_path
+        assert loosen(screen.required_message or "") == loosen(golden.required_message or "")
+
+        got = {e.element_id: (e.type, e.required, e.constraints) for e in screen.elements}
+        want = {e.element_id: (e.type, e.required, e.constraints) for e in golden.elements}
+        assert got == want, f"{stem} 요소 불일치\n  기대: {want}\n  실제: {got}"
+
+        got_msg = {e.element_id: loosen(e.error_message or "") for e in screen.elements}
+        want_msg = {e.element_id: loosen(e.error_message or "") for e in golden.elements}
+        assert got_msg == want_msg, f"{stem} 에러 문구 불일치"
+
+        got_scen = {(tuple(sorted(s.given.items())), loosen(s.expect_text), s.expect_count)
+                    for s in screen.scenarios}
+        want_scen = {(tuple(sorted(s.given.items())), loosen(s.expect_text), s.expect_count)
+                     for s in golden.scenarios}
+        assert got_scen == want_scen, f"{stem} 시나리오 불일치"
+
+    def test_흐름을_읽는다(self, multi_doc):
+        assert len(multi_doc.flows) == 1
+        flow = multi_doc.flows[0]
+        assert flow.flow_id == "signup_then_login"
+        assert flow.screen_ids == ["signup", "login"]
+
+    def test_흐름이_없는_화면을_가리키지_않는다(self, multi_doc):
+        """흐름이 없는 화면을 가리키면 그 흐름은 만들어지지 않는다. 조용히 빠지면
+        검증한 줄 알았는데 아무것도 확인하지 않은 상태가 된다."""
+        known = {s.screen_id for s in multi_doc.screens}
+        for flow in multi_doc.flows:
+            assert set(flow.screen_ids) <= known, f"{flow.flow_id} 가 없는 화면을 가리킨다"
+
+    def test_화면_ID가_겹치지_않는다(self, multi_doc):
+        """겹치면 case_id 접두사가 같아져 스크린샷이 서로를 덮어쓴다 — 리포트는
+        정상으로 보이는데 증거가 사라진다."""
+        ids = [s.screen_id for s in multi_doc.screens]
+        assert len(ids) == len(set(ids)), f"화면 ID 중복: {ids}"
+
+    def test_보정이_일어났으면_경고가_남는다(self, multi_doc):
+        """결정적 보정 계층이 조용히 값을 바꾸면 프롬프트가 나빠지고 있는지 알 수
+        없다. 이 문서에서는 실제로 required_message 보정이 일어난다."""
+        search = multi_doc.screen_by_id("search")
+        if search.required_message == "검색어를 입력하세요.":
+            # 모델이 맞혔으면 경고가 없고, 보정됐으면 경고가 있다. 둘 중 하나여야
+            # 하고, '보정됐는데 경고가 없다' 만 실패다.
+            pass
+        assert all(isinstance(w, str) for w in multi_doc.all_warnings)

@@ -30,7 +30,15 @@ import re
 from typing import Optional
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import Expectation, ScreenSpec, TestCase, TestStep, UIElement
+from prova.models import (
+    Expectation,
+    Flow,
+    ScreenSpec,
+    SpecDocument,
+    TestCase,
+    TestStep,
+    UIElement,
+)
 from prova.s2_case_generator.rule_expander import (
     RULE_LABELS,
     resolve_values,
@@ -354,3 +362,98 @@ def _polish_titles(cases: list[TestCase], spec: ScreenSpec, llm: LLMClient) -> N
         new_title = (item.get("title") or "").strip()
         if case and new_title:
             case.title = new_title
+
+
+# ---------------------------------------------------------------------------
+# 흐름 케이스 — 화면을 이어서 밟는다
+# ---------------------------------------------------------------------------
+
+
+def generate_flow_cases(doc: SpecDocument) -> list[TestCase]:
+    """문서가 선언한 흐름마다 케이스 하나를 만든다.
+
+    ## 왜 화면별 케이스로는 부족한가
+
+    회원가입 케이스가 전부 통과하고 로그인 케이스도 전부 통과하는데 **가입한 계정으로
+    로그인이 안 되는** 구현이 있을 수 있다. 가입 화면이 입력을 올바르게 검증하고
+    완료 화면까지 보여주면서 계정을 실제로 등록하지 않은 경우다. 결함이 화면 안이
+    아니라 화면 사이에 있으므로, 이어서 밟아 봐야만 드러난다.
+
+    ## 중간 화면마다 도착을 확인한다
+
+    이 케이스의 위험은 하나뿐이다 — **마지막 화면에서 FAIL 이 났을 때 앞 화면 탓인지
+    구분되지 않는 것.** 그래서 화면을 넘길 때마다 assert 스텝을 넣어 그 화면의 성공
+    조건이 충족됐는지 확인한다. 앞 화면에서 끊기면 그 스텝의 실패로 기록되고,
+    S5 는 '스텝이 끊기면 그 원인이 케이스 실패 원인' 규칙에 따라 그 화면을 지목한다.
+    마지막 화면이 애먼 소리를 듣지 않는다.
+
+    확인할 문구를 흐름 표에 다시 적게 하지 않는다 — 각 화면의 success_condition 을
+    쓴다. 같은 사실을 두 곳에 적으면 언젠가 어긋난다.
+    """
+    cases: list[TestCase] = []
+    for flow in doc.flows:
+        screens = [doc.screen_by_id(sid) for sid in flow.screen_ids]
+        if any(s is None for s in screens) or len(screens) < 2:
+            # 없는 화면을 가리키는 흐름은 만들지 않는다. 그 사실은 S1 의
+            # _document_warnings 가 이미 경고로 남겼다 — 조용히 빠지지는 않는다.
+            continue
+        cases.append(_flow_case(flow, screens))
+    return cases
+
+
+def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
+    steps: list[TestStep] = []
+    seq = 1
+    # 라벨 -> 값. 앞 화면에 넣은 값을 뒤 화면의 같은 라벨에 다시 넣는다.
+    # 사람이 손으로 확인할 때 하는 일이 정확히 이것이다 — 가입에 쓴 이메일로
+    # 로그인한다. element_id 가 아니라 라벨을 키로 쓰는 이유: 화면이 다르면
+    # element_id 도 다를 수 있지만(signup.email vs login.user_email) 사용자가
+    # 보는 라벨은 같다.
+    carried: dict[str, str] = {}
+
+    for i, screen in enumerate(screens):
+        inputs = _fillable_inputs(screen)
+        # 이어받은 값을 element_id 기준 override 로 바꾼다. resolve_values 를
+        # 거치는 이유: 이어받은 값이 same_as 참조 대상이면 그 의존값(비밀번호 확인)도
+        # 함께 다시 계산돼야 한다. dict 를 그대로 덮으면 일치 규칙이 깨진다.
+        overrides = {
+            e.element_id: carried[e.label] for e in inputs if e.label in carried
+        }
+        values, _ = resolve_values(inputs, overrides=overrides)
+
+        steps.append(TestStep(seq=seq, action="navigate", target=screen.url_path))
+        seq += 1
+        for element in inputs:
+            steps.append(_input_step(seq, element, values.get(element.element_id, "")))
+            seq += 1
+        submit = _submit_element(screen)
+        if submit:
+            steps.append(TestStep(seq=seq, action="click", target=submit.label))
+            seq += 1
+
+        for element in inputs:
+            carried[element.label] = values.get(element.element_id, "")
+
+        if i < len(screens) - 1:
+            # 도착 확인. 실패하면 이 스텝이 끊긴 것으로 기록되어 이 화면이 지목된다.
+            steps.append(TestStep(
+                seq=seq, action="assert",
+                target=f"{screen.screen_id} 성공",
+                expected=parse_success_expectation(screen),
+            ))
+            seq += 1
+
+    last = screens[-1]
+    expected = (Expectation(type="text_visible", value=flow.expect_text)
+                if flow.expect_text else parse_success_expectation(last))
+    path = " → ".join(s.screen_id for s in screens)
+
+    return TestCase(
+        case_id=f"flow-{_slug(flow.flow_id)}-001",
+        screen_id=last.screen_id,
+        flow_id=flow.flow_id,
+        title=flow.title or f"흐름 {path} — 화면을 이어서 밟았을 때",
+        type="positive",
+        steps=steps,
+        expected=expected,
+    )

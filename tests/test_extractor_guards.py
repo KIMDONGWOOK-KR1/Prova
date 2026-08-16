@@ -15,8 +15,10 @@ from __future__ import annotations
 
 from prova.models import ScreenSpec, UIElement
 from prova.s1_spec_extractor.extractor import (
+    _apply_declared_required_message,
     _apply_declared_scenarios,
     _apply_declared_types,
+    _document_warnings,
     _normalize_element_ids,
     build_user_prompt,
     structural_warnings,
@@ -169,3 +171,94 @@ class TestApplyDeclaredScenarios:
         spec.scenarios = [Scenario(given={"q": "a"}, expect_text="문구")]
         _apply_declared_scenarios(spec, [{"given": {"q": "a"}, "expect_text": "문구"}])
         assert spec.warnings == []
+
+
+class TestApplyDeclaredRequiredMessage:
+    """필수 입력 문구도 표에 그대로 적혀 있다.
+
+    화면 세 개를 한 문서에 담자 7B 가 검색 화면의 이 값을 few-shot 예시의 문구로
+    채웠다. 구현이 올바른 문구를 노출하는데 기대 문구가 달라 FAIL 이 되는 오탐이다.
+    """
+
+    def test_표의_문구로_맞춘다(self):
+        spec = spec_with(button())
+        spec.required_message = "필수 항목을 입력하세요."
+        _apply_declared_required_message(spec, "검색어를 입력하세요.")
+        assert spec.required_message == "검색어를 입력하세요."
+
+    def test_바꿨으면_경고를_남긴다(self):
+        spec = spec_with(button())
+        spec.required_message = "필수 항목을 입력하세요."
+        _apply_declared_required_message(spec, "검색어를 입력하세요.")
+        assert any("필수 입력 문구" in w for w in spec.warnings)
+
+    def test_같으면_경고하지_않는다(self):
+        spec = spec_with(button())
+        spec.required_message = "검색어를 입력하세요."
+        _apply_declared_required_message(spec, "검색어를 입력하세요.")
+        assert spec.warnings == []
+
+    def test_판별하지_못하면_손대지_않는다(self):
+        """표에서 후보를 하나로 특정하지 못하면 LLM 의 판단을 남긴다."""
+        spec = spec_with(button())
+        spec.required_message = "모델이 낸 문구"
+        _apply_declared_required_message(spec, None)
+        assert spec.required_message == "모델이 낸 문구"
+        assert spec.warnings == []
+
+
+class TestDocumentWarnings:
+    """화면 하나만 봐서는 알 수 없는 어긋남."""
+
+    def doc(self, screens, flows=()):
+        from prova.models import SpecDocument
+
+        return SpecDocument(screens=list(screens), flows=list(flows))
+
+    def screen(self, screen_id):
+        return ScreenSpec(screen_id=screen_id, screen_name=screen_id,
+                          url_path=f"/{screen_id}", elements=[button()])
+
+    def test_화면_ID_중복을_경고한다(self):
+        """겹치면 case_id 접두사가 같아져 스크린샷이 서로를 덮어쓴다 — 리포트는
+        정상으로 보이는데 증거가 사라진다."""
+        doc = self.doc([self.screen("login"), self.screen("login")])
+        assert any("중복" in w for w in _document_warnings(doc))
+
+    def test_없는_화면을_가리키는_흐름을_경고한다(self):
+        """그 흐름은 케이스가 만들어지지 않는다. 경고가 없으면 검증한 줄 알았는데
+        아무것도 확인하지 않은 상태가 된다."""
+        from prova.models import Flow
+
+        doc = self.doc([self.screen("login")],
+                       [Flow(flow_id="f", screen_ids=["login", "없는화면"])])
+        warnings = _document_warnings(doc)
+        assert any("없는화면" in w for w in warnings)
+
+    def test_정상_문서에는_경고가_없다(self):
+        from prova.models import Flow
+
+        doc = self.doc([self.screen("signup"), self.screen("login")],
+                       [Flow(flow_id="f", screen_ids=["signup", "login"])])
+        assert _document_warnings(doc) == []
+
+
+class TestAllWarnings:
+    def test_화면이_여럿이면_화면_ID를_붙인다(self):
+        """어디를 고쳐야 하는지가 경고의 위치로 드러나야 한다."""
+        from prova.models import SpecDocument
+
+        a = ScreenSpec(screen_id="login", screen_name="로그인", url_path="/login",
+                       warnings=["문제 하나"])
+        b = ScreenSpec(screen_id="signup", screen_name="회원가입", url_path="/signup")
+        doc = SpecDocument(screens=[a, b], warnings=["문서 경고"])
+        assert doc.all_warnings == ["문서 경고", "[login] 문제 하나"]
+
+    def test_화면이_하나면_접두사를_붙이지_않는다(self):
+        """접두사가 매번 붙으면 화면당 PDF 하나인 기존 리포트의 경고 문장이
+        괜히 길어진다."""
+        from prova.models import SpecDocument
+
+        a = ScreenSpec(screen_id="login", screen_name="로그인", url_path="/login",
+                       warnings=["문제 하나"])
+        assert SpecDocument(screens=[a]).all_warnings == ["문제 하나"]
