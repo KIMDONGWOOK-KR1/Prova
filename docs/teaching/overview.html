@@ -1565,8 +1565,10 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
                 <td><span class="tag pass">PASS</span> 입력 검증도 하고 완료 화면도 뜬다</td></tr>
             <tr><td>로그인 화면 케이스 7건</td>
                 <td><span class="tag pass">PASS</span> 등록된 계정으로는 정상 동작한다</td></tr>
-            <tr><td>흐름 signup → login</td>
+            <tr><td>흐름 signup → login (주소로 이동)</td>
                 <td><span class="tag fail">FAIL</span> 가입한 계정으로 로그인이 안 된다</td></tr>
+            <tr><td>흐름 signup → login (링크를 눌러 이동)</td>
+                <td><span class="tag fail">FAIL</span> '로그인하러 가기' 가 엉뚱한 경로를 가리킨다</td></tr>
           </tbody>
         </table>
       </div>
@@ -1650,6 +1652,8 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
               <td class="num">14</td><td class="num">11</td><td class="num">3</td></tr>
           <tr><td>상품 검색 <code>search</code></td><td>화면</td>
               <td class="num">8</td><td class="num">4</td><td class="num">4</td></tr>
+          <tr><td>화면 사이 <code>signup_link_to_login</code></td><td>흐름</td>
+              <td class="num">1</td><td class="num">0</td><td class="num">1</td></tr>
           <tr><td>화면 사이 <code>signup_then_login</code></td><td>흐름</td>
               <td class="num">1</td><td class="num">0</td><td class="num">1</td></tr>
         </tbody>
@@ -1667,17 +1671,43 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     <div class="versus">
       <div class="card good">
         <h4>통합 문서 <code>/good</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">30 / 30</div>
-        <p>3화면 29건 + 흐름 1건. 통과율 100%.</p>
+        <div class="score">31 / 31</div>
+        <p>3화면 29건 + 흐름 2건. 통과율 100%.</p>
       </div>
       <div class="card bad">
-        <h4>통합 문서 <code>/bad</code> <span class="tag fail">12건 실패</span></h4>
-        <div class="score">18 / 30</div>
+        <h4>통합 문서 <code>/bad</code> <span class="tag fail">13건 실패</span></h4>
+        <div class="score">18 / 31</div>
         <p>
           화면별로 뜯어 보면 <strong>단일 문서로 돌렸을 때와 정확히 같다.</strong>
           거기에 화면 사이 결함 1건이 더 잡혔다.
         </p>
       </div>
+    </div>
+
+    <div class="note">
+      <span class="label">도구가 대신 해 주는 일은 검증되지 않는다</span>
+      <p>
+        흐름의 두 번째 화면에 <strong>주소로</strong> 들어가면 편하다. 그런데 그러면
+        <span class="mark">화면을 잇는 요소가 검증에서 빠진다</span> — 완료 화면의
+        '로그인하러 가기' 링크가 엉뚱한 곳을 가리켜도 도구가 스스로 주소를 치고
+        들어가므로 흐름은 통과한다.
+      </p>
+      <p>
+        그래서 흐름 표에 <code>이동 방법</code> 열을 뒀다. 그 값이 있으면 그 요소를
+        눌러서 옮기고 다음 화면의 경로에 도착했는지 확인한다. 같은 화면 쌍을 흐름 둘이
+        밟는 것이 자연스럽다 — 하나는 <strong>화면을 잇는 요소</strong>, 하나는
+        <strong>이어진 상태</strong>를 확인한다. 하나로 합치면 앞의 결함이 먼저 스텝을
+        끊어 뒤의 결함이 가려진다.
+      </p>
+      <p>
+        같은 자리에서 기획서의 <code>유형</code> 열도 처음으로 검증된다. 그 열은
+        지금까지 우리 액션을 고르는 데만 쓰였고, 기획서가 '링크'라고 적은 것을 버튼으로
+        구현해도 통과했다 — S3가 텍스트 일치로 찾아내 눌러 주기 때문이다.
+        <strong>기획서에 적혀 있는데 아무도 확인하지 않는 항목이 있으면 그건 도구의
+        구멍이다.</strong> 단, 버튼과 링크만 대조한다 —
+        <code>input[type=password]</code>는 ARIA에서 textbox role을 갖지 않으므로
+        입력란까지 넓히면 비밀번호 칸마다 불일치가 떠서 전부 오탐이 된다.
+      </p>
     </div>
 
     <div class="note">
@@ -1777,7 +1807,7 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 314개 통과 ·
+    코드 <code>C:\dev\prova</code> · 테스트 331개 통과 ·
     자세한 설명은 <code>docs/teaching/</code>의 노트 12개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
