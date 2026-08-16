@@ -74,6 +74,8 @@ FAIL [require_uppercase] 비밀번호 대문자 검증
 | 회원가입 | `bad` | **11 PASS / 3 FAIL** |
 | 검색 | `good` | **8건 전부 PASS** |
 | 검색 | `bad` | **4 PASS / 4 FAIL** |
+| 통합 문서 (3화면+흐름) | `good` | **30건 전부 PASS** |
+| 통합 문서 (3화면+흐름) | `bad` | **18 PASS / 12 FAIL** |
 
 로그인 `bad`에서 FAIL로 잡힌 것: 이메일 형식 검증 · 비밀번호 길이 · 대문자 · 특수문자 —
 **정확히 빼먹은 것 4개**입니다.
@@ -306,3 +308,4 @@ uv run python scripts/embed_media.py
 | [08-screen-expansion.md](08-screen-expansion.md) | 화면을 늘릴 때 실제로 깨진 것들 (회원가입) |
 | [09-search-scenarios.md](09-search-scenarios.md) | 규칙으로 표현할 수 없는 검증, 그리고 AI에 맡기면 안 되는 것 |
 | [10-counting-dom.md](10-counting-dom.md) | 화면이 말해 주지 않는 것을 확인하기 (건수를 DOM에서 센다) |
+| [11-multi-screen-flows.md](11-multi-screen-flows.md) | 한 문서 여러 화면 + 화면 사이 흐름 |
