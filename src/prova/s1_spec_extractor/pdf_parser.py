@@ -25,6 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 import pdfplumber
 
@@ -70,6 +71,29 @@ class ParsedDocument:
     def all_tables(self) -> list[ParsedTable]:
         return [t for p in self.pages for t in p.tables]
 
+    def _element_table(self) -> Optional[ParsedTable]:
+        """UI 요소 정의 표. '요소 ID' 와 '유형' 열이 함께 있는 표로 판별한다.
+
+        둘 중 하나만 보면 다른 표(실패 조건 등)와 구분되지 않는다.
+        """
+        for table in self.all_tables:
+            header = [normalize_ws(h) for h in table.header]
+            if not header:
+                continue
+            has_id = any("요소" in h and "ID" in h.upper() for h in header)
+            has_type = any("유형" in h for h in header)
+            if has_id and has_type:
+                return table
+        return None
+
+    def _column(self, table: ParsedTable, match) -> list[str]:
+        header = [normalize_ws(h) for h in table.header]
+        col = next((i for i, h in enumerate(header) if match(h)), None)
+        if col is None:
+            return []
+        return [row[col].strip() for row in table.rows[1:]
+                if len(row) > col and row[col].strip()]
+
     def declared_element_ids(self) -> list[str]:
         """UI 요소 표의 '요소 ID' 열에 적힌 값들. LLM 을 쓰지 않는다.
 
@@ -81,20 +105,158 @@ class ParsedDocument:
         표에 ID 열이 없으면 빈 목록을 돌려준다 — 대조할 근거가 없으면 검사하지
         않는 것이 맞다. 있는 것처럼 추측하면 없는 누락을 경고하게 된다.
         """
+        table = self._element_table()
+        if table is None:
+            return []
+        return [v.replace(" ", "")
+                for v in self._column(table, lambda h: "요소" in h and "ID" in h.upper())]
+
+    def declared_labels(self) -> list[str]:
+        """UI 요소 표의 '라벨' 열. 예시값 표의 열 제목과 맞춰 보는 데 쓴다."""
+        table = self._element_table()
+        if table is None:
+            return []
+        return self._column(table, lambda h: "라벨" in h)
+
+    def declared_screen_meta(self) -> dict[str, str]:
+        """화면 개요 표('항목 | 내용' 2열)에서 화면 ID 와 경로를 읽는다.
+
+        왜 필요한가: 실측에서 7B 가 '화면 ID | search' 라고 적힌 표를 두고도
+        화면명('상품 검색')에서 screen_id 를 'product_search' 로 새로 만들었다.
+        screen_id 는 case_id 의 접두사이자 스크린샷 저장 경로에 쓰이므로, 골든
+        데이터와 대조할 때도 어긋난다.
+        """
+        meta: dict[str, str] = {}
         for table in self.all_tables:
+            if len(table.header) != 2:
+                continue
+            for row in table.rows[1:]:
+                if len(row) < 2:
+                    continue
+                key, value = normalize_ws(row[0]), row[1].strip()
+                if not value:
+                    continue
+                if "화면" in key and "ID" in key.upper():
+                    meta.setdefault("screen_id", value.replace(" ", ""))
+                elif "화면" in key and ("경로" in key or "URL" in key.upper()):
+                    meta.setdefault("url_path", value)
+        return meta
+
+    def declared_sample_values(self) -> dict[str, str]:
+        """예시 데이터 표에서 '라벨 -> 예시값' 을 읽는다. 라벨 -> 값 이다.
+
+        표를 고르는 기준이 캡션이 아니라 **열 제목**이다. 열 제목이 모두 UI 요소의
+        라벨이면 그 표는 요소별 예시값 표다. '테스트 계정', '입력 예시 데이터' 처럼
+        제목 표현이 기획서마다 달라도 이 기준은 흔들리지 않는다.
+
+        이 기준이 예시 시나리오 표를 걸러내기도 한다. 검색 기획서의 '예시 검색' 표는
+        열 제목이 '검색어 | 노출돼야 하는 문구' 인데 뒤쪽이 라벨이 아니므로 제외된다
+        — 그 표는 scenarios 로 가야 하고 sample_value 가 아니다.
+
+        왜 필요한가: 실측에서 few-shot 예시의 표 제목을 바꾼 것만으로 로그인의
+        sample_value 추출이 두 번 깨졌다. 예시값이 빠지면 정상 케이스가 등록되지
+        않은 값을 쓰게 되어 **구현 결함 없이 실패한다**(오탐).
+        """
+        labels = set(self.declared_labels())
+        if not labels:
+            return {}
+
+        element_table = self._element_table()
+        found: dict[str, str] = {}
+        for table in self.all_tables:
+            if table is element_table or len(table.rows) < 2:
+                continue
             header = [normalize_ws(h) for h in table.header]
-            if not header:
+            if not header or not all(h in labels for h in header):
                 continue
-            # '요소 ID' 와 '유형' 이 함께 있는 표를 UI 요소 정의 표로 본다.
-            # 둘 중 하나만으로는 다른 표(실패 조건 등)와 구분되지 않는다.
-            has_id = any("요소" in h and "ID" in h.upper() for h in header)
-            has_type = any("유형" in h for h in header)
-            if not (has_id and has_type):
+            for i, label in enumerate(header):
+                value = table.rows[1][i].strip() if i < len(table.rows[1]) else ""
+                if value:
+                    found.setdefault(label, value)
+        return found
+
+    def declared_label_to_id(self) -> dict[str, str]:
+        """UI 요소 표에서 '라벨 -> 요소 ID'. 행 단위로 짝지어 어긋나지 않게 한다."""
+        table = self._element_table()
+        if table is None:
+            return {}
+        header = [normalize_ws(h) for h in table.header]
+        id_col = next((i for i, h in enumerate(header)
+                       if "요소" in h and "ID" in h.upper()), None)
+        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
+        if id_col is None or label_col is None:
+            return {}
+
+        mapping: dict[str, str] = {}
+        for row in table.rows[1:]:
+            if len(row) <= max(id_col, label_col):
                 continue
-            col = next(i for i, h in enumerate(header)
-                       if "요소" in h and "ID" in h.upper())
-            return [row[col].replace(" ", "") for row in table.rows[1:]
-                    if len(row) > col and row[col].strip()]
+            label, element_id = row[label_col].strip(), row[id_col].strip()
+            if label and element_id:
+                mapping[label] = element_id.replace(" ", "")
+        return mapping
+
+    def declared_scenarios(self) -> Optional[list[dict]]:
+        """입력-결과 예시 표를 그대로 시나리오로 옮긴다. LLM 을 쓰지 않는다.
+
+        ## 왜 이걸 LLM 에 맡기지 않는가
+
+        여기에는 추론할 것이 없다. 열 제목 -> 라벨 -> 요소 ID 는 표를 보고 하는
+        조회이고, 셀 값은 그대로 옮기면 된다. '8자 이상' 을 min_length: 8 로
+        바꾸는 것과는 성질이 다르다.
+
+        실측에서 LLM 에 맡긴 대가를 두 번 치렀다. 회원가입에서는 **기획서에 없는
+        시나리오를 만들어냈고**(성공 조건과 예시 데이터를 조합해 지어냈다.
+        체크박스 값으로 'checked' 라는 규약까지 창작했다), 검색에서는 표 대신
+        **실패 조건 표의 행을 가져왔다**(빈 검색어). 지어낸 기대 문구는 화면에
+        없는 문구를 요구해 오탐이 되고, 규칙 위반을 시나리오로 들여오면 같은 것을
+        두 번 검증한다.
+
+        ## 표를 고르는 기준
+
+        열 제목 중 **일부만** UI 요소의 라벨인 표다. 나머지 열이 기대 결과다.
+
+            열 제목이 전부 라벨      -> 요소별 예시값 표 (sample_value)
+            열 제목이 일부만 라벨    -> 입력-결과 짝 표 (여기)
+            라벨이 하나도 없음       -> 개요·실패 조건 등 다른 표
+
+        Returns:
+            None  판별할 근거가 없다 (라벨을 못 읽었다). 이때만 LLM 결과를 쓴다.
+            []    그런 표가 없다. 시나리오가 없는 것이 정답이다.
+            [...] 표에서 읽은 시나리오.
+        """
+        label_to_id = self.declared_label_to_id()
+        if not label_to_id:
+            return None
+
+        element_table = self._element_table()
+        for table in self.all_tables:
+            if table is element_table or len(table.rows) < 2:
+                continue
+            header = [normalize_ws(h) for h in table.header]
+            if len(header) < 2:
+                continue
+            input_cols = [i for i, h in enumerate(header) if h in label_to_id]
+            other_cols = [i for i, h in enumerate(header) if h not in label_to_id]
+            if not input_cols or not other_cols:
+                continue
+
+            # 기대 결과 열은 라벨이 아닌 첫 열로 본다. 기획서가 열을 더 두면
+            # (비고 등) 첫 열만 쓰고 나머지는 무시한다 — 억측하지 않는다.
+            expect_col = other_cols[0]
+            scenarios: list[dict] = []
+            for row in table.rows[1:]:
+                if len(row) <= expect_col:
+                    continue
+                given = {
+                    label_to_id[header[i]]: row[i].strip()
+                    for i in input_cols
+                    if i < len(row) and row[i].strip()
+                }
+                expect_text = row[expect_col].strip()
+                if given and expect_text:
+                    scenarios.append({"given": given, "expect_text": expect_text})
+            return scenarios
         return []
 
     def to_llm_text(self) -> str:
