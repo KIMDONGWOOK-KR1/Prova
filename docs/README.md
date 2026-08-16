@@ -30,13 +30,14 @@
 | `overview.src.html` | 위 파일의 편집용 원본. 이미지 자리에 `<!-- MEDIA:… -->` 자리표시자만 있다 |
 | `00-overview.md` | 전체 그림 + 용어 사전 + 코드 읽는 순서 |
 | `01-data-contract.md` | `models.py`가 왜 파이프라인의 "계약"인가 |
-| `02-s1-spec-extraction.md` | PDF에서 기획서를 뽑는 방법과 함정 네 개 |
+| `02-s1-spec-extraction.md` | PDF에서 기획서를 뽑는 방법과 함정 네 개, 그리고 '표는 코드가 읽는다'는 결론 |
 | `03-llm-vs-code.md` | **AI에 맡길 일과 코드로 짤 일의 경계** — 가장 중요한 설계 판단 |
 | `04-grounding-execution.md` | 자연어 라벨 → 실제 요소, 브라우저 조작 |
 | `05-verdict-report.md` | 판정의 뒤집힌 논리(에러가 떠야 PASS)와 리포트 |
 | `06-langgraph.md` | LangGraph를 관통 이후로 미룬 판단 |
 | `07-cheetah-cuda.md` | GPU 서버에서 실제로 막힌 세 지점 |
 | `08-screen-expansion.md` | **화면을 늘릴 때 실제로 깨진 것들** — 회원가입 확장에서 배운 것 |
+| `09-search-scenarios.md` | 규칙으로 표현할 수 없는 검증(검색), 그리고 **표에 적힌 사실을 AI에 맡기면 안 되는 이유** |
 
 각 노트는 어려운 용어를 먼저 풀고, 코드 위치를 가리키고, "이걸 안 했으면 무슨 일이
 벌어지는가"를 함께 적었다. 끝에 직접 실행해볼 수 있는 명령이 있다 — 모두 동작을 확인했다.

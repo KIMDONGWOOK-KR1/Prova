@@ -22,15 +22,17 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
                           report.html <──S6── Verdict[] <──S5────────┘
 ```
 
-로그인·회원가입 두 화면을 각각 두 구현에 대해 검증한 결과
+로그인·회원가입·검색 세 화면을 각각 두 구현에 대해 검증한 결과
 (CHEETAH의 로컬 Qwen2.5-7B-AWQ 사용, 2026-08-16 실측):
 
 | 화면 | 대상 | 결과 |
 |---|---|---|
 | 로그인 | `good` — 기획서를 지킨 구현 | **7/7 PASS** (통과율 100%) |
 | 로그인 | `bad` — 검증을 빠뜨린 구현 | **3 PASS / 4 FAIL** — 빠진 규칙 4개를 정확히 지목, 오탐 0건 |
-| 회원가입 | `good` | **14/14 PASS** (통과율 100%) |
-| 회원가입 | `bad` | **11 PASS / 3 FAIL** — 빠진 규칙 3개를 정확히 지목, 오탐 0건 |
+| 회원가입 | `good` | **14/14 PASS** |
+| 회원가입 | `bad` | **11 PASS / 3 FAIL** — 심은 결함 3개를 정확히 지목, 오탐 0건 |
+| 검색 | `good` | **6/6 PASS** |
+| 검색 | `bad` | **3 PASS / 3 FAIL** — 심은 결함 3개를 정확히 지목, 오탐 0건 |
 
 `bad`에서도 구현돼 있는 검증은 PASS로 나온다. 한 리포트 안에
 "구현된 규칙은 PASS, 누락된 규칙은 FAIL"이 함께 나오는 것이 판정을 신뢰할 근거다.
@@ -40,7 +42,12 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 닉네임도 `min_length`는 PASS, `max_length`만 FAIL이다 — 한 요소의 규칙 중 일부만
 구현된 경우를 규칙 단위로 분리해 짚어낸다.
 
-S1 추출 정확도도 골든 데이터와 대조해 확인했다 — 두 화면 **22/22 통과**.
+검색 화면은 검증 축이 다르다. 로그인·회원가입은 "규칙을 어긴 값에 에러가 뜨는가"였는데
+검색은 "정상 입력에 정해진 결과가 나오는가"다. `bad`에 심은 **대소문자 구분** 결함이
+그 차이를 보여준다 — 값에 흠이 없고 구현도 검사를 하는데 **검사 방법이 기획서와 다르다.**
+위반값을 만드는 방식으로는 도달할 경로가 없고, 기획서가 입력-결과 짝을 제시해야 잡힌다.
+
+S1 추출 정확도도 골든 데이터와 대조해 확인했다 — 세 화면 **42/42 통과**.
 로컬 7B가 `constraints` 키 이름(`min_length`, `require_uppercase`, `same_as` 등)까지
 정확히 뽑아내므로, 계획 단계에서 우려했던 "7B가 검증 규칙을 놓칠 위험"은 해소됐다.
 Claude API가 필요하지 않다.
@@ -81,6 +88,8 @@ uv run prova run --pdf fixtures/specs/login_spec.pdf  --url http://localhost:810
 uv run prova run --pdf fixtures/specs/login_spec.pdf  --url http://localhost:8100/bad  --backend mock
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend mock
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/bad  --backend mock
+uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:8100/good --backend mock
+uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:8100/bad  --backend mock
 
 # 5. 리포트 열기
 start runs/<run-id>/report.html
@@ -91,7 +100,7 @@ CHEETAH에 vLLM을 올리고 `--backend` 없이 실행한다.
 
 ```powershell
 uv run prova check     # vLLM 연결 + 정형 출력 동작 확인
-uv run pytest          # 테스트 170개 (vLLM 없으면 정확도 측정 22개는 자동 skip)
+uv run pytest          # 테스트 211개 (vLLM 없으면 정확도 측정 42개는 자동 skip)
 ```
 
 ---
@@ -105,7 +114,7 @@ src/prova/
 ├── llm/                      백엔드 추상화 (base / mock / vllm)
 ├── s1_spec_extractor/        PDF -> ScreenSpec
 │   ├── pdf_parser.py           결정적 추출 (pdfplumber, LLM 없음)
-│   └── extractor.py            LLM 구조화 (guided_json)
+│   └── extractor.py            LLM 구조화 + 표에서 읽은 사실로 교정
 ├── s2_case_generator/        ScreenSpec -> TestCase[]
 │   ├── rule_expander.py        규칙 -> 위반값 + 요소 간 의존 해석 (순수 함수, LLM 없음)
 │   └── generator.py            케이스 조립 + 기대 결정 + 요소 유형별 액션
@@ -118,12 +127,12 @@ src/prova/
 ├── graph.py                  같은 노드를 LangGraph 로 배선
 └── cli.py                    prova run / prova check
 
-sut/                          테스트 대상 미니 웹앱 — 로그인·회원가입 (good / bad)
+sut/                          테스트 대상 미니 웹앱 — 로그인·회원가입·검색 (good / bad)
 fixtures/specs/               화면기획서 md / pdf / 정답(golden) — 화면마다 한 벌
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
 ├── reference/                계획서·주제개요서·멘토링보고서
-├── teaching/                 티칭 노트 9개 + overview.html (그림 자료)
+├── teaching/                 티칭 노트 10개 + overview.html (그림 자료)
 ├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
 └── README.md                 문서 안내
 ```
@@ -133,7 +142,7 @@ docs/
 ## 설계 판단 (명세서와 다르게 한 것)
 
 명세서([`docs/specs/Prova_서비스명세서.md`](docs/specs/Prova_서비스명세서.md))를
-구현하면서 네 군데를 바꿨다. 각각 이유가 있다.
+구현하면서 다섯 군데를 바꿨다. 각각 이유가 있다.
 
 ### 1. negative 케이스는 규칙을 하나씩만 위반시킨다
 
@@ -182,6 +191,27 @@ WITCHES 실물 PDF가 오면 `pdf_parser.py`만 교체하면 된다.
 직접 입력하지 않으므로 '8자 미달인 체크 상태' 같은 입력은 만들 수 없고, 억지로
 만들면 실행이 조작 오류로 실패해 판정이 뭉개진다. 이 요소들에서 검증할 수 있는
 것은 '선택/체크하지 않았을 때'뿐이다.
+
+### 5. 규칙으로 표현할 수 없는 검증을 `scenarios`로 따로 뒀다
+
+검색 화면에서 드러났다. 로그인·회원가입의 검증은 모두 **'값 자체가 규칙을 어겼는가'**여서
+규칙에서 위반값을 만들어낼 수 있었다. 그게 `rule_expander`의 존재 이유다.
+
+검색은 **'정상 입력에 정해진 결과가 나오는가'**다. `notebook`을 검색하면 3건이 나와야
+한다는 것은 값의 흠이 아니라 시스템 상태에 대한 기대이고, 규칙이 없으니 위반값도 만들 수
+없다.
+
+→ `ScreenSpec.scenarios`를 추가했다. 기획서가 입력-결과 짝을 직접 제시하는 경로이고,
+`rule_expander`를 거치지 않는다. 케이스 유형은 `positive`다 — 규칙을 어긴 값이 아니므로
+`negative`로 두면 S5의 판정이 뒤집혀 '에러가 떠야 PASS'가 된다.
+
+`Scenario`가 담는 것은 `given`(입력값)과 `expect_text`(노출돼야 하는 문구) 둘뿐이다.
+`Expectation` 전체를 담으면 표현력은 늘지만 S1이 `type` 열거값까지 골라야 하고, 로컬 7B에
+선택지를 늘리면 추출이 흔들린다. 건수를 DOM에서 직접 세야 할 때가 오면 **필드를 추가**한다
+— `expect_text`의 의미를 넓혀 재해석하지 않는다. 필드 이름이 할 수 있는 일을 말해야 한다.
+
+이 확장이 잡아내는 결함의 종류가 새롭다. 검색 `bad`의 **대소문자 구분**은 값에 흠이 없고
+구현도 검사를 한다 — 다만 기획서와 다른 방법으로 한다. 위반값 생성으로는 도달할 경로가 없다.
 
 ---
 
@@ -284,16 +314,65 @@ vLLM 연결 실패 시 mock으로 자동 폴백하면, 아무 추론도 하지 �
 종류의 보정이 아니라 표기 복원이므로(슬러그에 공백이 들어갈 여지가 없고 고칠 방법도
 하나뿐이다) 경고 없이 처리한다. 매 실행마다 뜨는 경고는 정작 중요한 경고를 묻는다.
 
+### 표에 그대로 적힌 사실을 LLM에 맡기면 안 된다 ← 가장 값진 교훈
+
+화면을 늘리는 동안 **같은 종류의 실패를 네 번** 겪었다.
+
+| 무엇을 | 7B가 한 일 | 결과 |
+|---|---|---|
+| 요소 목록 | 7행 표에서 버튼 행을 생략 | 폼이 제출되지 않아 전 케이스 FAIL |
+| `screen_id` | `화면 ID \| search`를 두고 `product_search`를 지어냄 | `case_id`·스크린샷 경로가 어긋남 |
+| `sample_value` | few-shot 표 제목을 바꾸자 두 번 놓침 | 정상 케이스가 오탐 FAIL |
+| `scenarios` | 없는 시나리오를 창작, 실패 조건 표의 행을 가져옴 | 없는 기대를 요구해 오탐 |
+
+넷 다 **표에 그대로 적혀 있는 값**이다. 추론할 것이 없다. `pdfplumber`가 이미 괘선으로
+열을 갈라 읽고 있는데, 그걸 다시 LLM에게 "읽어 줘"라고 부탁하고 있었던 것이다.
+
+→ 프롬프트를 고치는 대신 `pdf_parser`가 결정적으로 읽어 쓴다.
+
+```python
+doc.declared_element_ids()    # 요소 ID 목록      -> 프롬프트에 주입 + 누락 경고
+doc.declared_screen_meta()    # 화면 ID / 경로    -> 프롬프트에 주입 + 불일치 경고
+doc.declared_sample_values()  # 라벨 -> 예시값    -> 프롬프트에 주입 + 누락 경고
+doc.declared_scenarios()      # 입력-결과 짝      -> 이 값을 그대로 쓴다
+```
+
+마지막 것은 프롬프트 주입에서 멈추지 않고 **결과를 대체한다.** 보정이 아니라 애초에
+LLM이 판단할 일이 아니었기 때문이다 — 열 제목에서 요소 ID를 찾는 것은 조회이고, 셀 값은
+그대로 옮기면 된다. LLM이 다른 답을 냈다는 사실은 경고로 남겨, 프롬프트가 나빠지고 있는지
+알 수 있게 한다.
+
+**표를 고르는 기준이 캡션이 아니라 열 제목이라는 점**이 이 방식을 견고하게 만든다.
+
+```
+열 제목이 전부 요소 라벨    -> 요소별 예시값 표 (sample_value)
+열 제목이 일부만 라벨       -> 입력-결과 짝 표 (scenarios)
+라벨이 하나도 없음          -> 개요·실패 조건 등 다른 표
+```
+
+기획서마다 표 제목이 '테스트 계정'/'입력 예시 데이터'/'예시 검색'으로 달라도 이 기준은
+흔들리지 않는다. 실제로 이 기준 하나가 검색 기획서의 두 표를 정확히 갈라냈다.
+
+**LLM에 남는 일은 자연어 판단뿐이다** — "8자 이상"을 `min_length: 8`로 옮기는 것,
+"비밀번호와 동일"을 `same_as`로 옮기는 것. 그건 표 안에 구조로 적혀 있지 않다.
+
 ---
 
 ## 아직 안 한 것
 
 Figma 연동 · VLM 요소 탐지(S3 fallback) · Self-Healing 루프 · LLM 기반 실패 분류 ·
-**검색 화면** · locator 캐시 · 병렬 실행 · CI 연동 · 한 PDF에 여러 화면.
+**아이디/비밀번호 찾기 화면** · locator 캐시 · 병렬 실행 · CI 연동 · 한 PDF에 여러 화면.
 
-모두 명세서에 있다. 회원가입 화면은 2차에서 붙였고(위 결과 표), 다음은 검색 화면이다.
-검색은 '에러가 뜨는가'가 아니라 '결과 건수가 맞는가'를 봐야 해서 `Expectation` 확장이
-필요하다 — 지금까지의 화면들과 검증 축이 다르다.
+명세서 §1이 1차 대상으로 꼽은 네 화면 중 셋(로그인·회원가입·검색)이 끝났다.
+남은 하나는 아이디/비밀번호 찾기이고, 기존 기계로 대부분 덮인다 — 이메일 형식 검증과
+에러 문구 대조가 대부분이어서 로그인의 부분집합에 가깝다.
+
+그래서 다음으로 값이 큰 것은 화면이 아니라 **결과를 DOM에서 직접 세는 능력**이다.
+지금 검색 검증은 기획서가 "검색 결과 N건" 문구를 노출한다고 적어 둔 데 기대고 있다.
+WITCHES 실물 화면이 건수를 문구로 보여주지 않으면 그 경로가 막히므로, `Expectation`에
+`result_count`를 추가하고 S3가 반복 요소를 찾을 수 있게 해야 한다. 그건 S3의
+'정확히 1개만 확정한다'는 계약을 건드리는 일이라, 기존 화면의 판정이 흔들리지 않는지
+확인하며 해야 한다.
 
 `AgentState`의 `heal_count`/`max_heal`과 `ElementLocation`의 `bbox`/`confidence`는
 그 확장에서 상태 구조가 흔들리지 않게 미리 자리를 잡아둔 필드다.

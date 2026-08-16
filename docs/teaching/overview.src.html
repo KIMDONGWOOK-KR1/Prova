@@ -452,7 +452,7 @@
     </p>
     <p class="byline">
       <span>의뢰 · ㈜WITCHES</span>
-      <span>회원가입 확장 완료 · 2026-08-16</span>
+      <span>세 화면 검증 완료 · 2026-08-16</span>
       <span>로컬 Qwen2.5-7B-AWQ on CHEETAH</span>
     </p>
   </header>
@@ -741,7 +741,7 @@
   <!-- ═══ 3. 증명 ════════════════════════════════════════ -->
   <section>
     <h2 class="col">같은 기획서, 다른 구현, 다른 결과</h2>
-    <p class="sub col">두 화면 · 네 번의 실행으로 확인한 것</p>
+    <p class="sub col">세 화면 · 여섯 번의 실행으로 확인한 것</p>
 
     <div class="col">
       <p>
@@ -833,6 +833,52 @@
         FAIL이다 — <strong>한 입력란의 규칙 중 일부만 구현된 경우</strong>다. 최소·최대를
         한 케이스로 묶어 검사했다면 최소 쪽이 걸려 에러가 뜨고, 최대 검증이 없다는 사실은
         가려졌을 것이다. "규칙 하나당 케이스 하나"라는 설계 판단이 값을 한 지점이다.
+      </p>
+    </div>
+
+    <h3 class="col">검색 화면 — 검증하는 것 자체가 다르다</h3>
+
+    <div class="col">
+      <p>
+        앞의 두 화면은 <strong>"규칙을 어긴 값에 에러가 뜨는가"</strong>였다. 검색은
+        <strong>"정상 입력에 정해진 결과가 나오는가"</strong>다. <code>notebook</code>을
+        검색하면 3건이 나와야 한다는 것은 값의 흠이 아니라 시스템 상태에 대한 기대이고,
+        어겨진 규칙이 없으니 위반값을 만들 수도 없다.
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card good">
+        <h4><code>/good/search</code> <span class="tag pass">전부 통과</span></h4>
+        <div class="score">6 / 6</div>
+        <p>규칙 위반 3건 + 기획서 예시 2건 + 정상 1건. 통과율 100%.</p>
+      </div>
+      <div class="card bad">
+        <h4><code>/bad/search</code> <span class="tag fail">3건 실패</span></h4>
+        <div class="score">3 / 6</div>
+        <p>심은 결함 3건을 정확히 지목했고 <strong>오탐은 0건</strong>이었다.</p>
+        <ul>
+          <li><span class="tag fail">FAIL</span> 대소문자를 구분한다 — 기획서는 구분 안 함</li>
+          <li><span class="tag fail">FAIL</span> 0건일 때 안내 문구를 안 보여준다</li>
+          <li><span class="tag fail">FAIL</span> 검색어 최소 길이 검증 없음</li>
+          <li><span class="tag pass">PASS</span> 필수 입력·최대 길이 검증은 있음</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="label">위반값으로는 절대 잡을 수 없는 결함</span>
+      <p>
+        첫 번째 결함이 이 화면을 추가한 이유다. <code>notebook</code>은 모든 입력 규칙을
+        만족하는 <strong>멀쩡한 검색어</strong>이고, 구현도 검사를 하기는 한다 — 다만
+        <span class="mark">검사 방법이 기획서와 다르다.</span> 규칙에서 위반값을 만드는
+        방식으로는 이 결함에 도달할 경로가 아예 없다.
+      </p>
+      <p>
+        그래서 기획서가 <strong>입력과 기대 결과를 짝으로</strong> 제시하는 경로를 새로
+        뒀다(<code>ScreenSpec.scenarios</code>). 기획서가 그 표를 주지 않으면 이 검증은
+        불가능하다 — 그건 도구의 한계가 아니라 기획서의 한계다. "검색이 잘 되어야 한다"만
+        적혀 있으면 사람도 확인할 수 없다.
       </p>
     </div>
 
@@ -1126,7 +1172,7 @@
             <td>🔴 API 후보 — 강한 멀티모달 추론 필요</td>
             <td>
               <code>pdfplumber</code>(결정적) + LLM(구조화) 2단계. 텍스트 레이어가 있는 PDF는
-              로컬 7B로 충분했다 — <strong>두 화면 골든 비교 22/22 통과</strong>.
+              로컬 7B로 충분했다 — <strong>세 화면 골든 비교 42/42 통과</strong>.
             </td>
           </tr>
         </tbody>
@@ -1362,15 +1408,15 @@
     </div>
   </section>
 
-  <!-- ═══ 8. 다음 ════════════════════════════════════════ -->
+  <!-- ═══ 8. 표는 코드가 읽는다 ═════════════════════════ -->
   <section>
-    <h2 class="col">다음은 검색 화면</h2>
-    <p class="sub col">이번엔 검증 축 자체가 다르다</p>
+    <h2 class="col">표에 적혀 있는 것을 AI에게 읽어 달라고 부탁하고 있었다</h2>
+    <p class="sub col">화면을 늘리며 같은 종류의 실패를 네 번 겪고서야 알아낸 것</p>
 
     <div class="col">
       <p>
-        회원가입에서 배운 것은 <strong>코드를 열기 전에 검토하면 절반은 미리 찾는다</strong>는
-        것이다. 검색 화면을 붙이기 전에 확인할 것을 먼저 적어 둔다.
+        화면이 3개에서 7개 요소로 늘고, 다시 새 화면이 붙는 동안 S1(기획서 읽기)이 계속
+        흔들렸다. 매번 프롬프트를 고쳐서 달랬다. 네 번째에 공통점이 보였다.
       </p>
     </div>
 
@@ -1378,40 +1424,147 @@
       <table>
         <thead>
           <tr>
-            <th style="width: 34%">확인할 것</th>
-            <th style="width: 66%">왜</th>
+            <th style="width: 20%">무엇을</th>
+            <th style="width: 40%">로컬 7B가 한 일</th>
+            <th style="width: 40%">그 결과</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td>검증 축이 다르다</td>
-            <td>
-              지금까지는 "에러가 뜨는가"였는데 검색은 <strong>"결과 건수가 맞는가"</strong>다.
-              <code>Expectation</code>에 <code>error_message</code>/<code>error_shown</code>
-              밖의 유형이 필요하다.
-            </td>
+            <td>요소 목록</td>
+            <td>7행 표에서 <strong>버튼 행을 생략</strong>했다. 길이 제한 때문이 아니었다 —
+                응답이 상한의 절반도 안 됐다</td>
+            <td>폼이 제출되지 않아 <strong>구현이 옳아도 전 케이스 FAIL</strong></td>
           </tr>
           <tr>
-            <td>'위반값'이라는 개념이 흐려진다</td>
-            <td>
-              검색어에 규칙이 있나? "빈 검색어", "결과 없는 검색어"는 규칙 위반이라기보다
-              <strong>상태</strong>다. <code>rule_expander</code>의 모델에 맞는지 먼저 봐야 한다.
-            </td>
+            <td><code>screen_id</code></td>
+            <td><code>화면 ID | search</code>라고 적힌 표를 두고 화면명에서
+                <code>product_search</code>를 지어냈다</td>
+            <td><code>case_id</code>와 스크린샷 경로가 기획서와 어긋남</td>
           </tr>
           <tr>
-            <td>SUT에 데이터가 필요하다</td>
-            <td>
-              지금 SUT는 상태가 없다(회원가입도 계정을 저장하지 않는다). 검색은 검색될 데이터가
-              있어야 하고, 그러면 테스트 간 상태 공유를 생각해야 한다 — SUT 픽스처를 세션
-              범위로 둔 근거가 흔들린다.
-            </td>
+            <td><code>sample_value</code></td>
+            <td>예시의 표 제목을 바꾼 것만으로 <strong>두 번</strong> 놓쳤다</td>
+            <td>정상 케이스가 등록되지 않은 값을 써서 오탐 FAIL</td>
           </tr>
           <tr>
-            <td>완료 조건은 같다</td>
-            <td>로그인·회원가입 결과가 그대로 유지되어야 한다.</td>
+            <td><code>scenarios</code></td>
+            <td>기획서에 <strong>없는 시나리오를 창작</strong>했고(체크박스 값으로
+                <code>'checked'</code>라는 규약까지 지어냈다), 다음에는 실패 조건 표의
+                행을 가져왔다</td>
+            <td>화면에 없는 문구를 요구해 오탐</td>
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div class="note">
+      <span class="label">공통점</span>
+      <p>
+        넷 다 <strong>표에 그대로 적혀 있는 값</strong>이다. 추론할 것이 없다.
+        <code>pdfplumber</code>가 이미 괘선으로 열을 갈라 읽고 있는데, 그걸 다시 AI에게
+        <span class="mark">"읽어 줘"라고 부탁하고 있었던 것</span>이다.
+      </p>
+    </div>
+
+    <div class="col">
+      <p>그래서 코드가 읽는다.</p>
+    </div>
+
+<pre class="out"><code>doc.declared_element_ids()    <span class="n"># 요소 ID 목록      -> 프롬프트 주입 + 누락 경고</span>
+doc.declared_screen_meta()    <span class="n"># 화면 ID / 경로    -> 프롬프트 주입 + 불일치 경고</span>
+doc.declared_sample_values()  <span class="n"># 라벨 -> 예시값    -> 프롬프트 주입 + 누락 경고</span>
+doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 값을 그대로 쓴다</span></code></pre>
+
+    <div class="col">
+      <p>
+        앞의 셋은 프롬프트에 주입해 <strong>예방</strong>하고, 결과를 대조해
+        <strong>검출</strong>한다. 둘 다 필요하다 — 예방만 두면 모델이나 버전이 바뀔 때
+        조용히 다시 깨지고, 검출만 두면 매번 망가진 리포트를 받아 놓고 경고만 읽게 된다.
+        프롬프트는 보장이 아니라 부탁이다.
+      </p>
+      <p>
+        마지막 것은 주입에서 멈추지 않고 <strong>결과를 대체한다.</strong> 보정이 아니라
+        애초에 AI가 판단할 일이 아니었기 때문이다 — 열 제목에서 요소 ID를 찾는 것은
+        조회이고, 셀 값은 그대로 옮기면 된다.
+      </p>
+    </div>
+
+    <h3 class="col">표를 고르는 기준이 캡션이 아니라 열 제목이다</h3>
+
+    <div class="col">
+      <p>이 한 가지가 방식 전체를 견고하게 만든다.</p>
+    </div>
+
+<pre class="out"><code>열 제목이 <span class="mark">전부</span> 요소 라벨    -> 요소별 예시값 표 (sample_value)
+열 제목이 <span class="mark">일부만</span> 라벨       -> 입력-결과 짝 표 (scenarios)
+라벨이 하나도 없음          -> 개요·실패 조건 등 다른 표</code></pre>
+
+    <div class="col">
+      <p>
+        기획서마다 표 제목이 '테스트 계정'/'입력 예시 데이터'/'예시 검색'으로 달라도 이
+        기준은 흔들리지 않는다. 캡션으로 판별하려면 표 위쪽 본문과 표의 위치를 맞춰 보고,
+        기획서마다 다른 표현을 모두 열거해야 한다. <strong>열 제목은 표 안에 있고 구조로
+        정해져 있다.</strong>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">그러면 AI에 남는 일은</span>
+      <p>
+        <strong>표 안에 구조로 적혀 있지 않은 것</strong>뿐이다.
+        "8자 이상"을 <code>min_length: 8</code>로, "비밀번호와 동일"을
+        <code>same_as: password</code>로 옮기는 자연어 해석. 그건 괘선이 알려주지 않는다.
+      </p>
+      <p>
+        이 경계가 처음 판단("결정적 추출 + AI 구조화 2단계")을 더 옳게 만들었다.
+        1단계가 할 수 있는 일이 생각보다 많았다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">테스트에도 같은 구멍이 있었다</span>
+      <p>
+        <code>scenarios</code> 창작을 처음에는 테스트가 잡지 못했다. 골든 데이터에
+        시나리오가 없으면 비교를 <code>skip</code>하고 있었기 때문이다. '있어야 할 것이
+        있는가'만 보고 <span class="mark">'없어야 할 것이 없는가'는 보지 않았다.</span>
+        파이프라인 케이스 수가 14건에서 15건으로 늘어난 것을 눈으로 보고서야 알았다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 9. 다음 ════════════════════════════════════════ -->
+  <section>
+    <h2 class="col">다음</h2>
+    <p class="sub col">남은 화면보다 값이 큰 것</p>
+
+    <div class="col">
+      <p>
+        명세서 §1이 1차 대상으로 꼽은 네 화면 중 셋(로그인·회원가입·검색)이 끝났다.
+        남은 하나인 <strong>아이디/비밀번호 찾기</strong>는 기존 기계로 대부분 덮인다 —
+        이메일 형식 검증과 에러 문구 대조가 대부분이어서 로그인의 부분집합에 가깝다.
+        회원가입에서 배운 대로, 이미 도는 기계를 한 번 더 돌리는 화면은 확장 가치가 낮다.
+      </p>
+      <p>
+        그래서 다음으로 값이 큰 것은 화면이 아니라 <strong>결과를 DOM에서 직접 세는
+        능력</strong>이다. 지금 검색 검증은 기획서가 "검색 결과 N건" 문구를 노출한다고
+        적어 둔 데 기대고 있다. WITCHES 실물 화면이 건수를 문구로 보여주지 않으면 그
+        경로가 막힌다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">그 확장이 건드리는 계약</span>
+      <p>
+        건수를 세려면 S3가 <strong>반복 요소</strong>를 찾아야 한다. 그런데 지금 S3는
+        <span class="mark">'정확히 1개만 확정한다'</span>를 계약으로 삼고 있고, 그 계약이
+        지금까지 판정을 신뢰할 근거였다 — 후보가 여러 개일 때 아무거나 집으면 FAIL이
+        구현 결함 때문인지 잘못된 요소를 눌러서인지 구분할 수 없다.
+      </p>
+      <p>
+        느슨하게 만들면 기존 세 화면의 판정에 영향이 간다. 반복 요소 탐지를 별도 경로로
+        두고 기존 경로는 그대로 남기는 편이 안전하다.
+      </p>
     </div>
 
     <div class="note">
@@ -1426,8 +1579,8 @@
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 170개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 9개,
+    코드 <code>C:\dev\prova</code> · 테스트 211개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 10개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
