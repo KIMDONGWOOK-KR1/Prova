@@ -23,6 +23,7 @@ extract_text() 는 표 안 글자까지 함께 쏟아낸다. 그러면 "email �
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,22 @@ from typing import Optional
 import pdfplumber
 
 from prova.text_utils import normalize_ws
+
+# 건수 열을 값의 모양으로 찾을 때 쓴다. 음수·소수는 건수가 아니다.
+_INT_RE = re.compile(r"\d+")
+
+# 기획서 '유형' 열의 한국어 표현 -> models.ElementType.
+# 여기 없는 표현은 매핑하지 않는다 (declared_element_types 설명 참고).
+ELEMENT_TYPE_WORDS = {
+    "입력": "input",
+    "입력란": "input",
+    "버튼": "button",
+    "링크": "link",
+    "선택": "select",
+    "체크박스": "checkbox",
+    "텍스트": "text",
+    "목록": "list",
+}
 
 
 @dataclass
@@ -196,6 +213,48 @@ class ParsedDocument:
                 mapping[label] = element_id.replace(" ", "")
         return mapping
 
+    def declared_element_types(self) -> dict[str, str]:
+        """UI 요소 표의 '유형' 열을 ElementType 으로 옮긴다. 라벨 -> 유형 이다.
+
+        ## 왜 이것도 코드가 읽는가
+
+        이 프로젝트가 확장 과정에서 네 번 같은 실패를 겪고 얻은 결론의 적용이다 —
+        **표에 그대로 적힌 사실은 LLM 에 맡기지 않는다.** 유형이 그렇다. '입력' 은
+        input 이고 '목록' 은 list 다. 여기에 추론할 여지가 없다.
+
+        유형이 틀리면 조용히 검증이 사라진다. 목록 요소를 text 로 읽으면 건수
+        검증이 아예 만들어지지 않고(미탐), 반대로 입력란을 목록으로 읽으면 값을
+        채우지 않아 정상 케이스까지 실패한다(오탐).
+
+        ## 모르는 표현은 건드리지 않는다
+
+        아래 표에 없는 단어면 그 요소를 빼고 돌려준다. 기획서가 '멀티셀렉트' 처럼
+        새로운 유형을 쓰면 LLM 의 판단을 남겨 두는 편이 낫다 — 억지로 매핑하면
+        틀린 유형을 확신을 갖고 덮어쓰게 된다.
+
+        라벨을 키로 쓰는 이유: 요소 ID 는 정규화(공백 제거) 대상이라 대조 시점이
+        엇갈릴 수 있고, 라벨은 declared_sample_values 와 declared_label_to_id 가
+        이미 쓰는 키다.
+        """
+        table = self._element_table()
+        if table is None:
+            return {}
+        header = [normalize_ws(h) for h in table.header]
+        type_col = next((i for i, h in enumerate(header) if "유형" in h), None)
+        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
+        if type_col is None or label_col is None:
+            return {}
+
+        mapping: dict[str, str] = {}
+        for row in table.rows[1:]:
+            if len(row) <= max(type_col, label_col):
+                continue
+            label = row[label_col].strip()
+            declared = ELEMENT_TYPE_WORDS.get(normalize_ws(row[type_col]))
+            if label and declared:
+                mapping[label] = declared
+        return mapping
+
     def declared_scenarios(self) -> Optional[list[dict]]:
         """입력-결과 예시 표를 그대로 시나리오로 옮긴다. LLM 을 쓰지 않는다.
 
@@ -241,9 +300,22 @@ class ParsedDocument:
             if not input_cols or not other_cols:
                 continue
 
-            # 기대 결과 열은 라벨이 아닌 첫 열로 본다. 기획서가 열을 더 두면
+            # 건수 열은 열 제목이 아니라 **값의 모양**으로 찾는다. 비어 있지 않은
+            # 칸이 전부 정수인 열이 건수다.
+            #
+            # 제목으로 찾지 않는 이유: 기획서마다 '결과 건수' · '개수' · '건수'
+            # 로 다르게 쓰고, 그러면 표현을 하나 놓칠 때마다 검증이 조용히
+            # 빠진다. 값의 모양은 표현에 흔들리지 않는다. 그리고 '노출돼야 하는
+            # 문구' 열의 값("검색 결과 3건")은 정수가 아니므로 섞이지 않는다.
+            count_col = next(
+                (i for i in other_cols if _is_integer_column(table.rows[1:], i)), None
+            )
+            # 기대 문구 열은 건수 열이 아닌 첫 열로 본다. 기획서가 열을 더 두면
             # (비고 등) 첫 열만 쓰고 나머지는 무시한다 — 억측하지 않는다.
-            expect_col = other_cols[0]
+            expect_col = next((i for i in other_cols if i != count_col), None)
+            if expect_col is None:
+                continue
+
             scenarios: list[dict] = []
             for row in table.rows[1:]:
                 if len(row) <= expect_col:
@@ -255,7 +327,11 @@ class ParsedDocument:
                 }
                 expect_text = row[expect_col].strip()
                 if given and expect_text:
-                    scenarios.append({"given": given, "expect_text": expect_text})
+                    scenarios.append({
+                        "given": given,
+                        "expect_text": expect_text,
+                        "expect_count": _cell_int(row, count_col),
+                    })
             return scenarios
         return []
 
@@ -342,3 +418,21 @@ def parse_pdf(path: str | Path) -> ParsedDocument:
                 tables=_extract_tables(page),
             ))
     return doc
+
+
+def _cell_int(row: list[str], col: Optional[int]) -> Optional[int]:
+    """행의 col 번째 칸을 정수로. 칸이 없거나 정수가 아니면 None."""
+    if col is None or col >= len(row):
+        return None
+    text = row[col].strip()
+    return int(text) if _INT_RE.fullmatch(text) else None
+
+
+def _is_integer_column(rows: list[list[str]], col: int) -> bool:
+    """그 열의 비어 있지 않은 칸이 전부 정수인가.
+
+    값이 하나도 없는 열은 False 다. 빈 열을 건수 열로 골라 두면 모든 행의 건수가
+    None 이 되어, 건수 검증이 있는 줄 알았는데 하나도 만들어지지 않는다.
+    """
+    values = [row[col].strip() for row in rows if col < len(row) and row[col].strip()]
+    return bool(values) and all(_INT_RE.fullmatch(v) for v in values)

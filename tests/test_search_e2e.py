@@ -18,6 +18,20 @@
 
 **D1 이 이 화면을 추가한 이유다.** 검사 자체는 하는데 검사 방법이 기획서와 다른
 결함이고, 위반값으로는 절대 잡을 수 없다. 기획서 예시만이 잡아낸다.
+
+## 확인 경로가 둘이다
+
+같은 기획서 예시를 두 가지로 확인한다.
+
+    문구 (text_visible)   "검색 결과 3건" 이 화면에 떴는가
+    건수 (result_count)   검색 결과 목록에 항목이 3개 렌더됐는가
+
+문구 경로는 화면이 건수를 **말해 줄 때만** 성립한다. 실물 화면이 건수를 문구로
+보여주지 않으면 그 경로는 아무것도 확인하지 못하고, 그래도 리포트는 초록불이 된다.
+건수 경로는 목록을 직접 세므로 화면이 건수를 한 글자도 말하지 않아도 성립한다.
+
+케이스를 합치지 않은 이유는 FAIL 하나가 두 가지를 뜻하지 않게 하기 위해서다 —
+문구만 틀린 결함과 렌더된 개수가 틀린 결함은 고칠 곳이 다르다.
 """
 
 from __future__ import annotations
@@ -87,16 +101,16 @@ class TestGoodVariant:
         assert report.summary["pass_rate"] == 100.0
 
     def test_케이스_구성(self, good_run):
-        """정상 1 + 규칙 위반 3(required·min·max) + 기획서 예시 2 = 6건.
+        """정상 1 + 규칙 위반 3(required·min·max) + 예시 문구 2 + 예시 건수 2 = 8건.
 
         기획서 예시가 positive 로 집계되는 것이 맞다 — 규칙을 어긴 값이 아니라
         정상 입력에 대한 정해진 결과를 확인하기 때문이다. negative 로 두면 S5 의
         판정이 뒤집혀 '에러가 떠야 PASS' 가 되어버린다.
         """
         report, _ = good_run
-        assert report.summary["total"] == 6
+        assert report.summary["total"] == 8
         assert sum(1 for v in report.cases if v.type == "negative") == 3
-        assert sum(1 for v in report.cases if v.type == "positive") == 3
+        assert sum(1 for v in report.cases if v.type == "positive") == 5
 
     def test_기획서_결함_경고가_없다(self, good_run):
         report, _ = good_run
@@ -105,13 +119,30 @@ class TestGoodVariant:
         assert defects == [], f"기획서 결함 경고: {defects}"
 
     def test_결과_건수_문구를_확인한다(self, good_run):
-        """검색 화면의 검증은 '건수 문구가 떴는가' 다. DOM 에서 항목을 세지 않는다 —
-        기획서가 건수를 문구로 노출한다고 적었으므로 문구 비교로 충분하고, 그게
-        실물 마크업에 덜 의존한다."""
         report, _ = good_run
-        case = next(v for v in report.cases if "notebook" in v.title)
+        case = next(v for v in report.cases
+                    if "-scenario-" in v.case_id and "notebook" in v.title)
         assert case.verdict == "PASS", case.failure_detail
         assert "검색 결과 3건" in case.evidence["expected"]
+
+    def test_목록_항목을_직접_센다(self, good_run):
+        """문구와 별개로 DOM 을 센다. 화면이 "검색 결과 3건" 을 안 찍어도 성립하는
+        경로다 — 실물 화면이 건수를 문구로 보여주지 않을 때 검증이 사라지지 않게
+        하려고 만들었다."""
+        report, _ = good_run
+        case = next(v for v in report.cases if "-count-" in v.case_id
+                    and "notebook" in v.title)
+        assert case.verdict == "PASS", case.failure_detail
+        assert case.evidence["counted"] == {
+            "target": "검색 결과 목록", "status": "ok", "count": 3}
+
+    def test_0건이면_목록이_없는_것이_정상이다(self, good_run):
+        """조건부 렌더링을 탐지 실패로 처리하면 완벽한 구현에서 오탐이 난다."""
+        report, _ = good_run
+        case = next(v for v in report.cases if "-count-" in v.case_id
+                    and "zzzz" in v.title)
+        assert case.verdict == "PASS", case.failure_detail
+        assert case.evidence["counted"]["status"] == "absent"
 
 
 class TestBadVariant:
@@ -139,11 +170,35 @@ class TestBadVariant:
         assert failed == EXPECTED_SCENARIO_FAILURES
 
     def test_오탐이_없다(self, bad_run):
+        """결함 3개인데 FAIL 이 4건인 이유: D1(대소문자 구분)이 두 경로에 동시에
+        잡힌다. 'notebook' 의 문구가 안 뜨고, 목록도 렌더되지 않는다.
+
+        중복 보고가 아니다 — 두 경로는 서로를 대신하지 못한다. 구현이 문구는
+        올바르게 찍고 목록만 빠뜨리면 문구 경로는 통과하고 건수 경로만 잡는다.
+        같은 결함이 두 곳에서 보이는 것과, 한 곳에서만 보일 수 있는 결함을 놓치는
+        것 중에서는 앞쪽이 낫다."""
         report, _ = bad_run
-        assert report.summary["fail"] == 3, (
-            "심은 결함은 3개다:\n"
+        assert report.summary["fail"] == 4, (
+            "심은 결함은 3개이고 FAIL 은 4건이어야 한다:\n"
             + "\n".join(f"  {v.verdict} {v.title}" for v in report.cases)
         )
+
+    def test_건수_경로가_D1을_독립적으로_잡는다(self, bad_run):
+        """문구를 보지 않고 목록만 세도 결함에 도달한다. 실물 화면이 건수를 문구로
+        보여주지 않는 경우에 이 경로만 남는다."""
+        report, _ = bad_run
+        case = next(v for v in report.cases if "-count-" in v.case_id
+                    and "notebook" in v.title)
+        assert case.verdict == "FAIL"
+        assert case.evidence["counted"]["status"] == "absent"
+
+    def test_0건_기대는_bad에서도_통과한다(self, bad_run):
+        """D2 는 문구 누락이지 목록 결함이 아니다. 건수 경로가 D2 까지 잡겠다고
+        나서면 오탐이 된다 — 판정마다 확인하는 것이 하나여야 한다."""
+        report, _ = bad_run
+        case = next(v for v in report.cases if "-count-" in v.case_id
+                    and "zzzz" in v.title)
+        assert case.verdict == "PASS", case.failure_detail
 
     def test_정상_검색은_통과한다(self, bad_run):
         """'Notebook'(대문자)은 bad 에서도 3건이 나온다. 검색 자체는 동작한다는

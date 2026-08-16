@@ -51,6 +51,17 @@ def _fillable_inputs(spec: ScreenSpec) -> list[UIElement]:
     return [e for e in spec.elements if e.type in ("input", "select", "checkbox")]
 
 
+def _collection_element(spec: ScreenSpec) -> Optional[UIElement]:
+    """건수를 셀 반복 목록. 기획서가 목록 요소를 정의하지 않으면 None.
+
+    None 일 때 건수 케이스를 만들지 않는 이유: 셀 대상이 없으면 무엇을 세야 할지
+    추측해야 하고, 추측한 대상을 세면 그 숫자를 신뢰할 수 없다. 기획서가 건수를
+    적어 두고 목록 요소는 정의하지 않은 상태는 기획서의 결함이므로
+    rule_expander.spec_defects 가 경고로 알린다 — 조용히 검증을 빠뜨리지 않는다.
+    """
+    return next((e for e in spec.elements if e.type == "list"), None)
+
+
 def _submit_element(spec: ScreenSpec) -> Optional[UIElement]:
     """폼을 제출하는 요소. 첫 번째 버튼을 쓴다.
 
@@ -241,17 +252,43 @@ def _scenario_cases(
     없지만, 여러 입력 중 하나만 지정한 시나리오에서는 나머지가 비어 있으면 필수
     검증에 먼저 걸려 시나리오가 확인되지 않는다.
     """
+    collection = _collection_element(spec)
+
     cases: list[TestCase] = []
     for i, scenario in enumerate(spec.scenarios):
         values, _ = resolve_values(inputs, overrides=dict(scenario.given))
+        steps = _steps_for_case(spec, values)
         shown = ", ".join(f"{k}={v!r}" for k, v in scenario.given.items()) or "기본값"
+
         cases.append(TestCase(
             case_id=f"{spec.screen_id}-scenario-{start_seq + i:03d}",
             screen_id=spec.screen_id,
             title=f"기획서 예시: {shown} → {scenario.expect_text!r} 노출 확인",
             type="positive",
-            steps=_steps_for_case(spec, values),
+            steps=steps,
             expected=Expectation(type="text_visible", value=scenario.expect_text),
+        ))
+
+        # 건수 확인은 같은 케이스에 합치지 않고 한 건 더 만든다.
+        #
+        # 합치면 FAIL 하나가 두 가지를 뜻하게 된다 — 문구가 틀렸는지, 개수가
+        # 틀렸는지. 그 둘은 원인도 고칠 곳도 다르다. 검색 결과가 3건인데 문구만
+        # "검색 결과 2건" 으로 잘못 찍는 결함과, 문구는 맞는데 목록에 2개만
+        # 렌더되는 결함은 다른 버그다. '한 케이스는 한 가지만 말한다' 는 이
+        # 프로젝트의 원칙을 여기서도 지킨다.
+        if scenario.expect_count is None or collection is None:
+            continue
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-count-{start_seq + i:03d}",
+            screen_id=spec.screen_id,
+            title=f"기획서 예시: {shown} → {collection.label} {scenario.expect_count}개 확인",
+            type="positive",
+            steps=steps,
+            expected=Expectation(
+                type="result_count",
+                count=scenario.expect_count,
+                count_target=collection.label,
+            ),
         ))
     return cases
 
