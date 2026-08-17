@@ -314,3 +314,4 @@ uv run python scripts/embed_media.py
 | [14-real-spec-robustness.md](14-real-spec-robustness.md) | 우리가 만든 문서에서만 동작하고 있었다 (기획서 훼손 6종 측정) |
 | [15-async-rendering.md](15-async-rendering.md) | 검증 대상 웹앱도 우리가 만들었다 (실물 마크업 4종 측정) |
 | [16-forbidden-text.md](16-forbidden-text.md) | 없어야 할 것이 없는가 (비밀번호 찾기 · 계정 존재 여부 노출) |
+| [17-audit.md](17-audit.md) | 각각은 옳은데 함께 두면 구멍이 난다 (전체 점검) |
