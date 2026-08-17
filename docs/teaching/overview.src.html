@@ -537,7 +537,7 @@
     <figure>
       <div class="figbox">
         <svg viewBox="0 0 940 296" role="img"
-             aria-label="Prova 6단계 파이프라인. S1과 S2만 로컬 LLM을 쓰고, S3와 S4는 테스트 대상 웹앱의 브라우저를 조작하며, S5와 S6은 코드로만 동작한다. 2차 VLM은 S3의 탐지가 실패했을 때만 진입한다.">
+             aria-label="Prova 6단계 파이프라인. 로컬 LLM이 판단하는 단계는 S1 하나로, 기획서 텍스트를 명세 JSON으로 구조화한다. S2의 케이스 생성부터 S6까지는 코드가 결정한다. S3와 S4는 테스트 대상 웹앱의 브라우저를 조작한다. 2차 VLM은 S3의 탐지가 실패했을 때만 진입한다.">
           <defs>
             <marker id="ar" viewBox="0 0 10 8" refX="9" refY="4"
                     markerWidth="8" markerHeight="6" orient="auto">
@@ -550,11 +550,17 @@
           </defs>
 
           <!-- 구간 배경 -->
-          <rect x="22" y="48" width="266" height="138" rx="8"
+          <rect x="22" y="48" width="134" height="138" rx="8"
                 fill="var(--accent-2)" stroke="var(--accent)" stroke-width="1"
                 stroke-dasharray="4 3"/>
           <text x="34" y="68" font-size="11.5" font-weight="700" fill="var(--accent)"
                 letter-spacing="0.06em">로컬 LLM (7B)</text>
+
+          <rect x="164" y="48" width="124" height="138" rx="8"
+                fill="none" stroke="currentColor" stroke-width="1"
+                stroke-dasharray="4 3" opacity="0.4"/>
+          <text x="176" y="68" font-size="11.5" font-weight="700" fill="currentColor"
+                opacity="0.6" letter-spacing="0.06em">코드</text>
 
           <rect x="306" y="48" width="266" height="138" rx="8"
                 fill="none" stroke="currentColor" stroke-width="1"
@@ -664,9 +670,11 @@
         타입 체인 &nbsp;ScreenSpec → TestCase[] → ElementLocation → StepResult[] → Verdict → TestReport
       </p>
       <figcaption>
-        <b>AI를 쓰는 곳은 왼쪽 두 단계뿐이다.</b> S1은 사람 말로 쓰인 규칙을
-        <code>{"min_length": 8}</code> 같은 형식으로 옮기고, S2는 케이스 제목만 다듬는다.
-        위반값 생성·요소 탐지·판정·리포트는 전부 코드다. 2차에서 VLM은 S3의 탐지가 실패했을
+        <b>AI가 판단하는 단계는 S1 하나다.</b> 사람 말로 쓰인 규칙을
+        <code>{"min_length": 8}</code> 같은 형식으로 옮기는 일이다. S2에서 LLM 이 하는 일은
+        <b>케이스 제목을 다듬는 것뿐이고 그것도 선택</b>이다 — 끄면 규칙 기반 제목을 쓰고
+        판정은 한 글자도 달라지지 않는다. 케이스의 입력값·스텝·기대값과 요소 탐지·판정·리포트는
+        전부 코드가 결정한다. 2차에서 VLM은 S3의 탐지가 실패했을
         때만 진입한다 — 그래서 <b>LLM과 VLM이 동시에 필요한 시점이 없다.</b>
       </figcaption>
     </figure>
@@ -754,19 +762,21 @@
     <div class="versus">
       <div class="card good">
         <h4><code>/good/login</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">9 / 9</div>
+        <div class="score">10 / 10</div>
         <p>기획서를 그대로 구현한 버전. 통과율 100%.</p>
       </div>
       <div class="card bad">
         <h4><code>/bad/login</code> <span class="tag fail">6건 실패</span></h4>
-        <div class="score">3 / 9</div>
+        <div class="score">4 / 10</div>
         <p>일부러 검증을 빼먹은 버전. 빼먹은 것을 정확히 4건 지목했고 <strong>오탐은 0건</strong>이었다.</p>
         <ul>
           <li><span class="tag fail">FAIL</span> 이메일 형식 검증 없음</li>
-          <li><span class="tag fail">FAIL</span> 비밀번호 길이·대문자·특수문자 검증 없음</li>
+          <li><span class="tag fail">FAIL</span> 비밀번호 길이·대문자·특수문자 검증 없음
+              <em>(규칙 하나당 케이스 하나라 FAIL 3건)</em></li>
           <li><span class="tag fail">FAIL</span> 미등록 계정 에러 문구가 기획서와 다름</li>
           <li><span class="tag fail">FAIL</span> 입력 안내 문구가 기획서와 다름</li>
-          <li><span class="tag pass">PASS</span> 필수 입력 검증은 있음 (2건)</li>
+          <li><span class="tag pass">PASS</span> 필수 입력 검증은 있음 (2건) ·
+              정상 로그인 · 라벨 탐지</li>
         </ul>
       </div>
     </div>
@@ -782,7 +792,7 @@
     </figure>
 
     <div class="note">
-      <span class="label">왜 bad에서도 3건이 통과해야 하나</span>
+      <span class="label">왜 bad에서도 4건이 통과해야 하나</span>
       <p>
         <code>bad</code> 버전에도 "필수 입력" 검증은 구현돼 있다. 그래서 그 케이스는 PASS로
         나온다. 한 리포트 안에 <span class="mark">구현된 규칙은 PASS, 빠진 규칙은 FAIL</span>이
@@ -806,17 +816,19 @@
     <div class="versus">
       <div class="card good">
         <h4><code>/good/signup</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">14 / 14</div>
-        <p>입력란이 6개로 늘어 케이스가 14개가 됐다. 통과율 100%.</p>
+        <div class="score">17 / 17</div>
+        <p>입력란이 6개로 늘어 케이스가 17개가 됐다. 통과율 100%.</p>
       </div>
       <div class="card bad">
-        <h4><code>/bad/signup</code> <span class="tag fail">3건 실패</span></h4>
-        <div class="score">11 / 14</div>
-        <p>심은 결함 3건을 정확히 지목했고 <strong>오탐은 0건</strong>이었다.</p>
+        <h4><code>/bad/signup</code> <span class="tag fail">4건 실패</span></h4>
+        <div class="score">13 / 17</div>
+        <p>심은 결함 4건을 정확히 지목했고 <strong>오탐은 0건</strong>이었다.</p>
         <ul>
           <li><span class="tag fail">FAIL</span> 비밀번호 확인 일치 검증 없음 — 값 하나만 봐선 판정 못 하는 규칙</li>
           <li><span class="tag fail">FAIL</span> 약관 동의 필수 검증 없음 — 입력이 아니라 '체크 상태'</li>
           <li><span class="tag fail">FAIL</span> 닉네임 최대 길이 검증 없음 (최소만 구현)</li>
+          <li><span class="tag fail">FAIL</span> 가입 경로 선택지에 '지인 추천' 이 없음 —
+              값을 고르는 데만 쓰이던 목록을 대조하게 했다</li>
           <li><span class="tag pass">PASS</span> 나머지 필수 입력 검증 5건은 있음</li>
         </ul>
       </div>
@@ -852,13 +864,15 @@
     <div class="versus">
       <div class="card good">
         <h4><code>/good/search</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">8 / 8</div>
-        <p>규칙 위반 3건 + 기획서 예시 2건 + 결과 건수 2건 + 정상 1건. 통과율 100%.</p>
+        <div class="score">10 / 10</div>
+        <p>규칙 위반 3건 + 기획서 예시 2건 + 결과 건수 2건 + 정상 1건
+           + 안내 문구 1건 + 라벨 탐지 1건. 통과율 100%.</p>
       </div>
       <div class="card bad">
         <h4><code>/bad/search</code> <span class="tag fail">4건 실패</span></h4>
-        <div class="score">4 / 8</div>
-        <p>심은 결함 3건을 지목했고 <strong>오탐은 0건</strong>이었다.</p>
+        <div class="score">6 / 10</div>
+        <p>심은 결함 3건을 지목했고 <strong>오탐은 0건</strong>이었다.
+           대소문자 결함이 문구·건수 두 경로에 잡혀 FAIL 은 4건이다.</p>
         <ul>
           <li><span class="tag fail">FAIL</span> 대소문자를 구분한다 — 기획서는 구분 안 함</li>
           <li><span class="tag fail">FAIL</span> 같은 결함이 건수 경로에서 한 번 더</li>
@@ -1131,7 +1145,7 @@
         </svg>
       </div>
       <figcaption>
-        <b>MIG 추가 할당은 불가능하다.</b> 그런데 파이프라인을 보면 LLM은 S1·S2에서만, VLM은
+        <b>MIG 추가 할당은 불가능하다.</b> 그런데 파이프라인을 보면 LLM은 S1에서만, VLM은
         S3에서만 쓰인다 — 동시에 필요한 시점이 없다. 그래서 <b>시간을 나눠 쓰면</b> 추가 할당
         없이 2차가 가능하다.<br>
         <b>실측으로 확인했다.</b> 7B 가동 중 남는 VRAM은 1.20 GiB 뿐이어서 동시 적재는 불가능했고,
@@ -1565,9 +1579,9 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
         <table>
           <thead><tr><th>검증</th><th>결과</th></tr></thead>
           <tbody>
-            <tr><td>회원가입 화면 케이스 14건</td>
+            <tr><td>회원가입 화면 케이스 17건</td>
                 <td><span class="tag pass">PASS</span> 입력 검증도 하고 완료 화면도 뜬다</td></tr>
-            <tr><td>로그인 화면 케이스 7건</td>
+            <tr><td>로그인 화면 케이스 10건</td>
                 <td><span class="tag pass">PASS</span> 등록된 계정으로는 정상 동작한다</td></tr>
             <tr><td>흐름 signup → login (주소로 이동)</td>
                 <td><span class="tag fail">FAIL</span> 가입한 계정으로 로그인이 안 된다</td></tr>
@@ -1675,12 +1689,12 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     <div class="versus">
       <div class="card good">
         <h4>통합 문서 <code>/good</code> <span class="tag pass">전부 통과</span></h4>
-        <div class="score">36 / 36</div>
-        <p>3화면 34건 + 흐름 2건. 통과율 100%.</p>
+        <div class="score">39 / 39</div>
+        <p>3화면 37건 + 흐름 2건. 통과율 100%.</p>
       </div>
       <div class="card bad">
         <h4>통합 문서 <code>/bad</code> <span class="tag fail">16건 실패</span></h4>
-        <div class="score">20 / 36</div>
+        <div class="score">23 / 39</div>
         <p>
           화면별로 뜯어 보면 <strong>단일 문서로 돌렸을 때와 정확히 같다.</strong>
           거기에 화면 사이 결함 1건이 더 잡혔다.
@@ -1949,13 +1963,13 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
 
     <div class="versus">
       <div class="card bad">
-        <span class="label">2차 경로 끔</span>
-        <span class="score">1 PASS / 9 FAIL</span>
+        <h4>2차 경로 <span class="tag fail">끔</span></h4>
+        <div class="score">1 / 10</div>
         <p>전부 <code>element_not_found</code>. 라벨이 없어 요소를 찾지 못한다.</p>
       </div>
       <div class="card good">
-        <span class="label">2차 경로 켬</span>
-        <span class="score">9 PASS / 1 FAIL</span>
+        <h4>2차 경로 <span class="tag pass">켬</span></h4>
+        <div class="score">9 / 10</div>
         <p>이미지로 찾아 진행하고, <strong>라벨 결함 1건은 그대로 남는다.</strong></p>
       </div>
     </div>
@@ -2155,14 +2169,15 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
 
     <div class="versus">
       <div class="card bad">
-        <span class="label">훼손 기획서 · 올바른 구현 — 전</span>
-        <span class="score">9 PASS / 1 FAIL</span>
-        <p>없는 결함을 보고했다. 경고 없음.</p>
+        <h4>고치기 전 <span class="tag fail">없는 결함 1건</span></h4>
+        <div class="score">9 / 10</div>
+        <p>올바른 구현인데 안내 문구가 다르다고 보고했다. <strong>경고 없음.</strong></p>
       </div>
       <div class="card good">
-        <span class="label">훼손 기획서 · 올바른 구현 — 후</span>
-        <span class="score">9 PASS / 0 FAIL</span>
-        <p>경고 2건으로 <strong>왜 확인하지 않았는지</strong>를 남긴다.</p>
+        <h4>고친 뒤 <span class="tag pass">오탐 없음</span></h4>
+        <div class="score">9 / 9</div>
+        <p>지어낸 문구를 버렸으니 케이스가 하나 줄었다. 그 이유를
+           <strong>경고 2건으로 남긴다.</strong></p>
       </div>
     </div>
 
