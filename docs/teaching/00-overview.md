@@ -311,3 +311,4 @@ uv run python scripts/embed_media.py
 | [11-multi-screen-flows.md](11-multi-screen-flows.md) | 한 문서 여러 화면 + 화면 사이 흐름 |
 | [12-coverage-gaps.md](12-coverage-gaps.md) | 기획서에 적혀 있는데 아무도 확인하지 않는 것 |
 | [13-vlm-fallback.md](13-vlm-fallback.md) | 화면 이미지로 요소를 찾는다 — 그리고 없는 결함을 만들지 않는다 |
+| [14-real-spec-robustness.md](14-real-spec-robustness.md) | 우리가 만든 문서에서만 동작하고 있었다 (기획서 훼손 6종 측정) |
