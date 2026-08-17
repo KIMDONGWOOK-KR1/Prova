@@ -144,6 +144,14 @@ def md_to_flowables(md: str, styles: dict, avail_width: float) -> list:
                 flow.append(Spacer(1, 8))
             continue
 
+        # 마크다운 주석은 렌더하지 않는다.
+        #
+        # 이 변환기는 모르는 줄을 그대로 본문 문단으로 만든다. 그래서 주석을
+        # 적으면 기획서 본문에 '<!-- 생성 파일 -->' 같은 글자가 찍히고, 그 글자가
+        # S1 의 입력에 섞인다. 페이지 마커만 알아보고 나머지 주석은 버린다.
+        if line.startswith("<!--") and line.endswith("-->") and line != "<!-- page -->":
+            continue
+
         # 화면 경계를 명시하는 마커.
         #
         # 한 문서에 화면이 여럿일 때 S1 은 페이지 단위로 화면을 나눈다
@@ -187,8 +195,15 @@ def convert(md_path: Path) -> Path:
 
 def main() -> None:
     register_fonts()
+    # '_' 로 시작하는 파일은 통합 문서를 조립할 조각이다(scripts/make_multi_spec.py).
+    # 그것만 담긴 PDF 를 만들면 화면 개요도 요소 표도 없는 문서가 되어, S1 이
+    # 요소 없는 빈 화면을 추출하고 리포트에 정체 불명의 항목이 늘어난다.
+    #
+    # 인자로 직접 준 파일은 걸러내지 않는다 — 조각을 일부러 변환해 눈으로 확인하고
+    # 싶을 수 있고, 그건 명시적 요청이다.
     targets = ([Path(a) for a in sys.argv[1:]]
-               or sorted(Path("fixtures/specs").glob("*.md")))
+               or sorted(p for p in Path("fixtures/specs").glob("*.md")
+                         if not p.name.startswith("_")))
     if not targets:
         raise SystemExit("변환할 .md 파일이 없습니다.")
     for md in targets:
