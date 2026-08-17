@@ -79,9 +79,28 @@
          않는 것도 양쪽 같다 — 그게 정상 구현이고, Prova 의 건수 판정은 '목록
          없음 = 0건' 을 기대값 0 일 때만 통과로 본다. -->
     {% if results %}
-    <ul class="results" aria-label="검색 결과 목록">
-      {% for name in results %}<li>{{ name }}</li>{% endfor %}
-    </ul>
+      {% if variant == 'slow' %}
+      <!-- slow 변형: 목록을 늦게 넣는다. 마크업(aria-label 포함)은 아래 else 절과
+           동일하다 — 다른 변수는 렌더 시점 하나뿐이다. -->
+      <div id="late-results"></div>
+      <script>
+        setTimeout(function () {
+          var ul = document.createElement("ul");
+          ul.className = "results";
+          ul.setAttribute("aria-label", "검색 결과 목록");
+          {{ results | tojson }}.forEach(function (name) {
+            var li = document.createElement("li");
+            li.textContent = name;
+            ul.appendChild(li);
+          });
+          document.getElementById("late-results").appendChild(ul);
+        }, {{ slow_delay_ms }});
+      </script>
+      {% else %}
+      <ul class="results" aria-label="검색 결과 목록">
+        {% for name in results %}<li>{{ name }}</li>{% endfor %}
+      </ul>
+      {% endif %}
     {% endif %}
 
     <!-- 결과 0건 안내는 에러가 아니라 안내다. role=alert 를 붙이지 않는 이유:

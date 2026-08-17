@@ -33,7 +33,7 @@
            전까지 아무도 확인하지 않았다. S3 는 라벨로 요소를 찾으므로 이 값이
            달라도 탐지는 그대로 된다 — 그래서 조용히 지나갔다. -->
       <input type="text" id="email" name="email"
-             placeholder="{{ '이메일을 입력하세요' if variant == 'good' else '아이디를 입력하세요' }}">
+             placeholder="{{ '아이디를 입력하세요' if variant == 'bad' else '이메일을 입력하세요' }}">
 
       <label for="password">비밀번호</label>
       <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요">
@@ -42,7 +42,23 @@
     </form>
 
     {% if error %}
-    <div class="error" role="alert">{{ error }}</div>
+      {% if variant == 'slow' %}
+      <!-- slow 변형: 서버가 보낸 에러를 브라우저가 늦게 DOM 에 넣는다.
+           실물 웹앱의 비동기 렌더링을 한 변수만 바꿔 재현한 것이다 —
+           문구도, 마크업도, 검증 로직도 good 과 같고 들어가는 시점만 다르다. -->
+      <div id="late-slot"></div>
+      <script>
+        setTimeout(function () {
+          var box = document.createElement("div");
+          box.className = "error";
+          box.setAttribute("role", "alert");
+          box.textContent = {{ error | tojson }};
+          document.getElementById("late-slot").appendChild(box);
+        }, {{ slow_delay_ms }});
+      </script>
+      {% else %}
+      <div class="error" role="alert">{{ error }}</div>
+      {% endif %}
     {% endif %}
   </div>
 </body>

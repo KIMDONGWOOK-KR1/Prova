@@ -358,6 +358,29 @@ def render_html(report: TestReport) -> str:
             f"{healed_titles}</div>"
         )
 
+    # 기다려서 통과한 케이스.
+    #
+    # healed 와 같은 이유로 남긴다 — 도구가 편의를 제공했으면 그 사실이 리포트에
+    # 있어야 한다. 여기서는 '이 화면이 결과를 늦게 보여준다' 는 사실이고, 실물
+    # 화면의 성질에 대한 정보다. 통과율만 보는 사람도 알아야 한다.
+    settled = s.get("settled", 0) or 0
+    settle_html = ""
+    if settled:
+        rows = "".join(
+            f"<div>· {_esc(v.title)} <b>{v.evidence['settled_ms']}ms</b></div>"
+            for v in report.cases if v.evidence.get("settled_ms")
+        )
+        worst = max(v.evidence["settled_ms"] for v in report.cases
+                    if v.evidence.get("settled_ms"))
+        settle_html = (
+            f"<div class='heal'><b>결과를 기다린 뒤 통과한 케이스 ({settled}건, "
+            f"최대 {worst}ms)</b>"
+            "<div class='why'>제출 직후에는 화면에 결과가 없었고, 기다린 뒤 나타났습니다. "
+            "판정은 유효합니다 — <b>이 화면이 결과를 비동기로 렌더한다</b>는 뜻입니다. "
+            "기다리지 않으면 올바른 구현이 FAIL 로 나옵니다.</div>"
+            f"{rows}</div>"
+        )
+
     backend = s.get("llm_backend", "")
     mock_warn = ""
     if backend.startswith("mock"):
@@ -386,7 +409,7 @@ def render_html(report: TestReport) -> str:
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
 </div>
-{mock_warn}{filter_warn}{heal_html}{gap_html}{warn_html}
+{mock_warn}{filter_warn}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>

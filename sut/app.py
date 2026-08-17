@@ -182,11 +182,20 @@ def check_password_rules(pw: str) -> bool:
     )
 
 
+# slow 변형이 결과를 DOM 에 넣기까지 기다리는 시간.
+#
+# 400ms 로 잡은 근거: 사람은 거의 눈치채지 못하고, 도구는 기다리지 않으면 확실히
+# 놓치는 구간이다. 너무 길게 잡으면 '도구가 기다린다' 를 확인하는 것이 아니라
+# '얼마나 오래 기다리나' 를 재는 시험이 된다.
+SLOW_DELAY_MS = 400
+
+
 def render_login(request: Request, variant: str, error: str | None = None) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
         name="login.html",
-        context={"variant": variant, "error": error},
+        context={"variant": variant, "error": error,
+                 "slow_delay_ms": SLOW_DELAY_MS},
     )
 
 
@@ -222,6 +231,7 @@ def render_search(
             "variant": variant, "query": query, "error": error,
             "results": results or [], "count": count,
             "empty_message": empty_message,
+            "slow_delay_ms": SLOW_DELAY_MS,
         },
     )
 
@@ -501,6 +511,68 @@ def nolabel_search(request: Request, query: str | None = None):
     return render_search(request, "nolabel", query, results=found, count=len(found))
 
 
+# ---------------------------------------------------------------------------
+# slow/* — 결과가 늦게 화면에 들어오는 구현 (실물 앱의 비동기 렌더링)
+# ---------------------------------------------------------------------------
+#
+# 검증 로직은 good 과 **완전히 같다.** 다른 것은 하나뿐이다 — 서버가 보낸 에러
+# 문구와 검색 결과를 브라우저가 SLOW_DELAY_MS 뒤에 DOM 에 넣는다.
+#
+# 왜 이 변형이 필요한가: 지금 SUT 는 동기식 폼 POST 라 응답 HTML 에 결과가 이미
+# 들어 있다. 실물 웹앱은 대개 그렇지 않다 — 제출하면 fetch 를 보내고, 응답이 오면
+# 화면을 갈아 끼운다. 그 사이 화면에는 아무것도 없다.
+#
+# Prova 가 클릭 직후 DOM 을 읽으면 그 '아무것도 없는' 상태를 보고 '기획서가 지정한
+# 에러가 안 뜬다' 로 판정한다. **구현은 올바른데 FAIL 이 난다 — 오탐이다.**
+# 이 변형은 그 오탐을 재현해서 도구가 기다리게 만들려고 있다.
+#
+# nolabel 과 같은 원칙으로 별도 변형이다: good/bad 는 '검증 로직의 유무' 하나만
+# 다르게 두는 실험이고, 여기에 렌더 시점 차이를 섞으면 변수가 둘이 된다.
+
+
+@app.get("/slow/login", response_class=HTMLResponse)
+def slow_login_form(request: Request):
+    return render_login(request, "slow")
+
+
+@app.post("/slow/login", response_class=HTMLResponse)
+def slow_login_submit(
+    request: Request,
+    email: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    # good 과 한 줄도 다르지 않다 — 렌더 시점만 템플릿이 늦춘다.
+    if not email or not password:
+        return render_login(request, "slow", MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_login(request, "slow", MSG_EMAIL_FORMAT)
+    if not check_password_rules(password):
+        return render_login(request, "slow", MSG_PASSWORD_RULE)
+    if REGISTERED["good"].get(email) != password:
+        return render_login(request, "slow", MSG_NO_ACCOUNT)
+    return RedirectResponse("/slow/dashboard", status_code=303)
+
+
+@app.get("/slow/dashboard", response_class=HTMLResponse)
+def slow_dashboard(request: Request):
+    return render_dashboard(request, "slow", "user@test.com")
+
+
+@app.get("/slow/search", response_class=HTMLResponse)
+def slow_search(request: Request, query: str | None = None):
+    if query is None:
+        return render_search(request, "slow")
+    if not query:
+        return render_search(request, "slow", query, error=MSG_QUERY_REQUIRED)
+    if not (2 <= len(query) <= 50):
+        return render_search(request, "slow", query, error=MSG_QUERY_LENGTH)
+    found = find_products(query, case_sensitive=False)
+    if not found:
+        return render_search(request, "slow", query, count=0,
+                             empty_message=MSG_NO_RESULTS)
+    return render_search(request, "slow", query, results=found, count=len(found))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(
@@ -512,5 +584,11 @@ def index():
         "<li><a href='/bad/signup'>/bad/signup — 의도적 불일치 구현</a></li>"
         "<li><a href='/good/search'>/good/search — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/search'>/bad/search — 의도적 불일치 구현</a></li>"
+        "</ul>"
+        "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
+        "<ul>"
+        "<li><a href='/nolabel/search'>/nolabel/search — 아이콘 버튼 (접근성 이름 없음)</a></li>"
+        "<li><a href='/slow/login'>/slow/login — 결과가 400ms 뒤에 나타난다</a></li>"
+        "<li><a href='/slow/search'>/slow/search — 목록이 400ms 뒤에 나타난다</a></li>"
         "</ul>"
     )
