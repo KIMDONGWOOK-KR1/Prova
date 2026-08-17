@@ -37,7 +37,23 @@
     </form>
 
     {% if error %}
-    <div class="error" role="alert">{{ error }}</div>
+      {% if variant == 'slowleak' %}
+      {#- 누출 문구를 늦게 넣는다. 도구가 '금지 문구가 없다' 를 첫 판정에서
+          확정하면 이 노출을 못 본다 — 대기를 넣으면서 새로 생길 수 있는 미탐이고,
+          이 변형이 그것을 재현한다. -#}
+      <div id="late-error"></div>
+      <script>
+        setTimeout(function () {
+          var box = document.createElement("div");
+          box.className = "error";
+          box.setAttribute("role", "alert");
+          box.textContent = {{ error | tojson }};
+          document.getElementById("late-error").appendChild(box);
+        }, {{ slow_delay_ms }});
+      </script>
+      {% else %}
+      <div class="error" role="alert">{{ error }}</div>
+      {% endif %}
     {% endif %}
 
     <!-- 성공 안내에 role=alert 를 붙이지 않는다. 붙이면 정상 케이스가 '에러가
