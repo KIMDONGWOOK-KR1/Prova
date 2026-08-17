@@ -117,6 +117,18 @@ class Scenario(BaseModel):
     # 채워진다. None 이면 건수 검증을 만들지 않는다 — 0 과 구별해야 한다.
     # (0 은 '아무것도 나오지 않아야 한다' 는 확인할 값이 있는 상태다)
     expect_count: Optional[int] = None
+    # 화면에 **나타나면 안 되는** 문구.
+    #
+    # 지금까지의 검증은 전부 '있어야 할 것이 있는가' 였다. 이건 반대 방향이고,
+    # 그 구분이 필요한 요구사항이 실재한다 — 아이디/비밀번호 찾기 화면에서
+    # 등록되지 않은 이메일에 '등록되지 않은 이메일입니다' 를 노출하면 공격자가
+    # 계정 존재 여부를 알아낼 수 있다(account enumeration). 그래서 기획서는
+    # 미등록 계정에도 같은 성공 문구를 노출하라고 적는다.
+    #
+    # expect_text 로 표현할 수 없다. '보냈습니다' 가 떠 있으면서 '등록되지
+    # 않았습니다' 도 함께 떠 있는 화면이 가능하고, 그 화면은 요구를 어긴다.
+    # 있어야 할 것과 없어야 할 것은 다른 확인이므로 필드도 다르다.
+    expect_absent: Optional[str] = None
 
 
 class ScreenSpec(BaseModel):
@@ -256,9 +268,13 @@ CaseType = Literal["positive", "negative", "boundary"]
 #   options_present 선택 요소에 기획서가 적은 항목이 모두 있어야 한다
 #   placeholders_match 입력 안내 문구가 기획서와 같아야 한다
 #   labels_findable 기획서의 라벨로 화면에서 요소를 찾을 수 있어야 한다
+#   text_absent    특정 문구가 화면에 **나타나지 않아야** 한다
+#                  (지금까지와 방향이 반대다. 계정 존재 여부 노출처럼 '알려주면
+#                   안 되는' 요구가 실재한다 — Scenario.expect_absent 참고)
 ExpectedType = Literal[
     "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
     "result_count", "options_present", "placeholders_match", "labels_findable",
+    "text_absent",
 ]
 
 

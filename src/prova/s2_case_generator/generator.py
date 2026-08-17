@@ -280,6 +280,26 @@ def _scenario_cases(
             expected=Expectation(type="text_visible", value=scenario.expect_text),
         ))
 
+        # 금지 문구 확인도 케이스를 따로 만든다.
+        #
+        # 같은 이유다 — '보냈습니다' 가 안 뜬 것과 '등록되지 않았습니다' 가 뜬 것은
+        # 다른 결함이다. 앞쪽은 기능이 안 되는 것이고, 뒤쪽은 기능은 되는데
+        # **계정 존재 여부를 알려주는 것**이다(account enumeration). 고칠 곳이 다르다.
+        #
+        # 그리고 둘을 합치면 더 나쁘다. 성공 문구는 뜨는데 금지 문구도 함께 뜨는
+        # 화면이 실제로 가능한데, 합친 케이스는 그걸 '문구 확인' 하나로 뭉갠다.
+        if scenario.expect_absent:
+            cases.append(TestCase(
+                case_id=f"{spec.screen_id}-absent-{start_seq + i:03d}",
+                screen_id=spec.screen_id,
+                title=(f"기획서 예시: {shown} → "
+                       f"{scenario.expect_absent!r} 미노출 확인"),
+                type="positive",
+                steps=steps,
+                expected=Expectation(type="text_absent",
+                                     value=scenario.expect_absent),
+            ))
+
         # 건수 확인은 같은 케이스에 합치지 않고 한 건 더 만든다.
         #
         # 합치면 FAIL 하나가 두 가지를 뜻하게 된다 — 문구가 틀렸는지, 개수가

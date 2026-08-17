@@ -437,14 +437,20 @@ def _apply_declared_scenarios(
     # 비교는 필드를 갖춘 형태로 맞춰서 한다. 표에서 읽은 dict 에 expect_count 가
     # 없고 모델 쪽에는 None 이 있으면, 값이 같은데도 다르다고 판정되어 매 실행마다
     # 경고가 뜬다. 매번 뜨는 경고는 정작 중요한 경고를 묻는다.
+    #
+    # **Scenario 에 필드를 추가하면 이 두 목록에도 넣어야 한다.** 안 넣으면 표에서
+    # 읽은 값이 조용히 버려진다 — expect_absent 를 추가할 때 실제로 그랬고,
+    # 금지 문구 케이스가 아예 생성되지 않았다. 리포트는 정상으로 보였다.
+    keys = ("given", "expect_text", "expect_count", "expect_absent")
     declared = [
-        {"given": dict(d.get("given", {})), "expect_text": d.get("expect_text", ""),
-         "expect_count": d.get("expect_count")}
+        {"given": dict(d.get("given", {})),
+         "expect_text": d.get("expect_text", ""),
+         **{k: d.get(k) for k in keys if k not in ("given", "expect_text")}}
         for d in declared
     ]
     llm_scenarios = [
-        {"given": dict(s.given), "expect_text": s.expect_text,
-         "expect_count": s.expect_count}
+        {"given": dict(s.given),
+         **{k: getattr(s, k) for k in keys if k != "given"}}
         for s in spec.scenarios
     ]
     spec.scenarios = [Scenario.model_validate(item) for item in declared]
