@@ -86,6 +86,9 @@ def run(
         None, "--vlm", metavar="URL",
         help="2차 경로: 접근성 속성으로 못 찾은 요소를 화면 이미지로 찾는다 "
              "(예: http://localhost:8001/v1)"),
+    vlm_model: Optional[str] = typer.Option(
+        None, "--vlm-model", metavar="이름",
+        help="VLM 서버가 서빙하는 모델 이름 (vLLM 의 --served-model-name 과 같게)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     if not pdf.exists():
@@ -106,7 +109,8 @@ def run(
         from prova.vlm.qwen_vl import QwenVLClient
         from prova.vlm.base import VLMError
 
-        vlm = QwenVLClient(base_url=vlm_url)
+        vlm = (QwenVLClient(base_url=vlm_url, model=vlm_model) if vlm_model
+               else QwenVLClient(base_url=vlm_url))
         try:
             vlm.health()
         except VLMError as exc:
@@ -119,7 +123,7 @@ def run(
     typer.echo(f"  백엔드    : {backend}")
     typer.echo(f"  실행 엔진 : {engine}")
     if vlm:
-        typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url}")
+        typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
     typer.echo("")
 
     try:
