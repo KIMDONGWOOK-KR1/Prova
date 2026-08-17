@@ -310,3 +310,4 @@ uv run python scripts/embed_media.py
 | [10-counting-dom.md](10-counting-dom.md) | 화면이 말해 주지 않는 것을 확인하기 (건수를 DOM에서 센다) |
 | [11-multi-screen-flows.md](11-multi-screen-flows.md) | 한 문서 여러 화면 + 화면 사이 흐름 |
 | [12-coverage-gaps.md](12-coverage-gaps.md) | 기획서에 적혀 있는데 아무도 확인하지 않는 것 |
+| [13-vlm-fallback.md](13-vlm-fallback.md) | 화면 이미지로 요소를 찾는다 — 그리고 없는 결함을 만들지 않는다 |
