@@ -95,12 +95,17 @@ class TestButtonDeclaredAsButton:
 
     def test_실제_SUT의_버튼은_통과한다(self, page, sut_base):
         """오탐 확인. 지금 SUT 의 버튼은 모두 <button> 이므로 이 검사가 기존
-        케이스를 깨뜨리지 않아야 한다."""
+        케이스를 깨뜨리지 않아야 한다.
+
+        SpecTypeMismatch 가 나지 않는 것이 확인 내용이다 — 그래서 반환값을 쓰지
+        않는다. 읽는 사람이 '단정을 빠뜨렸나' 로 오해하지 않게 명시한다.
+        """
         for path, label in (("/good/login", "로그인"),
                             ("/good/signup", "가입하기"),
                             ("/good/search", "검색")):
             page.goto(f"{sut_base}{path}")
-            ground(page, label, button(label))
+            location = ground(page, label, button(label))
+            assert location.selector, f"{path} 의 {label!r} 을 찾지 못했다"
 
 
 class TestUncheckedTypes:
