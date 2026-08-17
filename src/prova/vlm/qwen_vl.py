@@ -78,12 +78,31 @@ class QwenVLClient:
         self.timeout = timeout
 
     def health(self, timeout: float = 4.0) -> None:
-        """서버가 살아 있는지. 없으면 즉시 알린다 — 조용히 넘어가면 안 된다."""
+        """서버가 살아 있고 **이 모델 이름을 서빙하는지** 확인한다.
+
+        서버 연결만 보면 부족하다. vLLM 은 `--served-model-name` 으로 임의의 이름을
+        쓸 수 있고, 이름이 다르면 /models 는 200 을 주는데 모든 chat/completions
+        요청이 실패한다. 그러면 locate() 마다 VLMError 가 나고, 호출부는 그것을
+        탐지 실패로 되돌리므로 **리포트는 "요소를 못 찾았다" 로만 보인다.**
+
+        실제로 겪었다. `--served-model-name qwen-vl` 로 띄운 서버에 기본 모델
+        이름으로 요청해서 2차 경로가 통째로 죽었는데, 실행 로그에는 '2차 경로:
+        vllm-vl @ ...' 이 찍혀 있었다. 켰다고 믿는 실행이 실제로는 1차 경로였다.
+
+        이름 불일치는 기동 시점에 알 수 있는 사실이므로 여기서 끊는다.
+        """
         try:
             r = httpx.get(f"{self.base_url}/models", timeout=timeout)
             r.raise_for_status()
+            served = [m["id"] for m in r.json().get("data", [])]
         except Exception as exc:
             raise VLMError(f"VLM 서버에 연결할 수 없습니다 ({self.base_url}): {exc}")
+
+        if self.model not in served:
+            raise VLMError(
+                f"VLM 서버가 '{self.model}' 을 서빙하지 않습니다. "
+                f"서빙 중: {served or '(없음)'} — --vlm-model 로 이름을 맞추세요."
+            )
 
     def locate(self, *, image_png: bytes, target: str, hint: str = "") -> Located:
         what = f"{target} ({hint})" if hint else target
