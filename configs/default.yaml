@@ -27,6 +27,10 @@ execution:
   headless: true
   viewport: {width: 1280, height: 800}
   step_timeout_ms: 10000
+  # 화면이 기대 상태에 도달하기를 기다리는 상한.
+  # 실물 웹앱은 제출 결과를 나중에 렌더한다 — 기다리지 않으면 올바른 구현을
+  # FAIL 로 보고한다(오탐). 0 이면 기다리지 않는다.
+  settle_timeout_ms: 2000
   screenshot_every_step: true
 
 agent:

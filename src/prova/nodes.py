@@ -85,6 +85,15 @@ class AgentState:
     step_timeout_ms: int = 10000
     screenshot_every_step: bool = True
 
+    # 화면이 기대 상태에 도달하기를 기다리는 상한.
+    #
+    # 실물 웹앱은 제출하면 fetch 를 보내고 응답이 오면 화면을 갈아 끼운다. 그 사이
+    # 화면에는 아무것도 없다. 클릭 직후 DOM 을 읽으면 그 빈 상태를 보고 '기획서가
+    # 지정한 에러가 안 뜬다' 로 판정한다 — 구현이 올바른데 FAIL 이 나는 오탐이다.
+    #
+    # 0 으로 두면 기다리지 않는다(예전 동작).
+    settle_timeout_ms: int = 2000
+
     errors: list[str] = field(default_factory=list)
 
 
@@ -174,14 +183,85 @@ def run_cases(state: AgentState) -> AgentState:
             max_heal=state.max_heal,
         )
         step_results = execute_case_steps(ctx, case.steps)
+        state.verdicts.append(
+            _verify_when_ready(state, case, step_results, console_errors))
+
+    return state
+
+
+def _verify_when_ready(
+    state: AgentState,
+    case: TestCase,
+    step_results: list,
+    console_errors: list[str],
+):
+    """화면이 기대 상태에 도달할 때까지 기다렸다가 판정한다.
+
+    ## 왜 기다려야 하는가 — 실측으로 확인한 오탐
+
+    지금까지는 스텝이 끝나면 곧바로 DOM 을 읽고 판정했다. SUT 가 동기식 폼 POST 라
+    응답 HTML 에 결과가 이미 들어 있어서 통했다. **실물 웹앱은 대개 그렇지 않다** —
+    제출하면 fetch 를 보내고, 응답이 오면 화면을 갈아 끼운다. 그 사이 화면에는
+    아무것도 없다.
+
+    검증 로직이 `good` 과 한 줄도 다르지 않고 렌더 시점만 400ms 늦춘 `slow` 변형으로
+    재 봤더니 **오탐 7건**이 났다. 그리고 실패 사유가 이렇게 나왔다.
+
+        기획서에 적힌 'password' 의 'require_uppercase' 검증 규칙이 구현에서
+        확인되지 않았습니다. (에러가 전혀 노출되지 않음 — 구현이 이 규칙을
+        강제하지 않는다)
+
+    구현은 그 규칙을 강제한다. **도구가 못 기다린 것을 구현 결함으로 단정했다.**
+
+    ## 왜 'DOM 이 안정될 때까지' 가 아닌가
+
+    그쪽이 판정과 독립적이라 더 깔끔해 보였다. 그런데 성립하지 않는다 — 400ms 뒤에
+    렌더하는 화면은 그 전 250ms 동안 아무 변화가 없고, 그 정적을 '안정됐다' 로 읽는다.
+    **아직 시작하지 않은 것과 끝난 것을 구분할 수 없다.**
+
+    그래서 기대를 알고 기다린다. 판정이 통과하면 그때 멈추고, 통과하지 않으면 상한까지
+    기다린 뒤 그 판정을 그대로 쓴다.
+
+    ## 이 대기가 판정을 무르게 만들지 않는가
+
+    한 방향으로만 바꾼다 — FAIL 을 PASS 로 바꿀 수 있고 그 반대는 없다. 그래서 두 가지를
+    지킨다.
+
+    - **상한이 있다.** 상한을 넘으면 마지막 판정을 그대로 보고한다. 통과할 때까지
+      무한정 기다리지 않는다.
+    - **기다린 시간을 근거에 남긴다.** 380ms 를 기다려 통과한 케이스는 '그 화면이
+      결과를 늦게 보여준다' 는 사실을 담고 있다. 그걸 지우면 편의가 사실을 덮는다 —
+      2차 경로의 `healed` 를 남기는 것과 같은 이유다.
+
+    ## 스텝이 끊긴 케이스는 기다리지 않는다
+
+    요소를 못 찾아 스텝이 실패한 케이스는 기다려도 달라지지 않는다. 그런데도 기다리면
+    진짜로 깨진 케이스마다 상한만큼 시간을 버린다.
+    """
+    interval_ms = 100
+
+    def judge():
         page_state = capture_page_state(
             state.page, console_errors,
             _count_for(state, case), _options_for(state, case),
             _placeholders_for(state, case), _findable_for(state, case),
         )
-        state.verdicts.append(verify(case, step_results, page_state))
+        return verify(case, step_results, page_state)
 
-    return state
+    verdict = judge()
+    broke = any(r.status != "ok" for r in step_results)
+    if verdict.verdict == "PASS" or broke or state.settle_timeout_ms <= 0:
+        return verdict
+
+    waited = 0
+    while waited < state.settle_timeout_ms:
+        state.page.wait_for_timeout(interval_ms)
+        waited += interval_ms
+        verdict = judge()
+        if verdict.verdict == "PASS":
+            verdict.evidence["settled_ms"] = waited
+            return verdict
+    return verdict
 
 
 def _specs_for(state: AgentState, case: TestCase) -> list[ScreenSpec]:

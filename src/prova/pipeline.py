@@ -64,6 +64,7 @@ def run_pipeline(
     headless: bool = True,
     viewport: Optional[dict] = None,
     step_timeout_ms: int = 10000,
+    settle_timeout_ms: int = 2000,
     slow_mo: int = 0,
     record_video: bool = False,
     only: Optional[str] = None,
@@ -101,6 +102,7 @@ def run_pipeline(
         llm=llm,
         vlm=vlm,
         step_timeout_ms=step_timeout_ms,
+        settle_timeout_ms=settle_timeout_ms,
     )
 
     # --- S1: 설계 문서 -> ScreenSpec (브라우저 없이 가능) ---

@@ -461,6 +461,9 @@ class TestReport(BaseModel):
             "pass": passed,
             "fail": total - passed,
             "healed": sum(1 for v in verdicts if v.healed),
+            # 기다려서 통과한 케이스 수. '이 화면은 결과를 늦게 보여준다' 는 사실이고,
+            # 지우면 통과율만 보는 사람이 그 통과의 성질을 알 수 없다.
+            "settled": sum(1 for v in verdicts if v.evidence.get("settled_ms")),
             "pass_rate": round(passed / total * 100, 1) if total else 0.0,
         }
         # 화면별 내역. 화면이 여럿이면 전체 통과율만으로는 어디가 문제인지 알 수
