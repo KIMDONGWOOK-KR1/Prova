@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>비밀번호 찾기</title>
+  <style>
+    body { font-family: "Malgun Gothic", sans-serif; background:#f4f5f7; margin:0;
+           display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .card { background:#fff; padding:36px 40px; border-radius:10px; width:360px;
+            box-shadow:0 2px 12px rgba(0,0,0,.08); }
+    h1 { font-size:22px; margin:0 0 8px; }
+    .lead { font-size:13px; color:#666; margin:0 0 22px; line-height:1.6; }
+    label { display:block; font-size:13px; color:#444; margin:14px 0 6px; }
+    input { width:100%; padding:10px 12px; border:1px solid #ccd0d5; border-radius:6px;
+            font-size:14px; box-sizing:border-box; }
+    button { width:100%; margin-top:22px; padding:11px; border:0; border-radius:6px;
+             background:#2f6fed; color:#fff; font-size:15px; cursor:pointer; }
+    .error { margin-top:16px; padding:10px 12px; background:#fdeaea; color:#b32020;
+             border-radius:6px; font-size:13px; line-height:1.5; }
+    .sent { margin-top:16px; padding:10px 12px; background:#e9f4ee; color:#1a6b45;
+            border-radius:6px; font-size:13px; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>비밀번호 찾기</h1>
+    <p class="lead">가입한 이메일로 재설정 링크를 보내 드립니다.</p>
+
+    <!-- 마크업은 good/bad 가 완전히 동일하다. 차이는 서버가 무엇을 노출하는지
+         하나뿐이다 — bad 는 등록되지 않은 이메일에 다른 문구를 노출한다. -->
+    <form method="post" action="/{{ variant }}/find-account" novalidate>
+      <label for="email">이메일</label>
+      <input type="text" id="email" name="email"
+             placeholder="가입한 이메일을 입력하세요">
+
+      <button type="submit">재설정 메일 받기</button>
+    </form>
+
+    {% if error %}
+    <div class="error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <!-- 성공 안내에 role=alert 를 붙이지 않는다. 붙이면 정상 케이스가 '에러가
+         노출됐다' 로 판정된다 — 검색 화면의 0건 안내와 같은 이유다. -->
+    {% if sent %}
+    <div class="sent">{{ sent }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>

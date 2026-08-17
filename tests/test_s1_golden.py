@@ -23,13 +23,19 @@ SPECS 에 화면을 추가하면 그 화면에도 같은 강도의 대조가 걸
 정확도 측정이 함께 늘어나지 않으면, 확장된 부분만 측정되지 않은 상태가 된다.
 화면마다 로그인에 없던 것을 갖고 있어 특히 여기서 확인해야 한다.
 
-    회원가입   same_as · options · 체크박스
-    검색       scenarios (규칙으로 표현할 수 없는 입력-결과 짝)
+    회원가입      same_as · options · 체크박스
+    검색          scenarios (규칙으로 표현할 수 없는 입력-결과 짝)
+    비밀번호 찾기  expect_absent (노출되면 **안 되는** 문구)
 
 프롬프트의 few-shot 예시는 이 화면들과 겹치지 않는 화면('비밀번호 변경')을
 쓴다. 예시가 측정 대상과 같으면 기획서를 읽어서 맞힌 것인지 예시를 베낀 것인지
 구분할 수 없어, 정확도 숫자가 실물 기획서에 대한 근거가 되지 못한다.
 **화면을 추가할 때 그 예시와 주제가 겹치지 않는지 확인해야 한다.**
+
+비밀번호 찾기를 추가할 때 이 주의가 실제로 걸렸다 — few-shot 예시가 '비밀번호 변경'
+(`/password-change`)이고 새 화면이 '비밀번호 찾기'(`/find-account`)라 이름이 인접하다.
+내용은 다르다(예시는 현재/새 비밀번호 입력, 이 화면은 이메일 하나). 그래도 모델이
+`url_path` 나 요소를 예시에서 베낄 여지가 있으므로, 그 베낌은 여기 골든 대조가 잡는다.
 
 ## 비교 강도를 필드마다 다르게 둔다
 
@@ -57,7 +63,15 @@ from prova.s2_case_generator.rule_expander import satisfies
 from prova.text_utils import contains_loose, loosen
 
 SPEC_DIR = Path("fixtures/specs")
-SPECS = ["login", "signup", "search"]
+SPECS = ["login", "signup", "search", "find_account"]
+
+# 통합 문서(multi_spec.pdf)에 담긴 화면. SPECS 와 일부러 다르다.
+#
+# 통합 문서 픽스처가 확인하는 것은 **분할이 되는가** 다 — 한 문서를 화면별로 갈랐을
+# 때 단일 문서와 같은 명세가 나오는지. 그 성질은 화면 종류가 아니라 분할기에 대한
+# 것이고, 세 화면으로 이미 성립한다. 화면을 늘릴 때마다 통합 문서에 넣으면 그
+# 테스트의 기대값(케이스 총계·화면별 내역·흐름)이 계속 흔들리는데 얻는 신호는 없다.
+MULTI_SPECS = ["login", "signup", "search"]
 
 # 성공 조건에서 S2 가 정규식으로 뽑아 쓰는 조각. 이게 빠지면 정상 케이스의 기대가
 # 비어 버려서, 화면이 망가져도 '에러 없음' 만으로 PASS 가 된다.
@@ -69,6 +83,8 @@ SUCCESS_TOKENS = {
     "login": ["/dashboard", "환영합니다"],
     "signup": ["/welcome", "가입이 완료되었습니다"],
     "search": [],
+    # 비밀번호 찾기는 이동하지 않고 문구만 노출한다. 경로 조각이 없다.
+    "find_account": ["재설정 메일을 보냈습니다"],
 }
 
 
@@ -332,7 +348,7 @@ class TestMultiScreenDocument:
         got = {s.screen_id: len(s.elements) for s in multi_doc.screens}
         assert got == want
 
-    @pytest.mark.parametrize("stem", SPECS)
+    @pytest.mark.parametrize("stem", MULTI_SPECS)
     def test_단일_문서와_같은_결과를_낸다(self, multi_doc, stem):
         """같은 표를 담았으면 같은 명세가 나와야 한다. 문서를 합친 것만으로 결과가
         달라지면 그건 문맥 길이에 따라 추출이 흔들린다는 뜻이고, 실물 기획서에서

@@ -169,6 +169,75 @@ class TestDeclaredElementTypes:
         assert doc.declared_element_types() == {"가": "input"}
 
 
+class TestForbiddenTextColumn:
+    """'노출되면 안 되는 문구' 열 — 지금까지와 방향이 반대인 요구사항.
+
+    비밀번호 찾기 화면에서 필요해졌다. 등록되지 않은 이메일에 '등록되지 않은
+    이메일입니다' 를 노출하면 공격자가 계정 존재 여부를 알아낸다.
+
+    건수 열은 값의 모양(전부 정수)으로 찾는데 이 열은 그럴 수 없다 — 값이 문구라서
+    기대 문구 열과 모양이 같다. 그래서 헤더로 찾고, 그 판별이 정확해야 한다.
+    두 열이 섞이면 성공 문구를 금지 문구로 읽어 **올바른 화면을 FAIL 로** 만든다.
+    """
+
+    def _doc(self, header: list[str], row: list[str]):
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        return ParsedDocument(source="x", pages=[ParsedPage(
+            page_no=1,
+            tables=[
+                ParsedTable(rows=[["요소 ID", "유형", "라벨"],
+                                  ["email", "입력", "이메일"]]),
+                ParsedTable(rows=[header, row]),
+            ],
+        )])
+
+    @pytest.mark.parametrize("header", [
+        "노출되면 안 되는 문구",
+        "노출되지 않아야 하는 문구",
+        "금지 문구",
+        "보이지 않아야 하는 문구",
+    ])
+    def test_다양한_헤더_표현을_받는다(self, header):
+        """기획서마다 다르게 쓴다. 표현을 하나 놓칠 때마다 이 검증이 조용히 빠진다."""
+        doc = self._doc(["이메일", "노출돼야 하는 문구", header],
+                        ["a@b.com", "보냈습니다.", "등록되지 않았습니다."])
+        got = doc.declared_scenarios()
+        assert got == [{"given": {"email": "a@b.com"},
+                        "expect_text": "보냈습니다.",
+                        "expect_count": None,
+                        "expect_absent": "등록되지 않았습니다."}]
+
+    def test_기대_문구_열을_금지로_읽지_않는다(self):
+        """**두 열이 섞이면 올바른 화면이 FAIL 이 된다.** 성공 문구를 '나타나면
+        안 되는 것' 으로 읽으면 그 문구를 띄우는 정상 구현이 실패한다."""
+        doc = self._doc(["이메일", "노출돼야 하는 문구"], ["a@b.com", "보냈습니다."])
+        got = doc.declared_scenarios()
+        assert got[0]["expect_text"] == "보냈습니다."
+        assert got[0]["expect_absent"] is None
+
+    def test_금지_열이_없으면_None이다(self):
+        """기획서가 그 열을 안 쓰면 이 검증을 만들지 않는다 — 억측하지 않는다."""
+        doc = self._doc(["이메일", "노출돼야 하는 문구", "비고"],
+                        ["a@b.com", "보냈습니다.", "메일 발송 로그 확인"])
+        assert doc.declared_scenarios()[0]["expect_absent"] is None
+
+    def test_빈_칸은_None이다(self):
+        """행마다 금지 문구가 있을 이유는 없다. 빈 문자열을 그대로 쓰면 '빈 문구가
+        화면에 없는가' 를 확인하게 되고, 그건 항상 실패한다."""
+        doc = self._doc(["이메일", "노출돼야 하는 문구", "노출되면 안 되는 문구"],
+                        ["a@b.com", "보냈습니다.", ""])
+        assert doc.declared_scenarios()[0]["expect_absent"] is None
+
+    def test_건수_열과도_섞이지_않는다(self):
+        doc = self._doc(["이메일", "노출돼야 하는 문구", "건수", "노출되면 안 되는 문구"],
+                        ["a@b.com", "보냈습니다.", "0", "등록되지 않았습니다."])
+        got = doc.declared_scenarios()[0]
+        assert got["expect_text"] == "보냈습니다."
+        assert got["expect_count"] == 0
+        assert got["expect_absent"] == "등록되지 않았습니다."
+
+
 class TestDeclaredScenarioCounts:
     """예시 표의 건수 열.
 
@@ -199,7 +268,7 @@ class TestDeclaredScenarioCounts:
         )])
         assert doc.declared_scenarios() == [
             {"given": {"query": "notebook"}, "expect_text": "검색 결과 3건",
-             "expect_count": None}]
+             "expect_count": None, "expect_absent": None}]
 
     def test_건수_열만_있고_문구_열이_없으면_시나리오가_아니다(self):
         """기대 문구가 없으면 대조할 문구 케이스를 만들 수 없다. 그 표는 예시

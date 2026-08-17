@@ -1,0 +1,56 @@
+{
+  "screen_id": "find_account",
+  "screen_name": "비밀번호 찾기",
+  "url_path": "/find-account",
+  "elements": [
+    {
+      "element_id": "email",
+      "type": "input",
+      "label": "이메일",
+      "required": true,
+      "constraints": {
+        "format": "email"
+      },
+      "error_message": "올바른 이메일 형식을 입력하세요.",
+      "placeholder": "가입한 이메일을 입력하세요",
+      "options": [],
+      "sample_value": null
+    },
+    {
+      "element_id": "send_btn",
+      "type": "button",
+      "label": "재설정 메일 받기",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": null,
+      "options": [],
+      "sample_value": null
+    }
+  ],
+  "scenarios": [
+    {
+      "given": {
+        "email": "user@test.com"
+      },
+      "expect_text": "재설정 메일을 보냈습니다.",
+      "expect_count": null,
+      "expect_absent": "등록되지 않은 이메일입니다."
+    },
+    {
+      "given": {
+        "email": "nobody@test.com"
+      },
+      "expect_text": "재설정 메일을 보냈습니다.",
+      "expect_count": null,
+      "expect_absent": "등록되지 않은 이메일입니다."
+    }
+  ],
+  "success_condition": "재설정 메일을 보냈습니다.",
+  "failure_conditions": [
+    "필수 입력 항목입니다.",
+    "올바른 이메일 형식을 입력하세요."
+  ],
+  "required_message": "필수 입력 항목입니다.",
+  "warnings": []
+}

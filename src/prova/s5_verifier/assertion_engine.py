@@ -230,6 +230,34 @@ def _judge_text_visible(expected: Expectation, state: PageState) -> tuple[bool, 
     return False, f"문구 {expected.value!r} 미노출"
 
 
+def _judge_text_absent(expected: Expectation, state: PageState) -> tuple[bool, str]:
+    """그 문구가 화면에 **없어야** 한다.
+
+    ## 지금까지와 방향이 반대다
+
+    다른 판정은 전부 '있어야 할 것이 있는가' 를 본다. 이건 '없어야 할 것이 없는가' 다.
+    그 구분이 필요한 요구사항이 실재한다 — 비밀번호 찾기 화면에서 등록되지 않은
+    이메일에 '등록되지 않은 이메일입니다' 를 노출하면 공격자가 계정 존재 여부를
+    알아낸다(account enumeration). 기획서는 미등록 계정에도 같은 성공 문구를
+    노출하라고 적는다.
+
+    ## 화면 전체에서 찾는다
+
+    다른 문구 판정은 에러 영역을 먼저 보고 없으면 화면 전체를 본다. 여기서는 처음부터
+    화면 전체를 본다 — **어디에 있든 노출된 것**이고, 에러 영역 밖에 안내 문구로
+    떠 있어도 계정 존재 여부는 똑같이 새어 나간다.
+
+    ## 공백 무시 비교를 쓰는 이유
+
+    다른 판정과 같은 함수를 쓴다. 여기서 엄격하게 비교하면 '등록되지  않은' 처럼
+    공백만 다른 노출을 통과시키게 되고, 그건 요구를 어긴 화면을 정상으로 판정하는
+    미탐이다.
+    """
+    if contains_loose(state.text, expected.value):
+        return False, f"노출되면 안 되는 문구가 화면에 있음: {expected.value!r}"
+    return True, f"금지 문구 {expected.value!r} 미노출 확인"
+
+
 def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, str]:
     """반복 목록에 정확히 N 개가 렌더됐는가.
 
@@ -393,6 +421,7 @@ _JUDGES = {
     "redirect": _judge_redirect,
     "toast_or_redirect": _judge_toast_or_redirect,
     "text_visible": _judge_text_visible,
+    "text_absent": _judge_text_absent,
     "result_count": _judge_result_count,
     "options_present": _judge_options_present,
     "placeholders_match": _judge_placeholders_match,

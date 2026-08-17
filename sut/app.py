@@ -150,6 +150,19 @@ MSG_QUERY_REQUIRED = "검색어를 입력하세요."
 MSG_QUERY_LENGTH = "검색어는 2자 이상 50자 이하로 입력하세요."
 MSG_NO_RESULTS = "검색 결과가 없습니다."
 
+# 비밀번호 찾기 기획서에 정의된 문구
+MSG_RESET_SENT = "재설정 메일을 보냈습니다."
+
+# F1: bad 가 노출하는, 노출하면 안 되는 문구.
+#
+# 기획서 §5 는 "계정 존재 여부를 알려주지 않는다" 를 보안 요구사항으로 적었다.
+# 등록 여부에 따라 다른 문구를 노출하면 공격자가 이 화면으로 어떤 이메일이
+# 가입되어 있는지 확인할 수 있다(account enumeration). 실제 취약점이다.
+#
+# 이 결함은 **지금까지의 어떤 결함과도 방향이 다르다** — 있어야 할 문구가 없는
+# 것이 아니라, 없어야 할 문구가 있는 것이다.
+MSG_NOT_REGISTERED = "등록되지 않은 이메일입니다."
+
 # 검색 대상 데이터.
 #
 # 읽기 전용이다 — 검색은 상태를 바꾸지 않으므로 테스트끼리 간섭하지 않고, SUT 를
@@ -233,6 +246,20 @@ def render_search(
             "empty_message": empty_message,
             "slow_delay_ms": SLOW_DELAY_MS,
         },
+    )
+
+
+def render_find_account(
+    request: Request,
+    variant: str,
+    error: str | None = None,
+    sent: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="find_account.html",
+        context={"variant": variant, "error": error, "sent": sent,
+                 "slow_delay_ms": SLOW_DELAY_MS},
     )
 
 
@@ -692,6 +719,53 @@ def native_dashboard(request: Request):
     return render_dashboard(request, "native", "user@test.com")
 
 
+# ---------------------------------------------------------------------------
+# find-account — 비밀번호 찾기 (1차 범위의 네 번째 화면)
+# ---------------------------------------------------------------------------
+#
+# 이 화면이 앞의 셋과 다른 점: **없어야 할 것이 없는지**를 확인해야 한다.
+#
+# 기획서 §5 가 "계정 존재 여부를 알려주지 않는다" 를 요구한다. good 은 등록
+# 여부와 무관하게 같은 문구를 노출하고, bad 는 미등록 이메일에 다른 문구를
+# 노출한다(F1). bad 의 결함은 '검증이 빠진 것' 이 아니라 **정보를 더 준 것**이다.
+#
+# 검증 규칙(필수·형식)은 good/bad 가 동일하다. 변수를 하나로 두기 위해서다 —
+# 규칙 검증까지 빼면 이 화면이 확인하려는 F1 이 다른 FAIL 에 섞인다.
+
+
+@app.get("/good/find-account", response_class=HTMLResponse)
+def good_find_account_form(request: Request):
+    return render_find_account(request, "good")
+
+
+@app.post("/good/find-account", response_class=HTMLResponse)
+def good_find_account_submit(request: Request, email: str = Form(default="")):
+    if not email:
+        return render_find_account(request, "good", error=MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_find_account(request, "good", error=MSG_EMAIL_FORMAT)
+    # 등록 여부를 **보지 않는다.** 기획서 §5 가 요구하는 동작이다.
+    # 실제 서비스라면 여기서 등록된 경우에만 메일을 보내고, 응답은 같게 한다.
+    return render_find_account(request, "good", sent=MSG_RESET_SENT)
+
+
+@app.get("/bad/find-account", response_class=HTMLResponse)
+def bad_find_account_form(request: Request):
+    return render_find_account(request, "bad")
+
+
+@app.post("/bad/find-account", response_class=HTMLResponse)
+def bad_find_account_submit(request: Request, email: str = Form(default="")):
+    if not email:
+        return render_find_account(request, "bad", error=MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_find_account(request, "bad", error=MSG_EMAIL_FORMAT)
+    # F1: 등록 여부에 따라 다른 문구를 노출한다. 기획서 §5 위반이고 실제 취약점이다.
+    if email not in REGISTERED["bad"]:
+        return render_find_account(request, "bad", error=MSG_NOT_REGISTERED)
+    return render_find_account(request, "bad", sent=MSG_RESET_SENT)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(
@@ -703,6 +777,8 @@ def index():
         "<li><a href='/bad/signup'>/bad/signup — 의도적 불일치 구현</a></li>"
         "<li><a href='/good/search'>/good/search — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/search'>/bad/search — 의도적 불일치 구현</a></li>"
+        "<li><a href='/good/find-account'>/good/find-account — 기획서 준수 구현</a></li>"
+        "<li><a href='/bad/find-account'>/bad/find-account — 계정 존재 여부를 노출</a></li>"
         "</ul>"
         "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
         "<ul>"

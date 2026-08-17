@@ -71,6 +71,15 @@ _QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,60})[\"'“”�
 # 화살표 표현이 기획서마다 다르고(->, →, >, 쉼표) PDF 변환에서 모양이 바뀌기도 한다.
 _FLOW_SEP = r"→|->|—>|>|,|·"
 
+# '노출되면 안 되는 문구' 열을 찾는 헤더 패턴.
+#
+# 건수 열은 값의 모양(전부 정수)으로 찾는데 이 열은 그럴 수 없다 — 값이 그냥
+# 문구라서 기대 문구 열과 모양이 같다. 그래서 헤더로 찾고, 기획서마다 다르게
+# 쓸 표현을 넉넉히 받는다. 못 찾으면 이 검증을 만들지 않는다(억측하지 않는다).
+_FORBIDDEN_HEADER_RE = re.compile(
+    r"안\s*되는|안\s*됨|안돼|금지|노출되지|없어야|보이지\s*않"
+)
+
 # 기획서 '유형' 열의 한국어 표현 -> models.ElementType.
 # 여기 없는 표현은 매핑하지 않는다 (declared_element_types 설명 참고).
 ELEMENT_TYPE_WORDS = {
@@ -585,9 +594,17 @@ class ParsedDocument:
             count_col = next(
                 (i for i in other_cols if _is_integer_column(table.rows[1:], i)), None
             )
-            # 기대 문구 열은 건수 열이 아닌 첫 열로 본다. 기획서가 열을 더 두면
-            # (비고 등) 첫 열만 쓰고 나머지는 무시한다 — 억측하지 않는다.
-            expect_col = next((i for i in other_cols if i != count_col), None)
+            # 금지 문구 열은 헤더로 찾는다. 값이 문구라서 기대 문구 열과 모양이
+            # 같으므로 값의 모양으로는 가릴 수 없다.
+            absent_col = next(
+                (i for i in other_cols
+                 if i != count_col and _FORBIDDEN_HEADER_RE.search(header[i])), None
+            )
+            # 기대 문구 열은 건수 열도 금지 열도 아닌 첫 열로 본다. 기획서가 열을
+            # 더 두면 (비고 등) 첫 열만 쓰고 나머지는 무시한다 — 억측하지 않는다.
+            expect_col = next(
+                (i for i in other_cols if i not in (count_col, absent_col)), None
+            )
             if expect_col is None:
                 continue
 
@@ -601,11 +618,14 @@ class ParsedDocument:
                     if i < len(row) and row[i].strip()
                 }
                 expect_text = row[expect_col].strip()
+                absent = (row[absent_col].strip()
+                          if absent_col is not None and absent_col < len(row) else "")
                 if given and expect_text:
                     scenarios.append({
                         "given": given,
                         "expect_text": expect_text,
                         "expect_count": _cell_int(row, count_col),
+                        "expect_absent": absent or None,
                     })
             return scenarios
         return []
