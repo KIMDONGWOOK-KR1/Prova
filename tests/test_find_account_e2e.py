@@ -73,6 +73,11 @@ def bad_run(sut_base, tmp_path_factory):
     return _run("bad", sut_base, tmp_path_factory.mktemp("find-bad"))
 
 
+@pytest.fixture(scope="module")
+def slowleak_run(sut_base, tmp_path_factory):
+    return _run("slowleak", sut_base, tmp_path_factory.mktemp("find-slowleak"))
+
+
 class TestGoodVariant:
     def test_전_케이스_통과(self, good_run):
         failures = [v for v in good_run.cases if v.verdict == "FAIL"]
@@ -124,6 +129,58 @@ class TestForbiddenText:
         """'금지 문구가 있다' 만 말하면 개발자가 무엇을 지워야 할지 모른다."""
         case = next(v for v in bad_run.cases if v.case_id.endswith("absent-005"))
         assert "등록되지 않은" in case.failure_detail
+
+
+class TestLateLeak:
+    """누출 문구가 **늦게** 나타나는 경우 — 대기 로직이 만들 수 있었던 미탐.
+
+    대기는 원래 '있어야 할 것이 나타날 때까지' 기다린다. 첫 판정이 PASS 면 멈춘다.
+    그런데 금지 문구는 방향이 반대다 — **첫 판정에서 통과했다고 멈추면 400ms 뒤에
+    나타나는 노출을 못 본다.**
+
+    비동기로 렌더하는 화면에서 계정 존재 여부 노출을 놓치는 것이고, 비동기 대기를
+    넣은 것 때문에 새로 생기는 미탐이다. 그래서 이 판정만 창 전체를 감시하고 FAIL 이
+    나오는 순간 멈춘다(`nodes._verify_when_ready` 의 `watching_for_leak`).
+
+    `slowleak` 변형은 bad 와 같은 결함인데 누출 문구를 SLOW_DELAY_MS 뒤에 넣는다.
+    """
+
+    def test_늦게_나타난_누출을_잡는다(self, slowleak_run):
+        case = next(v for v in slowleak_run.cases
+                    if v.case_id.endswith("absent-005"))
+        assert case.verdict == "FAIL", (
+            "첫 판정에서 통과했다고 멈추면 이 노출을 못 본다"
+        )
+
+    def test_늦게_나타났다는_사실을_남긴다(self, slowleak_run):
+        """즉시 노출과 늦은 노출은 구현이 다르다 — 그 차이가 근거에 있어야 한다."""
+        case = next(v for v in slowleak_run.cases
+                    if v.case_id.endswith("absent-005"))
+        assert case.evidence.get("appeared_after_ms"), case.evidence
+        assert case.evidence["appeared_after_ms"] > 0
+
+    def test_대기를_끄면_놓친다(self, sut_base, tmp_path):
+        """**이 확인이 없으면 위 두 테스트가 무엇 덕분에 통과하는지 알 수 없다.**
+        기다리지 않으면 첫 판정이 PASS 이고 그대로 확정된다."""
+        report, _ = run_pipeline(
+            pdf_path=SPEC_PDF,
+            base_url=f"{sut_base}/slowleak",
+            llm=MockLLM.for_spec(SPEC_PDF),
+            run_id="test-find-slowleak-nowait",
+            runs_root=tmp_path,
+            settle_timeout_ms=0,
+        )
+        case = next(v for v in report.cases if v.case_id.endswith("absent-005"))
+        assert case.verdict == "PASS", (
+            "대기 없이도 잡힌다면 이 변형이 아무것도 시험하지 않는다"
+        )
+
+    def test_등록된_이메일은_그대로_통과한다(self, slowleak_run):
+        """누출은 미등록 이메일에서만 일어난다. 감시 방향을 바꾼 것이 다른 케이스를
+        건드리면 안 된다."""
+        case = next(v for v in slowleak_run.cases
+                    if v.case_id.endswith("absent-004"))
+        assert case.verdict == "PASS", case.failure_detail
 
 
 class TestBadVariant:

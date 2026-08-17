@@ -47,9 +47,12 @@ from prova.s6_report.report_builder import build_report
 class AgentState:
     """파이프라인 전체가 공유하는 상태 (명세서 §4-1).
 
-    1차 범위에서는 heal_count / retry_count 를 쓰지 않지만 필드는 지금 둔다.
-    2차에서 self_heal 노드를 추가할 때 상태 구조를 바꾸면 이미 작성한 노드들의
-    시그니처가 함께 흔들리기 때문이다.
+    **여기 있는 필드는 전부 누군가 읽는다.** '나중에 쓸 것' 을 미리 두지 않는다 —
+    점검에서 `heal_count`·`retry_count`·`max_retry` 세 개가 선언만 되어 있었고,
+    그중 `heal_count` 는 실행 컨텍스트에 같은 이름의 필드가 따로 있어서 어느
+    쪽이 진짜인지 읽는 사람이 알 수 없었다.
+
+    있는 것과 동작하는 것은 다르고, 그 구분을 흐리는 필드는 지운다.
     """
 
     # 입력
@@ -75,11 +78,13 @@ class AgentState:
     verdicts: list[Verdict] = field(default_factory=list)
     report: Optional[TestReport] = None
 
-    # 제어 (2차 self-healing 용)
-    heal_count: int = 0
-    retry_count: int = 0
+    # 2차 경로(화면 이미지로 요소 찾기) 제어.
+    #
+    # 실제 보정 횟수는 케이스마다 세야 하므로 ExecutionContext 가 갖는다. 여기 있는
+    # 것은 그 상한값이다.
     max_heal: int = 2
-    max_retry: int = 1
+    #: 2차 경로가 받아들일 최소 신뢰도 (grounding.vlm_confidence_threshold)
+    min_confidence: float = 0.5
 
     # 실행 설정
     step_timeout_ms: int = 10000
@@ -181,6 +186,7 @@ def run_cases(state: AgentState) -> AgentState:
             screenshot_every_step=state.screenshot_every_step,
             vlm=state.vlm,
             max_heal=state.max_heal,
+            min_confidence=state.min_confidence,
         )
         step_results = execute_case_steps(ctx, case.steps)
         state.verdicts.append(
@@ -250,7 +256,20 @@ def _verify_when_ready(
 
     verdict = judge()
     broke = any(r.status != "ok" for r in step_results)
-    if verdict.verdict == "PASS" or broke or state.settle_timeout_ms <= 0:
+    if broke or state.settle_timeout_ms <= 0:
+        return verdict
+
+    # 금지 문구(text_absent)는 기다리는 방향이 반대다.
+    #
+    # 다른 판정은 '있어야 할 것' 을 보므로 나타날 때까지 기다리고, 나타나면 멈춘다.
+    # 금지 문구는 '없어야 할 것' 을 본다 — 첫 판정에서 통과했다고 멈추면 400ms 뒤에
+    # 나타나는 문구를 **못 본다.** 비동기로 렌더하는 화면에서 계정 존재 여부 노출을
+    # 놓치는 것이고, 대기를 넣은 것 때문에 새로 생기는 미탐이다.
+    #
+    # 그래서 이 판정만 창 전체를 감시하고 FAIL 이 나오는 순간 멈춘다. 나타나지
+    # 않으면 상한까지 기다린 뒤 통과다.
+    watching_for_leak = case.expected.type == "text_absent"
+    if verdict.verdict == ("FAIL" if watching_for_leak else "PASS"):
         return verdict
 
     waited = 0
@@ -258,7 +277,12 @@ def _verify_when_ready(
         state.page.wait_for_timeout(interval_ms)
         waited += interval_ms
         verdict = judge()
-        if verdict.verdict == "PASS":
+        if watching_for_leak:
+            if verdict.verdict == "FAIL":
+                # 늦게 나타난 것 자체가 정보다 — 즉시 노출과 구별된다.
+                verdict.evidence["appeared_after_ms"] = waited
+                return verdict
+        elif verdict.verdict == "PASS":
             verdict.evidence["settled_ms"] = waited
             return verdict
     return verdict

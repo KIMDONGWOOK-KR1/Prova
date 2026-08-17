@@ -65,6 +65,9 @@ def run_pipeline(
     viewport: Optional[dict] = None,
     step_timeout_ms: int = 10000,
     settle_timeout_ms: int = 2000,
+    screenshot_every_step: bool = True,
+    max_heal: int = 2,
+    min_confidence: float = 0.5,
     slow_mo: int = 0,
     record_video: bool = False,
     only: Optional[str] = None,
@@ -103,6 +106,9 @@ def run_pipeline(
         vlm=vlm,
         step_timeout_ms=step_timeout_ms,
         settle_timeout_ms=settle_timeout_ms,
+        screenshot_every_step=screenshot_every_step,
+        max_heal=max_heal,
+        min_confidence=min_confidence,
     )
 
     # --- S1: 설계 문서 -> ScreenSpec (브라우저 없이 가능) ---

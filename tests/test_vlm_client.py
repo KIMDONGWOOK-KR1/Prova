@@ -56,8 +56,9 @@ def _client_with_models(monkeypatch, served: list[str] | None, *, model: str | N
 
 class TestHealth:
     def test_이름이_맞으면_통과한다(self, monkeypatch):
+        """VLMError 가 나지 않는 것이 확인 내용이다 (health 는 반환값이 없다)."""
         client = _client_with_models(monkeypatch, ["qwen-vl"], model="qwen-vl")
-        client.health()   # 예외가 없으면 통과
+        client.health()
 
     def test_서빙하지_않는_이름이면_끊는다(self, monkeypatch):
         """**이 파일의 핵심.** 서버는 200 을 주지만 우리 모델이 없다.

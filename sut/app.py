@@ -143,7 +143,18 @@ MSG_NICKNAME_LENGTH = "닉네임은 2자 이상 10자 이하로 입력하세요.
 MSG_PATH_REQUIRED = "가입 경로를 선택하세요."
 MSG_AGREE_REQUIRED = "약관에 동의해야 합니다."
 
+#: 기획서 §2 의 '가입 경로' 선택 목록.
+#
+# 템플릿이 이 값을 받아 <option> 을 그린다. 예전에는 템플릿에 항목을 직접 적어
+# 두고 이 상수는 쓰이지 않았다 — 진실이 두 곳에 있었고, 이 상수를 고친 사람은
+# SUT 가 바뀐다고 믿게 된다.
 SIGNUP_PATHS = ("검색", "지인 추천", "광고")
+
+#: bad 에 심은 결함 C4 — 이 항목이 화면에 없다.
+#
+# 기획서에 적혀 있는데 도구가 확인하지 않던 항목이었다. 정상 케이스는 첫 항목을
+# 골라 넣고 그것이 있으니 통과했다.
+MISSING_SIGNUP_PATH = "지인 추천"
 
 # 검색 기획서에 정의된 문구
 MSG_QUERY_REQUIRED = "검색어를 입력하세요."
@@ -203,6 +214,19 @@ def check_password_rules(pw: str) -> bool:
 SLOW_DELAY_MS = 400
 
 
+def find_products(term: str, *, case_sensitive: bool) -> list[str]:
+    """상품명에 term 이 포함된 항목. 기획서 §2-2 는 대소문자를 구분하지 않는다.
+
+    case_sensitive 를 인자로 둔 이유: bad 변형이 이 규칙을 어기는 것이 심어 둔
+    결함(D1)이다. 두 변형이 같은 함수를 쓰되 이 한 가지만 다르게 해서, 결과 차이가
+    '대소문자 처리' 에서만 나오도록 한다.
+    """
+    if case_sensitive:
+        return [name for name in PRODUCTS if term in name]
+    lowered = term.lower()
+    return [name for name in PRODUCTS if lowered in name.lower()]
+
+
 def render_login(request: Request, variant: str, error: str | None = None) -> HTMLResponse:
     return templates.TemplateResponse(
         request=request,
@@ -221,10 +245,14 @@ def render_dashboard(request: Request, variant: str, email: str) -> HTMLResponse
 
 
 def render_signup(request: Request, variant: str, error: str | None = None) -> HTMLResponse:
+    # 선택 목록을 서버가 넘긴다. bad 는 C4 로 한 항목을 뺀다 — 그 결함이 템플릿
+    # 조건문이 아니라 여기 한 줄로 드러나야, 무엇이 실험의 변수인지 보인다.
+    paths = [p for p in SIGNUP_PATHS
+             if variant == "good" or p != MISSING_SIGNUP_PATH]
     return templates.TemplateResponse(
         request=request,
         name="signup.html",
-        context={"variant": variant, "error": error},
+        context={"variant": variant, "error": error, "signup_paths": paths},
     )
 
 
@@ -272,37 +300,142 @@ def render_welcome(request: Request, variant: str, nickname: str) -> HTMLRespons
 
 
 # ---------------------------------------------------------------------------
-# good/login — 기획서를 전부 지킨 구현
+# 기획서를 지킨 검증 — 사본은 이 두 함수뿐이다
 # ---------------------------------------------------------------------------
+#
+# 변형(good · slow · spa · hashed · native · nolabel)은 **검증 로직이 완전히
+# 같아야 한다.** 그게 각 변형이 재려는 것의 전제다 — 렌더 시점만 다르게, 마크업만
+# 다르게, 라우팅만 다르게 두고 판정이 어떻게 달라지는지 보는 실험이다.
+#
+# 그런데 변형마다 검증을 복사해 두면 그 전제가 **코드로 보장되지 않는다.** 한쪽만
+# 고치면 그 변형이 재는 변수가 둘이 되고, 그 사실이 조용히 숨는다. 실제로 로그인
+# 핸들러가 다섯 벌 있었고 한 글자씩 다른지 눈으로 대조해야 했다.
+#
+# 그래서 검증은 여기 한 번만 쓴다. 변형은 '다른 점' 만 선언한다.
+#
+# bad 는 공유하지 않는다 — bad 의 차이는 **검증 로직 자체**이고 그게 실험의 변수다.
+# 그걸 여기 섞으면 이 함수가 '기획서를 지킨 검증' 이 아니게 된다.
 
 
-@app.get("/good/login", response_class=HTMLResponse)
-def good_login_form(request: Request):
-    return render_login(request, "good")
+def login_error(email: str, password: str) -> str | None:
+    """로그인 검증. 통과하면 None, 아니면 화면에 노출할 문구.
 
-
-@app.post("/good/login", response_class=HTMLResponse)
-def good_login_submit(
-    request: Request,
-    email: str = Form(default=""),
-    password: str = Form(default=""),
-):
+    기획서 §2(입력 검증 규칙) · §4(실패 조건) · §5(테스트 계정) 그대로다.
+    """
     if not email or not password:
-        return render_login(request, "good", MSG_REQUIRED)
+        return MSG_REQUIRED
     if not check_email_format(email):
-        return render_login(request, "good", MSG_EMAIL_FORMAT)
+        return MSG_EMAIL_FORMAT
     if not check_password_rules(password):
-        return render_login(request, "good", MSG_PASSWORD_RULE)
+        return MSG_PASSWORD_RULE
     if REGISTERED["good"].get(email) != password:
-        return render_login(request, "good", MSG_NO_ACCOUNT)
-    # 성공: POST-Redirect-GET. URL이 실제로 /good/dashboard 로 전이돼야
-    # 기획서의 "/dashboard 로 이동" 조건을 검증할 수 있다.
-    return RedirectResponse("/good/dashboard", status_code=303)
+        return MSG_NO_ACCOUNT
+    return None
 
 
-@app.get("/good/dashboard", response_class=HTMLResponse)
-def good_dashboard(request: Request):
-    return render_dashboard(request, "good", "user@test.com")
+def search_render_args(query: str | None) -> dict:
+    """검색 결과. render_search 에 그대로 넘길 인자를 돌려준다.
+
+    `query is None`(첫 진입)과 `query == ""`(빈 값으로 제출)을 구분하는 것이
+    중요하다 — 첫 진입에도 필수 입력 에러를 띄우면 아무 조작도 하지 않은 화면에
+    에러가 떠 있게 된다.
+    """
+    if query is None:
+        return {}
+    if not query:
+        return {"query": query, "error": MSG_QUERY_REQUIRED}
+    if not (2 <= len(query) <= 50):
+        return {"query": query, "error": MSG_QUERY_LENGTH}
+    found = find_products(query, case_sensitive=False)
+    if not found:
+        return {"query": query, "count": 0, "empty_message": MSG_NO_RESULTS}
+    return {"query": query, "results": found, "count": len(found)}
+
+
+# ---------------------------------------------------------------------------
+# 변형 등록 — 각 변형이 다른 점은 이 표에만 있다
+# ---------------------------------------------------------------------------
+#
+#   good     기준. 기획서를 그대로 지킨 구현
+#   slow     결과를 SLOW_DELAY_MS 뒤에 DOM 에 넣는다 (템플릿)
+#              실물 웹앱은 제출하면 fetch 를 보내고 응답이 오면 화면을 갈아 끼운다.
+#              그 사이 화면에는 아무것도 없다. 도구가 클릭 직후 DOM 을 읽으면 그
+#              빈 상태를 보고 '기획서가 지정한 에러가 안 뜬다' 로 판정한다 — 오탐.
+#   hashed   id 가 CSS-in-JS 해시다 (템플릿)
+#              기획서의 element_id 로 만드는 CSS selector 가 무력화된다. label for
+#              는 살아 있으므로 탐지 전략 네 개 중 마지막 하나만 막힌다.
+#   native   novalidate 를 떼고 required 를 붙였다 (템플릿)
+#              브라우저가 제출을 막고 자기 툴팁을 띄운다. 앱의 에러 문구가 화면에
+#              없으므로 도구가 '구현이 규칙을 강제하지 않는다' 고 단정했다 —
+#              사실과 반대다. 검사 방법이 기획서와 다른 것이다.
+#   spa      성공해도 URL 이 바뀌지 않는다 (아래 dashboard_inline)
+#              기획서가 /dashboard 를 명시했으므로 FAIL 이 맞다. 확인하는 것은
+#              사유가 '경로 미이동 + 문구 노출 확인' 으로 나오는가다.
+#   nolabel  제출 버튼이 아이콘만 있다 (템플릿, 검색 화면)
+#              접근성 이름이 없어 탐지 전략 네 개가 모두 막힌다. 2차 경로 시험용.
+#
+# 변형을 더할 때 검증 로직을 복사하지 않는다. 이 표에 한 줄을 더한다.
+
+#: 로그인 화면을 가진 변형. dashboard_inline=True 면 리다이렉트하지 않는다.
+LOGIN_VARIANTS = {
+    "good": False,
+    "slow": False,
+    "hashed": False,
+    "native": False,
+    "spa": True,
+}
+
+#: 검색 화면을 가진 변형 (bad 는 결함이 있어 따로 둔다).
+SEARCH_VARIANTS = ("good", "nolabel", "slow")
+
+
+def _register_login(variant: str, dashboard_inline: bool) -> None:
+    """한 변형의 로그인 화면 세 라우트를 등록한다.
+
+    함수 이름을 변형별로 바꾸는 이유: FastAPI 가 엔드포인트 이름으로 operation_id
+    를 만들므로, 같은 이름이 여럿이면 경고가 나고 문서에서 구분이 안 된다.
+    """
+
+    @app.get(f"/{variant}/login", response_class=HTMLResponse)
+    def show_form(request: Request):
+        return render_login(request, variant)
+
+    @app.post(f"/{variant}/login", response_class=HTMLResponse)
+    def submit(
+        request: Request,
+        email: str = Form(default=""),
+        password: str = Form(default=""),
+    ):
+        error = login_error(email, password)
+        if error:
+            return render_login(request, variant, error)
+        if dashboard_inline:
+            # spa: URL 은 /{variant}/login 그대로이고 화면 내용만 대시보드다.
+            return render_dashboard(request, variant, email)
+        return RedirectResponse(f"/{variant}/dashboard", status_code=303)
+
+    @app.get(f"/{variant}/dashboard", response_class=HTMLResponse)
+    def dashboard(request: Request):
+        return render_dashboard(request, variant, "user@test.com")
+
+    for fn, suffix in ((show_form, "form"), (submit, "submit"),
+                       (dashboard, "dashboard")):
+        fn.__name__ = f"{variant}_login_{suffix}"
+
+
+def _register_search(variant: str) -> None:
+    @app.get(f"/{variant}/search", response_class=HTMLResponse)
+    def search(request: Request, query: str | None = None):
+        return render_search(request, variant, **search_render_args(query))
+
+    search.__name__ = f"{variant}_search"
+
+
+for _variant, _inline in LOGIN_VARIANTS.items():
+    _register_login(_variant, _inline)
+
+for _variant in SEARCH_VARIANTS:
+    _register_search(_variant)
 
 
 # ---------------------------------------------------------------------------
@@ -443,46 +576,6 @@ def bad_welcome(request: Request):
 
 
 # ---------------------------------------------------------------------------
-# good/search — 기획서를 전부 지킨 구현
-# ---------------------------------------------------------------------------
-
-
-def find_products(term: str, *, case_sensitive: bool) -> list[str]:
-    """상품명에 term 이 포함된 항목. 기획서 §2-2 는 대소문자를 구분하지 않는다.
-
-    case_sensitive 를 인자로 둔 이유: bad 변형이 이 규칙을 어기는 것이 심어 둔
-    결함(D1)이다. 두 변형이 같은 함수를 쓰되 이 한 가지만 다르게 해서, 결과 차이가
-    '대소문자 처리' 에서만 나오도록 한다.
-    """
-    if case_sensitive:
-        return [name for name in PRODUCTS if term in name]
-    lowered = term.lower()
-    return [name for name in PRODUCTS if lowered in name.lower()]
-
-
-@app.get("/good/search", response_class=HTMLResponse)
-def good_search(request: Request, query: str | None = None):
-    """검색어가 오지 않았으면(첫 진입) 폼만 보여준다.
-
-    'query 파라미터가 없다' 와 'query 가 빈 문자열이다' 를 구분하는 것이 중요하다.
-    첫 진입에도 필수 입력 에러를 띄우면, 아무 조작도 하지 않은 화면에 에러가 떠
-    있게 된다. 빈 검색어로 버튼을 누른 경우에만 에러가 맞다.
-    """
-    if query is None:
-        return render_search(request, "good")
-
-    if not query:
-        return render_search(request, "good", query, error=MSG_QUERY_REQUIRED)
-    if not (2 <= len(query) <= 50):
-        return render_search(request, "good", query, error=MSG_QUERY_LENGTH)
-
-    found = find_products(query, case_sensitive=False)
-    if not found:
-        return render_search(request, "good", query, empty_message=MSG_NO_RESULTS)
-    return render_search(request, "good", query, results=found, count=len(found))
-
-
-# ---------------------------------------------------------------------------
 # bad/search — 의도적으로 규칙을 빠뜨린 구현
 # ---------------------------------------------------------------------------
 
@@ -508,218 +601,6 @@ def bad_search(request: Request, query: str | None = None):
 
 
 # ---------------------------------------------------------------------------
-# nolabel/search — 접근성 이름이 없는 구현 (2차 경로 시험용)
-# ---------------------------------------------------------------------------
-#
-# 검증 로직은 good 과 **완전히 같다.** 다른 것은 제출 버튼의 마크업 하나뿐이다 —
-# '검색' 글자 대신 아이콘만 있어서 S3 의 네 전략이 모두 막힌다.
-#
-# 왜 good/bad 와 별도 변형인가: good/bad 는 '검증 로직의 유무' 하나만 다르게 두는
-# 실험이다(모듈 설명 참고). 여기에 마크업 차이를 섞으면 그 실험의 변수가 둘이 된다.
-#
-# 이 변형이 드러내는 것은 결함의 종류가 다르다 — 검증은 다 하는데 **요소를 지목할
-# 수 없다.** 기획서가 라벨을 적어 뒀는데 화면에 그 이름이 없으므로 기획-구현
-# 불일치이고, 동시에 접근성 결함이다. 2차 경로는 그 화면에서도 케이스를 진행하게
-# 해 주지만, 그 사실을 지우지는 않는다.
-
-
-@app.get("/nolabel/search", response_class=HTMLResponse)
-def nolabel_search(request: Request, query: str | None = None):
-    if query is None:
-        return render_search(request, "nolabel")
-    if not query:
-        return render_search(request, "nolabel", query, error=MSG_QUERY_REQUIRED)
-    if not (2 <= len(query) <= 50):
-        return render_search(request, "nolabel", query, error=MSG_QUERY_LENGTH)
-    found = find_products(query, case_sensitive=False)
-    if not found:
-        return render_search(request, "nolabel", query, count=0,
-                             empty_message=MSG_NO_RESULTS)
-    return render_search(request, "nolabel", query, results=found, count=len(found))
-
-
-# ---------------------------------------------------------------------------
-# slow/* — 결과가 늦게 화면에 들어오는 구현 (실물 앱의 비동기 렌더링)
-# ---------------------------------------------------------------------------
-#
-# 검증 로직은 good 과 **완전히 같다.** 다른 것은 하나뿐이다 — 서버가 보낸 에러
-# 문구와 검색 결과를 브라우저가 SLOW_DELAY_MS 뒤에 DOM 에 넣는다.
-#
-# 왜 이 변형이 필요한가: 지금 SUT 는 동기식 폼 POST 라 응답 HTML 에 결과가 이미
-# 들어 있다. 실물 웹앱은 대개 그렇지 않다 — 제출하면 fetch 를 보내고, 응답이 오면
-# 화면을 갈아 끼운다. 그 사이 화면에는 아무것도 없다.
-#
-# Prova 가 클릭 직후 DOM 을 읽으면 그 '아무것도 없는' 상태를 보고 '기획서가 지정한
-# 에러가 안 뜬다' 로 판정한다. **구현은 올바른데 FAIL 이 난다 — 오탐이다.**
-# 이 변형은 그 오탐을 재현해서 도구가 기다리게 만들려고 있다.
-#
-# nolabel 과 같은 원칙으로 별도 변형이다: good/bad 는 '검증 로직의 유무' 하나만
-# 다르게 두는 실험이고, 여기에 렌더 시점 차이를 섞으면 변수가 둘이 된다.
-
-
-@app.get("/slow/login", response_class=HTMLResponse)
-def slow_login_form(request: Request):
-    return render_login(request, "slow")
-
-
-@app.post("/slow/login", response_class=HTMLResponse)
-def slow_login_submit(
-    request: Request,
-    email: str = Form(default=""),
-    password: str = Form(default=""),
-):
-    # good 과 한 줄도 다르지 않다 — 렌더 시점만 템플릿이 늦춘다.
-    if not email or not password:
-        return render_login(request, "slow", MSG_REQUIRED)
-    if not check_email_format(email):
-        return render_login(request, "slow", MSG_EMAIL_FORMAT)
-    if not check_password_rules(password):
-        return render_login(request, "slow", MSG_PASSWORD_RULE)
-    if REGISTERED["good"].get(email) != password:
-        return render_login(request, "slow", MSG_NO_ACCOUNT)
-    return RedirectResponse("/slow/dashboard", status_code=303)
-
-
-@app.get("/slow/dashboard", response_class=HTMLResponse)
-def slow_dashboard(request: Request):
-    return render_dashboard(request, "slow", "user@test.com")
-
-
-@app.get("/slow/search", response_class=HTMLResponse)
-def slow_search(request: Request, query: str | None = None):
-    if query is None:
-        return render_search(request, "slow")
-    if not query:
-        return render_search(request, "slow", query, error=MSG_QUERY_REQUIRED)
-    if not (2 <= len(query) <= 50):
-        return render_search(request, "slow", query, error=MSG_QUERY_LENGTH)
-    found = find_products(query, case_sensitive=False)
-    if not found:
-        return render_search(request, "slow", query, count=0,
-                             empty_message=MSG_NO_RESULTS)
-    return render_search(request, "slow", query, results=found, count=len(found))
-
-
-# ---------------------------------------------------------------------------
-# spa/login — 성공해도 URL 이 바뀌지 않는 구현 (클라이언트 라우팅)
-# ---------------------------------------------------------------------------
-#
-# 검증 로직은 good 과 **완전히 같다.** 다른 것은 하나뿐이다 — 성공했을 때
-# /dashboard 로 리다이렉트하지 않고 그 자리에 대시보드 내용을 렌더한다.
-#
-# 왜 이 변형이 필요한가: 기획서 §3 은 "/dashboard 로 이동하고 '환영합니다' 문구를
-# 노출한다" 고 적었다. 지금 판정은 URL 에 '/dashboard' 가 들어 있는지를 본다.
-# 클라이언트 라우팅으로 화면만 갈아 끼우는 앱에서는 그 조건이 성립하지 않는다.
-#
-# **이 변형의 FAIL 은 오탐이 아닐 수 있다.** 기획서가 경로를 명시했으므로 URL 이
-# 그렇게 되지 않는 것은 기획-구현 불일치이고, 딥링크·새로고침·뒤로가기가 깨지는
-# 실제 결함이기도 하다. 그래서 이 변형이 재는 것은 '판정이 맞는가' 가 아니라
-# **'사유가 개발자에게 쓸모 있는가'** 다 — 내용은 도달했는데 경로만 다른 것과
-# 아무것도 도달하지 않은 것은 고칠 곳이 다르다.
-
-
-@app.get("/spa/login", response_class=HTMLResponse)
-def spa_login_form(request: Request):
-    return render_login(request, "spa")
-
-
-@app.post("/spa/login", response_class=HTMLResponse)
-def spa_login_submit(
-    request: Request,
-    email: str = Form(default=""),
-    password: str = Form(default=""),
-):
-    # 검증은 good 과 한 줄도 다르지 않다.
-    if not email or not password:
-        return render_login(request, "spa", MSG_REQUIRED)
-    if not check_email_format(email):
-        return render_login(request, "spa", MSG_EMAIL_FORMAT)
-    if not check_password_rules(password):
-        return render_login(request, "spa", MSG_PASSWORD_RULE)
-    if REGISTERED["good"].get(email) != password:
-        return render_login(request, "spa", MSG_NO_ACCOUNT)
-    # 여기만 다르다: 리다이렉트 없이 대시보드를 그 자리에 렌더한다.
-    # URL 은 /spa/login 그대로이고 화면 내용은 대시보드다.
-    return render_dashboard(request, "spa", email)
-
-
-@app.get("/spa/dashboard", response_class=HTMLResponse)
-def spa_dashboard(request: Request):
-    return render_dashboard(request, "spa", "user@test.com")
-
-
-# ---------------------------------------------------------------------------
-# hashed/login · native/login — 실물 앱의 흔한 마크업 두 가지
-# ---------------------------------------------------------------------------
-#
-# 둘 다 서버 검증 로직은 good 과 **완전히 같다.** 변수는 마크업 하나뿐이다.
-#
-# hashed: id 가 CSS-in-JS 해시다(id="e7f3a91b"). 기획서의 element_id 로 만드는
-#         CSS selector 가 무력화된다. <label for> 는 그 해시를 가리키므로 라벨
-#         연결은 살아 있다 — React/Vue 앱에서 아주 흔한 모양이다.
-#         전략 네 개 중 마지막 하나만 막히면 앞의 것으로 찾아야 정상이다.
-#
-# native: novalidate 를 떼고 required 를 붙였다. 브라우저가 제출을 막고 자기
-#         툴팁을 띄우므로 **기획서가 지정한 에러 문구가 화면에 나타나지 않는다.**
-#         이 FAIL 은 오탐이 아니다 — 기획서는 그 문구를 노출한다고 적었고 구현은
-#         노출하지 않는다. 재는 것은 '사유가 무엇을 말하는가' 다.
-
-
-@app.get("/hashed/login", response_class=HTMLResponse)
-def hashed_login_form(request: Request):
-    return render_login(request, "hashed")
-
-
-@app.post("/hashed/login", response_class=HTMLResponse)
-def hashed_login_submit(
-    request: Request,
-    email: str = Form(default=""),
-    password: str = Form(default=""),
-):
-    if not email or not password:
-        return render_login(request, "hashed", MSG_REQUIRED)
-    if not check_email_format(email):
-        return render_login(request, "hashed", MSG_EMAIL_FORMAT)
-    if not check_password_rules(password):
-        return render_login(request, "hashed", MSG_PASSWORD_RULE)
-    if REGISTERED["good"].get(email) != password:
-        return render_login(request, "hashed", MSG_NO_ACCOUNT)
-    return RedirectResponse("/hashed/dashboard", status_code=303)
-
-
-@app.get("/hashed/dashboard", response_class=HTMLResponse)
-def hashed_dashboard(request: Request):
-    return render_dashboard(request, "hashed", "user@test.com")
-
-
-@app.get("/native/login", response_class=HTMLResponse)
-def native_login_form(request: Request):
-    return render_login(request, "native")
-
-
-@app.post("/native/login", response_class=HTMLResponse)
-def native_login_submit(
-    request: Request,
-    email: str = Form(default=""),
-    password: str = Form(default=""),
-):
-    if not email or not password:
-        return render_login(request, "native", MSG_REQUIRED)
-    if not check_email_format(email):
-        return render_login(request, "native", MSG_EMAIL_FORMAT)
-    if not check_password_rules(password):
-        return render_login(request, "native", MSG_PASSWORD_RULE)
-    if REGISTERED["good"].get(email) != password:
-        return render_login(request, "native", MSG_NO_ACCOUNT)
-    return RedirectResponse("/native/dashboard", status_code=303)
-
-
-@app.get("/native/dashboard", response_class=HTMLResponse)
-def native_dashboard(request: Request):
-    return render_dashboard(request, "native", "user@test.com")
-
-
-# ---------------------------------------------------------------------------
 # find-account — 비밀번호 찾기 (1차 범위의 네 번째 화면)
 # ---------------------------------------------------------------------------
 #
@@ -733,37 +614,47 @@ def native_dashboard(request: Request):
 # 규칙 검증까지 빼면 이 화면이 확인하려는 F1 이 다른 FAIL 에 섞인다.
 
 
-@app.get("/good/find-account", response_class=HTMLResponse)
-def good_find_account_form(request: Request):
-    return render_find_account(request, "good")
+# slowleak — bad 와 같은 결함인데 누출 문구가 늦게 나타난다.
+#
+# 대기 로직이 '금지 문구가 없다' 를 첫 판정에서 확정하면 이 노출을 못 본다.
+# 그건 대기를 넣으면서 새로 생기는 미탐이므로 회귀로 못 박아야 한다
+# (nodes._verify_when_ready 의 watching_for_leak 참고).
 
 
-@app.post("/good/find-account", response_class=HTMLResponse)
-def good_find_account_submit(request: Request, email: str = Form(default="")):
+def _find_account_error(variant: str, email: str) -> str | None:
+    """비밀번호 찾기 검증. 통과하면 None, 아니면 노출할 문구.
+
+    F1(계정 존재 여부 노출)만 변형에 따라 갈린다 — 그게 실험의 변수다.
+    입력 검증(필수·형식)은 어느 변형에서도 같다.
+    """
     if not email:
-        return render_find_account(request, "good", error=MSG_REQUIRED)
+        return MSG_REQUIRED
     if not check_email_format(email):
-        return render_find_account(request, "good", error=MSG_EMAIL_FORMAT)
-    # 등록 여부를 **보지 않는다.** 기획서 §5 가 요구하는 동작이다.
-    # 실제 서비스라면 여기서 등록된 경우에만 메일을 보내고, 응답은 같게 한다.
-    return render_find_account(request, "good", sent=MSG_RESET_SENT)
+        return MSG_EMAIL_FORMAT
+    # F1: bad 계열은 등록 여부에 따라 다른 문구를 노출한다. 기획서 §5 위반이고
+    # 실제 취약점이다(account enumeration).
+    if variant != "good" and email not in REGISTERED["bad"]:
+        return MSG_NOT_REGISTERED
+    return None
 
 
-@app.get("/bad/find-account", response_class=HTMLResponse)
-def bad_find_account_form(request: Request):
-    return render_find_account(request, "bad")
+for _variant in ("good", "bad", "slowleak"):
+    def _register_find_account(variant: str) -> None:
+        @app.get(f"/{variant}/find-account", response_class=HTMLResponse)
+        def show_form(request: Request):
+            return render_find_account(request, variant)
 
+        @app.post(f"/{variant}/find-account", response_class=HTMLResponse)
+        def submit(request: Request, email: str = Form(default="")):
+            error = _find_account_error(variant, email)
+            if error:
+                return render_find_account(request, variant, error=error)
+            return render_find_account(request, variant, sent=MSG_RESET_SENT)
 
-@app.post("/bad/find-account", response_class=HTMLResponse)
-def bad_find_account_submit(request: Request, email: str = Form(default="")):
-    if not email:
-        return render_find_account(request, "bad", error=MSG_REQUIRED)
-    if not check_email_format(email):
-        return render_find_account(request, "bad", error=MSG_EMAIL_FORMAT)
-    # F1: 등록 여부에 따라 다른 문구를 노출한다. 기획서 §5 위반이고 실제 취약점이다.
-    if email not in REGISTERED["bad"]:
-        return render_find_account(request, "bad", error=MSG_NOT_REGISTERED)
-    return render_find_account(request, "bad", sent=MSG_RESET_SENT)
+        show_form.__name__ = f"{variant}_find_account_form"
+        submit.__name__ = f"{variant}_find_account_submit"
+
+    _register_find_account(_variant)
 
 
 @app.get("/", response_class=HTMLResponse)

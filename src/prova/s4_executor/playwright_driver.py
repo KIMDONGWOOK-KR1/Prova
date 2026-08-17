@@ -36,6 +36,7 @@ from playwright.sync_api import Page, TimeoutError as PlaywrightTimeout
 
 from prova.models import ElementLocation, Expectation, ScreenSpec, StepResult, TestStep
 from prova.s3_grounder.dom_locator import (
+    MIN_CONFIDENCE,
     Attempt,
     GroundingError,
     SpecTypeMismatch,
@@ -82,6 +83,8 @@ class ExecutionContext:
     # 케이스를 통과시키기보다 라벨 연결을 먼저 고쳐야 한다.
     max_heal: int = 2
     heal_count: int = 0
+    #: 2차 경로가 받아들일 최소 신뢰도 (설정에서 온다)
+    min_confidence: float = MIN_CONFIDENCE
 
     @property
     def spec(self) -> ScreenSpec:
@@ -205,7 +208,8 @@ def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
     except GroundingError:
         if ctx.vlm is None or ctx.heal_count >= ctx.max_heal:
             raise
-        location = heal_with_vlm(ctx.page, target, ctx.vlm, hint)
+        location = heal_with_vlm(ctx.page, target, ctx.vlm, hint,
+                                 ctx.min_confidence)
         ctx.heal_count += 1
         return location
 

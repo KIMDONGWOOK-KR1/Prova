@@ -80,6 +80,9 @@ def run_graph(
     viewport: Optional[dict] = None,
     step_timeout_ms: int = 10000,
     settle_timeout_ms: int = 2000,
+    screenshot_every_step: bool = True,
+    max_heal: int = 2,
+    min_confidence: float = 0.5,
 ) -> tuple[TestReport, Path]:
     """그래프로 파이프라인을 실행한다. run_pipeline 과 같은 결과를 내야 한다.
 
@@ -97,6 +100,9 @@ def run_graph(
         llm=llm,
         step_timeout_ms=step_timeout_ms,
         settle_timeout_ms=settle_timeout_ms,
+        screenshot_every_step=screenshot_every_step,
+        max_heal=max_heal,
+        min_confidence=min_confidence,
     )
 
     app = build_graph()

@@ -147,6 +147,10 @@ def run(
         viewport=exec_cfg.get("viewport"),
         step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
         settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
+        screenshot_every_step=bool(exec_cfg.get("screenshot_every_step", True)),
+        max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
+        min_confidence=float(
+            cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
     )
 
     # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로

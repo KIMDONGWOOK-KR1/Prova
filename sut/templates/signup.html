@@ -56,9 +56,8 @@
       <label for="signup_path">가입 경로</label>
       <select id="signup_path" name="signup_path">
         <option value="">선택하세요</option>
-        <option value="검색">검색</option>
-        {% if variant == 'good' %}<option value="지인 추천">지인 추천</option>{% endif %}
-        <option value="광고">광고</option>
+        {% for path in signup_paths %}<option value="{{ path }}">{{ path }}</option>
+        {% endfor %}
       </select>
 
       <div class="check-row">

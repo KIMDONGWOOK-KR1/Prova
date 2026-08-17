@@ -37,13 +37,27 @@ from dataclasses import dataclass
 
 from prova.models import ElementLocation, UIElement
 
-# 전략 이름 -> 사람이 읽는 설명. 리포트와 평가 지표에 쓴다.
+#: 전략 이름 -> 사람이 읽는 설명. 리포트의 스텝 표에 쓴다.
+#
+# 점검에서 이 표가 어디에도 쓰이지 않는 것을 찾았다 — 주석은 "리포트와 평가 지표에
+# 쓴다" 고 했는데 리포트는 원시 이름(label·role)을 그대로 찍고 있었다. 그리고
+# 2차 경로가 생긴 뒤에도 vlm 이 빠져 있었다. 주석이 하는 일을 말하지 않으면
+# 읽는 사람이 코드를 잘못 이해한다.
 STRATEGY_LABELS = {
     "label": "<label> 연결",
-    "placeholder": "placeholder",
+    "placeholder": "안내 문구",
     "role": "접근성 role+name",
     "text": "텍스트 일치",
+    "vlm": "화면 이미지 (2차)",
 }
+
+
+def strategy_label(strategy: str | None) -> str:
+    """리포트에 보여줄 전략 이름. 모르는 값은 그대로 보여준다 — 표에 없다는 이유로
+    정보를 지우면 어떤 경로로 찾았는지 알 수 없게 된다."""
+    if not strategy:
+        return ""
+    return STRATEGY_LABELS.get(strategy, strategy)
 
 
 class GroundingError(RuntimeError):
@@ -446,6 +460,11 @@ def read_placeholders(page, labels: list[str]) -> dict[str, str]:
 # VLM 은 못 찾았을 때도 그럴듯한 좌표를 낸다. 그 좌표를 누르면 엉뚱한 곳을 눌러 놓고
 # 케이스를 진행하게 되고, 그 FAIL 이 구현 결함인지 잘못 누른 것인지 구분할 수 없다 —
 # ground() 가 '정확히 1개만 확정한다' 를 계약으로 삼은 것과 같은 이유다.
+#: 2차 경로가 받아들일 기본 최소 신뢰도.
+#
+# VLM 은 못 찾았을 때도 그럴듯한 좌표를 낸다. 그 좌표를 누르면 엉뚱한 곳을 눌러
+# 놓고 케이스를 진행하게 되고, FAIL 이 구현 결함인지 잘못 누른 것인지 구분할 수
+# 없다. 설정(grounding.vlm_confidence_threshold)으로 덮어쓸 수 있다.
 MIN_CONFIDENCE = 0.5
 
 # UIElement.type -> VLM 에 줄 힌트. 사람이 화면을 보고 구분하는 말로 적는다.
@@ -460,7 +479,8 @@ VLM_HINTS = {
 }
 
 
-def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None) -> ElementLocation:
+def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None,
+                  min_confidence: float = MIN_CONFIDENCE) -> ElementLocation:
     """화면 이미지로 요소의 위치를 찾는다. 실패하면 GroundingError 를 던진다.
 
     돌려주는 ElementLocation 은 selector 가 없고 bbox 만 있다. 조작은 좌표로 해야
@@ -484,7 +504,7 @@ def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None) -> Elem
     except VLMError:
         raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
 
-    if found.confidence < MIN_CONFIDENCE or not found.is_sane():
+    if found.confidence < min_confidence or not found.is_sane():
         raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
 
     return ElementLocation(

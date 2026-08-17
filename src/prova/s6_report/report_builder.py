@@ -29,6 +29,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from prova.models import SpecDocument, TestReport, Verdict
+# 전략 이름 -> 사람이 읽는 설명. 표를 dom_locator 에 두는 이유는 전략 이름을
+# 만드는 곳과 같은 파일이라야 새 전략을 추가할 때 눈에 들어오기 때문이다 —
+# 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
+from prova.s3_grounder.dom_locator import strategy_label
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
 CATEGORY_LABELS = {
@@ -180,16 +184,22 @@ def _steps_html(verdict: Verdict) -> str:
     rows = []
     for r in verdict.step_results:
         detail = r.error_detail or ""
-        strategy = r.location.strategy if r.location else ""
+        # 원시 전략 이름(label·role·vlm)을 그대로 찍으면 코드를 아는 사람만 읽는다.
+        strategy = strategy_label(r.location.strategy if r.location else None)
         cls = " class='err'" if r.status == "error" else ""
+        # DOM 스냅샷을 링크한다. 스텝마다 저장하면서 리포트에 링크가 없어 아무도
+        # 열어 볼 수 없었다 — 탐지 실패를 조사할 때 가장 필요한 자료다.
+        evidence = (f"<a href='{_esc(r.dom_snapshot)}'>DOM</a>"
+                    if r.dom_snapshot else "")
         rows.append(
             f"<tr><td>{r.seq}</td><td>{_esc(r.action)}</td><td>{_esc(r.target)}</td>"
             f"<td>{_esc(strategy)}</td><td{cls}>{_esc(r.status)}</td>"
-            f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td></tr>"
+            f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
+            f"<td>{evidence}</td></tr>"
         )
     return (
         "<table class='steps'><thead><tr><th>#</th><th>동작</th><th>대상</th>"
-        "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th></tr></thead>"
+        "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 

@@ -42,7 +42,6 @@ class PageState:
     text: str                      # 화면에 보이는 전체 텍스트
     error_texts: list[str]         # 에러 영역([role=alert] 등)의 텍스트만
     console_errors: list[str]      # JS 콘솔 오류
-    http_status: int | None = None
     # 반복 목록을 센 결과 (type="result_count" 케이스에서만 채워진다).
     #
     # 왜 여기서 직접 세지 않는가: 무엇을 세야 하는지는 케이스의 기대값이 정하고,
