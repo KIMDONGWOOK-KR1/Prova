@@ -650,7 +650,7 @@
           <text x="215" y="251" font-size="12.5" font-weight="650" text-anchor="middle"
                 fill="var(--accent)">2차 · VLM 재탐색</text>
           <text x="215" y="266" font-size="10.5" text-anchor="middle" fill="var(--accent)"
-                opacity="0.85">LocateAnything-3B</text>
+                opacity="0.85">Qwen2.5-VL-3B-AWQ</text>
 
           <path d="M 340 188 L 340 206 L 215 206 L 215 228" fill="none"
                 stroke="var(--accent)" stroke-width="1.4" stroke-dasharray="5 4"
@@ -1035,7 +1035,7 @@
     <figure>
       <div class="figbox">
         <svg viewBox="0 0 800 262" role="img"
-             aria-label="현재 VRAM 10.2GiB 중 모델 가중치 5.29, 오버헤드 1.8, CUDA graph 0.51, KV 캐시 1.56을 쓴다. 여기에 LocateAnything-3B를 4bit로 얹으면 합계가 약 11.1GiB가 되어 10.2GiB 한계를 넘는다.">
+             aria-label="현재 VRAM 10.2GiB 중 모델 가중치 5.29, 오버헤드 1.8, CUDA graph 0.51, KV 캐시 1.56을 쓴다. 여기에 Qwen2.5-VL-3B-AWQ를 얹으면 합계가 약 10.8GiB가 되어 한계를 넘는다. 실측에서 7B 가동 중 남는 VRAM은 1.20GiB뿐이었다.">
           <!-- 눈금. 1 GiB = 66px, 원점 x=40 -->
           <g font-size="10.5" font-family="monospace" fill="currentColor" opacity="0.5">
             <text x="40" y="26" text-anchor="middle">0</text>
@@ -1123,18 +1123,20 @@
           <rect x="542" y="204" width="231" height="26" rx="3" fill="var(--fail-bg)"
                 stroke="var(--fail)" stroke-width="1.6"/>
           <text x="657" y="221" font-size="11" font-weight="700" text-anchor="middle"
-                fill="var(--fail)">VLM 4bit ≈ 3.5</text>
+                fill="var(--fail)">VLM 가중치 3.17 (실측)</text>
 
           <text x="40" y="252" font-size="11" font-weight="650" fill="var(--fail)">
-            합계 약 11.1 GiB — 한계를 넘는다. KV 캐시 자리가 아예 남지 않는다.
+            실측: 7B 가동 중 남는 것은 1.20 GiB — 가중치 3.17 GiB 가 들어가지 않는다.
           </text>
         </svg>
       </div>
       <figcaption>
         <b>MIG 추가 할당은 불가능하다.</b> 그런데 파이프라인을 보면 LLM은 S1·S2에서만, VLM은
         S3에서만 쓰인다 — 동시에 필요한 시점이 없다. 그래서 <b>시간을 나눠 쓰면</b> 추가 할당
-        없이 2차가 가능하다. S1·S2 결과를 JSON으로 캐싱해두면 VLM 단계 개발 중에는 LLM이 아예
-        필요 없어져 개발 속도도 빨라진다.
+        없이 2차가 가능하다.<br>
+        <b>실측으로 확인했다.</b> 7B 가동 중 남는 VRAM은 1.20 GiB 뿐이어서 동시 적재는 불가능했고,
+        7B를 내리고 VL을 올리는 방식으로 S3 정확도를 측정했다(4/4 적중). 대신 한 실행에서 둘을
+        쓰려면 서버를 바꾸는 사이에 추출 결과를 보관해야 하는데, 그 경로는 아직 없다.
       </figcaption>
     </figure>
   </section>
@@ -1405,7 +1407,7 @@
         검증을 조용히 망가뜨리면 확장이 아니라 후퇴다.
       </p>
       <p>
-        확인했다 — 로그인은 여전히 <code>good</code> 7/7, <code>bad</code> 3 PASS·4 FAIL이고
+        확인했다 — 로그인은 여전히 <code>good</code> 10/10, <code>bad</code> 4 PASS·6 FAIL이고
         위반값도 한 글자 그대로다.
       </p>
     </div>
@@ -1798,7 +1800,7 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
       <span class="label">확인하지 않은 것을 리포트에 쓴다</span>
       <p>
         이 도구가 낼 수 있는 가장 위험한 리포트는 FAIL 이 아니다.
-        <strong>"36/36 통과" 인데 실은 기획서의 일부를 확인하지 않은 리포트</strong>다.
+        <strong>"39/39 통과" 인데 실은 기획서의 일부를 확인하지 않은 리포트</strong>다.
         FAIL 은 눈에 띄지만 '확인하지 않음' 은 아무 흔적도 남기지 않는다.
       </p>
       <p>
@@ -1827,7 +1829,381 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     </div>
   </section>
 
-  <!-- ═══ 11. 다음 ═══════════════════════════════════════ -->
+  <!-- ═══ 11. 2차 경로 ═══════════════════════════════════ -->
+  <section>
+    <h2 class="col">라벨이 없는 화면 — 그리고 없는 결함 7건</h2>
+    <p class="sub col">보정을 붙였다가 이 도구가 낼 수 있는 최악의 리포트를 만들었다</p>
+
+    <div class="col">
+      <p>
+        여기까지 요소를 찾는 방법은 접근성 속성이었다 — 라벨 연결, 버튼의 접근 가능한
+        이름, 안내 문구, 요소 ID. <code>good</code> 에서는 전부 통한다. 그런데
+        <strong>실물 화면은 이렇게 친절하지 않다.</strong>
+      </p>
+    </div>
+
+<pre class="out"><code>&lt;!-- 기획서: 요소 '검색' --&gt;
+&lt;button type="submit"&gt;🔍&lt;/button&gt;</code></pre>
+
+    <div class="col">
+      <p>
+        아이콘만 있는 제출 버튼이다. 접근 가능한 이름이 없고 라벨도 안내 문구도 없다.
+        네 전략이 모두 막힌다 — 검색 버튼, 닫기 버튼, 아이콘 툴바가 대개 이렇다.
+        그래서 <strong>화면을 이미지로 보고 위치를 찾는 2차 경로</strong>를 붙였다.
+      </p>
+      <p>
+        시험용으로 <code>nolabel</code> 변형을 만들었다. 검증 로직은 <code>good</code> 과
+        <span class="mark">완전히 같고</span> 제출 버튼 마크업만 다르다. 그래야
+        "보정이 되면 판정이 <code>good</code> 과 같아져야 한다" 는 기준을 세울 수 있다.
+      </p>
+    </div>
+
+    <h3 class="col">그리고 없는 결함 7건을 보고했다</h3>
+
+    <div class="col">
+      <p>
+        좌표를 손으로 어림잡아 넣고 돌렸다. 테스트가 통과했다 —
+        <code>healed &gt; 0</code> 이었으니까. 그런데 리포트를 열어 보니 FAIL 이 7건 있었다.
+        <strong>결함이 하나도 없는 화면인데.</strong>
+      </p>
+    </div>
+
+    <div class="steps col">
+      <div class="step"><span class="n">1</span>
+        어림잡은 좌표가 버튼을 살짝 비켜 갔다 (폼 안 빈 여백)</div>
+      <div class="step"><span class="n">2</span>
+        Playwright 의 <code>mouse.click(x, y)</code> 는 거기에 아무것도 없어도
+        <strong>조용히 성공한다</strong></div>
+      <div class="step"><span class="n">3</span>
+        폼이 제출되지 않았다 → 에러 문구도 결과도 나오지 않았다</div>
+      <div class="step"><span class="n">4</span>
+        판정은 그것을 "기획서가 지정한 에러가 안 뜬다" 로 읽었다</div>
+      <div class="step"><span class="n">5</span>
+        리포트: <span class="tag fail">구현 결함 7건</span></div>
+    </div>
+
+    <div class="note">
+      <span class="label">놓친 결함보다 없는 결함이 나쁘다</span>
+      <p>
+        놓친 결함은 도구의 한계로 남는다. <strong>없는 결함 7건은 개발자의 시간을 쓰고
+        도구의 신뢰를 없앤다.</strong> 없는 버그를 일곱 개 찾고, 못 찾고, 그다음부터 이
+        도구를 믿지 않는다.
+      </p>
+      <p>
+        <code>fill()</code> 은 그래도 낫다 — 입력란이 아닌 곳에 타이핑하면 Playwright 가
+        에러를 낸다. 치명적인 건 <code>click()</code> 이다.
+        <span class="mark">좌표 클릭은 빈 공간을 눌러도 성공한다.</span>
+      </p>
+    </div>
+
+    <div class="col">
+      <p>
+        방어를 셋 뒀다. 그중 하나는 코드가 아니라 <strong>테스트</strong>였다 —
+        원인이 거기 있었기 때문이다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>무엇</th><th>어떻게</th></tr></thead>
+        <tbody>
+          <tr><td>누르기 전에 그 자리를 본다</td>
+              <td><code>document.elementFromPoint</code> 로 조작 가능한 요소가 있는지
+                  확인하고, 없으면 <strong>누르지 않고 탐지 실패로 되돌린다</strong></td></tr>
+          <tr><td><code>healed</code> 의 뜻을 고친다</td>
+              <td>실제로 진행된(<code>status == "ok"</code>) 스텝만 센다. 시도만 하고
+                  막힌 것을 세면 리포트가 "이미지로 찾아 진행했다" 고 말하는데 아무것도
+                  진행되지 않은 상태가 된다</td></tr>
+          <tr><td>수용 기준을 바꾼다</td>
+              <td><code>healed &gt; 0</code> 이 아니라 <strong>"보정하면 판정이
+                  <code>good</code> 과 같아진다"</strong>. 좌표가 어긋나는 순간 터진다</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">탐지 실패와 구현 결함을 절대 섞지 않는다</span>
+      <p>
+        <code>element_not_found</code> 는 <strong>"도구를 고쳐라"</strong> 로 읽히고
+        <code>assertion_mismatch</code> 는 <strong>"구현을 고쳐라"</strong> 로 읽힌다.
+        개발자가 할 일이 다르다. 확신할 수 없으면 탐지 실패로 두는 쪽이 옳다 — 그게
+        사실이기도 하다.
+      </p>
+    </div>
+
+    <h3 class="col">보정이 결함을 메우지 못하게 했다</h3>
+
+    <div class="col">
+      <p>
+        보정을 켜면 케이스가 통과한다. 여기에 함정이 있다.
+        <strong>'기획서의 라벨로 요소를 지목할 수 없다' 는 것 자체가 결함이다.</strong>
+        기획-구현 불일치이면서 접근성 결함이다 — 스크린리더 사용자는 그 버튼이 무슨
+        버튼인지 알 수 없다.
+      </p>
+      <p>
+        보정이 그걸 조용히 메워 주면 도구는 결함을 <span class="mark">숨기는 장치</span>가
+        된다. 그래서 라벨로 찾을 수 있는지를 확인하는 케이스를 따로 두고,
+        <strong>그 케이스는 보정을 쓰지 않는다.</strong>
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card bad">
+        <span class="label">2차 경로 끔</span>
+        <span class="score">1 PASS / 9 FAIL</span>
+        <p>전부 <code>element_not_found</code>. 라벨이 없어 요소를 찾지 못한다.</p>
+      </div>
+      <div class="card good">
+        <span class="label">2차 경로 켬</span>
+        <span class="score">9 PASS / 1 FAIL</span>
+        <p>이미지로 찾아 진행하고, <strong>라벨 결함 1건은 그대로 남는다.</strong></p>
+      </div>
+    </div>
+
+    <h3 class="col">실물 모델로 재 봤다</h3>
+
+    <div class="col">
+      <p>
+        여기까지의 초록불은 <strong>정답을 아는 mock</strong> 이 낸 것이다. 증명된 것은
+        배관이고 정확도는 측정되지 않은 상태였다. 그 구분을 흐리면 mock 초록불을 보고
+        "2차가 동작한다" 고 말하게 된다.
+      </p>
+      <p>
+        MIG 조각이 9.50 GiB 이고 7B 가 8.30 GiB 를 쓴다 — 남는 1.20 GiB 에 3.17 GiB
+        가중치가 들어가지 않는다. <strong>동시 적재는 불가능하다.</strong> 그런데 LLM 은
+        S1·S2, VLM 은 S3 에서만 쓰이므로 시간을 나눠 쓸 수 있다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>화면 · 요소</th><th>적중</th><th class="num">IoU</th>
+                   <th class="num">중심 오차</th><th class="num">신뢰도</th></tr></thead>
+        <tbody>
+          <tr><td><code>/nolabel/search</code> 검색 <em>(아이콘)</em></td>
+              <td><span class="tag pass">O</span></td>
+              <td class="num">0.82</td><td class="num">0.09</td><td class="num">0.90</td></tr>
+          <tr><td><code>/good/search</code> 검색 <em>(글자)</em></td>
+              <td><span class="tag pass">O</span></td>
+              <td class="num">0.81</td><td class="num">0.10</td><td class="num">0.90</td></tr>
+          <tr><td><code>/good/login</code> 로그인 <em>(글자)</em></td>
+              <td><span class="tag pass">O</span></td>
+              <td class="num">0.33</td><td class="num">0.15</td><td class="num">0.90</td></tr>
+          <tr><td><code>/good/login</code> 이메일 <em>(입력란)</em></td>
+              <td><span class="tag pass">O</span></td>
+              <td class="num">0.53</td><td class="num">0.15</td><td class="num">0.80</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p>
+        4/4 적중이고 파이프라인 결과가 mock 과 <strong>동일하다.</strong> 대조군(글자가
+        있는 요소)을 함께 넣은 이유는, 아이콘 버튼이 실패했을 때 '모델이 원래 못 한다' 와
+        '아이콘이라서 못 한다' 를 갈라야 결론이 나기 때문이다.
+      </p>
+      <p>
+        '로그인' 의 IoU 0.33 이 흥미롭다. 상자를 실제 버튼보다 크게 잡았다는 뜻인데 중심은
+        버튼 안이다. <span class="mark">위치를 못 맞추는 것과 크기를 못 맞추는 것은
+        다르고</span>, 이 경로에 필요한 것은 위치뿐이다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">실물로 한 번 돌리는 것이 mock 테스트를 늘리는 것보다 나을 때</span>
+      <p>
+        첫 실물 실행은 9건 전부 FAIL 이었다. 그런데 실패 문구가
+        <code>'일치하는 요소가 없음'</code> — VLM 오류가 아니라
+        <strong>1차 경로의 탐지 실패 문구</strong>였다. 보정이 아예 진입하지 않았다.
+      </p>
+      <p>
+        모델 이름 때문이었다. 서버를 <code>--served-model-name qwen-vl</code> 로 띄웠는데
+        클라이언트가 기본 이름으로 요청했다. <code>/models</code> 는 200 을 주고
+        <code>chat/completions</code> 는 404 였다. <code>health()</code> 가 앞의 것만
+        봤으므로 실행은 정상 기동하고 로그에 '2차 경로: …' 가 찍히는데,
+        <strong>리포트는 보정을 끈 실행과 똑같았다.</strong>
+      </p>
+      <p>
+        <strong>'서버가 살아 있다' 는 '내 요청이 통한다' 가 아니다.</strong> 이 구멍은
+        mock 테스트 26건이 모두 통과하는 동안 그대로 있었다 — mock 은 서버 이름 같은 것을
+        다루지 않는다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 12. 기획서 내구성 ═══════════════════════════════ -->
+  <section>
+    <h2 class="col">우리가 만든 문서에서만 동작하고 있었다</h2>
+    <p class="sub col">기획서를 일부러 훼손해 재 봤을 때 나온 것</p>
+
+    <div class="col">
+      <p>
+        테스트 400개가 통과하고, 세 화면과 화면 사이 흐름을 검증하고, 오탐 0건을 유지하고
+        있었다. 그런데 그 문장에 조건이 숨어 있었다.
+      </p>
+      <p style="font-size:1.15em">
+        <strong><span class="mark">우리가 만든 기획서에서는</span> 오탐 0건이다.</strong>
+      </p>
+      <p>
+        픽스처 기획서 4개는 전부 우리가 마크다운으로 써서 스크립트로 PDF 로 만든 것이다.
+        7열이 정확한 순서로, 정확한 헤더 이름으로, 표 형태로 있다.
+        <strong>S1 의 결정적 표 독해 여덟 개가 전부 이 모양을 전제한다.</strong>
+      </p>
+      <p>
+        실제 회사의 화면기획서가 이렇게 생길 이유가 없다. Figma 캡처와 산문, 표가 이미지,
+        열 이름이 '항목/설명', 셀 병합. <strong>S1 이 깨지면 그 뒤가 전부 무의미한데</strong>,
+        어떻게 깨지는지 한 번도 재 본 적이 없었다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">재는 것은 '깨지는가' 가 아니라 '어떻게 깨지는가'</span>
+      <p>
+        <strong>조용한 실패</strong> — 일부를 놓치고도 경고 없이 정상처럼 보인다.
+        사람이 초록불을 믿고 넘어간다.
+      </p>
+      <p>
+        <strong>시끄러운 실패</strong> — 경고를 남기거나 예외로 끊는다. 사람이 문서를
+        고치거나 도구를 고친다.
+      </p>
+      <p>
+        <span class="mark">이 도구의 가치는 전부 후자로 만드는 데 있다.</span>
+      </p>
+    </div>
+
+    <h3 class="col">도구가 요구사항을 지어내고 있었다</h3>
+
+    <div class="col">
+      <p>
+        훼손 6종을 하나씩만 적용했다 — 겹치면 어느 것이 원인인지 분리되지 않는다.
+        그중 '안내 문구 열을 지운' 문서에서 7B 가 값을 만들어냈다.
+      </p>
+    </div>
+
+<pre class="out"><code>email     placeholder='이메일 입력'        <span class="f">← 문서에 이런 말이 없다</span>
+password  placeholder='비밀번호 입력'      <span class="f">← 없다</span></code></pre>
+
+    <div class="col">
+      <p>그 기획서로 <strong>올바른 구현</strong>을 검증했다.</p>
+    </div>
+
+<pre class="out"><code>결과: 전체 10 · 통과 9 · 실패 1
+
+<span class="f">FAIL</span> 입력 안내 문구 확인
+     문구가 다름 — '이메일': 기대 '이메일 입력', 화면 '이메일을 입력하세요'</code></pre>
+
+    <div class="note">
+      <span class="label">없는 결함을 자신 있게, 경고 하나 없이</span>
+      <p>
+        구현은 완벽하게 기획서를 지켰다 — 기획서가 안내 문구를 요구하지 않았으니까.
+        앞 절의 '없는 결함 7건' 과 같은 종류의 사고인데 원인이 다르다. 그때는 좌표가
+        어긋났고, 이번에는 <strong>모델이 요구사항을 발명했다.</strong>
+      </p>
+    </div>
+
+    <h3 class="col">검증망이 사라진 사실이 어디에도 남지 않았다</h3>
+
+<pre class="out"><code>_element_table() 이 None          헤더에 '요소 ID' 와 '유형' 이 둘 다 있어야 한다
+  → declared_* 여덟 개가 전부 빈손
+  → _apply_declared_types        : if not declared: return    <span class="f">(조용히)</span>
+  → _apply_declared_placeholders : if not declared: return    <span class="f">(조용히)</span>
+  → structural_warnings          : if declared:  <span class="f">← 검사 자체를 건너뜀</span></code></pre>
+
+    <div class="col">
+      <p>
+        <strong>열 이름을 '요소 ID' → '항목' 으로 바꾸는 것 하나로 이 상태가 된다.</strong>
+        각 함수는 옳다 — 표가 없으면 할 일이 없으니 반환하는 게 맞다.
+        <span class="mark">틀린 것은 그 조용함이다.</span> 그 실행은 우연히 원본과 같은
+        답을 냈다. 틀렸다면 아무것도 잡지 못했다.
+      </p>
+    </div>
+
+    <h3 class="col">고친 방법 — 본문에 없는 문구는 요구사항이 아니다</h3>
+
+    <div class="col">
+      <p>
+        첫 생각은 '표에서 읽은 값만 신뢰한다' 였다. 그런데 그러면
+        <strong>산문으로 쓴 기획서에서 검증이 사라진다.</strong> 그리고 실측에서 7B 는
+        산문에 적힌 안내 문구를 정확히 읽어냈다 — 버릴 이유가 없는 정보다.
+      </p>
+      <p>
+        더 나은 기준이 있었다 — <strong>그 문자열이 문서 본문에 있는가.</strong> 표든
+        산문이든 통한다. 문서에 있으면 기획서가 요구한 것이고, 없으면 모델이 만든 것이다.
+        <span class="mark">추론이 필요하지 않다.</span>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">지우는 장치를 만들 때는 지우면 안 되는 것부터 쟀다</span>
+      <p>
+        이쪽이 더 위험하다. PDF 는 원문을 그대로 복원하지 못하므로, 이 장치가 진짜
+        요구사항을 조용히 지우면 리포트가 근거 없이 초록불이 된다.
+      </p>
+      <p>
+        그래서 <strong>구현하기 전에</strong> 픽스처 3종의 정답 문구 19개로 재 봤다.
+        19/19 가 본문에서 찾아졌고 공백만 정규화하면 충분했다. 그 성질을 테스트로
+        못 박았다 — <strong>순서가 반대면 조용한 검증 상실을 만든다.</strong>
+      </p>
+    </div>
+
+    <div class="col">
+      <p>
+        문구를 버린 위반 케이스는 '에러가 떴고 이동하지 않았다' 만 확인하는 쪽으로
+        격하된다. <strong>검증이 약해지는 것과 거짓이 되는 것은 다르다.</strong>
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card bad">
+        <span class="label">훼손 기획서 · 올바른 구현 — 전</span>
+        <span class="score">9 PASS / 1 FAIL</span>
+        <p>없는 결함을 보고했다. 경고 없음.</p>
+      </div>
+      <div class="card good">
+        <span class="label">훼손 기획서 · 올바른 구현 — 후</span>
+        <span class="score">9 PASS / 0 FAIL</span>
+        <p>경고 2건으로 <strong>왜 확인하지 않았는지</strong>를 남긴다.</p>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>
+        원본 기획서에는 경고가 하나도 늘지 않았다. 실물 7B 로 기획서 4종 × 구현 2종을
+        다시 돌려 판정이 전부 그대로임을 확인했다 — 오탐 0건 유지.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">뜻밖의 좋은 소식 둘</span>
+      <p>
+        <strong>7B 가 산문을 읽는다.</strong> 표를 없애고 문장으로만 쓴 기획서에서 요소
+        3개와 규칙 4개를 정확히 뽑아냈고 안내 문구도 맞혔다. 실물 기획서가 표를 안 쓰더라도
+        완전히 못 쓰는 상황은 아니다.
+      </p>
+      <p>
+        <strong>셀 병합과 절 번호 제거는 영향이 없다.</strong> 절 탐색이 번호에 의존하지
+        않게 만들어 둔 것이 여기서 값을 했다. 깨지는 것은
+        <span class="mark">표 자체를 못 찾을 때</span> 하나이고, 이제 그 사실이 리포트에
+        드러난다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">테스트가 실패할 때 테스트가 틀린 경우가 있다</span>
+      <p>
+        이 수정이 테스트 하나를 깨뜨렸다 —
+        <code>test_대조할_표가_없으면_누락_검사를_하지_않는다</code> 가
+        <strong>옛 동작을 옳다고 못 박아 두고 있었다.</strong>
+      </p>
+      <p>
+        절반은 여전히 옳다. '요소가 빠졌다' 고 하면 안 된다 — 빠진 것이 아니라 대조할
+        근거가 없는 것이고, 둘은 개발자가 할 일이 다르다. 그래서 테스트를 둘로 갈랐다.
+        그 판단의 근거는 <strong>측정</strong>이어야 한다 — 느낌이면 안 된다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 13. 다음 ═══════════════════════════════════════ -->
   <section>
     <h2 class="col">다음</h2>
     <p class="sub col">남은 화면보다 값이 큰 것</p>
@@ -1885,32 +2261,62 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
       </p>
     </div>
 
-    <p class="sub col">그다음 — VLM 요소 탐지</p>
+    <p class="sub col">지금 가장 큰 위험은 기능이 아니라 입력이다</p>
 
     <div class="col">
       <p>
-        지금 S3 는 접근성 속성에 의존한다. 실물 화면이 라벨을 <code>&lt;label for&gt;</code> 로
-        연결하지 않거나 목록에 접근성 이름이 없으면 탐지가 막힌다. 건수 검증에서 이미 그
-        경계를 만났다 — 목록에 <code>aria-label</code> 이 없으면 세지 못하고, 그 사실을
-        <span class="mark">'결과가 0건이거나 접근성 이름이 없다'</span> 로만 보고할 수 있다.
-        그 지점이 2차 VLM fallback 의 진입점이다.
+        여기까지의 모든 숫자에는 조건이 붙어 있다 — <strong>우리가 만든 기획서에서는.</strong>
+        훼손 6종으로 어떻게 깨지는지는 알게 됐지만, 그건 <span class="mark">우리가 상상한
+        여섯 가지</span>다. 실물 화면기획서는 우리가 상상하지 못한 방식으로 생겼을 것이다.
+      </p>
+      <p>
+        그래서 다음 할 일은 화면을 늘리는 것이 아니라 <strong>실물 기획서 한 장을
+        확보하는 것</strong>이다. 로그인처럼 단순한 화면 하나면 충분하고 어떤 형식이든
+        괜찮다 — 읽을 수 없으면 그 사실을 말하는 것까지가 지금 도구의 동작이다.
       </p>
     </div>
 
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>남은 것</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr><td>실물 기획서로 S1 확인</td>
+              <td><span class="tag fail">대기</span> 문서를 받아야 시작한다 — 다음 최우선</td></tr>
+          <tr><td>표 헤더 후보 넓히기 (<code>항목</code> · <code>필드</code> · <code>구분</code>)</td>
+              <td>실물을 본 뒤 결정한다. 미리 넓히면 다른 표를 요소 표로 잘못 읽는다</td></tr>
+          <tr><td>두 실물 모델(LLM + VLM)의 한 실행 관통</td>
+              <td>각각은 측정했다. 서버를 바꾸는 사이에 추출 결과를 보관하는 경로가 없다</td></tr>
+          <tr><td>아이디/비밀번호 찾기 화면</td>
+              <td>기존 기계로 대부분 덮인다 — 확장 가치가 낮아 미룬다</td></tr>
+          <tr><td><code>screen_name</code> 과 <code>&lt;title&gt;</code> 대조</td>
+              <td>일부러 미룬다 — 오탐 위험이 높다</td></tr>
+          <tr><td>화면 3개 이상을 지나는 흐름</td>
+              <td>미지원</td></tr>
+        </tbody>
+      </table>
+    </div>
+
     <div class="note">
-      <span class="label">VLM은 언제</span>
+      <span class="label">이 프로젝트에서 계속 같은 모양의 실수를 했다</span>
       <p>
-        MIG 추가 할당은 불가능하다. 그런데 코드를 확인한 결과
-        <strong>LLM과 VLM이 동시에 필요한 시점이 없다</strong> — LLM은 S1·S2에서만, VLM은
-        S3에서만 쓰인다. 시간을 나눠 쓰면 추가 할당 없이 가능하다.
-        <code>LocateAnything-3B</code>는 BF16으로 약 12GB라 4bit 양자화가 필수다.
+        <strong>도구가 대신 해 주는 일은 검증되지 않는다.</strong> 주소로 이동하면 링크가
+        검증되지 않고, 액션을 고르는 데만 쓰인 '유형' 은 대조되지 않고, 값을 채우는 데만
+        쓰인 '선택 목록' 은 확인되지 않았다. 편의가 검증을 지운다.
+      </p>
+      <p>
+        <strong>확인하지 않은 것과 확인해서 통과한 것은 다르다.</strong> 초록불이 뜬 자리에
+        무엇이 확인됐고 무엇이 안 됐는지를 리포트가 말해야 한다.
+      </p>
+      <p>
+        <strong>없는 결함을 보고하는 것이 결함을 놓치는 것보다 나쁠 수 있다.</strong> 두 번
+        그랬다 — 좌표가 어긋나서, 그리고 모델이 요구사항을 발명해서.
       </p>
     </div>
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 374개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 13개,
+    코드 <code>C:\dev\prova</code> · 테스트 422개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 15개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
