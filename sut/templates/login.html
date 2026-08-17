@@ -24,19 +24,31 @@
 
     <!-- action 의 variant 만 다르고, 마크업은 good/bad 가 완전히 동일하다.
          두 실행의 차이가 검증 로직의 유무에서만 나오게 하기 위한 것이다. -->
-    <form method="post" action="/{{ variant }}/login" novalidate>
-      <label for="email">이메일</label>
+    {#- hashed: id 를 CSS-in-JS 스타일 해시로 바꾼다. <label for> 는 그 해시를
+       가리키므로 라벨 연결은 살아 있다. 기획서의 element_id('email')로 만드는
+       CSS selector 만 무력화된다 — 실물 React/Vue 앱에서 흔한 모양이다.
+
+       native: novalidate 를 떼고 required 를 붙인다. 브라우저가 제출을 막고
+       자기 툴팁을 띄우므로 기획서가 지정한 에러 문구가 화면에 나타나지 않는다. -#}
+    {%- set eid = 'e7f3a91b' if variant == 'hashed' else 'email' -%}
+    {%- set pid = 'p4c2d80e' if variant == 'hashed' else 'password' -%}
+    <form method="post" action="/{{ variant }}/login"
+          {{ '' if variant == 'native' else 'novalidate' }}>
+      <label for="{{ eid }}">이메일</label>
       <!-- B4: bad 는 안내 문구가 기획서와 다르다.
            기획서 §2 '안내 문구' 열은 "이메일을 입력하세요" 다.
 
            안내 문구는 사용자가 가장 먼저 읽는 글자인데, 기획서가 그 열을 적기
            전까지 아무도 확인하지 않았다. S3 는 라벨로 요소를 찾으므로 이 값이
            달라도 탐지는 그대로 된다 — 그래서 조용히 지나갔다. -->
-      <input type="text" id="email" name="email"
+      <input type="text" id="{{ eid }}" name="email"
+             {{ 'required' if variant == 'native' else '' }}
              placeholder="{{ '아이디를 입력하세요' if variant == 'bad' else '이메일을 입력하세요' }}">
 
-      <label for="password">비밀번호</label>
-      <input type="password" id="password" name="password" placeholder="비밀번호를 입력하세요">
+      <label for="{{ pid }}">비밀번호</label>
+      <input type="password" id="{{ pid }}" name="password"
+             {{ 'required' if variant == 'native' else '' }}
+             placeholder="비밀번호를 입력하세요">
 
       <button type="submit">로그인</button>
     </form>

@@ -573,6 +573,125 @@ def slow_search(request: Request, query: str | None = None):
     return render_search(request, "slow", query, results=found, count=len(found))
 
 
+# ---------------------------------------------------------------------------
+# spa/login — 성공해도 URL 이 바뀌지 않는 구현 (클라이언트 라우팅)
+# ---------------------------------------------------------------------------
+#
+# 검증 로직은 good 과 **완전히 같다.** 다른 것은 하나뿐이다 — 성공했을 때
+# /dashboard 로 리다이렉트하지 않고 그 자리에 대시보드 내용을 렌더한다.
+#
+# 왜 이 변형이 필요한가: 기획서 §3 은 "/dashboard 로 이동하고 '환영합니다' 문구를
+# 노출한다" 고 적었다. 지금 판정은 URL 에 '/dashboard' 가 들어 있는지를 본다.
+# 클라이언트 라우팅으로 화면만 갈아 끼우는 앱에서는 그 조건이 성립하지 않는다.
+#
+# **이 변형의 FAIL 은 오탐이 아닐 수 있다.** 기획서가 경로를 명시했으므로 URL 이
+# 그렇게 되지 않는 것은 기획-구현 불일치이고, 딥링크·새로고침·뒤로가기가 깨지는
+# 실제 결함이기도 하다. 그래서 이 변형이 재는 것은 '판정이 맞는가' 가 아니라
+# **'사유가 개발자에게 쓸모 있는가'** 다 — 내용은 도달했는데 경로만 다른 것과
+# 아무것도 도달하지 않은 것은 고칠 곳이 다르다.
+
+
+@app.get("/spa/login", response_class=HTMLResponse)
+def spa_login_form(request: Request):
+    return render_login(request, "spa")
+
+
+@app.post("/spa/login", response_class=HTMLResponse)
+def spa_login_submit(
+    request: Request,
+    email: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    # 검증은 good 과 한 줄도 다르지 않다.
+    if not email or not password:
+        return render_login(request, "spa", MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_login(request, "spa", MSG_EMAIL_FORMAT)
+    if not check_password_rules(password):
+        return render_login(request, "spa", MSG_PASSWORD_RULE)
+    if REGISTERED["good"].get(email) != password:
+        return render_login(request, "spa", MSG_NO_ACCOUNT)
+    # 여기만 다르다: 리다이렉트 없이 대시보드를 그 자리에 렌더한다.
+    # URL 은 /spa/login 그대로이고 화면 내용은 대시보드다.
+    return render_dashboard(request, "spa", email)
+
+
+@app.get("/spa/dashboard", response_class=HTMLResponse)
+def spa_dashboard(request: Request):
+    return render_dashboard(request, "spa", "user@test.com")
+
+
+# ---------------------------------------------------------------------------
+# hashed/login · native/login — 실물 앱의 흔한 마크업 두 가지
+# ---------------------------------------------------------------------------
+#
+# 둘 다 서버 검증 로직은 good 과 **완전히 같다.** 변수는 마크업 하나뿐이다.
+#
+# hashed: id 가 CSS-in-JS 해시다(id="e7f3a91b"). 기획서의 element_id 로 만드는
+#         CSS selector 가 무력화된다. <label for> 는 그 해시를 가리키므로 라벨
+#         연결은 살아 있다 — React/Vue 앱에서 아주 흔한 모양이다.
+#         전략 네 개 중 마지막 하나만 막히면 앞의 것으로 찾아야 정상이다.
+#
+# native: novalidate 를 떼고 required 를 붙였다. 브라우저가 제출을 막고 자기
+#         툴팁을 띄우므로 **기획서가 지정한 에러 문구가 화면에 나타나지 않는다.**
+#         이 FAIL 은 오탐이 아니다 — 기획서는 그 문구를 노출한다고 적었고 구현은
+#         노출하지 않는다. 재는 것은 '사유가 무엇을 말하는가' 다.
+
+
+@app.get("/hashed/login", response_class=HTMLResponse)
+def hashed_login_form(request: Request):
+    return render_login(request, "hashed")
+
+
+@app.post("/hashed/login", response_class=HTMLResponse)
+def hashed_login_submit(
+    request: Request,
+    email: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    if not email or not password:
+        return render_login(request, "hashed", MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_login(request, "hashed", MSG_EMAIL_FORMAT)
+    if not check_password_rules(password):
+        return render_login(request, "hashed", MSG_PASSWORD_RULE)
+    if REGISTERED["good"].get(email) != password:
+        return render_login(request, "hashed", MSG_NO_ACCOUNT)
+    return RedirectResponse("/hashed/dashboard", status_code=303)
+
+
+@app.get("/hashed/dashboard", response_class=HTMLResponse)
+def hashed_dashboard(request: Request):
+    return render_dashboard(request, "hashed", "user@test.com")
+
+
+@app.get("/native/login", response_class=HTMLResponse)
+def native_login_form(request: Request):
+    return render_login(request, "native")
+
+
+@app.post("/native/login", response_class=HTMLResponse)
+def native_login_submit(
+    request: Request,
+    email: str = Form(default=""),
+    password: str = Form(default=""),
+):
+    if not email or not password:
+        return render_login(request, "native", MSG_REQUIRED)
+    if not check_email_format(email):
+        return render_login(request, "native", MSG_EMAIL_FORMAT)
+    if not check_password_rules(password):
+        return render_login(request, "native", MSG_PASSWORD_RULE)
+    if REGISTERED["good"].get(email) != password:
+        return render_login(request, "native", MSG_NO_ACCOUNT)
+    return RedirectResponse("/native/dashboard", status_code=303)
+
+
+@app.get("/native/dashboard", response_class=HTMLResponse)
+def native_dashboard(request: Request):
+    return render_dashboard(request, "native", "user@test.com")
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(
@@ -590,5 +709,8 @@ def index():
         "<li><a href='/nolabel/search'>/nolabel/search — 아이콘 버튼 (접근성 이름 없음)</a></li>"
         "<li><a href='/slow/login'>/slow/login — 결과가 400ms 뒤에 나타난다</a></li>"
         "<li><a href='/slow/search'>/slow/search — 목록이 400ms 뒤에 나타난다</a></li>"
+        "<li><a href='/spa/login'>/spa/login — 성공해도 URL 이 바뀌지 않는다</a></li>"
+        "<li><a href='/hashed/login'>/hashed/login — id 가 CSS-in-JS 해시다</a></li>"
+        "<li><a href='/native/login'>/native/login — 브라우저 기본 검증이 제출을 막는다</a></li>"
         "</ul>"
     )

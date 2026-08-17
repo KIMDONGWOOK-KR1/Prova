@@ -60,6 +60,14 @@ class PageState:
     # type="labels_findable" 에서만 채워진다.
     findable: dict[str, str] | None = None
 
+    # 브라우저 기본 검증이 제출을 막았는가 (form.checkValidity() == false).
+    #
+    # 이 값이 없을 때 '에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지
+    # 않는다' 라고 보고했는데, native 변형에서 그 문장이 **거꾸로** 였다.
+    # 브라우저가 required 때문에 제출을 막은 것이므로 구현은 그 규칙을 강제한다.
+    # 방법이 기획서와 다를 뿐이다.
+    blocked_by_browser: bool = False
+
 
 def capture_page_state(
     page,
@@ -89,6 +97,19 @@ def capture_page_state(
     except Exception:
         body_text = ""
 
+    # 브라우저 기본 검증이 제출을 막았는지. 막았으면 화면에는 브라우저 툴팁이
+    # 뜨고 기획서가 지정한 문구는 나타나지 않는다 — 그 차이를 사유에 쓰기 위해
+    # 여기서 관찰만 하고 판단은 하지 않는다.
+    try:
+        blocked = bool(page.evaluate(
+            """() => {
+                const forms = Array.from(document.querySelectorAll("form"));
+                return forms.some(f => f.checkValidity && !f.checkValidity());
+            }"""
+        ))
+    except Exception:
+        blocked = False
+
     return PageState(
         url=page.url,
         text=normalize_ws(body_text),
@@ -98,6 +119,7 @@ def capture_page_state(
         options=options,
         placeholders=placeholders,
         findable=findable,
+        blocked_by_browser=blocked,
     )
 
 
@@ -109,6 +131,36 @@ def capture_page_state(
 def _error_shown(state: PageState) -> bool:
     """에러가 화면에 노출됐는가. 에러 영역이 비어 있지 않으면 그렇다."""
     return any(state.error_texts)
+
+
+def _no_error_reason(state: PageState) -> str:
+    """에러가 안 보일 때의 사유. 왜 안 보이는지를 구분해서 말한다.
+
+    ## 왜 문장을 갈랐는가 — 사유가 거꾸로였다
+
+    전에는 한 문장만 썼다.
+
+        에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다
+
+    `native` 변형(novalidate 를 떼고 required 를 붙인 구현)으로 재 보니 그 문장이
+    **사실과 반대**였다. 브라우저가 required 때문에 제출을 막은 것이므로 구현은
+    그 규칙을 강제한다 — 오히려 더 이르게 막는다. 그런데 도구는 '강제하지 않는다'
+    고 단정했다. 개발자는 이미 있는 검증을 또 추가하게 된다.
+
+    검색 화면에서 배운 것과 같은 모양이다 — **검사 자체는 하는데 검사 방법이
+    기획서와 다르다.** 그건 '검증이 없다' 와 고칠 곳이 다르다.
+
+    판정(FAIL)은 그대로 둔다. 기획서가 문구를 노출한다고 적었고 구현은 노출하지
+    않으므로 불일치는 실재한다. 바꾸는 것은 **사유**뿐이다.
+    """
+    if state.blocked_by_browser:
+        return (
+            "브라우저 기본 검증이 제출을 막았습니다 — 구현이 규칙을 강제하지 않는 것이 "
+            "아니라 기획서와 다른 방법으로 강제합니다. 화면에는 브라우저 툴팁이 뜨고 "
+            "기획서가 지정한 문구는 노출되지 않습니다 "
+            "(novalidate 를 쓰고 문구를 직접 노출하거나, 기획서를 고쳐야 합니다)"
+        )
+    return "에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다"
 
 
 def _judge_error_message(expected: Expectation, state: PageState) -> tuple[bool, str]:
@@ -125,7 +177,7 @@ def _judge_error_message(expected: Expectation, state: PageState) -> tuple[bool,
         return True, "화면 텍스트에서 기대 문구를 확인 (에러 영역 밖)"
 
     if not _error_shown(state):
-        return False, "에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다"
+        return False, _no_error_reason(state)
     return False, f"다른 문구가 노출됨: {joined_errors!r}"
 
 
@@ -136,7 +188,7 @@ def _judge_error_shown(expected: Expectation, state: PageState) -> tuple[bool, s
     """
     if _error_shown(state):
         return True, f"에러 노출 확인: {' '.join(state.error_texts)!r}"
-    return False, "에러가 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다"
+    return False, _no_error_reason(state)
 
 
 def _judge_redirect(expected: Expectation, state: PageState) -> tuple[bool, str]:
