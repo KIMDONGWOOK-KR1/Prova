@@ -452,7 +452,7 @@
     </p>
     <p class="byline">
       <span>의뢰 · ㈜WITCHES</span>
-      <span>세 화면 검증 완료 · 2026-08-17</span>
+      <span>1차 범위 네 화면 완료 · 2026-08-17</span>
       <span>로컬 Qwen2.5-7B-AWQ on CHEETAH</span>
     </p>
   </header>
@@ -749,7 +749,7 @@
   <!-- ═══ 3. 증명 ════════════════════════════════════════ -->
   <section>
     <h2 class="col">같은 기획서, 다른 구현, 다른 결과</h2>
-    <p class="sub col">세 화면 · 여섯 번의 실행으로 확인한 것</p>
+    <p class="sub col">로그인·회원가입·검색으로 방법을 세운다 (네 번째 화면은 아래 별도 절)</p>
 
     <div class="col">
       <p>
@@ -2466,17 +2466,376 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
     </div>
   </section>
 
-  <!-- ═══ 14. 다음 ═══════════════════════════════════════ -->
+  <!-- ═══ 14. 없어야 할 것 ════════════════════════════════ -->
+  <section>
+    <h2 class="col">없어야 할 것이 없는가</h2>
+    <p class="sub col">1차 범위의 마지막 화면이 요구한 것</p>
+
+    <div class="col">
+      <p>
+        명세서 §0-2 의 1차 범위에 네 화면이 있고 마지막이 <strong>비밀번호 찾기</strong>다.
+        '기존 기계로 대부분 덮인다 — 로그인의 부분집합' 이라고 판단해 미뤘다.
+      </p>
+      <p>
+        <strong>그 판단은 절반만 맞았다.</strong> 입력 검증은 정말 로그인의 부분집합이다.
+        그런데 이 화면에는 지금까지 없던 <span class="mark">방향이 반대인 요구사항</span>이
+        있었다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">기획서 §5 보안 요구사항</span>
+      <p>
+        계정 존재 여부를 알려주지 않는다. 입력한 이메일이 등록되어 있든 없든 화면의 반응은
+        완전히 같아야 한다.
+      </p>
+    </div>
+
+<pre class="out"><code>공격자가 이메일 목록을 넣어 본다
+  a@x.com → "재설정 메일을 보냈습니다."       <span class="p">가입되어 있다</span>
+  b@x.com → "등록되지 않은 이메일입니다."     <span class="f">가입되어 있지 않다</span></code></pre>
+
+    <div class="col">
+      <p>
+        <strong>이 화면이 계정 목록을 알려주는 도구가 된다.</strong> account enumeration
+        이라는 실제 취약점이고, 로그인이 '이메일 또는 비밀번호가 올바르지 않습니다' 처럼
+        뭉뚱그려 답하는 것과 같은 이유로 막는다.
+      </p>
+      <p>
+        그런데 이 도구가 확인해 온 것은 <strong>전부 '있어야 할 것이 있는가'</strong> 였다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>판정 유형</th><th>확인하는 것</th></tr></thead>
+        <tbody>
+          <tr><td><code>error_message</code></td><td>이 문구가 떴는가</td></tr>
+          <tr><td><code>text_visible</code></td><td>이 문구가 보이는가</td></tr>
+          <tr><td><code>result_count</code></td><td>몇 개가 렌더됐는가</td></tr>
+          <tr><td><code>options_present</code></td><td>이 항목들이 있는가</td></tr>
+          <tr><td><code>placeholders_match</code></td><td>안내 문구가 같은가</td></tr>
+          <tr><td><code>labels_findable</code></td><td>라벨로 찾을 수 있는가</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p>
+        <strong>하나도 없다</strong> — '이것이 없는가' 를 확인하는 것이. 화면 네 개를
+        만드는 동안 못 알아챘다.
+      </p>
+    </div>
+
+    <h3 class="col">기존 필드로 재해석할 수 없다</h3>
+
+    <div class="col">
+      <p>
+        처음에는 <code>text_visible</code> 로 될 것 같았다. 미등록 이메일에도
+        "재설정 메일을 보냈습니다." 가 떠야 하니 그 문구를 확인하면 되지 않을까.
+      </p>
+      <p><strong>안 된다.</strong> 이런 화면이 가능하다.</p>
+    </div>
+
+<pre class="out"><code><span class="p">재설정 메일을 보냈습니다.</span>
+<span class="f">등록되지 않은 이메일입니다.</span></code></pre>
+
+    <div class="col">
+      <p>
+        성공 문구가 떠 있으니 <code>text_visible</code> 은 <strong>통과한다.</strong>
+        그런데 이 화면은 계정 존재 여부를 그대로 알려주고 있다.
+        <span class="mark">요구를 어겼는데 초록불이다.</span>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">Scenario 의 문서가 이 상황을 예고해 뒀다</span>
+      <p>
+        나중에 건수를 DOM 에서 직접 세거나 URL 을 확인해야 하면 <strong>필드를
+        추가한다.</strong> 이 필드의 의미를 넓혀 재해석하면 안 된다 — 필드 이름이 할 수
+        있는 일을 말하고 있어야 한다.
+      </p>
+      <p>
+        그대로 따라 <code>expect_absent</code> 와 판정 유형 <code>text_absent</code> 를
+        뒀다. 있어야 할 것과 없어야 할 것은 다른 확인이므로 필드도 판정도 다르다.
+      </p>
+    </div>
+
+    <h3 class="col">열을 찾는 방법도 달라야 했다</h3>
+
+    <div class="col">
+      <p>
+        건수 열은 <strong>값의 모양</strong>으로 찾는다 — 비어 있지 않은 칸이 전부 정수인
+        열. 표현('결과 건수'·'개수'·'건수')에 흔들리지 않는 방법이다.
+      </p>
+      <p>
+        <strong>금지 문구 열에는 그 방법을 쓸 수 없다.</strong> 값이 그냥 문구라서 기대 문구
+        열과 모양이 같다. 그래서 헤더로 찾고, 기획서마다 다르게 쓸 표현을 넉넉히 받는다.
+      </p>
+      <p>
+        <span class="mark">두 열이 섞이면 최악이다</span> — 성공 문구를 '나타나면 안 되는
+        것' 으로 읽으면 그 문구를 올바르게 띄우는 정상 구현이 FAIL 이 된다. 그래서 헤더
+        판별을 테스트로 못 박았다.
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card good">
+        <h4><code>/good/find-account</code> <span class="tag pass">전부 통과</span></h4>
+        <div class="score">9 / 9</div>
+        <p>등록 여부와 무관하게 같은 문구를 노출한다.</p>
+      </div>
+      <div class="card bad">
+        <h4><code>/bad/find-account</code> <span class="tag fail">2건 실패</span></h4>
+        <div class="score">7 / 9</div>
+        <p>미등록 이메일에 다른 문구를 노출한다. <strong>결함은 하나인데 FAIL 이 둘이다.</strong></p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="label">한 결함이 FAIL 두 건인 이유</span>
+      <p>
+        <code>scenario-005</code> 는 성공 문구가 안 뜬 것을(기능 관점),
+        <code>absent-005</code> 는 금지 문구가 뜬 것을(보안 관점) 잡는다.
+      </p>
+      <p>
+        중복이 아니다. 구현이 성공 문구를 <strong>함께</strong> 띄우면 앞의 경로는 통과하고
+        뒤의 경로만 잡는다. 그리고 사유가 다르다 — <strong>'기능이 안 된다' 와 '알려주면 안
+        되는 것을 알려준다' 는 고칠 곳이 다르다.</strong>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">필드를 추가하면서 조용히 버려진 곳</span>
+      <p>
+        표 독해까지 고쳤는데 <strong>금지 문구 케이스가 하나도 생성되지 않았다.</strong>
+        리포트는 정상으로 보였다.
+      </p>
+      <p>
+        원인은 시나리오 정규화 코드가 <strong>필드 이름을 손으로 적어 둔 것</strong>이었다.
+        원래는 불필요한 경고를 막으려는 옳은 장치인데, 새 필드가 그 목록에 없어서 사라졌다.
+      </p>
+      <p>
+        이번엔 케이스 수(7 vs 9)가 눈에 보여서 알았다. <strong>다른 케이스가 많았다면
+        몰랐을 것이다.</strong>
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 15. 점검 ════════════════════════════════════════ -->
+  <section>
+    <h2 class="col">각각은 옳은데 함께 두면 구멍이 난다</h2>
+    <p class="sub col">우연에 기대지 않고 찾으러 갔을 때 나온 것</p>
+
+    <div class="col">
+      <p>
+        1차 범위가 닫혔다. 기능을 더 붙이기 좋은 시점처럼 보였다. 그런데 지금까지 이
+        프로젝트가 찾은 결함은 대부분 <strong>새 기능을 만들다가 우연히</strong> 드러난
+        것이었다. 우연에 기대지 않고 찾으러 가면 무엇이 나오는지 보기로 했다.
+      </p>
+    </div>
+
+    <h3 class="col">지금까지와 종류가 다른 결함</h3>
+
+    <div class="col">
+      <p>
+        지금까지의 사고는 전부 <strong>"한 기능이 틀렸다"</strong> 였다. 이번 것은 다르다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>기능</th><th>하는 일</th></tr></thead>
+        <tbody>
+          <tr><td>비동기 대기</td>
+              <td>'있어야 할 것' 이 나타날 때까지 기다린다. <strong>PASS 면 멈춘다</strong></td></tr>
+          <tr><td>금지 문구</td>
+              <td>'없어야 할 것' 이 없는지 본다. <strong>통과의 뜻이 반대다</strong></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+<pre class="out"><code>1. 금지 문구 케이스를 판정한다 → 아직 안 나타났으니 <span class="p">PASS</span>
+2. 대기 로직: "PASS 니까 멈춘다"
+3. 400ms 뒤 '등록되지 않은 이메일입니다.' 가 나타난다
+4. <span class="f">아무도 보지 않았다</span></code></pre>
+
+    <div class="col">
+      <p>
+        <strong>각각은 옳다.</strong> 그런데 함께 두면 비동기로 렌더하는 화면에서 계정 존재
+        여부 노출을 놓친다. 그리고 이 미탐은 <span class="mark">대기를 넣은 것 때문에 새로
+        생겼다.</span>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">왜 만들 때는 안 보였나</span>
+      <p>
+        대기를 만들 때 그 위험을 이미 정리해 뒀다 — "FAIL 을 PASS 로만 바꾸므로 상한과
+        기록이 필요하다". <strong>그때 있던 판정 유형 아홉 개에는 그 방어가 충분했다.</strong>
+      </p>
+      <p>
+        문제는 그 뒤에 <strong>통과의 뜻이 반대인 열 번째 판정이 추가된 것</strong>이다.
+        대기 로직은 그것을 모른다.
+      </p>
+    </div>
+
+    <div class="col">
+      <p style="font-size:1.15em">
+        <strong>한 방향으로만 바꾸는 장치는, <span class="mark">새 판정이 추가될 때마다
+        방향을 다시 확인</span>해야 한다.</strong>
+      </p>
+      <p>
+        대기·보정처럼 결과를 한쪽으로만 움직이는 장치는 그 쪽이 늘 안전한 방향이라는 가정
+        위에 서 있다. 새 판정이 그 가정을 깨는지 아무도 알려주지 않는다.
+      </p>
+    </div>
+
+    <div class="versus">
+      <div class="card bad">
+        <h4>대기 <span class="tag fail">끔</span></h4>
+        <div class="score">PASS</div>
+        <p>늦게 나타난 누출을 <strong>못 본다</strong> — 미탐.</p>
+      </div>
+      <div class="card good">
+        <h4>대기 <span class="tag pass">켬 (고친 뒤)</span></h4>
+        <div class="score">FAIL</div>
+        <p>300ms 에 포착하고 <strong>늦게 나타났다는 사실도 남긴다.</strong></p>
+      </div>
+    </div>
+
+    <div class="col">
+      <p>
+        왼쪽 칸이 <strong>회귀 테스트에 있는 것</strong>이 중요하다. 그게 없으면 오른쪽이
+        무엇 덕분에 통과하는지 알 수 없다.
+      </p>
+    </div>
+
+    <h3 class="col">나머지 발견은 모양이 하나였다</h3>
+
+    <div class="col">
+      <p style="font-size:1.15em">
+        <strong><span class="mark">있는 것과 동작하는 것은 다르다.</span></strong>
+      </p>
+      <p>
+        이 프로젝트가 계속 만나 온 문장인데, 이번에는 <strong>우리 코드가 그 대상</strong>이었다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>무엇</th><th>있는 것</th><th>실제</th></tr></thead>
+        <tbody>
+          <tr><td>설정 파일 18개 키</td><td>고치면 동작이 바뀔 것</td>
+              <td><span class="tag fail">10개가 읽히지 않았다</span></td></tr>
+          <tr><td><code>AgentState.heal_count</code></td><td>보정 횟수를 센다</td>
+              <td>아무도 안 읽는다. 실제로는 동명 필드가 따로 센다</td></tr>
+          <tr><td><code>PageState.http_status</code></td><td>4xx/5xx 판정에 쓴다</td>
+              <td>설정도 소비도 없다</td></tr>
+          <tr><td><code>STRATEGY_LABELS</code></td><td>주석: "리포트에 쓴다"</td>
+              <td>어디에도 안 쓴다. <code>vlm</code> 도 빠져 있다</td></tr>
+          <tr><td><code>dom_snapshot</code></td><td>스텝마다 저장한다</td>
+              <td>링크가 없어 <b>아무도 열어 볼 수 없다</b></td></tr>
+          <tr><td><code>SIGNUP_PATHS</code></td><td>가입 경로 목록</td>
+              <td>죽어 있고 템플릿이 목록을 따로 적어 뒀다</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <span class="label">설정이 특히 나빴다 — 거짓 약속은 침묵보다 나쁘다</span>
+      <p>
+        <code>llm.max_tokens: 3072</code> 은 읽히지 않고 실제로는 2048 이 쓰인다. 그런데
+        에러 메시지는 실제값을 보여준다.
+      </p>
+      <p>
+        설정에 3072라고 적어 두고 에러가 2048이라고 말한다. 사용자는 6144로 올리고,
+        <strong>또 2048이라는 메시지를 본다.</strong>
+      </p>
+      <p>
+        필요한 셋은 끝까지 배선했고, 소비자가 없는 일곱은 지우면서
+        <strong>왜 두지 않는지 적었다</strong> — 그냥 지우면 다음 사람이 다시 넣는다.
+      </p>
+    </div>
+
+    <h3 class="col">중복이 실험의 전제를 무너뜨리고 있었다</h3>
+
+    <div class="col">
+      <p>
+        흔한 DRY 얘기가 아니다. 로그인 핸들러가 <strong>다섯 벌</strong>, 검색이
+        <strong>세 벌</strong> 있었고 사실상 동일했다. 각 변형은 이런 전제로 재는 실험이다 —
+        <em>검증 로직은 <code>good</code> 과 완전히 같고 변수 하나만 다르다.</em>
+      </p>
+      <p>
+        복사해 두면 그 전제가 <strong>코드로 보장되지 않는다.</strong> 한쪽만 고치면 그
+        변형이 재는 변수가 둘이 되고, <span class="mark">그 사실이 조용히 숨는다.</span>
+      </p>
+      <p>
+        검증을 한 벌로 모으고 변형은 표에 '다른 점' 만 선언한다.
+        <strong><code>bad</code> 는 공유하지 않는다</strong> — <code>bad</code> 의 차이는
+        검증 로직 자체이고 그게 실험의 변수다.
+      </p>
+      <p style="font-size:1.1em">
+        <strong>공유와 분리의 기준은 '같은 코드인가' 가 아니라
+        <span class="mark">'무엇이 실험의 변수인가'</span> 다.</strong>
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">스캔은 후보를 주고, 판단은 문맥이 한다</span>
+      <p>
+        낡은 숫자를 찾는 스캔이 13건을 걸렀는데 <strong>2건이 오탐</strong>이었다. 하나는
+        "테스트 400개가 통과하고 ... 있<b>었다</b>" — <strong>과거 서술</strong>이고 그
+        숫자가 이야기의 일부다. 고치면 이야기가 망가진다.
+      </p>
+      <p>
+        라우트 핸들러 31개도 '쓰이지 않는 함수' 로 걸렸다 — 프레임워크가 부르므로 이름으로
+        참조되지 않는다. <strong>스캔 결과를 그대로 일괄 수정하면 역사 서술을 지우고
+        프레임워크 진입점을 삭제한다.</strong>
+      </p>
+      <p>
+        그래서 규칙을 정했다 — <strong>이야기 속 숫자에는 시점을 붙인다.</strong> 시점이
+        붙으면 그 숫자는 영원히 맞다. 붙일 수 없으면 숫자를 뺀다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">끝낸 일을 '안 할 일' 목록에서 지우는 사람은 없다</span>
+      <p>
+        README 의 '아직 안 한 것' 절에 <strong>VLM 요소 탐지 · Self-Healing 루프 ·
+        아이디/비밀번호 찾기</strong>가 그대로 있었다. 셋 다 끝난 것이다. 근거로는 방금 지운
+        죽은 필드를 들고, 쓰지 않는 모델의 추정치를 적어 두고 있었다.
+      </p>
+      <p>
+        새 기능을 만들 때 그 절을 열 이유가 없다. 점검이 아니었다면 9월 티칭에서 팀원이 그
+        목록을 보고 <strong>"VLM 은 아직 안 했구나"</strong> 라고 이해했을 것이다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">정리하다 지우는 사고가 실제로 난다</span>
+      <p>
+        <code>good/search</code> 구역을 지웠더니 <code>find_products</code> 가 함께
+        사라졌다 — 화면 구역 안에 정의돼 있었기 때문이다. 임포트 검사에서 바로 잡혔지만,
+        <strong>정리 뒤에도 회귀를 돌려야 하는 이유</strong>다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 16. 다음 ═══════════════════════════════════════ -->
   <section>
     <h2 class="col">다음</h2>
     <p class="sub col">남은 화면보다 값이 큰 것</p>
 
     <div class="col">
       <p>
-        명세서 §1이 1차 대상으로 꼽은 네 화면 중 셋(로그인·회원가입·검색)이 끝났다.
-        남은 하나인 <strong>아이디/비밀번호 찾기</strong>는 기존 기계로 대부분 덮인다 —
-        이메일 형식 검증과 에러 문구 대조가 대부분이어서 로그인의 부분집합에 가깝다.
-        회원가입에서 배운 대로, 이미 도는 기계를 한 번 더 돌리는 화면은 확장 가치가 낮다.
+        <strong>명세서 §0-2 의 1차 범위는 닫혔다</strong> — 6단계 파이프라인과 네 화면
+        (로그인·회원가입·검색·비밀번호 찾기), 그리고 입력 검증 규칙 확인. 2차 항목 중
+        Self-Healing 재탐색(VLM)과 실패 원인 자동 분류(규칙 기반)도 앞당겨 끝냈다.
+
+        비밀번호 찾기를 미뤘던 근거는 '기존 기계로 대부분 덮인다' 였고
+        <strong>절반만 맞았다</strong> — 입력 검증은 정말 부분집합인데, 그 화면이
+        '없어야 할 것이 없는가' 라는 새 방향을 요구했다(위 절).
       </p>
       <p>
         그래서 화면보다 먼저 붙인 것이 <strong>결과를 DOM에서 직접 세는 능력</strong>이다.
@@ -2585,8 +2944,8 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 447개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 16개,
+    코드 <code>C:\dev\prova</code> · 테스트 493개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 17개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
