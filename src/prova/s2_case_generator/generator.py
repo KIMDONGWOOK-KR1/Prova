@@ -238,6 +238,7 @@ def generate_cases(
 
     cases.extend(_option_cases(spec, start_seq=seq))
     cases.extend(_placeholder_case(spec))
+    cases.extend(_label_case(spec))
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
 
     if llm is not None:
@@ -563,4 +564,47 @@ def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
         type="positive",
         steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
         expected=Expectation(type="placeholders_match", placeholders=declared),
+    )]
+
+
+def _label_case(spec: ScreenSpec) -> list[TestCase]:
+    """기획서의 라벨로 요소를 찾을 수 있는지 확인하는 케이스. 화면당 한 건.
+
+    ## 왜 이 케이스가 필요한가
+
+    2차 경로(화면 이미지로 찾기)를 켜면 라벨로 못 찾은 요소도 보정으로 조작되어 케이스가
+    통과한다. 그러면 **'기획서의 라벨로 요소를 지목할 수 없다' 는 사실이 리포트에서
+    사라진다.** 그건 기획-구현 불일치이면서 접근성 결함이다 — 스크린리더 사용자도 그
+    요소가 무엇인지 알 수 없다.
+
+    보정은 케이스를 살리는 장치이고, 지적은 그대로 남아야 한다. 그래서 보정 여부와
+    **무관하게** 라벨로 찾을 수 있는지를 따로 확인한다.
+
+    ## 무엇을 확인 대상으로 삼는가
+
+    그 화면의 케이스가 실제로 조작하는 요소만 본다 — 입력 요소들과 제출 버튼이다.
+
+    빼는 것이 둘 있다.
+
+    - **목록(list)**: 결과 목록은 동작의 산물이라 초기 화면에 없는 것이 정상이다.
+      넣으면 검색 화면이 늘 실패한다(오탐).
+    - **링크(link)**: 회원가입의 '로그인하러 가기' 는 완료 화면에 있고 /signup 에는
+      없다. 초기 화면에서 찾으면 없는 것이 맞다. 그 요소는 흐름 케이스가 눌러 보며
+      확인한다.
+
+    확인할 수 없는 것을 확인한다고 하지 않는 것이 이 도구에서 지키는 선이다.
+    """
+    labels = [e.label for e in _fillable_inputs(spec) if e.label]
+    submit = _submit_element(spec)
+    if submit and submit.label:
+        labels.append(submit.label)
+    if not labels:
+        return []
+    return [TestCase(
+        case_id=f"{spec.screen_id}-labels-001",
+        screen_id=spec.screen_id,
+        title="기획서의 라벨로 요소를 찾을 수 있는지 확인",
+        type="positive",
+        steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+        expected=Expectation(type="labels_findable", labels=labels),
     )]

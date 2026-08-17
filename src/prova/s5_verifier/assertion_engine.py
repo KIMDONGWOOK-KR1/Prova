@@ -56,6 +56,9 @@ class PageState:
     # 라벨 -> 화면의 안내 문구 (type="placeholders_match" 에서만 채워진다).
     # 키가 없으면 그 요소를 못 찾은 것이고, 빈 문자열이면 요소는 있고 속성이 없는 것이다.
     placeholders: dict[str, str] | None = None
+    # 라벨 -> "" (접근성 속성으로 찾을 수 있음) 또는 실패 사유.
+    # type="labels_findable" 에서만 채워진다.
+    findable: dict[str, str] | None = None
 
 
 def capture_page_state(
@@ -64,6 +67,7 @@ def capture_page_state(
     collection: CollectionCount | None = None,
     options: list[str] | None = None,
     placeholders: dict[str, str] | None = None,
+    findable: dict[str, str] | None = None,
 ) -> PageState:
     """Playwright Page 에서 판정에 필요한 정보만 뽑는다.
 
@@ -93,6 +97,7 @@ def capture_page_state(
         collection=collection,
         options=options,
         placeholders=placeholders,
+        findable=findable,
     )
 
 
@@ -290,6 +295,46 @@ def _judge_placeholders_match(
     return False, " / ".join(parts)
 
 
+def _judge_labels_findable(
+    expected: Expectation, state: PageState
+) -> tuple[bool, str]:
+    """기획서의 라벨로 화면에서 요소를 찾을 수 있는가.
+
+    ## 왜 따로 확인하는가
+
+    2차 경로(화면 이미지로 찾기)를 켜면 라벨로 못 찾은 요소도 보정으로 조작되어 케이스가
+    통과한다. 그러면 **'기획서의 라벨로 요소를 지목할 수 없다' 는 사실이 리포트에서
+    사라진다.** 그건 기획-구현 불일치이면서 접근성 결함이다.
+
+    보정은 케이스를 살리는 장치이고, 지적은 그대로 남아야 한다. 그래서 보정 여부와
+    무관하게 여기서 확인한다.
+    """
+    labels = expected.labels
+    got = state.findable
+
+    if not labels:
+        return False, "확인할 라벨이 지정되지 않았습니다 (케이스 생성 오류)"
+    if got is None:
+        return False, "라벨 탐지 가능 여부를 확인하지 않았습니다 (실행 단계에서 수집되지 않음)"
+
+    failed = [f"{label!r}: {got[label]}" for label in labels
+              if label in got and got[label]]
+    unknown = [label for label in labels if label not in got]
+
+    if not failed and not unknown:
+        return True, f"라벨 {len(labels)}개 모두 접근성 속성으로 찾을 수 있음"
+
+    parts = []
+    if failed:
+        parts.append(
+            "라벨로 찾을 수 없음 — " + "; ".join(failed)
+            + ". 화면에 그 이름이 없거나 라벨이 요소와 연결되지 않았습니다"
+        )
+    if unknown:
+        parts.append(f"확인하지 못한 라벨: {unknown}")
+    return False, " / ".join(parts)
+
+
 _JUDGES = {
     "error_message": _judge_error_message,
     "error_shown": _judge_error_shown,
@@ -299,6 +344,7 @@ _JUDGES = {
     "result_count": _judge_result_count,
     "options_present": _judge_options_present,
     "placeholders_match": _judge_placeholders_match,
+    "labels_findable": _judge_labels_findable,
 }
 
 
@@ -320,7 +366,14 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
         elapsed_ms=elapsed, step_results=step_results,
-        healed=any(r.location.healed for r in step_results if r.location),
+        # 보정으로 **진행한** 스텝이 있을 때만 healed 다.
+        #
+        # 시도만 하고 막힌 경우(좌표에 조작 가능한 요소가 없어 되돌린 경우)는
+        # location.healed 가 True 로 남지만 그 스텝은 실패했다. 그것까지 세면
+        # 리포트가 '화면 이미지로 찾아 진행했다' 고 말하는데 실제로는 아무것도
+        # 진행되지 않은 상태가 된다.
+        healed=any(r.location.healed for r in step_results
+                   if r.location and r.status == "ok"),
     )
 
     failed_step = next((r for r in step_results if r.status == "error"), None)
@@ -365,6 +418,8 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         "screenshot": last_shot,
         "error_texts": state.error_texts,
     }
+    if state.findable is not None:
+        evidence["findable"] = dict(state.findable)
     if state.placeholders is not None:
         evidence["screen_placeholders"] = dict(state.placeholders)
     if state.options is not None:
@@ -401,6 +456,8 @@ def _expected_summary(expected: Expectation) -> str:
         parts.append(f"선택 항목={expected.options} (대상={expected.option_target!r})")
     if expected.placeholders:
         parts.append(f"안내 문구 {len(expected.placeholders)}건")
+    if expected.labels:
+        parts.append(f"라벨 {len(expected.labels)}개 탐지 가능")
     return " ".join(parts)
 
 

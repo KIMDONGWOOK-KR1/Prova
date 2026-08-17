@@ -157,7 +157,7 @@ class TestTitlePolish:
 
         broken = MockLLM()  # CaseTitles 응답이 등록되지 않아 LLMError 를 던진다
         cases = generate_cases(login_spec, llm=broken)
-        assert len(cases) == 9
+        assert len(cases) == 10
         assert all(c.title for c in cases)
         assert any("제목 다듬기" in w for w in login_spec.warnings)
 
@@ -238,9 +238,9 @@ class TestCrossFieldCases:
         values = {s.target: s.value for s in case.steps if s.action == "fill"}
         assert values["비밀번호 확인"] == values["비밀번호"]
 
-    def test_회원가입_케이스가_16건이다(self, signup_spec):
-        """정상 1 + 규칙 위반 13 + 선택 목록 1 + 안내 문구 1 = 16."""
-        assert len(generate_cases(signup_spec)) == 16
+    def test_회원가입_케이스가_17건이다(self, signup_spec):
+        """정상 1 + 규칙 위반 13 + 선택 목록 1 + 안내 문구 1 + 라벨 탐지 1 = 17."""
+        assert len(generate_cases(signup_spec)) == 17
 
 
 SEARCH_GOLDEN = Path("fixtures/specs/search_spec.golden.json")
@@ -316,11 +316,10 @@ class TestScenarioCases:
         assert spec.scenarios == []
         assert not any("scenario" in c.case_id for c in generate_cases(spec))
 
-    def test_검색_케이스가_9건이다(self, search_spec):
-        """정상 1 + 규칙 위반 3(required·min_length·max_length) + 시나리오 2
-        + 건수 2 + 안내 문구 1 = 9. 시나리오 하나가 문구 케이스와 건수 케이스로
-        나뉜다."""
-        assert len(generate_cases(search_spec)) == 9
+    def test_검색_케이스가_10건이다(self, search_spec):
+        """정상 1 + 규칙 위반 3 + 시나리오 2 + 건수 2 + 안내 문구 1 + 라벨 탐지 1
+        = 10. 시나리오 하나가 문구 케이스와 건수 케이스로 나뉜다."""
+        assert len(generate_cases(search_spec)) == 10
 
 
 class TestResultCountCases:

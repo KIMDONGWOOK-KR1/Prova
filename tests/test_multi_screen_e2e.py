@@ -8,16 +8,16 @@
 
 그래서 화면별 내역을 단일 문서 실행의 기대값과 대조한다.
 
-    login   good 9/9    bad 3 PASS / 6 FAIL
-    signup  good 16/16  bad 12 PASS / 4 FAIL
-    search  good 9/9    bad 5 PASS / 4 FAIL
+    login   good 10/10  bad 4 PASS / 6 FAIL
+    signup  good 17/17  bad 13 PASS / 4 FAIL
+    search  good 10/10  bad 6 PASS / 4 FAIL
 
 ## 심어 둔 '화면 사이' 결함 2종
 
     E1  회원가입이 계정을 실제로 등록하지 않는다        -> 이어진 상태가 깨졌다
     E2  완료 화면의 '로그인하러 가기' 가 /search 를 가리킨다 -> 화면을 잇는 요소가 깨졌다
 
-둘 다 **화면 하나만 보면 결함이 아니다.** 회원가입 화면의 케이스 16건은 입력 검증만
+둘 다 **화면 하나만 보면 결함이 아니다.** 회원가입 화면의 케이스 17건은 입력 검증만
 보므로 E1 과 무관하게 통과하고, E2 의 링크는 /signup 이 아니라 완료 화면에 있어서
 화면 단위 케이스가 아예 닿지 않는다.
 
@@ -54,8 +54,8 @@ SPEC_PDF = "fixtures/specs/multi_spec.pdf"
 
 # 단일 문서로 돌렸을 때의 화면별 결과. 이 값이 유지돼야 확장이다.
 EXPECTED_BY_SCREEN = {
-    "good": {"login": (9, 0), "signup": (16, 0), "search": (9, 0)},
-    "bad": {"login": (3, 6), "signup": (12, 4), "search": (5, 4)},
+    "good": {"login": (10, 0), "signup": (17, 0), "search": (10, 0)},
+    "bad": {"login": (4, 6), "signup": (13, 4), "search": (6, 4)},
 }
 
 LINK_FLOW = "signup_link_to_login"   # 화면을 잇는 요소를 확인한다 (E2)
@@ -94,9 +94,9 @@ class TestScreenSplit:
         assert set(report.summary["by_screen"]) == {"login", "signup", "search"}
 
     def test_케이스_총계(self, good_run):
-        """login 9 + signup 16 + search 9 + 흐름 2 = 36."""
+        """login 10 + signup 17 + search 10 + 흐름 2 = 39."""
         report, _ = good_run
-        assert report.summary["total"] == 36
+        assert report.summary["total"] == 39
 
     def test_화면별_결과가_단일_문서와_같다(self, good_run):
         report, _ = good_run

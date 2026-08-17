@@ -82,6 +82,10 @@ def run(
                                        help="case_id 에 패턴이 든 케이스만 실행"),
     hold: float = typer.Option(0.0, "--hold", metavar="초",
                                help="끝난 뒤 마지막 화면을 유지할 초 (--headed 로 볼 때)"),
+    vlm_url: Optional[str] = typer.Option(
+        None, "--vlm", metavar="URL",
+        help="2차 경로: 접근성 속성으로 못 찾은 요소를 화면 이미지로 찾는다 "
+             "(예: http://localhost:8001/v1)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     if not pdf.exists():
@@ -92,11 +96,30 @@ def run(
     backend = backend or cfg.get("llm", {}).get("backend", "vllm")
     rid = run_id or f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
+    # 2차 경로는 명시적으로 켜야 한다.
+    #
+    # 기본으로 켜면 라벨 연결이 깨진 화면에서도 케이스가 통과해 그 사실이 리포트에서
+    # 사라진다. 그리고 서버가 없으면 여기서 바로 실패시킨다 — 조용히 보정 없이
+    # 진행하면 '보정을 켰다' 고 믿는 실행이 실제로는 그냥 1차 경로다.
+    vlm = None
+    if vlm_url:
+        from prova.vlm.qwen_vl import QwenVLClient
+        from prova.vlm.base import VLMError
+
+        vlm = QwenVLClient(base_url=vlm_url)
+        try:
+            vlm.health()
+        except VLMError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED)
+            raise typer.Exit(2)
+
     typer.secho(f"Prova 실행 {rid}", bold=True)
     typer.echo(f"  설계 문서 : {pdf}")
     typer.echo(f"  대상 URL  : {url}")
     typer.echo(f"  백엔드    : {backend}")
     typer.echo(f"  실행 엔진 : {engine}")
+    if vlm:
+        typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url}")
     typer.echo("")
 
     try:
@@ -123,6 +146,13 @@ def run(
 
     # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로
     # 실행 조건을 바꾸는 옵션을 받지 않는다 — 두 경로를 같은 조건으로 비교해야 한다.
+    if engine == "graph" and vlm:
+        typer.secho(
+            "--vlm 은 pipeline 엔진에서만 동작합니다 (graph 는 결과 동일성 대조용).",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(2)
+
     if engine == "graph" and (slow or video or only or hold):
         typer.secho(
             "--slow / --video / --only / --hold 는 pipeline 엔진에서만 동작합니다 "
@@ -141,6 +171,7 @@ def run(
         try:
             report, run_dir = run_pipeline(
                 **common,
+                vlm=vlm,
                 slow_mo=slow,
                 record_video=video,
                 only=only,

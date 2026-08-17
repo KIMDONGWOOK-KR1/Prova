@@ -76,7 +76,7 @@ class TestGoodVariant:
     def test_케이스가_생성됐다(self, good_run):
         """0건 통과를 100% 통과로 착각하지 않게 한다."""
         report, _ = good_run
-        assert report.summary["total"] == 9
+        assert report.summary["total"] == 10
         assert sum(1 for v in report.cases if v.type == "negative") == 6
 
 

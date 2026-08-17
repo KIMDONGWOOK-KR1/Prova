@@ -420,3 +420,118 @@ def read_placeholders(page, labels: list[str]) -> dict[str, str]:
         except Exception:
             continue
     return found
+
+
+# ---------------------------------------------------------------------------
+# 2차 경로 — 화면 이미지로 찾는다 (self-healing 진입점)
+# ---------------------------------------------------------------------------
+#
+# ## 언제 여기로 오는가
+#
+# ground() 가 GroundingError 를 던졌을 때만이다. 접근성 속성이 통하면 그걸 쓴다 —
+# 이미지 추론은 느리고, 좌표는 화면이 조금 바뀌면 낡고, 정확도를 보증할 수 없다.
+#
+# ## 보정이 사실을 지워서는 안 된다
+#
+# 이 경로가 만드는 가장 큰 위험은 오탐이 아니라 **미탐**이다. 기획서의 라벨로 요소를
+# 찾을 수 없다는 것은 그 자체로 기획-구현 불일치인데(라벨 연결이 없거나 이름이 다르다),
+# 이미지로 찾아 케이스를 통과시키면 그 사실이 리포트에서 사라진다.
+#
+# 그래서 보정한 케이스는 Verdict.healed 로 남고, 리포트가 그것을 따로 보여준다.
+# 그리고 '라벨로 찾을 수 있는가' 를 확인하는 케이스를 따로 둔다
+# (generator._label_case). 보정은 케이스를 살리는 것이고, 지적은 그대로 남는다.
+
+# 이 값 아래면 보정을 포기한다.
+#
+# VLM 은 못 찾았을 때도 그럴듯한 좌표를 낸다. 그 좌표를 누르면 엉뚱한 곳을 눌러 놓고
+# 케이스를 진행하게 되고, 그 FAIL 이 구현 결함인지 잘못 누른 것인지 구분할 수 없다 —
+# ground() 가 '정확히 1개만 확정한다' 를 계약으로 삼은 것과 같은 이유다.
+MIN_CONFIDENCE = 0.5
+
+# UIElement.type -> VLM 에 줄 힌트. 사람이 화면을 보고 구분하는 말로 적는다.
+VLM_HINTS = {
+    "input": "입력란",
+    "button": "버튼",
+    "link": "링크",
+    "select": "선택 목록",
+    "checkbox": "체크박스",
+    "list": "목록",
+    "text": "텍스트",
+}
+
+
+def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None) -> ElementLocation:
+    """화면 이미지로 요소의 위치를 찾는다. 실패하면 GroundingError 를 던진다.
+
+    돌려주는 ElementLocation 은 selector 가 없고 bbox 만 있다. 조작은 좌표로 해야
+    하므로 S4 가 method 로 분기한다 — resolve_locator() 로는 되살릴 수 없다.
+
+    Raises:
+        GroundingError: 호출 실패, 좌표가 이상함, 신뢰도 미달.
+            보정 실패를 새 예외로 만들지 않는 이유: 호출자에게 필요한 사실은
+            '요소를 확정하지 못했다' 하나이고, 그 처리는 이미 있다.
+    """
+    from prova.vlm.base import VLMError  # 순환 import 회피 (vlm 은 S3 를 모른다)
+
+    try:
+        shot = page.screenshot()
+    except Exception as exc:
+        raise GroundingError(target, [Attempt(strategy="vlm", count=0)]) from exc
+
+    try:
+        found = vlm.locate(image_png=shot, target=target,
+                           hint=VLM_HINTS.get(hint.type, "") if hint else "")
+    except VLMError:
+        raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
+
+    if found.confidence < MIN_CONFIDENCE or not found.is_sane():
+        raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
+
+    return ElementLocation(
+        target=target,
+        method="vlm",
+        selector=None,
+        bbox=_to_pixels(page, found.bbox),
+        confidence=found.confidence,
+        healed=True,
+        strategy="vlm",
+    )
+
+
+def _to_pixels(page, bbox: tuple[float, float, float, float]) -> list[int]:
+    """0~1 상대값을 뷰포트 픽셀로. [x, y, w, h] 로 담는다 (ElementLocation 규약)."""
+    size = page.viewport_size or {"width": 1280, "height": 800}
+    w, h = size["width"], size["height"]
+    x1, y1, x2, y2 = bbox
+    return [round(x1 * w), round(y1 * h), round((x2 - x1) * w), round((y2 - y1) * h)]
+
+
+def bbox_center(location: ElementLocation) -> tuple[float, float]:
+    """bbox 의 중심 좌표. S4 가 여기를 누른다."""
+    if not location.bbox or len(location.bbox) != 4:
+        raise GroundingError(location.target, [Attempt(strategy="vlm", count=0)])
+    x, y, w, h = location.bbox
+    return x + w / 2, y + h / 2
+
+
+def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[str, str]:
+    """라벨별로 '접근성 속성으로 찾을 수 있는가'. 라벨 -> "" (가능) 또는 실패 사유.
+
+    보정을 쓰지 않는다. 여기서 확인하는 것은 **보정 없이 찾을 수 있는가** 이고, 그게
+    기획서의 라벨이 구현과 이어져 있는지를 뜻한다.
+
+    유형 불일치(SpecTypeMismatch)는 '찾을 수 있다' 로 본다 — 요소는 지목됐고, 종류가
+    다른 것은 그 케이스가 따로 보고한다. 여기서 겹쳐 보고하면 결함 하나가 두 곳에서
+    같은 말을 한다.
+    """
+    by_label = {e.label: e for e in elements}
+    result: dict[str, str] = {}
+    for label in labels:
+        try:
+            ground(page, label, by_label.get(label))
+            result[label] = ""
+        except SpecTypeMismatch:
+            result[label] = ""
+        except GroundingError as exc:
+            result[label] = exc.reason
+    return result

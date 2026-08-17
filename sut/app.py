@@ -470,6 +470,37 @@ def bad_search(request: Request, query: str | None = None):
     return render_search(request, "bad", query, results=found, count=len(found))
 
 
+# ---------------------------------------------------------------------------
+# nolabel/search — 접근성 이름이 없는 구현 (2차 경로 시험용)
+# ---------------------------------------------------------------------------
+#
+# 검증 로직은 good 과 **완전히 같다.** 다른 것은 제출 버튼의 마크업 하나뿐이다 —
+# '검색' 글자 대신 아이콘만 있어서 S3 의 네 전략이 모두 막힌다.
+#
+# 왜 good/bad 와 별도 변형인가: good/bad 는 '검증 로직의 유무' 하나만 다르게 두는
+# 실험이다(모듈 설명 참고). 여기에 마크업 차이를 섞으면 그 실험의 변수가 둘이 된다.
+#
+# 이 변형이 드러내는 것은 결함의 종류가 다르다 — 검증은 다 하는데 **요소를 지목할
+# 수 없다.** 기획서가 라벨을 적어 뒀는데 화면에 그 이름이 없으므로 기획-구현
+# 불일치이고, 동시에 접근성 결함이다. 2차 경로는 그 화면에서도 케이스를 진행하게
+# 해 주지만, 그 사실을 지우지는 않는다.
+
+
+@app.get("/nolabel/search", response_class=HTMLResponse)
+def nolabel_search(request: Request, query: str | None = None):
+    if query is None:
+        return render_search(request, "nolabel")
+    if not query:
+        return render_search(request, "nolabel", query, error=MSG_QUERY_REQUIRED)
+    if not (2 <= len(query) <= 50):
+        return render_search(request, "nolabel", query, error=MSG_QUERY_LENGTH)
+    found = find_products(query, case_sensitive=False)
+    if not found:
+        return render_search(request, "nolabel", query, count=0,
+                             empty_message=MSG_NO_RESULTS)
+    return render_search(request, "nolabel", query, results=found, count=len(found))
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(

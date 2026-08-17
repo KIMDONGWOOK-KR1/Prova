@@ -255,9 +255,10 @@ CaseType = Literal["positive", "negative", "boundary"]
 #   result_count   반복 목록에 정확히 N 개가 렌더돼야 한다 (문구가 아니라 개수)
 #   options_present 선택 요소에 기획서가 적은 항목이 모두 있어야 한다
 #   placeholders_match 입력 안내 문구가 기획서와 같아야 한다
+#   labels_findable 기획서의 라벨로 화면에서 요소를 찾을 수 있어야 한다
 ExpectedType = Literal[
     "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
-    "result_count", "options_present", "placeholders_match",
+    "result_count", "options_present", "placeholders_match", "labels_findable",
 ]
 
 
@@ -293,6 +294,15 @@ class Expectation(BaseModel):
     # 라벨 -> 기대 안내 문구. 요소마다 케이스를 만들지 않고 화면 하나에 모으는 이유는
     # generator._placeholder_case 에 적어 뒀다.
     placeholders: dict[str, str] = Field(default_factory=dict)
+    # --- type="labels_findable" 전용 ---
+    #
+    # 화면에서 찾을 수 있어야 하는 라벨들.
+    #
+    # 이 확인이 왜 따로 필요한가: 2차 경로(화면 이미지로 찾기)를 켜면 라벨로 못 찾은
+    # 요소도 케이스가 통과한다. 그러면 **'기획서의 라벨로 요소를 지목할 수 없다' 는
+    # 사실이 리포트에서 사라진다.** 보정은 케이스를 살리는 것이고, 지적은 그대로
+    # 남아야 한다.
+    labels: list[str] = Field(default_factory=list)
 
 
 class TestStep(BaseModel):

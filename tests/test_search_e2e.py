@@ -101,16 +101,16 @@ class TestGoodVariant:
         assert report.summary["pass_rate"] == 100.0
 
     def test_케이스_구성(self, good_run):
-        """정상 1 + 규칙 위반 3 + 예시 문구 2 + 예시 건수 2 + 안내 문구 1 = 9건.
+        """정상 1 + 규칙 위반 3 + 예시 문구 2 + 건수 2 + 안내 문구 1 + 라벨 1 = 10건.
 
         기획서 예시가 positive 로 집계되는 것이 맞다 — 규칙을 어긴 값이 아니라
         정상 입력에 대한 정해진 결과를 확인하기 때문이다. negative 로 두면 S5 의
         판정이 뒤집혀 '에러가 떠야 PASS' 가 되어버린다.
         """
         report, _ = good_run
-        assert report.summary["total"] == 9
+        assert report.summary["total"] == 10
         assert sum(1 for v in report.cases if v.type == "negative") == 3
-        assert sum(1 for v in report.cases if v.type == "positive") == 6
+        assert sum(1 for v in report.cases if v.type == "positive") == 7
 
     def test_기획서_결함_경고가_없다(self, good_run):
         report, _ = good_run
