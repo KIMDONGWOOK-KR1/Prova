@@ -84,12 +84,39 @@ class TestStructuralWarnings:
         )
         assert structural_warnings(spec, doc) == []
 
-    def test_대조할_표가_없으면_누락_검사를_하지_않는다(self):
-        """ID 열이 없는 기획서에서 없는 누락을 경고하면 안 된다."""
+    def test_대조할_표가_없으면_없는_누락을_경고하지_않는다(self):
+        """ID 열이 없는 기획서에서 '요소가 빠졌다' 고 하면 안 된다.
+
+        빠진 것이 아니라 대조할 근거가 없는 것이고, 둘은 개발자가 할 일이 다르다.
+        """
         doc = ParsedDocument(source="x", pages=[ParsedPage(page_no=1)])
         spec = spec_with(UIElement(element_id="email", type="input", label="이메일"),
                          button())
-        assert structural_warnings(spec, doc) == []
+        assert not any("빠진 요소" in w for w in structural_warnings(spec, doc))
+
+    def test_대조할_표가_없다는_사실은_경고한다(self):
+        """**이 테스트는 원래 반대를 못 박고 있었다** — 표가 없으면 경고 0건이라고.
+
+        훼손된 기획서로 실측하면서 그 전제가 틀렸음이 드러났다. 열 이름을
+        '요소 ID' -> '항목' 으로 바꾸자 표를 못 찾았고, 그러면
+
+            declared_* 여덟 개가 전부 빈손
+            _apply_declared_* 들은 조용히 반환 (if not declared: return)
+            위의 행 누락 검사도 건너뜀
+
+        이 되어 **LLM 답을 대조할 근거가 하나도 남지 않는다.** 그런데 리포트는
+        정상으로 보였다. 그 실행은 우연히 결과가 맞았지만, 틀렸다면 아무것도
+        잡지 못했다.
+
+        '검증망이 없다' 는 결과가 맞았을 때도 알려야 하는 사실이다 —
+        확인하지 않은 것과 확인해서 통과한 것은 다르다.
+        """
+        doc = ParsedDocument(source="x", pages=[ParsedPage(page_no=1)])
+        spec = spec_with(UIElement(element_id="email", type="input", label="이메일"),
+                         button())
+        warnings = structural_warnings(spec, doc)
+        assert any("UI 요소 정의 표를 찾지 못했습니다" in w for w in warnings)
+        assert any("검증이 모두 비활성화" in w for w in warnings)
 
 
 class TestNormalizeElementIds:
