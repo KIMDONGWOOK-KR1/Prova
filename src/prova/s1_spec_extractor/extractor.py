@@ -26,7 +26,11 @@ from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
 from prova.models import Flow, Scenario, ScreenSpec, SpecDocument
-from prova.s1_spec_extractor.pdf_parser import ParsedDocument, parse_pdf
+from prova.s1_spec_extractor.pdf_parser import (
+    ParsedDocument,
+    normalize_ws,
+    parse_pdf,
+)
 
 SYSTEM_PROMPT = """\
 당신은 웹 서비스 화면기획서를 읽고 QA 테스트에 쓸 구조화 명세를 만드는 전문가입니다.
@@ -304,6 +308,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message())
     _apply_declared_scenarios(spec, declared_scenarios)
+    _drop_invented_strings(spec, doc)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
     # negative 케이스가 아예 생성되지 않아 리포트가 근거 없이 초록불이 된다.
@@ -452,6 +457,75 @@ def _apply_declared_scenarios(
         )
 
 
+def _drop_invented_strings(spec: ScreenSpec, doc: ParsedDocument) -> None:
+    """기획서 본문에 없는 문구를 요구사항으로 쓰지 않는다.
+
+    ## 왜 필요한가 — 실측으로 확인한 오탐
+
+    기획서 요소 표에서 '안내 문구' 열을 지우고 돌렸더니, 7B 가 `'이메일 입력'` 을
+    **지어냈다.** 문서에 그런 말이 한 글자도 없다. 그러자 도구는 안내 문구 대조
+    케이스를 만들어 올바른 구현(`'이메일을 입력하세요'`)을 FAIL 로 보고했다.
+
+        FAIL 입력 안내 문구 확인
+             문구가 다름 — '이메일': 기대 '이메일 입력', 화면 '이메일을 입력하세요'
+
+    **없는 결함을 자신 있게 보고한 것이다.** 개발자는 없는 버그를 찾다가 도구를
+    믿지 않게 된다. 그리고 경고가 하나도 없었다.
+
+    `_apply_declared_*` 들은 표에서 읽은 값으로 덮어쓰지만, 표를 못 찾으면 조용히
+    반환한다(`if not declared: return`). 그때 LLM 답이 무검증으로 통과한다.
+
+    ## 왜 '표에 있는가' 가 아니라 '본문에 있는가' 로 보는가
+
+    표 기반으로만 신뢰하면 산문으로 쓴 기획서에서 검증이 사라진다. 실측에서 7B 는
+    산문에 적힌 안내 문구를 정확히 읽어냈다 — 그건 버릴 이유가 없는 정보다.
+
+    본문 대조는 표든 산문이든 통한다. 문서에 그 문자열이 있으면 기획서가 요구한
+    것이고, 없으면 모델이 만든 것이다. 추론이 필요하지 않다.
+
+    ## 정상 값을 잘못 버리지 않는가
+
+    PDF 는 원문을 그대로 복원하지 못하므로 이 검사가 진짜 요구사항을 지울 위험이
+    있다. 픽스처 3종의 정답 문구 19개로 재 봤고 **19/19 가 본문에서 찾아졌다.**
+    공백만 정규화하면 충분했다.
+
+    ## 버린 뒤에 무슨 일이 일어나는가
+
+    문구를 잃은 위반 케이스는 `error_shown` 으로 격하된다 — '에러가 떴고 이동하지
+    않았다' 만 확인한다. 검증이 약해지지만 거짓이 되지는 않는다
+    (`_expectation_for_violation` 참고). 안내 문구 케이스는 아예 생성되지 않고,
+    그 사실은 경고로 남는다.
+    """
+    text = normalize_ws(doc.to_llm_text())
+
+    def declared_in_document(value: str) -> bool:
+        return normalize_ws(value) in text
+
+    for element in spec.elements:
+        if element.placeholder and not declared_in_document(element.placeholder):
+            spec.warnings.append(
+                f"'{element.label}' 의 안내 문구 {element.placeholder!r} 가 기획서 "
+                f"본문에 없어 버렸습니다. 모델이 만든 값으로 대조하면 올바른 구현이 "
+                f"FAIL 로 나옵니다. 기획서에 안내 문구를 적으면 확인합니다."
+            )
+            element.placeholder = None
+
+        if element.error_message and not declared_in_document(element.error_message):
+            spec.warnings.append(
+                f"'{element.label}' 의 에러 문구 {element.error_message!r} 가 기획서 "
+                f"본문에 없어 버렸습니다. 해당 위반 케이스는 문구 대조 없이 "
+                f"'에러가 떴는가' 만 확인합니다."
+            )
+            element.error_message = None
+
+    if spec.required_message and not declared_in_document(spec.required_message):
+        spec.warnings.append(
+            f"필수 입력 문구 {spec.required_message!r} 가 기획서 본문에 없어 "
+            f"버렸습니다. 필수 검증 케이스는 '에러가 떴는가' 만 확인합니다."
+        )
+        spec.required_message = None
+
+
 def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
     """기획서 표와 추출 결과를 대조해 누락을 찾는다. LLM 을 쓰지 않는다.
 
@@ -471,6 +545,19 @@ def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
                 f"{len(got)}개입니다. 빠진 요소: {', '.join(missing)}. "
                 f"S1 추출 실패이며, 구현 결함이 아닙니다."
             )
+    else:
+        # 표를 못 찾으면 결정적 독해 여덟 개가 전부 빈손이 되고, `_apply_declared_*`
+        # 들은 조용히 반환한다(`if not declared: return`). 위의 행 누락 검사도
+        # 건너뛴다. 즉 **LLM 답을 대조할 근거가 하나도 남지 않는다.**
+        #
+        # 실측에서 열 이름을 '요소 ID' -> '항목' 으로 바꾸자 이 상태가 됐다.
+        # 결과는 우연히 원본과 같았지만, 틀렸다면 아무것도 잡지 못했다.
+        # '검증망이 없다' 는 사실은 결과가 맞았을 때도 알려야 한다.
+        warnings.append(
+            "UI 요소 정의 표를 찾지 못했습니다('요소 ID' 와 '유형' 열이 함께 있는 "
+            "표를 찾습니다). 표에 적힌 사실로 모델 답을 대조하는 검증이 모두 "
+            "비활성화되어, 요소·유형·안내 문구가 검증 없이 쓰입니다."
+        )
 
     if not any(e.type == "button" for e in spec.elements):
         warnings.append(
