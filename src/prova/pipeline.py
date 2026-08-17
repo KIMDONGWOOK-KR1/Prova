@@ -59,6 +59,7 @@ def run_pipeline(
     base_url: str,
     llm: LLMClient,
     run_id: str,
+    vlm: Optional[object] = None,
     runs_root: Path = Path("runs"),
     headless: bool = True,
     viewport: Optional[dict] = None,
@@ -74,6 +75,9 @@ def run_pipeline(
     Args:
         slow_mo: 동작 사이 지연(ms). 사람이 눈으로 따라가려면 400~600 정도가 적당하다.
         record_video: 실행 영상(webm) 녹화. run_dir/video/ 에 저장된다.
+        vlm: 2차 경로 백엔드. None 이면 접근성 속성으로 못 찾은 요소는 그대로
+            탐지 실패다. 기본을 None 으로 둔 이유: 보정을 기본으로 켜면 라벨
+            연결이 깨진 화면에서도 케이스가 통과해 그 사실이 리포트에서 사라진다.
         only: case_id 에 이 문자열이 든 케이스만 실행 (filter_cases 참고).
         hold_sec: 마지막 케이스가 끝난 뒤 브라우저를 닫기 전 기다릴 초.
             판정의 근거가 되는 마지막 화면(에러 문구)을 사람이 읽을 시간을 준다.
@@ -95,6 +99,7 @@ def run_pipeline(
         run_id=run_id,
         run_dir=run_dir,
         llm=llm,
+        vlm=vlm,
         step_timeout_ms=step_timeout_ms,
     )
 
