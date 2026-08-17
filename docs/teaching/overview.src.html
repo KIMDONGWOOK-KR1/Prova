@@ -2218,7 +2218,255 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
     </div>
   </section>
 
-  <!-- ═══ 13. 다음 ═══════════════════════════════════════ -->
+  <!-- ═══ 13. 검증 대상 웹앱 ══════════════════════════════ -->
+  <section>
+    <h2 class="col">검증 대상 웹앱도 우리가 만들었다</h2>
+    <p class="sub col">같은 질문을 반대편에 던졌을 때 나온 것</p>
+
+    <div class="col">
+      <p>
+        앞 절에서 얻은 것은 이것이었다 — <strong>모든 성공 문장에는 조건이 숨어 있다.</strong>
+        '오탐 0건' 은 <span class="mark">우리가 만든 기획서에서는</span> 이었다.
+      </p>
+      <p>
+        그런데 조건이 하나 더 있었다. <code>sut/</code> 도 우리가 쓴 앱이다. 폼을 제출하면
+        서버가 검증하고 결과가 들어 있는 HTML 을 돌려준다. 동기식이다.
+        <strong>실물 웹앱은 대개 그렇지 않다.</strong>
+      </p>
+    </div>
+
+<pre class="out"><code>우리 SUT     제출 → 서버가 검증 → 결과가 담긴 HTML → 화면에 이미 있다
+실물 웹앱     제출 → fetch → <span class="f">(그 사이 화면에 아무것도 없다)</span> → 응답 → 화면을 갈아 끼움</code></pre>
+
+    <div class="col">
+      <p>
+        코드가 무엇을 전제하는지 확인했다. <code>locator.click()</code> 다음에 곧바로
+        <code>capture_page_state()</code> 다 — <strong>기다리지 않는다.</strong> 지금 통하는
+        이유는 SUT 가 동기식이라 응답 HTML 에 결과가 이미 있기 때문이다.
+      </p>
+    </div>
+
+    <h3 class="col">변수 하나만 다른 변형 넷</h3>
+
+    <div class="col">
+      <p>
+        <code>nolabel</code> 을 만들 때 지킨 원칙을 그대로 썼다 —
+        <strong>서버 검증 로직은 <code>good</code> 과 완전히 같고, 바꾸는 변수는 하나.</strong>
+        섞으면 FAIL 이 났을 때 무엇 때문인지 가릴 수 없다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>변형</th><th>무엇이 다른가</th><th>결과</th></tr></thead>
+        <tbody>
+          <tr><td><code>slow</code></td>
+              <td>결과가 400ms 뒤에 DOM 에 들어간다</td>
+              <td><span class="tag fail">오탐 7건</span></td></tr>
+          <tr><td><code>native</code></td>
+              <td><code>novalidate</code> 를 떼고 <code>required</code> 를 붙였다</td>
+              <td><span class="tag fail">사유가 거꾸로</span></td></tr>
+          <tr><td><code>spa</code></td>
+              <td>성공해도 URL 이 바뀌지 않는다</td>
+              <td><span class="tag pass">고칠 것 없음</span></td></tr>
+          <tr><td><code>hashed</code></td>
+              <td><code>id</code> 가 CSS-in-JS 해시다</td>
+              <td><span class="tag pass">영향 없음</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="col">slow — 없는 결함 7건, 그리고 세 번째 같은 사고</h3>
+
+    <div class="versus">
+      <div class="card good">
+        <h4><code>/good/login</code> <span class="tag pass">전부 통과</span></h4>
+        <div class="score">10 / 10</div>
+        <p>동기식. 응답 HTML 에 결과가 이미 있다.</p>
+      </div>
+      <div class="card bad">
+        <h4><code>/slow/login</code> <span class="tag fail">7건 실패</span></h4>
+        <div class="score">3 / 10</div>
+        <p><strong>검증 로직은 한 줄도 다르지 않다.</strong> 렌더 시점만 400ms 늦다.</p>
+      </div>
+    </div>
+
+<pre class="out"><code><span class="f">FAIL</span> 비밀번호 대문자 포함 규칙 위반 (입력값 'a1!aaaaa') — 규칙 강제 여부 확인
+     ... 구현에서 확인되지 않았습니다.
+     <span class="f">(에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다)</span></code></pre>
+
+    <div class="note">
+      <span class="label">구현은 그 규칙을 강제한다</span>
+      <p>
+        도구가 못 기다린 것을 구현 결함으로 <strong>단정했다.</strong> 이 프로젝트에서
+        세 번째로 만난 같은 종류의 사고다.
+      </p>
+    </div>
+
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>언제</th><th>원인</th><th>결과</th></tr></thead>
+        <tbody>
+          <tr><td>2차 경로</td><td>좌표가 버튼을 비켜 갔다</td>
+              <td><span class="tag fail">없는 결함 7건</span></td></tr>
+          <tr><td>기획서 훼손</td><td>모델이 요구사항을 발명했다</td>
+              <td><span class="tag fail">없는 결함 1건</span></td></tr>
+          <tr><td>비동기 렌더</td><td>도구가 기다리지 않았다</td>
+              <td><span class="tag fail">없는 결함 7건</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="col">
+      <p>
+        원인은 매번 다른데 <strong>모양이 같다</strong> — 도구가 확인하지 못한 것을 구현
+        결함으로 보고한다. 그리고 매번 사유 문구가 자신 있다.
+      </p>
+    </div>
+
+    <h3 class="col">시도했다가 버린 설계</h3>
+
+    <div class="note">
+      <span class="label">DOM 이 안정될 때까지 기다린다 — 성립하지 않는다</span>
+      <p>
+        판정과 독립적이라 깔끔해 보였다. S4 가 S5 의 기대를 알 필요가 없다.
+      </p>
+      <p>
+        그런데 400ms 뒤에 렌더하는 화면은 <strong>그 전 250ms 동안 아무 변화가 없다.</strong>
+        MutationObserver 는 그 정적을 '안정됐다' 로 읽고 렌더 전에 멈춘다.
+        <span class="mark">아직 시작하지 않은 것과 끝난 것을 구분할 수 없다.</span>
+      </p>
+      <p>
+        <code>networkidle</code> 도 안 된다 — 이 변형은 <code>setTimeout</code> 이라
+        네트워크가 없고, 폴링이나 웹소켓이 있는 앱에서는 영원히 idle 이 오지 않는다.
+        <strong>일반적으로 '앱이 렌더를 끝냈는지' 는 알 수 없다.</strong> 그래서 기대를 알고
+        기다린다 — Playwright 의 assertion 이 재시도하는 것과 같은 이유다.
+      </p>
+    </div>
+
+    <h3 class="col">이 대기가 판정을 무르게 만들지 않는가</h3>
+
+    <div class="col">
+      <p>
+        <strong>이게 가장 조심한 부분이다.</strong> 대기는 FAIL 을 PASS 로 바꿀 수 있고 그
+        반대는 없다. 그 방향성이 결함을 덮는 데 쓰이면 이 도구의 값이 사라진다.
+      </p>
+    </div>
+
+    <div class="steps col">
+      <div class="step"><span class="n">1</span>
+        <strong>상한이 있다.</strong> 넘으면 마지막 판정을 그대로 보고한다. 통과할 때까지
+        무한정 기다리면 진짜 결함이 전부 사라진다</div>
+      <div class="step"><span class="n">2</span>
+        <strong>기다린 시간을 리포트에 남긴다.</strong> 2차 경로의 보정을 남기는 것과 같은
+        이유다 — 도구가 편의를 제공했으면 그 사실이 리포트에 있어야 한다</div>
+      <div class="step"><span class="n">3</span>
+        <strong>스텝이 끊긴 케이스는 기다리지 않는다.</strong> 기다려도 달라지지 않고,
+        진짜로 깨진 케이스마다 상한을 버린다</div>
+    </div>
+
+<pre class="out"><code>결과를 기다린 뒤 통과한 케이스 (7건, 최대 300ms)
+제출 직후에는 화면에 결과가 없었고, 기다린 뒤 나타났습니다. 판정은 유효합니다 —
+이 화면이 결과를 비동기로 렌더한다는 뜻입니다.</code></pre>
+
+    <div class="note">
+      <span class="label">수용 기준 세 개 중 하나가 특히 중요하다</span>
+      <p>
+        <code>settle_timeout_ms=0</code> 으로 <strong>끄면 오탐이 돌아오는지</strong> 확인한다.
+        그게 없으면 <code>slow</code> 가 통과하는 이유가 대기 때문인지 다른 이유인지 알 수 없다.
+      </p>
+      <p>
+        그리고 실패한 케이스에 기다린 기록이 없어야 한다. 있으면 '기다려서 통과했다' 는
+        뜻인데 판정은 FAIL 이라는 모순이다.
+      </p>
+    </div>
+
+    <h3 class="col">native — 사유가 사실과 반대였다</h3>
+
+    <div class="col">
+      <p>
+        <code>novalidate</code> 를 떼고 <code>required</code> 를 붙이면 브라우저가 제출을
+        막고 자기 툴팁을 띄운다. 앱의 에러 문구는 화면에 없다. 도구는 '구현이 이 규칙을
+        강제하지 않는다' 고 말했다.
+      </p>
+      <p>
+        <strong>구현은 강제한다. 오히려 더 이르게 막는다.</strong> 개발자는 이미 있는 검증을
+        또 추가하게 된다.
+      </p>
+      <p>
+        검색 화면의 대소문자 결함과 같은 모양이다 —
+        <span class="mark">검사 자체는 하는데 검사 방법이 기획서와 다르다.</span>
+        그건 '검증이 없다' 와 고칠 곳이 다르다.
+      </p>
+    </div>
+
+<pre class="out"><code><span class="p">브라우저 기본 검증이 제출을 막았습니다</span> — 구현이 규칙을 강제하지 않는 것이 아니라
+기획서와 다른 방법으로 강제합니다. 화면에는 브라우저 툴팁이 뜨고 기획서가 지정한
+문구는 노출되지 않습니다 (novalidate 를 쓰고 문구를 직접 노출하거나, <span class="p">기획서를
+고쳐야 합니다</span>).</code></pre>
+
+    <div class="note">
+      <span class="label">판정은 FAIL 그대로 뒀다</span>
+      <p>
+        기획서가 그 문구를 노출한다고 적었고 구현은 노출하지 않으므로 불일치는 실재한다.
+        바꾼 것은 <strong>사유</strong>뿐이다 — 그리고 고치는 방법을 둘 다 적었다.
+        <strong>기획서를 고치는 것도 답일 수 있다.</strong>
+      </p>
+    </div>
+
+    <h3 class="col">spa · hashed — 고칠 것이 없었다</h3>
+
+    <div class="col">
+      <p>
+        <code>spa</code> 는 성공해도 URL 이 바뀌지 않는다. 기획서 §3 이
+        "<code>/dashboard</code> 로 이동하고 '환영합니다' 문구를 노출한다" 고 적었으므로
+        <strong>FAIL 이 맞다</strong> — 딥링크·새로고침·뒤로가기가 깨지는 실제 결함이기도 하다.
+      </p>
+    </div>
+
+<pre class="out"><code><span class="f">FAIL</span> 정상 로그인 (모든 입력 규칙 충족)
+     경로 '/dashboard' <span class="f">미이동</span> (현재 .../spa/login); 문구 '환영합니다' <span class="p">노출 확인</span></code></pre>
+
+    <div class="note">
+      <span class="label">미탐을 막으려던 설계가 진단 품질로 돌아왔다</span>
+      <p>
+        사유가 <strong>두 검사를 모두</strong> 말한다. 개발자는 로그인 로직은 되고 라우팅이
+        문제라는 것을 바로 안다. '경로 미이동' 만 있었다면 로그인 코드를 뒤졌을 것이다.
+      </p>
+      <p>
+        검사마다 결과를 남기게 한 것은 원래 <strong>'URL 은 바뀌었는데 화면이 빈' 상태를
+        정상으로 판정하는 미탐</strong>을 막으려던 것이었다. 그 선택이 여기서 값을 했다.
+      </p>
+    </div>
+
+    <div class="col">
+      <p>
+        <code>hashed</code>(<code>id="e7f3a91b"</code>)는 기획서의 요소 ID 로 만드는 CSS
+        selector 를 무력화한다. 그런데 <code>&lt;label for&gt;</code> 가 그 해시를 가리키므로
+        라벨 전략이 먼저 통한다 — 10/10 통과, 탐지 실패 0건, 보정 0건.
+      </p>
+      <p>
+        <strong>측정해서 '고칠 것이 없다' 도 결과다.</strong> 가정이 맞았지만 재 보기 전에는
+        몰랐고, 테스트로 남겼으니 나중에 탐지 전략 순서를 바꿀 때 이 사실이 지켜진다.
+      </p>
+    </div>
+
+    <div class="note">
+      <span class="label">이 절에서 남길 것</span>
+      <p>
+        <strong>판정이 맞아도 사유가 틀릴 수 있다.</strong> <code>native</code> 의 FAIL 은
+        옳았지만 사유가 사실과 반대였다. 개발자가 읽는 것은 사유이므로, 판정만 맞히고 끝내면
+        시간을 버리게 만든다.
+      </p>
+      <p>
+        <strong>느린 것과 틀린 것 중에서는 느린 쪽을 고른다.</strong> 대기 상한을 줄이면
+        테스트가 빨라지지만(282초 → 508초) 오탐 위험이 돌아온다. QA 도구에서 그 교환은
+        성립하지 않는다.
+      </p>
+    </div>
+  </section>
+
+  <!-- ═══ 14. 다음 ═══════════════════════════════════════ -->
   <section>
     <h2 class="col">다음</h2>
     <p class="sub col">남은 화면보다 값이 큰 것</p>
@@ -2280,9 +2528,16 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
 
     <div class="col">
       <p>
-        여기까지의 모든 숫자에는 조건이 붙어 있다 — <strong>우리가 만든 기획서에서는.</strong>
-        훼손 6종으로 어떻게 깨지는지는 알게 됐지만, 그건 <span class="mark">우리가 상상한
-        여섯 가지</span>다. 실물 화면기획서는 우리가 상상하지 못한 방식으로 생겼을 것이다.
+        여기까지의 모든 숫자에는 조건이 붙어 있었다 — <strong>우리가 만든 기획서에서,
+        우리가 만든 웹앱으로.</strong> 뒤쪽은 이제 쟀다(변형 4종). 앞쪽은 훼손 6종으로
+        어떻게 깨지는지 알게 됐지만, 그건 <span class="mark">우리가 상상한 여섯 가지</span>다.
+        실물 화면기획서는 우리가 상상하지 못한 방식으로 생겼을 것이다.
+      </p>
+      <p>
+        <strong>웹앱 쪽과 기획서 쪽의 차이가 여기 있다.</strong> 웹앱은 실물의 모양을 우리가
+        꽤 정확히 흉내낼 수 있다 — 비동기 렌더링, 클라이언트 라우팅, 해시 id, 브라우저 기본
+        검증은 다 아는 패턴이다. 기획서는 그렇지 않다. 사람이 쓰는 문서라서
+        <span class="mark">어떤 모양일지 상상으로 다 덮을 수 없다.</span>
       </p>
       <p>
         그래서 다음 할 일은 화면을 늘리는 것이 아니라 <strong>실물 기획서 한 장을
@@ -2330,8 +2585,8 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 422개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 15개,
+    코드 <code>C:\dev\prova</code> · 테스트 447개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 16개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
