@@ -363,6 +363,60 @@ class TestOptionsPresent:
         assert "screen_options" not in v.evidence
 
 
+class TestTextAbsent:
+    """방향이 반대인 판정 — 그 문구가 **없어야** PASS.
+
+    비밀번호 찾기 화면에서 필요해졌다. 등록되지 않은 이메일에 '등록되지 않은
+    이메일입니다' 를 노출하면 공격자가 계정 존재 여부를 알아낸다(account enumeration).
+
+    다른 문구 판정은 에러 영역을 먼저 보고 없으면 화면 전체를 본다. 여기서는 처음부터
+    화면 전체를 본다 — 어디에 있든 노출된 것이고, 에러 영역 밖에 안내로 떠 있어도
+    계정 존재 여부는 똑같이 새어 나간다.
+    """
+
+    def case(self, forbidden: str) -> TestCase:
+        return positive_case(Expectation(type="text_absent", value=forbidden))
+
+    def test_없으면_PASS(self):
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="재설정 메일을 보냈습니다."))
+        assert v.verdict == "PASS"
+        assert "미노출" in v.evidence["actual"]
+
+    def test_있으면_FAIL(self):
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="등록되지 않은 이메일입니다."))
+        assert v.verdict == "FAIL"
+        assert "노출되면 안 되는 문구" in v.failure_detail
+
+    def test_에러_영역이_아니어도_잡는다(self):
+        """구현이 이 문구를 role=alert 없이 안내로 띄워도 계정 존재 여부는 새어
+        나간다. 에러 영역만 보면 그 경우를 놓친다."""
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="안내: 등록되지 않은 이메일입니다.", errors=[]))
+        assert v.verdict == "FAIL"
+
+    def test_성공_문구와_함께_떠_있어도_잡는다(self):
+        """**이 판정이 필요한 이유.** 성공 문구가 떠 있으면 text_visible 은
+        통과한다. 그런데 금지 문구가 함께 떠 있으면 요구를 어긴 화면이다 —
+        두 확인을 합칠 수 없는 이유가 여기 있다."""
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="재설정 메일을 보냈습니다. 등록되지 않은 이메일입니다."))
+        assert v.verdict == "FAIL"
+
+    def test_공백만_다른_노출도_잡는다(self):
+        """엄격 비교를 쓰면 '등록되지  않은' 처럼 공백만 다른 노출을 통과시킨다.
+        그건 요구를 어긴 화면을 정상으로 판정하는 미탐이다."""
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="등록되지  않은  이메일입니다."))
+        assert v.verdict == "FAIL"
+
+    def test_분류가_구현_불일치다(self):
+        v = verify(self.case("등록되지 않은 이메일입니다."), steps_ok(),
+                   state(text="등록되지 않은 이메일입니다."))
+        assert v.failure_category == "assertion_mismatch"
+
+
 class TestPlaceholdersMatch:
     """안내 문구 판정 — 없는 요소와 다른 문구를 구별한다."""
 
