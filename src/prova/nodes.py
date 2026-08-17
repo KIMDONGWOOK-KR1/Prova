@@ -33,6 +33,7 @@ from prova.s2_case_generator.generator import generate_cases, generate_flow_case
 from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s3_grounder.dom_locator import (
     CollectionCount,
+    check_findable,
     count_items,
     read_options,
     read_placeholders,
@@ -57,6 +58,9 @@ class AgentState:
     run_id: str
     run_dir: Path
     llm: Optional[LLMClient] = None
+    # 2차 경로. None 이면 접근성 속성으로 못 찾은 요소는 그대로 탐지 실패다.
+    # 기본이 None 인 이유는 ExecutionContext.vlm 과 같다 — 보정은 선택 기능이다.
+    vlm: Optional[object] = None
     page: Optional[Page] = None
 
     # 산출물
@@ -166,12 +170,14 @@ def run_cases(state: AgentState) -> AgentState:
             case_id=case.case_id,
             step_timeout_ms=state.step_timeout_ms,
             screenshot_every_step=state.screenshot_every_step,
+            vlm=state.vlm,
+            max_heal=state.max_heal,
         )
         step_results = execute_case_steps(ctx, case.steps)
         page_state = capture_page_state(
             state.page, console_errors,
             _count_for(state, case), _options_for(state, case),
-            _placeholders_for(state, case),
+            _placeholders_for(state, case), _findable_for(state, case),
         )
         state.verdicts.append(verify(case, step_results, page_state))
 
@@ -240,6 +246,19 @@ def _placeholders_for(state: AgentState, case: TestCase) -> Optional[dict[str, s
     if case.expected.type != "placeholders_match" or not case.expected.placeholders:
         return None
     return read_placeholders(state.page, list(case.expected.placeholders))
+
+
+def _findable_for(state: AgentState, case: TestCase) -> Optional[dict[str, str]]:
+    """라벨 탐지 케이스면 라벨별로 찾을 수 있는지 확인한다.
+
+    보정을 쓰지 않는다 — 여기서 보는 것은 '보정 없이 찾을 수 있는가' 이고, 그게
+    기획서의 라벨이 구현과 이어져 있는지를 뜻한다.
+    """
+    if case.expected.type != "labels_findable" or not case.expected.labels:
+        return None
+    screen = state.doc.screen_by_id(case.screen_id)
+    elements = screen.elements if screen else []
+    return check_findable(state.page, elements, list(case.expected.labels))
 
 
 def build_final_report(state: AgentState) -> AgentState:

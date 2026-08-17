@@ -140,6 +140,10 @@ table.kv td { padding:5px 0; word-break:break-all; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
              background:#fff; display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+.heal { background:#f3eefb; border:1px solid #cbb8e8; border-radius:6px;
+        padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
+.heal b { color:#6b3fa0; }
+.heal .why { color:var(--muted); margin:2px 0 8px; }
 .gap { background:#eef4fb; border:1px solid #b8cfe8; border-radius:6px;
        padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
 .gap b { color:var(--accent); }
@@ -339,6 +343,21 @@ def render_html(report: TestReport) -> str:
             f"{items}</div>"
         )
 
+    healed = s.get("healed", 0) or 0
+    heal_html = ""
+    if healed:
+        healed_titles = "".join(
+            f"<div>· {_esc(v.title)}</div>"
+            for v in report.cases if v.healed
+        )
+        heal_html = (
+            f"<div class='heal'><b>화면 이미지로 찾아 진행한 케이스 ({healed}건)</b>"
+            "<div class='why'>기획서의 라벨로 요소를 찾지 못해 2차 경로로 보정했습니다. "
+            "판정은 유효하지만 <b>라벨이 구현과 이어져 있지 않습니다</b> — "
+            "'라벨로 요소를 찾을 수 있는지 확인' 케이스를 함께 보세요.</div>"
+            f"{healed_titles}</div>"
+        )
+
     backend = s.get("llm_backend", "")
     mock_warn = ""
     if backend.startswith("mock"):
@@ -367,7 +386,7 @@ def render_html(report: TestReport) -> str:
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
 </div>
-{mock_warn}{filter_warn}{gap_html}{warn_html}
+{mock_warn}{filter_warn}{heal_html}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>
