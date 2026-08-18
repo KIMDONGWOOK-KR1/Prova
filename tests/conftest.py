@@ -15,6 +15,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from pathlib import Path
 
 import pytest
 import uvicorn
@@ -53,3 +54,27 @@ def sut_base() -> str:
 
     server.should_exit = True
     thread.join(timeout=5)
+
+
+def load_script(path: str):
+    """scripts/ 의 파일을 모듈로 불러온다. 테스트가 스크립트의 함수를 직접 쓸 때.
+
+    `scripts/` 는 패키지가 아니다(`__init__.py` 가 없다). 측정 스크립트를 패키지로
+    만들지 않는 이유: `prova` 는 도구이고 스크립트는 그 도구로 재는 절차라서, 같은
+    import 경로에 두면 무엇이 제품이고 무엇이 측정인지 흐려진다.
+
+    **`sys.modules` 에 먼저 등록하는 것이 중요하다.** 등록하지 않으면 스크립트 안의
+    `@dataclass` 가 `from __future__ import annotations` 와 만나 터진다 —
+    dataclasses 가 타입 문자열을 풀려고 `sys.modules[cls.__module__]` 를 찾는데
+    그것이 None 이기 때문이다. 원인이 데이터셋이나 채점과 무관한 곳에서 나오므로
+    처음 만나면 시간을 크게 잡아먹는다.
+    """
+    import importlib.util
+    import sys
+
+    name = f"_script_{Path(path).stem}"
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module

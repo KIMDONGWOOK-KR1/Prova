@@ -1,0 +1,1102 @@
+{
+  "dataset_id": "536392d2154b",
+  "viewport": {
+    "width": 1280,
+    "height": 800
+  },
+  "count": 50,
+  "present": 40,
+  "absent": 10,
+  "items": [
+    {
+      "state_id": "login-empty",
+      "note": "로그인 · 첫 진입",
+      "path": "/good/login",
+      "image": "login-empty.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.436875,
+        0.6328125,
+        0.484375
+      ],
+      "truth_px": [
+        470,
+        349.5,
+        340,
+        38
+      ],
+      "selector": "input[name=email]",
+      "id": 0
+    },
+    {
+      "state_id": "login-empty",
+      "note": "로그인 · 첫 진입",
+      "path": "/good/login",
+      "image": "login-empty.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.530625,
+        0.6328125,
+        0.578125
+      ],
+      "truth_px": [
+        470,
+        424.5,
+        340,
+        38
+      ],
+      "selector": "input[name=password]",
+      "id": 1
+    },
+    {
+      "state_id": "login-empty",
+      "note": "로그인 · 첫 진입",
+      "path": "/good/login",
+      "image": "login-empty.png",
+      "target": "로그인",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.605625,
+        0.6328125,
+        0.658125
+      ],
+      "truth_px": [
+        470,
+        484.5,
+        340,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 2
+    },
+    {
+      "state_id": "login-empty",
+      "note": "로그인 · 첫 진입",
+      "path": "/good/login",
+      "image": "login-empty.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": false,
+      "truth": null,
+      "selector": "input[name=query]",
+      "id": 3
+    },
+    {
+      "state_id": "login-empty",
+      "note": "로그인 · 첫 진입",
+      "path": "/good/login",
+      "image": "login-empty.png",
+      "target": "약관 동의",
+      "kind": "checkbox",
+      "hint": "체크박스",
+      "present": false,
+      "truth": null,
+      "selector": "input#agree_terms",
+      "id": 4
+    },
+    {
+      "state_id": "login-filled",
+      "note": "로그인 · 값이 채워진 상태",
+      "path": "/good/login",
+      "image": "login-filled.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.436875,
+        0.6328125,
+        0.484375
+      ],
+      "truth_px": [
+        470,
+        349.5,
+        340,
+        38
+      ],
+      "selector": "input[name=email]",
+      "id": 5
+    },
+    {
+      "state_id": "login-filled",
+      "note": "로그인 · 값이 채워진 상태",
+      "path": "/good/login",
+      "image": "login-filled.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.530625,
+        0.6328125,
+        0.578125
+      ],
+      "truth_px": [
+        470,
+        424.5,
+        340,
+        38
+      ],
+      "selector": "input[name=password]",
+      "id": 6
+    },
+    {
+      "state_id": "login-filled",
+      "note": "로그인 · 값이 채워진 상태",
+      "path": "/good/login",
+      "image": "login-filled.png",
+      "target": "로그인",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.605625,
+        0.6328125,
+        0.658125
+      ],
+      "truth_px": [
+        470,
+        484.5,
+        340,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 7
+    },
+    {
+      "state_id": "login-error",
+      "note": "로그인 · 에러 문구가 떠서 아래가 밀린 상태",
+      "path": "/good/login",
+      "image": "login-error.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.4021875,
+        0.6328125,
+        0.4496875
+      ],
+      "truth_px": [
+        470,
+        321.75,
+        340,
+        38
+      ],
+      "selector": "input[name=email]",
+      "id": 8
+    },
+    {
+      "state_id": "login-error",
+      "note": "로그인 · 에러 문구가 떠서 아래가 밀린 상태",
+      "path": "/good/login",
+      "image": "login-error.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.4959375,
+        0.6328125,
+        0.5434375
+      ],
+      "truth_px": [
+        470,
+        396.75,
+        340,
+        38
+      ],
+      "selector": "input[name=password]",
+      "id": 9
+    },
+    {
+      "state_id": "login-error",
+      "note": "로그인 · 에러 문구가 떠서 아래가 밀린 상태",
+      "path": "/good/login",
+      "image": "login-error.png",
+      "target": "로그인",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.5709375,
+        0.6328125,
+        0.6234375
+      ],
+      "truth_px": [
+        470,
+        456.75,
+        340,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 10
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.276875,
+        0.6328125,
+        0.324375
+      ],
+      "truth_px": [
+        470,
+        221.5,
+        340,
+        38
+      ],
+      "selector": "input#email",
+      "id": 11
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.368125,
+        0.6328125,
+        0.415625
+      ],
+      "truth_px": [
+        470,
+        294.5,
+        340,
+        38
+      ],
+      "selector": "input#password",
+      "id": 12
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "비밀번호 확인",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.459375,
+        0.6328125,
+        0.506875
+      ],
+      "truth_px": [
+        470,
+        367.5,
+        340,
+        38
+      ],
+      "selector": "input#password_confirm",
+      "id": 13
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "닉네임",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.550625,
+        0.6328125,
+        0.598125
+      ],
+      "truth_px": [
+        470,
+        440.5,
+        340,
+        38
+      ],
+      "selector": "input#nickname",
+      "id": 14
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "가입 경로",
+      "kind": "select",
+      "hint": "선택 목록",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.641875,
+        0.6328125,
+        0.691875
+      ],
+      "truth_px": [
+        470,
+        513.5,
+        340,
+        40
+      ],
+      "selector": "select#signup_path",
+      "id": 15
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "약관 동의",
+      "kind": "checkbox",
+      "hint": "체크박스",
+      "present": true,
+      "truth": [
+        0.3703125,
+        0.715625,
+        0.38046875,
+        0.731875
+      ],
+      "truth_px": [
+        474,
+        572.5,
+        13,
+        13
+      ],
+      "selector": "input#agree_terms",
+      "id": 16
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "가입하기",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.760625,
+        0.6328125,
+        0.813125
+      ],
+      "truth_px": [
+        470,
+        608.5,
+        340,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 17
+    },
+    {
+      "state_id": "signup-empty",
+      "note": "회원가입 · 첫 진입",
+      "path": "/good/signup",
+      "image": "signup-empty.png",
+      "target": "로그인하러 가기",
+      "kind": "link",
+      "hint": "링크",
+      "present": false,
+      "truth": null,
+      "selector": "a.go",
+      "id": 18
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.2421875,
+        0.6328125,
+        0.2896875
+      ],
+      "truth_px": [
+        470,
+        193.75,
+        340,
+        38
+      ],
+      "selector": "input#email",
+      "id": 19
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.3334375,
+        0.6328125,
+        0.3809375
+      ],
+      "truth_px": [
+        470,
+        266.75,
+        340,
+        38
+      ],
+      "selector": "input#password",
+      "id": 20
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "비밀번호 확인",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.4246875,
+        0.6328125,
+        0.4721875
+      ],
+      "truth_px": [
+        470,
+        339.75,
+        340,
+        38
+      ],
+      "selector": "input#password_confirm",
+      "id": 21
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "닉네임",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.5159375,
+        0.6328125,
+        0.5634375
+      ],
+      "truth_px": [
+        470,
+        412.75,
+        340,
+        38
+      ],
+      "selector": "input#nickname",
+      "id": 22
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "가입 경로",
+      "kind": "select",
+      "hint": "선택 목록",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.6071875,
+        0.6328125,
+        0.6571875
+      ],
+      "truth_px": [
+        470,
+        485.75,
+        340,
+        40
+      ],
+      "selector": "select#signup_path",
+      "id": 23
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "약관 동의",
+      "kind": "checkbox",
+      "hint": "체크박스",
+      "present": true,
+      "truth": [
+        0.3703125,
+        0.6809375,
+        0.38046875,
+        0.6971875
+      ],
+      "truth_px": [
+        474,
+        544.75,
+        13,
+        13
+      ],
+      "selector": "input#agree_terms",
+      "id": 24
+    },
+    {
+      "state_id": "signup-error",
+      "note": "회원가입 · 필수 입력 에러 상태",
+      "path": "/good/signup",
+      "image": "signup-error.png",
+      "target": "가입하기",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3671875,
+        0.7259375,
+        0.6328125,
+        0.7784375
+      ],
+      "truth_px": [
+        470,
+        580.75,
+        340,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 25
+    },
+    {
+      "state_id": "signup-welcome",
+      "note": "가입 완료 · 링크 하나만 있는 화면",
+      "path": "/good/welcome",
+      "image": "signup-welcome.png",
+      "target": "로그인하러 가기",
+      "kind": "link",
+      "hint": "링크",
+      "present": true,
+      "truth": [
+        0.4597900390625,
+        0.538125,
+        0.54019775390625,
+        0.560625
+      ],
+      "truth_px": [
+        588.53125,
+        430.5,
+        102.921875,
+        18
+      ],
+      "selector": "a.go",
+      "id": 26
+    },
+    {
+      "state_id": "signup-welcome",
+      "note": "가입 완료 · 링크 하나만 있는 화면",
+      "path": "/good/welcome",
+      "image": "signup-welcome.png",
+      "target": "가입하기",
+      "kind": "button",
+      "hint": "버튼",
+      "present": false,
+      "truth": null,
+      "selector": "button[type=submit]",
+      "id": 27
+    },
+    {
+      "state_id": "signup-welcome",
+      "note": "가입 완료 · 링크 하나만 있는 화면",
+      "path": "/good/welcome",
+      "image": "signup-welcome.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": false,
+      "truth": null,
+      "selector": "input[name=password]",
+      "id": 28
+    },
+    {
+      "state_id": "search-empty",
+      "note": "검색 · 첫 진입",
+      "path": "/good/search",
+      "image": "search-empty.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.205,
+        0.6796875,
+        0.2525
+      ],
+      "truth_px": [
+        410,
+        164,
+        460,
+        38
+      ],
+      "selector": "input[name=query]",
+      "id": 29
+    },
+    {
+      "state_id": "search-empty",
+      "note": "검색 · 첫 진입",
+      "path": "/good/search",
+      "image": "search-empty.png",
+      "target": "검색",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.275,
+        0.6796875,
+        0.3275
+      ],
+      "truth_px": [
+        410,
+        220,
+        460,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 30
+    },
+    {
+      "state_id": "search-empty",
+      "note": "검색 · 첫 진입",
+      "path": "/good/search",
+      "image": "search-empty.png",
+      "target": "검색 결과 목록",
+      "kind": "list",
+      "hint": "목록",
+      "present": false,
+      "truth": null,
+      "selector": "ul.results",
+      "id": 31
+    },
+    {
+      "state_id": "search-empty",
+      "note": "검색 · 첫 진입",
+      "path": "/good/search",
+      "image": "search-empty.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": false,
+      "truth": null,
+      "selector": "input[name=password]",
+      "id": 32
+    },
+    {
+      "state_id": "search-results",
+      "note": "검색 · 결과 3건",
+      "path": "/good/search?query=Notebook",
+      "image": "search-results.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.205,
+        0.6796875,
+        0.2525
+      ],
+      "truth_px": [
+        410,
+        164,
+        460,
+        38
+      ],
+      "selector": "input[name=query]",
+      "id": 33
+    },
+    {
+      "state_id": "search-results",
+      "note": "검색 · 결과 3건",
+      "path": "/good/search?query=Notebook",
+      "image": "search-results.png",
+      "target": "검색",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.275,
+        0.6796875,
+        0.3275
+      ],
+      "truth_px": [
+        410,
+        220,
+        460,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 34
+    },
+    {
+      "state_id": "search-results",
+      "note": "검색 · 결과 3건",
+      "path": "/good/search?query=Notebook",
+      "image": "search-results.png",
+      "target": "검색 결과 목록",
+      "kind": "list",
+      "hint": "목록",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.3925,
+        0.6796875,
+        0.5475
+      ],
+      "truth_px": [
+        410,
+        314,
+        460,
+        124
+      ],
+      "selector": "ul.results",
+      "id": 35
+    },
+    {
+      "state_id": "search-none",
+      "note": "검색 · 결과 0건 안내",
+      "path": "/good/search?query=없는상품",
+      "image": "search-none.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.205,
+        0.6796875,
+        0.2525
+      ],
+      "truth_px": [
+        410,
+        164,
+        460,
+        38
+      ],
+      "selector": "input[name=query]",
+      "id": 36
+    },
+    {
+      "state_id": "search-none",
+      "note": "검색 · 결과 0건 안내",
+      "path": "/good/search?query=없는상품",
+      "image": "search-none.png",
+      "target": "검색",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.275,
+        0.6796875,
+        0.3275
+      ],
+      "truth_px": [
+        410,
+        220,
+        460,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 37
+    },
+    {
+      "state_id": "search-none",
+      "note": "검색 · 결과 0건 안내",
+      "path": "/good/search?query=없는상품",
+      "image": "search-none.png",
+      "target": "검색 결과 목록",
+      "kind": "list",
+      "hint": "목록",
+      "present": false,
+      "truth": null,
+      "selector": "ul.results",
+      "id": 38
+    },
+    {
+      "state_id": "nolabel-empty",
+      "note": "검색 · 아이콘만 있는 버튼 (첫 진입)",
+      "path": "/nolabel/search",
+      "image": "nolabel-empty.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.205,
+        0.6796875,
+        0.2525
+      ],
+      "truth_px": [
+        410,
+        164,
+        460,
+        38
+      ],
+      "selector": "input[name=query]",
+      "id": 39
+    },
+    {
+      "state_id": "nolabel-empty",
+      "note": "검색 · 아이콘만 있는 버튼 (첫 진입)",
+      "path": "/nolabel/search",
+      "image": "nolabel-empty.png",
+      "target": "검색",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.275,
+        0.6796875,
+        0.3325
+      ],
+      "truth_px": [
+        410,
+        220,
+        460,
+        46
+      ],
+      "selector": "button[type=submit]",
+      "id": 40
+    },
+    {
+      "state_id": "nolabel-empty",
+      "note": "검색 · 아이콘만 있는 버튼 (첫 진입)",
+      "path": "/nolabel/search",
+      "image": "nolabel-empty.png",
+      "target": "검색 결과 목록",
+      "kind": "list",
+      "hint": "목록",
+      "present": false,
+      "truth": null,
+      "selector": "ul.results",
+      "id": 41
+    },
+    {
+      "state_id": "nolabel-results",
+      "note": "검색 · 아이콘 버튼 + 결과 3건",
+      "path": "/nolabel/search?query=Notebook",
+      "image": "nolabel-results.png",
+      "target": "검색어",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.205,
+        0.6796875,
+        0.2525
+      ],
+      "truth_px": [
+        410,
+        164,
+        460,
+        38
+      ],
+      "selector": "input[name=query]",
+      "id": 42
+    },
+    {
+      "state_id": "nolabel-results",
+      "note": "검색 · 아이콘 버튼 + 결과 3건",
+      "path": "/nolabel/search?query=Notebook",
+      "image": "nolabel-results.png",
+      "target": "검색",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.275,
+        0.6796875,
+        0.3325
+      ],
+      "truth_px": [
+        410,
+        220,
+        460,
+        46
+      ],
+      "selector": "button[type=submit]",
+      "id": 43
+    },
+    {
+      "state_id": "nolabel-results",
+      "note": "검색 · 아이콘 버튼 + 결과 3건",
+      "path": "/nolabel/search?query=Notebook",
+      "image": "nolabel-results.png",
+      "target": "검색 결과 목록",
+      "kind": "list",
+      "hint": "목록",
+      "present": true,
+      "truth": [
+        0.3203125,
+        0.3975,
+        0.6796875,
+        0.5525
+      ],
+      "truth_px": [
+        410,
+        318,
+        460,
+        124
+      ],
+      "selector": "ul.results",
+      "id": 44
+    },
+    {
+      "state_id": "find-empty",
+      "note": "비밀번호 찾기 · 첫 진입",
+      "path": "/good/find-account",
+      "image": "find-empty.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.359375,
+        0.50048828125,
+        0.640625,
+        0.54798828125
+      ],
+      "truth_px": [
+        460,
+        400.390625,
+        360,
+        38
+      ],
+      "selector": "input#email",
+      "id": 45
+    },
+    {
+      "state_id": "find-empty",
+      "note": "비밀번호 찾기 · 첫 진입",
+      "path": "/good/find-account",
+      "image": "find-empty.png",
+      "target": "재설정 메일 받기",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.359375,
+        0.57548828125,
+        0.640625,
+        0.62798828125
+      ],
+      "truth_px": [
+        460,
+        460.390625,
+        360,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 46
+    },
+    {
+      "state_id": "find-empty",
+      "note": "비밀번호 찾기 · 첫 진입",
+      "path": "/good/find-account",
+      "image": "find-empty.png",
+      "target": "비밀번호",
+      "kind": "input",
+      "hint": "입력란",
+      "present": false,
+      "truth": null,
+      "selector": "input[name=password]",
+      "id": 47
+    },
+    {
+      "state_id": "find-sent",
+      "note": "비밀번호 찾기 · 전송 완료 안내",
+      "path": "/good/find-account",
+      "image": "find-sent.png",
+      "target": "이메일",
+      "kind": "input",
+      "hint": "입력란",
+      "present": true,
+      "truth": [
+        0.359375,
+        0.46580078125,
+        0.640625,
+        0.51330078125
+      ],
+      "truth_px": [
+        460,
+        372.640625,
+        360,
+        38
+      ],
+      "selector": "input#email",
+      "id": 48
+    },
+    {
+      "state_id": "find-sent",
+      "note": "비밀번호 찾기 · 전송 완료 안내",
+      "path": "/good/find-account",
+      "image": "find-sent.png",
+      "target": "재설정 메일 받기",
+      "kind": "button",
+      "hint": "버튼",
+      "present": true,
+      "truth": [
+        0.359375,
+        0.54080078125,
+        0.640625,
+        0.59330078125
+      ],
+      "truth_px": [
+        460,
+        432.640625,
+        360,
+        42
+      ],
+      "selector": "button[type=submit]",
+      "id": 49
+    }
+  ]
+}

@@ -27,23 +27,19 @@ import sys
 from pathlib import Path
 
 import pytest
+from conftest import load_script
 
 from prova.s1_spec_extractor.pdf_parser import parse_pdf
 
 SPEC_DIR = Path("fixtures/specs")
 
-# scripts/ 는 패키지가 아니라 import 할 수 없다. 파일에서 함수만 꺼내 쓴다.
+#: 조립 스크립트. 함수를 직접 부르는 데(_assemble)와 --check 를 실행하는 데 둘 다 쓴다.
 _SCRIPT = Path("scripts/make_multi_spec.py")
 
 
 def _assemble() -> str:
     """make_multi_spec.assemble() 을 그대로 불러 조립 결과를 얻는다."""
-    import importlib.util
-
-    spec = importlib.util.spec_from_file_location("make_multi_spec", _SCRIPT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.assemble()
+    return load_script(str(_SCRIPT)).assemble()
 
 
 class TestMultiSpecUpToDate:
