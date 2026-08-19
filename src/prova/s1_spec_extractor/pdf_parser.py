@@ -96,9 +96,18 @@ ELEMENT_TYPE_WORDS = {
 
 @dataclass
 class ParsedTable:
-    """PDF 표 하나. rows[0]을 헤더로 취급한다."""
+    """PDF 표 하나. rows[0]을 헤더로 취급한다.
+
+    top: 페이지 안에서 표가 시작하는 세로 위치(pdfplumber 좌표, 작을수록 위).
+    declared_seed_rows·declared_precondition_account 가 '절 제목 다음에 오는
+    첫 표' 를 찾을 때, 제목보다 위에 있는 표(같은 페이지에 먼저 오는 다른 절의
+    표)를 걸러내는 데 쓴다 — 페이지 단위로만 판별하면 한 페이지에 여러 절이
+    들어갈 때 엉뚱한 표를 고르게 된다(예: '화면 개요' 표가 '테스트 주문 데이터'
+    표보다 먼저 나오는 경우).
+    """
 
     rows: list[list[str]] = field(default_factory=list)
+    top: float = 0.0
 
     @property
     def header(self) -> list[str]:
@@ -122,6 +131,21 @@ class ParsedPage:
     page_no: int
     body_text: str = ""
     tables: list[ParsedTable] = field(default_factory=list)
+    # 표 영역을 뺀 본문을 줄 단위로, 각 줄의 세로 위치(top)와 함께 담는다.
+    # body_text 는 이 줄들을 이어 붙인 것과 같다 — 절 제목의 위치를 찾을 때만
+    # (표 필터링용) body_lines 를 쓴다.
+    body_lines: list[tuple[str, float]] = field(default_factory=list)
+
+    def heading_top(self, heading_re: re.Pattern) -> Optional[float]:
+        """heading_re 에 맞는 줄의 세로 위치. 이 페이지에 없으면 None.
+
+        declared_precondition_account·declared_seed_rows 가 '절 제목보다
+        아래에 있는 표만' 후보로 삼을 때 쓴다(ParsedTable.top 설명 참고).
+        """
+        for text, top in self.body_lines:
+            if heading_re.match(text):
+                return top
+        return None
 
 
 @dataclass
@@ -457,9 +481,18 @@ class ParsedDocument:
         그 뒤에 나오는 표 중 헤더가 맞는 첫 표를 계정 표로 본다.
 
         절 제목은 본문에 '3. 전제' 처럼 번호와 함께 한 줄로 남는다(표 안 글자는
-        _extract_body_text 가 걷어낸다 — parse_pdf 참고). 그 줄 전체가 번호 +
+        _extract_body_lines 가 걷어낸다 — parse_pdf 참고). 그 줄 전체가 번호 +
         '전제' 뿐일 때만 절의 시작으로 본다. 문장 속에 낱말로 등장하는 경우
         ('...상태를 전제한다')와 구별해야 하기 때문이다.
+
+        ## 왜 표의 세로 위치(top)도 같이 보는가
+
+        절 제목과 그 표가 **같은 PDF 페이지**에 있을 수 있다(예: 화면 하나의
+        모든 절이 짧아 한 페이지에 다 들어가는 경우). 그러면 그 페이지에 먼저
+        나오는 다른 절의 표(화면 개요 등)가 헤더 조건까지 우연히 맞아버리면
+        절 제목보다 위에 있는데도 골라질 수 있다. 그래서 절 제목 줄의 top 보다
+        아래(나중)에 있는 표만 후보로 본다 — 페이지가 넘어간 뒤에는 그 페이지의
+        모든 표가 절 제목보다 아래이므로 제한이 없다.
 
         ## 왜 헤더도 다시 확인하는가
 
@@ -469,20 +502,11 @@ class ParsedDocument:
         인정하는 편이 안전하다.
         """
         heading_re = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
-        found = False
-        for page in self.pages:
-            if not found:
-                for line in page.body_text.splitlines():
-                    if heading_re.match(line):
-                        found = True
-                        break
-            if not found:
-                continue
-            for table in page.tables:
-                header = [normalize_ws(h) for h in table.header]
-                if header == ["이메일", "비밀번호"]:
-                    return [list(r) for r in table.rows]
-        return None
+        table = self._table_after_heading(
+            heading_re,
+            lambda header, t: [normalize_ws(h) for h in header] == ["이메일", "비밀번호"],
+        )
+        return [list(r) for r in table.rows] if table is not None else None
 
     def declared_seed_rows(self) -> list[dict[str, str]]:
         """'테스트 주문 데이터' 절 아래 표를 [헤더 -> 값] 딕셔너리 목록으로 읽는다.
@@ -509,25 +533,55 @@ class ParsedDocument:
         표를 찾지 못하면 빈 목록을 돌려준다 — 기획서가 데이터를 제시하지 않으면
         정렬·합계 검증은 만들 수 없고, 그건 기획서의 한계다(스펙 §1-2).
         """
-        heading_re = re.compile(r"^\s*[\d.\-]*\s*테스트\s*주문\s*데이터\s*$")
+        table = self._seed_rows_table()
+        if table is None:
+            return []
+        header = [normalize_ws(h) for h in table.header]
+        return [
+            {header[i]: row[i].strip() for i in range(len(header)) if i < len(row)}
+            for row in table.rows[1:]
+        ]
+
+    _SEED_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*테스트\s*주문\s*데이터\s*$")
+
+    def _seed_rows_table(self) -> Optional[ParsedTable]:
+        """declared_seed_rows 가 찾는 표 자체(행이 아니라 ParsedTable 객체).
+
+        declared_scenarios 가 같은 표를 건너뛰는 데도 쓴다 — '테스트 주문
+        데이터' 표의 열 제목(주문일·금액)이 UI 요소 라벨과 겹쳐서, 그 표가
+        입력-결과 예시 표로 다시 해석되면 존재하지 않는 시나리오가 만들어진다
+        (declared_scenarios 의 '표를 고르는 기준' 참고). 표 객체 자체(정체성)로
+        비교해야 '표는 하나인데 두 declared_* 가 다른 이유로 같은 표를 다시
+        찾는' 상황에서 반드시 같은 표를 가리킨다.
+        """
+        return self._table_after_heading(
+            self._SEED_HEADING_RE,
+            lambda header, t: len(header) >= 2 and len(t.rows) >= 2,
+        )
+
+    def _table_after_heading(self, heading_re: re.Pattern, header_ok) -> Optional[ParsedTable]:
+        """heading_re 절 제목보다 아래(나중)에 나오는 첫 표 중 header_ok 를 만족하는 표.
+
+        declared_precondition_account·declared_seed_rows 가 공유하는 탐색
+        로직이다(두 함수의 '왜 라벨이 아니라 절 제목 위치로 찾는가' 참고).
+        """
         found = False
+        min_top = -1.0  # 제한 없음 — 절 제목이 이전 페이지에 있었던 경우
         for page in self.pages:
             if not found:
-                for line in page.body_text.splitlines():
-                    if heading_re.match(line):
-                        found = True
-                        break
+                top = page.heading_top(heading_re)
+                if top is not None:
+                    found = True
+                    min_top = top
             if not found:
                 continue
             for table in page.tables:
-                header = [normalize_ws(h) for h in table.header]
-                if len(header) < 2 or len(table.rows) < 2:
-                    continue
-                return [
-                    {header[i]: row[i].strip() for i in range(len(header)) if i < len(row)}
-                    for row in table.rows[1:]
-                ]
-        return []
+                if table.top < min_top:
+                    continue  # 절 제목보다 먼저 나오는, 같은 페이지의 다른 표
+                if header_ok(table.header, table):
+                    return table
+            min_top = -1.0  # 다음 페이지부터는 전부 절 제목보다 아래다
+        return None
 
     def declared_flows(self) -> list[dict]:
         """'화면 흐름' 표를 그대로 흐름으로 옮긴다. LLM 을 쓰지 않는다.
@@ -647,6 +701,13 @@ class ParsedDocument:
             열 제목이 일부만 라벨    -> 입력-결과 짝 표 (여기)
             라벨이 하나도 없음       -> 개요·실패 조건 등 다른 표
 
+        '테스트 주문 데이터' 표는 예외로 건너뛴다. 그 표의 열 제목(주문일·금액)이
+        마침 UI 요소 라벨과 겹칠 수 있어(위 기준의 '일부만 라벨') 여기 걸리기
+        쉬운데, 그 표는 이미 declared_seed_rows 가 정렬·합계 검증의 근거로 쓴다.
+        같은 표를 입력-결과 예시로 다시 해석하면 기획서에 없는 시나리오를
+        만들어낸다 — '주문일을 2026-08-15 로 입력하면 ORD-005 가 노출된다' 같은,
+        아무도 적지 않은 예시다(_seed_rows_table 설명 참고).
+
         Returns:
             None  판별할 근거가 없다 (라벨을 못 읽었다). 이때만 LLM 결과를 쓴다.
             []    그런 표가 없다. 시나리오가 없는 것이 정답이다.
@@ -657,8 +718,9 @@ class ParsedDocument:
             return None
 
         element_table = self._element_table()
+        seed_table = self._seed_rows_table()
         for table in self.all_tables:
-            if table is element_table or len(table.rows) < 2:
+            if table is element_table or table is seed_table or len(table.rows) < 2:
                 continue
             header = [normalize_ws(h) for h in table.header]
             if len(header) < 2:
@@ -742,25 +804,34 @@ def _clean_cell(cell: str | None) -> str:
 
 
 def _extract_tables(page) -> list[ParsedTable]:
+    """find_tables() 로 표를 잡는다. bbox 의 top 을 같이 남긴다.
+
+    ## 왜 extract_tables() 가 아니라 find_tables() 인가
+
+    extract_tables() 는 표 내용(행·열)만 준다. declared_seed_rows·
+    declared_precondition_account 가 '절 제목보다 아래에 있는 표' 를 가리려면
+    표의 세로 위치(top)가 있어야 한다 — find_tables() 가 주는 Table 객체에만
+    그 bbox 가 있다. 내용은 find_tables() 의 Table.extract() 로 똑같이 얻는다.
+    """
     tables: list[ParsedTable] = []
-    for raw in page.extract_tables():
-        rows = [[_clean_cell(c) for c in row] for row in raw]
+    for t in page.find_tables():
+        rows = [[_clean_cell(c) for c in row] for row in t.extract()]
         # 완전히 빈 행은 버린다 (괘선만 있는 행이 잡히는 경우)
         rows = [r for r in rows if any(r)]
         if rows:
-            tables.append(ParsedTable(rows=rows))
+            tables.append(ParsedTable(rows=rows, top=t.bbox[1]))
     return tables
 
 
-def _extract_body_text(page) -> str:
-    """표 영역을 제외한 본문 텍스트.
+def _extract_body_lines(page) -> list[tuple[str, float]]:
+    """표 영역을 제외한 본문을, 줄 텍스트와 세로 위치(top)의 목록으로.
 
-    find_tables() 가 준 bbox 안에 있는 글자를 걸러낸다. 표를 지우고 남은 글자가
-    없으면 빈 문자열이 된다(표만 있는 페이지).
+    find_tables() 가 준 bbox 안에 있는 글자를 걸러낸다. 줄 위치가 필요한 이유는
+    declared_seed_rows 등이 '절 제목' 줄이 어디 있는지를 표의 top 과 비교해야
+    하기 때문이다(ParsedTable.top 설명 참고) — 한 페이지에 여러 절이 있을 때
+    제목보다 위에 있는(먼저 나오는 다른 절의) 표를 걸러내는 근거가 된다.
     """
     table_boxes = [t.bbox for t in page.find_tables()]
-    if not table_boxes:
-        return normalize_ws_lines(page.extract_text() or "")
 
     def outside_tables(obj) -> bool:
         cx = (obj["x0"] + obj["x1"]) / 2
@@ -768,18 +839,10 @@ def _extract_body_text(page) -> str:
         return not any(x0 <= cx <= x1 and top <= cy <= bottom
                        for x0, top, x1, bottom in table_boxes)
 
-    filtered = page.filter(outside_tables)
-    return normalize_ws_lines(filtered.extract_text() or "")
-
-
-def normalize_ws_lines(text: str) -> str:
-    """줄 단위로 공백을 정리하고 빈 줄을 압축한다. 줄 구조 자체는 보존한다.
-
-    본문은 문장 단위 줄바꿈에 의미가 있을 수 있어(제목/항목 구분) 줄을 뭉치지
-    않는다. 셀 텍스트와 다루는 방식이 다른 이유다.
-    """
-    lines = [normalize_ws(ln) for ln in text.splitlines()]
-    return "\n".join(ln for ln in lines if ln)
+    target = page.filter(outside_tables) if table_boxes else page
+    lines = target.extract_text_lines() or []
+    out = [(normalize_ws(ln["text"]), ln["top"]) for ln in lines]
+    return [(text, top) for text, top in out if text]
 
 
 def parse_pdf(path: str | Path) -> ParsedDocument:
@@ -791,10 +854,12 @@ def parse_pdf(path: str | Path) -> ParsedDocument:
     doc = ParsedDocument(source=str(path))
     with pdfplumber.open(str(path)) as pdf:
         for i, page in enumerate(pdf.pages, 1):
+            body_lines = _extract_body_lines(page)
             doc.pages.append(ParsedPage(
                 page_no=i,
-                body_text=_extract_body_text(page),
+                body_text="\n".join(text for text, _ in body_lines),
                 tables=_extract_tables(page),
+                body_lines=body_lines,
             ))
     return doc
 

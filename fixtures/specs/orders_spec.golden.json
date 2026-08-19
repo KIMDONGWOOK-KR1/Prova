@@ -1,0 +1,57 @@
+{
+  "screen_id": "orders",
+  "screen_name": "주문 조회",
+  "url_path": "/orders",
+  "elements": [
+    {
+      "element_id": "order_list",
+      "type": "list",
+      "label": "주문 목록",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "order_date",
+      "type": "text",
+      "label": "주문일",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "order_amount",
+      "type": "text",
+      "label": "금액",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "order_total",
+      "type": "text",
+      "label": "합계",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    }
+  ],
+  "success_condition": "화면에 진입하면 주문 목록이 표시된다",
+  "failure_conditions": [],
+  "required_message": null,
+  "warnings": [],
+  "scenarios": [],
+  "precondition": {
+    "requires_login": true,
+    "account_email": "seller@test.com",
+    "account_password": "Seller1!",
+    "login_screen_id": "login"
+  },
+  "seed_rows": [
+    {"주문번호": "ORD-005", "주문일": "2026-08-15", "상품명": "노트북", "금액": "1,290,000", "상태": "배송중"},
+    {"주문번호": "ORD-004", "주문일": "2026-08-12", "상품명": "마우스", "금액": "39,000", "상태": "배송완료"},
+    {"주문번호": "ORD-003", "주문일": "2026-08-09", "상품명": "키보드", "금액": "89,000", "상태": "배송완료"},
+    {"주문번호": "ORD-002", "주문일": "2026-08-03", "상품명": "모니터", "금액": "429,000", "상태": "취소"},
+    {"주문번호": "ORD-001", "주문일": "2026-07-28", "상품명": "케이블", "금액": "12,000", "상태": "배송완료"}
+  ]
+}
