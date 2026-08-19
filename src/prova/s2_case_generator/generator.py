@@ -39,6 +39,7 @@ from prova.models import (
     TestStep,
     UIElement,
 )
+from prova.s2_case_generator.precondition import expand_precondition, guard_case
 from prova.s2_case_generator.rule_expander import (
     RULE_LABELS,
     resolve_values,
@@ -185,6 +186,7 @@ def _title_for_violation(element: UIElement, rule: str, value: str) -> str:
 def generate_cases(
     spec: ScreenSpec,
     llm: Optional[LLMClient] = None,
+    doc: Optional[SpecDocument] = None,
 ) -> list[TestCase]:
     """ScreenSpec 을 TestCase 목록으로 전개한다.
 
@@ -192,6 +194,12 @@ def generate_cases(
     케이스가 실패하면 그 화면 자체가 동작하지 않는다는 뜻이어서 나머지 위반
     케이스의 결과를 해석할 근거가 사라지기 때문이다. 리포트를 읽는 사람이
     맨 위에서 그 사실을 먼저 보게 된다.
+
+    doc 이 주어지고 spec 에 로그인 전제가 있으면, 마지막에 모든 케이스에
+    전제 스텝(setup_steps)을 붙이고 역방향 가드 케이스를 하나 더한다
+    (스펙 §3-2·§3-3). doc 이 없으면 화면 하나만으로는 로그인 화면을 찾을 수
+    없으므로 이 단계를 건너뛴다 — 흐름 케이스가 이미 doc 을 받는 것과 같은
+    이유다.
     """
     cases: list[TestCase] = []
     inputs = _fillable_inputs(spec)
@@ -243,6 +251,17 @@ def generate_cases(
 
     if llm is not None:
         _polish_titles(cases, spec, llm)
+
+    if doc is not None and spec.precondition and spec.precondition.requires_login:
+        setup, warnings = expand_precondition(spec.precondition, doc)
+        spec.warnings.extend(warnings)
+        if setup:
+            for c in cases:
+                c.setup_steps = [s.model_copy() for s in setup]
+            g = guard_case(spec, spec.precondition, doc, seq=len(cases) + 1)
+            if g is not None:
+                cases.append(g)
+
     return cases
 
 

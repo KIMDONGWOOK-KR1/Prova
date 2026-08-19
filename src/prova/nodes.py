@@ -151,7 +151,7 @@ def generate_test_cases(state: AgentState) -> AgentState:
         raise ValueError("generate_test_cases 전에 extract_spec 이 실행돼야 합니다")
     cases: list[TestCase] = []
     for screen in state.doc.screens:
-        cases.extend(generate_cases(screen, llm=state.llm))
+        cases.extend(generate_cases(screen, llm=state.llm, doc=state.doc))
     cases.extend(generate_flow_cases(state.doc))
     state.cases = cases
 
