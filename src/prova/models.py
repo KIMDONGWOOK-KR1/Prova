@@ -512,6 +512,10 @@ FailureCategory = Literal[
     "timeout",
     "page_error",
     "unknown",
+    # 전제(로그인 등)를 세우는 단계에서 끊긴 경우. 이 화면 자체의 결함이 아니므로
+    # 다른 분류와 구분해 둬야 화면별 집계에서 결함 수에 합치지 않을 수 있다
+    # (명세서 §3-6·§3-7).
+    "precondition_failed",
 ]
 
 
@@ -543,6 +547,16 @@ class Verdict(BaseModel):
     healed: bool = False
     elapsed_ms: int = 0
     step_results: list[StepResult] = Field(default_factory=list)
+
+    # failure_category/failure_detail 의 짧은 별칭. 필드 이름을 바꾸면 기존
+    # 리포트·테스트가 전부 깨지므로 새로 만들지 않고 속성으로만 덧붙인다.
+    @property
+    def category(self) -> Optional[FailureCategory]:
+        return self.failure_category
+
+    @property
+    def reason(self) -> Optional[str]:
+        return self.failure_detail
 
 
 class TestReport(BaseModel):
@@ -588,9 +602,24 @@ class TestReport(BaseModel):
         for v in verdicts:
             bucket = by_flow if v.flow_id else by_screen
             key = v.flow_id or v.screen_id or "?"
+            # "precondition" 칸은 기본값에 넣지 않는다. 전제 실패가 하나도
+            # 없는 화면·흐름까지 이 칸을 달면 기존에 {total, pass, fail} 만
+            # 보던 소비자(요약 카드, 기존 테스트의 dict 동등 비교)가 깨진다.
+            # 실제로 전제 실패가 있을 때만 칸을 만든다.
             slot = bucket.setdefault(key, {"total": 0, "pass": 0, "fail": 0})
             slot["total"] += 1
-            slot["pass" if v.verdict == "PASS" else "fail"] += 1
+            if v.verdict == "PASS":
+                slot["pass"] += 1
+            elif v.failure_category == "precondition_failed":
+                # 전제(로그인 등)를 세우지 못해 난 FAIL 은 이 화면의 결함이
+                # 아니다. "fail" 에 합치면 같은 결함(예: 로그인 화면의 결함)이
+                # 그 결함을 전제로 삼는 화면마다 하나씩 더 있는 것처럼 불어난다
+                # (명세서 §3-6·§3-7). 그래서 별도 칸에 센다 — 전체 요약의
+                # total/pass/fail 은 그대로 두고(케이스 자체는 여전히 FAIL),
+                # 화면별 결함 귀속만 바꾼다.
+                slot["precondition"] = slot.get("precondition", 0) + 1
+            else:
+                slot["fail"] += 1
         summary["by_screen"] = by_screen
         summary["by_flow"] = by_flow
         return summary

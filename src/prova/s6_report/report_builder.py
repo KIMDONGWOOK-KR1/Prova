@@ -43,6 +43,8 @@ CATEGORY_LABELS = {
     "timeout": ("시간 초과", "대기 시간을 초과했습니다."),
     "page_error": ("페이지 오류", "HTTP 오류 또는 JS 콘솔 예외가 있습니다."),
     "unknown": ("원인 미분류", "규칙으로 분류되지 않았습니다."),
+    "precondition_failed": ("전제 미충족", "전제(로그인)를 세우지 못했습니다. 이 화면의 결함이 "
+                            "아닙니다 — 로그인 화면의 결과를 먼저 확인하세요."),
 }
 
 
@@ -269,18 +271,25 @@ def _screens_html(by_screen: dict, by_flow: dict, names: dict) -> str:
 
     def row(label: str, code: str, n: dict, kind: str) -> str:
         fail_cls = " class='n f'" if n["fail"] else " class='n'"
+        # 전제 미충족(precondition_failed) 은 결함 수(fail)에 넣지 않고 별도
+        # 열로 보여준다 — 이 화면의 결함이 아니라 전제로 삼은 화면(로그인)의
+        # 결함이 여기서 또 잡힌 것뿐이다. 합치면 같은 결함이 여러 화면의
+        # 결함처럼 불어나 보인다 (명세서 §3-6·§3-7).
+        precondition = n.get("precondition", 0)
+        precond_cls = " class='n f'" if precondition else " class='n'"
         return (
             f"<tr><td>{_esc(label)} <code>{_esc(code)}</code></td>"
             f"<td class='k'>{_esc(kind)}</td>"
             f"<td class='n'>{n['total']}</td><td class='n'>{n['pass']}</td>"
-            f"<td{fail_cls}>{n['fail']}</td></tr>"
+            f"<td{fail_cls}>{n['fail']}</td>"
+            f"<td{precond_cls}>{precondition}</td></tr>"
         )
 
     rows = [row(names.get(sid, sid), sid, n, "화면") for sid, n in by_screen.items()]
     rows += [row("화면 사이", fid, n, "흐름") for fid, n in by_flow.items()]
     return (
         "<table class='screens'><thead><tr><th>대상</th><th>종류</th><th>전체</th>"
-        "<th>통과</th><th>실패</th></tr></thead><tbody>"
+        "<th>통과</th><th>실패</th><th>전제 미충족</th></tr></thead><tbody>"
         + "".join(rows) + "</tbody></table>"
     )
 

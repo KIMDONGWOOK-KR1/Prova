@@ -30,6 +30,7 @@ from prova.models import (
     CaseSelection,
     ScreenSpec,
     SpecDocument,
+    StepResult,
     TestCase,
     TestReport,
     Verdict,
@@ -204,11 +205,55 @@ def run_cases(state: AgentState) -> AgentState:
             max_heal=state.max_heal,
             min_confidence=state.min_confidence,
         )
-        step_results = execute_case_steps(ctx, case.steps)
+        step_results = _run_case_steps(ctx, case)
         state.verdicts.append(
             _verify_when_ready(state, case, step_results, console_errors))
 
     return state
+
+
+def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> list[StepResult]:
+    """전제(setup_steps)를 먼저 세운 뒤 본 스텝(steps)을 실행한다 (명세서 §3-6).
+
+    같은 ExecutionContext 를 그대로 이어 쓴다 — 로그인 같은 전제는 브라우저의
+    실제 페이지 상태(로그인된 세션, 이동한 URL)를 만드는 것이 목적이라, 별도
+    컨텍스트로 실행하면 그 상태가 본 스텝으로 넘어가지 않는다.
+
+    전제가 실패하면 본 스텝은 아예 실행하지 않는다. 로그인이 안 된 채로 이어
+    스텝을 실행해 봐야 그 결과는 '전제가 없어서 안 됨' 과 구분되지 않는 잡음이다.
+    판정(FAIL, category=precondition_failed)은 S5(verify)가 결정한다 — 여기서는
+    phase 만 표시해 넘긴다.
+
+    ## 스크린샷 파일명 충돌을 피하는 방법
+
+    `execute_case_steps` 는 스텝의 스크린샷·DOM 스냅샷 파일명을 `TestStep.seq`
+    로만 정한다(`step{seq}.png`, playwright_driver._capture 참고). setup_steps 와
+    steps 는 각각 1부터 번호를 매기므로, 같은 case_dir 에 두 번 이어 실행하면
+    본 스텝이 전제 스텝의 파일을 덮어써 증거가 사라진다.
+
+    playwright_driver.py 는 이 작업의 수정 범위 밖이라 `_capture` 를 건드릴 수
+    없다. 대신 case_dir 이 `ctx.case_id` 로부터 나온다는 점을 이용해, 전제를
+    실행하는 동안만 `ctx.case_id` 에 접미사를 붙여 별도 폴더에 쌓이게 한다.
+    같은 ExecutionContext 객체를 계속 쓰므로(브라우저 페이지·보정 횟수 등은
+    그대로 유지) '같은 컨텍스트로 이어 실행한다' 는 설계와 어긋나지 않는다.
+    """
+    if not case.setup_steps:
+        return execute_case_steps(ctx, case.steps)
+
+    original_case_id = ctx.case_id
+    ctx.case_id = f"{original_case_id}__setup"
+    try:
+        setup_results = execute_case_steps(ctx, case.setup_steps)
+    finally:
+        ctx.case_id = original_case_id
+    for r in setup_results:
+        r.phase = "setup"
+
+    if any(r.status == "error" for r in setup_results):
+        return setup_results
+
+    test_results = execute_case_steps(ctx, case.steps)
+    return setup_results + test_results
 
 
 def _verify_when_ready(
