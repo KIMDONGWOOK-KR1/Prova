@@ -54,6 +54,16 @@ from prova.s2_case_generator.rule_expander import (
 _PATH_RE = re.compile(r"(/[a-zA-Z0-9_\-/]+)")
 _QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,40})[\"'“”‘’]")
 
+# 씨앗 표(seed_rows)에서 날짜 열·금액 열을 값의 **모양**으로 찾을 때 쓴다.
+#
+# 헤더 이름이 아니라 모양으로 찾는 이유: pdf_parser 의 declared_* 들과 같은
+# 원칙이다 — 열 이름은 기획서마다 다를 수 있지만(주문일 vs 날짜), 값의 모양은
+# 스펙 §3-4 가 판정 로직에 고정해 둔 형식(YYYY-MM-DD, 쉼표 구분 정수)이라
+# 흔들리지 않는다. 그리고 그 형식이 곧 '이 열이 무엇인가' 를 가장 확실하게
+# 알려주는 신호다 — 주문번호(ORD-005)는 금액 모양에 걸리지 않는다.
+_SEED_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_SEED_AMOUNT_RE = re.compile(r"^[\d,]+$")
+
 
 def _fillable_inputs(spec: ScreenSpec) -> list[UIElement]:
     """입력 가능한 요소만. 버튼·링크·텍스트는 값을 채우지 않는다."""
@@ -248,6 +258,7 @@ def generate_cases(
     cases.extend(_placeholder_case(spec))
     cases.extend(_label_case(spec))
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
+    cases.extend(_seed_row_cases(spec, start_seq=seq))
 
     if llm is not None:
         _polish_titles(cases, spec, llm)
@@ -340,6 +351,111 @@ def _scenario_cases(
                 count_target=collection.label,
             ),
         ))
+    return cases
+
+
+def _seed_column_label(
+    seed_rows: list[dict[str, str]], pattern: re.Pattern
+) -> Optional[str]:
+    """seed_rows 의 첫 행 키 순서로, 모든 행의 값이 pattern 과 맞는 첫 열 이름.
+
+    한 행이라도 그 열이 없거나 값이 비면 그 열은 후보에서 빠진다 — 씨앗 표는
+    코드가 만든 것이 아니라 기획서에서 그대로 옮긴 것이므로, 열이 고르지
+    않으면(일부 행에 빠짐) '이 열이 그 의미다' 라고 확신할 근거가 약하다.
+    """
+    if not seed_rows:
+        return None
+    for key in seed_rows[0]:
+        values = [row.get(key, "").strip() for row in seed_rows]
+        if all(values) and all(pattern.fullmatch(v) for v in values):
+            return key
+    return None
+
+
+def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
+    """씨앗 표(seed_rows)에서 정렬·합계 케이스를 만든다 (스펙 §1-2·§3-4).
+
+    ## 왜 seed_rows 가 비면 조용히 넘어가는가
+
+    데이터 없는 화면(로그인·회원가입·검색)이 지금까지의 정상이었다. 그런
+    화면마다 "정렬·합계 케이스를 만들지 않았습니다" 를 경고하면, 정말 표를
+    빠뜨린 주문조회 기획서의 경고가 그 소음에 묻힌다. Scenario 가 없을 때
+    경고하지 않는 것과 같은 원칙이다.
+
+    ## 왜 표가 있는데도 만들지 못하면 경고하는가
+
+    이때는 다르다 — 기획서가 '테스트 주문 데이터' 절을 분명히 적었는데
+    화면 요소 표에 그 열(주문일·금액)이나 합계 요소가 없다는 뜻이고, 그건
+    기획서 자체의 구멍이다. 확인할 수 없는 것을 확인한다고 하지 않되, 그
+    사실은 알려야 한다(declared_seed_rows 의 원칙과 대칭이다).
+
+    ## 왜 정렬·합계 판정과 같은 값 모양으로 열을 찾는가
+
+    _seed_column_label 참고. 열 이름이 아니라 값의 모양(날짜·쉼표 구분 정수)
+    으로 찾으면 '주문번호(ORD-005)' 처럼 모양이 다른 열과 자연히 갈린다.
+
+    ## 왜 합계는 열 이름이 아니라 화면 요소로 확정하는가
+
+    금액 열은 반복 목록 안의 값이지만 합계는 화면에 **한 번** 나오는 값이다.
+    씨앗 표에는 합계 열이 없으므로(합계는 화면이 계산해서 보여주는 값이지,
+    시드 데이터가 아니다) 화면 요소 표에서 라벨이 '합계' 인 text 요소를
+    찾는다. 없으면 무엇을 대조할지 알 수 없으므로 합계 케이스를 만들지 않는다.
+    """
+    if not spec.seed_rows:
+        return []
+
+    labels = {e.label for e in spec.elements}
+    cases: list[TestCase] = []
+    seq = start_seq
+
+    date_label = _seed_column_label(spec.seed_rows, _SEED_DATE_RE)
+    if date_label is not None and date_label in labels:
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-sorted-{seq:03d}",
+            screen_id=spec.screen_id,
+            title=f"{date_label} 이 최신순으로 정렬되는지 확인",
+            type="positive",
+            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            expected=Expectation(type="sorted_desc", order_target=date_label),
+        ))
+        seq += 1
+    else:
+        spec.warnings.append(
+            "테스트 주문 데이터 표에서 날짜(YYYY-MM-DD) 열을 찾지 못했거나 "
+            "그 라벨의 화면 요소가 없어 정렬(sorted_desc) 케이스를 만들지 "
+            "않았습니다."
+        )
+
+    amount_label = _seed_column_label(spec.seed_rows, _SEED_AMOUNT_RE)
+    total_element = next(
+        (e for e in spec.elements if e.label == "합계" and e.type == "text"), None
+    )
+    if amount_label is not None and amount_label in labels and total_element is not None:
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-sum-{seq:03d}",
+            screen_id=spec.screen_id,
+            title=f"{amount_label} 합이 {total_element.label} 과 일치하는지 확인",
+            type="positive",
+            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            expected=Expectation(
+                type="sum_matches",
+                sum_row_target=amount_label,
+                sum_total_target=total_element.label,
+            ),
+        ))
+        seq += 1
+    elif amount_label is None or amount_label not in labels:
+        spec.warnings.append(
+            "테스트 주문 데이터 표에서 금액(숫자·쉼표) 열을 찾지 못했거나 "
+            "그 라벨의 화면 요소가 없어 합계(sum_matches) 케이스를 만들지 "
+            "않았습니다."
+        )
+    else:
+        spec.warnings.append(
+            "테스트 주문 데이터 표는 있지만 화면 요소 표에 '합계' 요소가 없어 "
+            "합계(sum_matches) 케이스를 만들지 않았습니다."
+        )
+
     return cases
 
 

@@ -170,6 +170,11 @@ class ScreenSpec(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     # 이 화면에 진입하기 위한 전제. 없으면 누구나 진입할 수 있다.
     precondition: Optional[Precondition] = None
+    # '테스트 주문 데이터' 표 원본 (헤더 셀 -> 행 셀). 정렬·합계 케이스 생성의
+    # 근거이고 S1 교정(_apply_declared_seed_rows)으로 채운다. 기획서가 데이터를
+    # 제시하지 않으면 그 검증은 만들 수 없다 — 빈 목록이면 정렬·합계 케이스를
+    # 만들지 않는다(스펙 §1-2).
+    seed_rows: list[dict[str, str]] = Field(default_factory=list)
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
         return next((e for e in self.elements if e.element_id == element_id), None)
