@@ -311,3 +311,11 @@ class TestNumeric:
         el = UIElement(element_id="price", type="input", label="가격",
                        constraints={"numeric": True})
         assert valid_value_for(el).isdigit()
+
+    def test_형제_길이_규칙이_있어도_그_규칙만_어긴다(self):
+        el = UIElement(element_id="stock", type="input", label="재고수량",
+                       constraints={"numeric": True, "min_length": 3, "max_length": 4})
+        vios = violations_for_element(el)
+        v = next(x for x in vios if x.rule == "numeric")
+        assert not satisfies(v.value, {"numeric": True})
+        assert satisfies(v.value, {"min_length": 3, "max_length": 4})
