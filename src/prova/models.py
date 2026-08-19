@@ -380,6 +380,9 @@ class TestCase(BaseModel):
     violates: Optional[str] = None
     target_element: Optional[str] = None  # violates 대상 element_id
     steps: list[TestStep] = Field(default_factory=list)
+    # 전제를 세우는 스텝. S2 가 코드로 생성하며, 실패하면 FAIL + precondition_failed 로
+    # 분류된다 (명세서 §3-2 참조).
+    setup_steps: list[TestStep] = Field(default_factory=list)
     expected: Expectation
 
 

@@ -3,7 +3,7 @@
 golden(json) <-> 모델 왕복이 S1 정확도 측정의 기반이므로, 필드가 기본값으로
 사라지면 골든 대조가 조용히 무력해진다.
 """
-from prova.models import Precondition, ScreenSpec, StepResult, TestCase
+from prova.models import Precondition, ScreenSpec, StepResult, TestCase, Expectation
 
 
 def test_전제가_골든_왕복에서_보존된다():
@@ -27,3 +27,9 @@ def test_전제가_없는_화면은_None_이다():
 def test_스텝결과의_phase_기본은_test_다():
     r = StepResult(seq=1, action="navigate")
     assert r.phase == "test"
+
+
+def test_케이스의_setup_steps_기본은_빈_목록이다():
+    case = TestCase(case_id="x", screen_id="s", title="t", type="negative",
+                    expected=Expectation(type="error_shown"))
+    assert case.setup_steps == []
