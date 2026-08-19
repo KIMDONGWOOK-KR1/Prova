@@ -33,9 +33,11 @@ self-healing 의 진입점이 된다 (GroundingError 를 S6 가 받는다).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Literal
 
 from prova.models import ElementLocation, UIElement
+from prova.text_utils import normalize_ws
 
 #: 전략 이름 -> 사람이 읽는 설명. 리포트의 스텝 표에 쓴다.
 #
@@ -303,6 +305,45 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
 ITEM_ROLES = {"list": "listitem", "table": "row"}
 
 
+def _locate_collection(page, target: str, hint: UIElement | None):
+    """반복 목록의 컨테이너를 라벨로 찾는다. count_items 와 collect_item_texts 가
+    공유하는 탐색 core — '어디를 볼 것인가' 는 두 경로에서 같아야 한다.
+
+    이 핵심을 공유하지 않으면 라벨이 없거나 컨테이너가 여러 개인 상황에서 두
+    함수가 서로 다른 판정(absent/ambiguous)을 내릴 수 있고, 그러면 개수와 값이
+    '같은 곳을 본 결과'라는 전제가 깨진다.
+
+    Returns:
+        (status, container, item_role, found, detail) 튜플.
+        status 가 "ok" 일 때만 container 가 유효한 Locator 다. found 는 라벨과
+        일치한 컨테이너 개수 — ambiguous 일 때 호출자가 몇 개가 겹쳤는지 그대로
+        보고할 수 있게 남겨 둔다.
+    """
+    container_role = _role_for(hint) if hint else "list"
+    item_role = ITEM_ROLES.get(container_role, "listitem")
+
+    try:
+        container = page.get_by_role(container_role, name=target, exact=True)
+        found = container.count()
+    except Exception as exc:  # role 조회 자체가 실패한 경우
+        return "absent", None, item_role, 0, f"목록 조회 실패: {exc}"
+
+    if found == 0:
+        return (
+            "absent", None, item_role, 0,
+            f"role={container_role} name={target!r} 인 목록이 화면에 없음",
+        )
+    if found > 1:
+        # 컨테이너의 '정확히 1개' 계약은 여기서도 유지한다. 어느 목록을 볼지
+        # 모르는 상태에서 아무거나 고르면 그 결과를 신뢰할 수 없다.
+        return (
+            "ambiguous", None, item_role, found,
+            f"같은 라벨의 목록이 {found}개 — 어느 것을 볼지 확정할 수 없음",
+        )
+
+    return "ok", container, item_role, 1, ""
+
+
 @dataclass
 class CollectionCount:
     """반복 목록의 항목 수를 센 결과.
@@ -341,28 +382,11 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
     Returns:
         CollectionCount. status 가 "ok" 일 때만 count 가 의미를 가진다.
     """
-    container_role = _role_for(hint) if hint else "list"
-    item_role = ITEM_ROLES.get(container_role, "listitem")
-
-    try:
-        container = page.get_by_role(container_role, name=target, exact=True)
-        found = container.count()
-    except Exception as exc:  # role 조회 자체가 실패한 경우
-        return CollectionCount(target=target, status="absent",
-                               detail=f"목록 조회 실패: {exc}")
-
-    if found == 0:
-        return CollectionCount(
-            target=target, status="absent",
-            detail=f"role={container_role} name={target!r} 인 목록이 화면에 없음",
-        )
-    if found > 1:
-        # 컨테이너의 '정확히 1개' 계약은 여기서도 유지한다. 어느 목록을 세야
-        # 하는지 모르는 상태에서 아무거나 세면 그 숫자를 신뢰할 수 없다.
-        return CollectionCount(
-            target=target, status="ambiguous", count=found,
-            detail=f"같은 라벨의 목록이 {found}개 — 어느 것을 셀지 확정할 수 없음",
-        )
+    status, container, item_role, found, detail = _locate_collection(page, target, hint)
+    if status != "ok":
+        # ambiguous 일 때는 found 가 겹친 컨테이너 개수다 — 기존 계약대로
+        # count 에도 남긴다. absent 일 때는 0 그대로다.
+        return CollectionCount(target=target, status=status, count=found, detail=detail)
 
     try:
         n = container.get_by_role(item_role).count()
@@ -373,6 +397,65 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
     return CollectionCount(
         target=target, status="ok", count=n,
         detail=f"{target!r} 안의 {item_role} {n}개",
+    )
+
+
+@dataclass
+class CollectionTexts:
+    """반복 목록의 항목마다 텍스트를 담은 결과.
+
+    ## count_items 와 나란히 두는 이유
+
+    Phase B 의 정렬·합계 판정은 '몇 개인가' 로는 답이 안 나온다 — 값이 무엇이고
+    몇 번째에 있는지를 봐야 한다. 그렇다고 count_items 를 바꾸면 이미 그 숫자만
+    보는 소비자(검색 결과 건수 등)가 매번 텍스트까지 읽는 비용을 치르게 된다.
+    그래서 같은 탐색 위에 별도의 결과 타입을 얹는다.
+
+    status 를 CollectionCount 와 똑같이 셋으로 나눈 이유도 같다. 목록의 부재는
+    실패가 아니라 관측 결과다(위 CollectionCount 설명 참고) — count 와 같은
+    이유로, texts 도 '못 찾았다' 를 빈 배열로 뭉개지 않는다.
+    """
+
+    target: str
+    status: Literal["ok", "absent", "ambiguous"]
+    texts: list[str] = field(default_factory=list)
+    detail: str = ""
+
+
+def collect_item_texts(page, target: str, hint: UIElement | None = None) -> CollectionTexts:
+    """target 라벨의 반복 목록에서 각 항목의 텍스트를 문서 순서대로 모은다.
+
+    count_items 와 같은 탐색(_locate_collection)을 쓴다 — '어디를 볼 것인가' 가
+    갈리면 개수와 값이 같은 목록을 본 결과라는 전제가 깨진다. 예외를 던지지
+    않는다. count_items 와 같은 이유다: 목록의 부재는 판정 재료이지 도구 실패가
+    아니다.
+
+    각 항목의 텍스트는 inner_text 를 normalize_ws 로 정리한 값이다. assertion_engine
+    이 화면 문구를 비교할 때 쓰는 것과 같은 정규화라서, 다른 경로로 읽은 같은
+    값이 공백 차이만으로 다르게 보이는 일이 없다.
+
+    Args:
+        page: Playwright Page
+        target: 목록의 라벨 (예: "주문일")
+        hint: 해당 UIElement. type 으로 컨테이너 role 과 항목 role 을 정한다.
+
+    Returns:
+        CollectionTexts. status 가 "ok" 일 때만 texts 가 의미를 가진다.
+    """
+    status, container, item_role, _found, detail = _locate_collection(page, target, hint)
+    if status != "ok":
+        return CollectionTexts(target=target, status=status, texts=[], detail=detail)
+
+    try:
+        items = container.get_by_role(item_role)
+        texts = [normalize_ws(t) for t in items.all_inner_texts()]
+    except Exception as exc:
+        return CollectionTexts(target=target, status="absent",
+                               texts=[], detail=f"항목 조회 실패: {exc}")
+
+    return CollectionTexts(
+        target=target, status="ok", texts=texts,
+        detail=f"{target!r} 안의 {item_role} {len(texts)}개",
     )
 
 
