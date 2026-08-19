@@ -195,11 +195,13 @@ def generate_cases(
     케이스의 결과를 해석할 근거가 사라지기 때문이다. 리포트를 읽는 사람이
     맨 위에서 그 사실을 먼저 보게 된다.
 
-    doc 이 주어지고 spec 에 로그인 전제가 있으면, 마지막에 모든 케이스에
-    전제 스텝(setup_steps)을 붙이고 역방향 가드 케이스를 하나 더한다
-    (스펙 §3-2·§3-3). doc 이 없으면 화면 하나만으로는 로그인 화면을 찾을 수
-    없으므로 이 단계를 건너뛴다 — 흐름 케이스가 이미 doc 을 받는 것과 같은
-    이유다.
+    doc 이 주어지고 spec 에 로그인 전제가 있으면, 모든 케이스에 전제
+    스텝(setup_steps)을 붙이고 역방향 가드 케이스를 하나 앞에 추가한다
+    (스펙 §3-2·§3-3). 가드 케이스를 맨 앞에 두는 이유는 그 케이스 자체의
+    docstring 을 참고 — 뒤에 두면 앞선 케이스의 로그인이 남긴 세션 쿠키
+    때문에 '비로그인 접근' 을 확인할 수 없게 된다.
+    doc 이 없으면 화면 하나만으로는 로그인 화면을 찾을 수 없으므로 이
+    단계를 건너뛴다 — 흐름 케이스가 이미 doc 을 받는 것과 같은 이유다.
     """
     cases: list[TestCase] = []
     inputs = _fillable_inputs(spec)
@@ -256,11 +258,20 @@ def generate_cases(
         setup, warnings = expand_precondition(spec.precondition, doc)
         spec.warnings.extend(warnings)
         if setup:
+            g = guard_case(spec, spec.precondition, doc, seq=len(cases) + 1)
             for c in cases:
                 c.setup_steps = [s.model_copy() for s in setup]
-            g = guard_case(spec, spec.precondition, doc, seq=len(cases) + 1)
+            # 가드 케이스는 맨 앞에 둔다 — 순서가 판정에 영향을 준다.
+            #
+            # 브라우저 컨텍스트(쿠키)는 한 실행 안에서 케이스마다 이어진다.
+            # 가드 뒤에 두면, 이미 실행된 정상 케이스의 setup_steps 가 로그인을
+            # 마쳐 세션 쿠키를 남긴 뒤에 가드 케이스가 돈다 — 그러면 '비로그인
+            # 접근' 을 확인해야 할 케이스가 실제로는 로그인된 상태로 열려,
+            # 가드가 있는 구현도 리다이렉트하지 않아 FAIL(오탐)이 난다.
+            # 맨 앞에 두면 그 화면의 첫 네비게이션이라 쿠키가 없는 상태를
+            # 보장할 수 있다.
             if g is not None:
-                cases.append(g)
+                cases.insert(0, g)
 
     return cases
 
