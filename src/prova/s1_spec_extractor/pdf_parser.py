@@ -484,6 +484,51 @@ class ParsedDocument:
                     return [list(r) for r in table.rows]
         return None
 
+    def declared_seed_rows(self) -> list[dict[str, str]]:
+        """'테스트 주문 데이터' 절 아래 표를 [헤더 -> 값] 딕셔너리 목록으로 읽는다.
+
+        ## 왜 라벨이 아니라 절 제목 위치로 찾는가
+
+        declared_precondition_account 와 같은 이유다. 이 표의 열 제목
+        ('주문번호·주문일·상품명·금액·상태')은 요소 표의 라벨과 겹칠 수 있어
+        열 제목만으로는 다른 표와 구분할 근거가 없다. 그래서 본문에서
+        '테스트 주문 데이터' 절 제목이 나온 지점을 먼저 찾고, 그 뒤에 나오는
+        첫 표를 그 표로 본다.
+
+        절 제목은 declared_precondition_account 와 마찬가지로 본문에 번호와
+        함께 한 줄로 남을 때만 절의 시작으로 본다('...데이터를 확인한다' 처럼
+        문장 속 낱말과 구별하기 위해서다).
+
+        ## 왜 헤더를 그대로 열 이름(딕셔너리 키)으로 쓰는가
+
+        표에 그대로 적힌 사실은 LLM 에 맡기지 않는다는 원칙의 연장이다. 이 표의
+        열 이름(주문일·금액 등)은 화면마다 다를 수 있어 미리 알 수 없으므로,
+        헤더를 키로 쓰는 dict 로 옮겨 S2 가 화면 요소의 라벨과 값의 모양으로
+        직접 대조하게 한다(generator._seed_row_cases 참고).
+
+        표를 찾지 못하면 빈 목록을 돌려준다 — 기획서가 데이터를 제시하지 않으면
+        정렬·합계 검증은 만들 수 없고, 그건 기획서의 한계다(스펙 §1-2).
+        """
+        heading_re = re.compile(r"^\s*[\d.\-]*\s*테스트\s*주문\s*데이터\s*$")
+        found = False
+        for page in self.pages:
+            if not found:
+                for line in page.body_text.splitlines():
+                    if heading_re.match(line):
+                        found = True
+                        break
+            if not found:
+                continue
+            for table in page.tables:
+                header = [normalize_ws(h) for h in table.header]
+                if len(header) < 2 or len(table.rows) < 2:
+                    continue
+                return [
+                    {header[i]: row[i].strip() for i in range(len(header)) if i < len(row)}
+                    for row in table.rows[1:]
+                ]
+        return []
+
     def declared_flows(self) -> list[dict]:
         """'화면 흐름' 표를 그대로 흐름으로 옮긴다. LLM 을 쓰지 않는다.
 

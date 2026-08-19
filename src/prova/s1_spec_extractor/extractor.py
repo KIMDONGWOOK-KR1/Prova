@@ -320,6 +320,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_required_message(spec, doc.declared_required_message())
     _apply_declared_scenarios(spec, declared_scenarios)
     _apply_declared_precondition(spec, doc.declared_precondition_account())
+    _apply_declared_seed_rows(spec, doc.declared_seed_rows())
     _drop_invented_strings(spec, doc)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
@@ -527,6 +528,31 @@ def _apply_declared_precondition(
     )
     spec.precondition.account_email = email
     spec.precondition.account_password = password
+
+
+def _apply_declared_seed_rows(spec: ScreenSpec, rows: list[dict[str, str]]) -> None:
+    """씨앗 표는 표가 정답이다 (스펙 §1-2) — Task 4 의 표 교정 패턴과 같다.
+
+    ## 왜 LLM 결과를 덮어쓰는가
+
+    _apply_declared_scenarios 와 같은 이유다. 표 헤더를 그대로 열 이름으로,
+    셀 값을 그대로 행으로 옮기는 데는 추론이 없다. ScreenSpec.seed_rows 가
+    JSON 스키마에 노출돼 있어 LLM 이 값을 채워 낼 수도 있는데, 그건 옮겨적기
+    오탈자이거나 지어낸 값일 위험이 있다 — 다른 declared_* 들과 같은 이유로
+    표가 이긴다.
+
+    표를 찾지 못하면(rows 가 빈 목록) 손대지 않는다. 데이터 없는 화면은
+    흔하고, generator 가 seed_rows 가 빈 화면에서 정렬·합계 케이스를 만들지
+    않는 것으로 충분하다 — 여기서까지 경고하면 진짜 경고가 묻힌다.
+    """
+    if not rows or spec.seed_rows == rows:
+        return
+    if spec.seed_rows:
+        spec.warnings.append(
+            f"테스트 주문 데이터를 기획서 표에서 직접 읽어 썼습니다 "
+            f"({len(rows)}행). 모델이 낸 것과 달랐습니다 — 프롬프트를 확인하세요."
+        )
+    spec.seed_rows = rows
 
 
 def _drop_invented_strings(spec: ScreenSpec, doc: ParsedDocument) -> None:
