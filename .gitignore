@@ -12,3 +12,6 @@ runs/
 *.pem
 *.key
 id_rsa*
+
+# 웹 UI 로 올린 기획서 — 사용자 파일이므로 저장소에 넣지 않는다
+uploads/
