@@ -34,34 +34,19 @@ def _load_config(path: Path) -> dict:
 
 
 def _make_llm(backend: str, cfg: dict, pdf: Path):
-    """설정에 맞는 LLM 백엔드를 만든다.
+    """설정에 맞는 LLM 백엔드를 만든다 (규칙은 llm/factory.py 가 갖는다).
 
-    mock 은 어느 기획서를 검증하는지에 따라 다른 정답을 돌려줘야 하므로 PDF
-    경로를 받는다. 화면이 늘어나도 여기에 분기가 생기지 않는다.
+    CLI 는 경고를 노란색으로 찍는 일만 한다. 웹 UI 는 같은 경고를 화면에 띄운다.
     """
-    llm_cfg = cfg.get("llm", {})
+    from prova.llm.factory import BackendError, make_llm
 
-    if backend == "mock":
-        from prova.llm.mock_backend import MockLLM
-
-        typer.secho(
-            "  mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다.",
-            fg=typer.colors.YELLOW,
-        )
-        return MockLLM.for_spec(pdf)
-
-    if backend == "vllm":
-        from prova.llm.vllm_backend import VLLMClient
-
-        client = VLLMClient(
-            base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
-            model=llm_cfg.get("model", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
-            timeout=float(llm_cfg.get("timeout", 180)),
-        )
-        client.health()  # 실행 전에 연결을 확인한다
-        return client
-
-    raise typer.BadParameter(f"지원하지 않는 백엔드: {backend} (vllm | mock)")
+    try:
+        client, warnings = make_llm(backend, cfg, pdf)
+    except BackendError as exc:
+        raise typer.BadParameter(str(exc))
+    for w in warnings:
+        typer.secho(f"  {w}", fg=typer.colors.YELLOW)
+    return client
 
 
 @app.command()
@@ -80,6 +65,9 @@ def run(
     video: bool = typer.Option(False, "--video", help="실행 영상(webm) 녹화"),
     only: Optional[str] = typer.Option(None, "--only", metavar="패턴",
                                        help="case_id 에 패턴이 든 케이스만 실행"),
+    request: Optional[str] = typer.Option(
+        None, "--request", "-r", metavar="요청",
+        help="자연어 요청으로 케이스 고르기 (예: \"회원가입이 잘 되는지 확인해줘\")"),
     hold: float = typer.Option(0.0, "--hold", metavar="초",
                                help="끝난 뒤 마지막 화면을 유지할 초 (--headed 로 볼 때)"),
     vlm_url: Optional[str] = typer.Option(
@@ -162,10 +150,10 @@ def run(
         )
         raise typer.Exit(2)
 
-    if engine == "graph" and (slow or video or only or hold):
+    if engine == "graph" and (slow or video or only or hold or request):
         typer.secho(
-            "--slow / --video / --only / --hold 는 pipeline 엔진에서만 동작합니다 "
-            "(graph 는 결과 동일성 대조용).",
+            "--slow / --video / --only / --hold / --request 는 pipeline 엔진에서만 "
+            "동작합니다 (graph 는 결과 동일성 대조용).",
             fg=typer.colors.RED,
         )
         raise typer.Exit(2)
@@ -184,6 +172,7 @@ def run(
                 slow_mo=slow,
                 record_video=video,
                 only=only,
+                request=request,
                 hold_sec=hold,
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
@@ -232,6 +221,37 @@ def _print_summary(report, run_dir: Path) -> None:
 
     typer.echo("")
     typer.echo(f"  리포트: {run_dir / 'report.html'}")
+
+
+@app.command()
+def serve(
+    config: Path = typer.Option(DEFAULT_CONFIG, "--config"),
+    host: str = typer.Option(None, "--host", help="바인딩 주소 (기본 127.0.0.1)"),
+    port: int = typer.Option(None, "--port", help="포트 (기본 7007)"),
+) -> None:
+    """웹 UI 를 연다 — 자연어로 요청하고 계획을 승인한 뒤 실행한다.
+
+    호스팅이 아니라 **이 기계에서** 돈다. 브라우저와 테스트 대상이 여기 있기
+    때문이다 — 호스팅 서버는 localhost 나 사내 스테이징에 닿을 수 없다.
+    """
+    import uvicorn
+
+    cfg = _load_config(config).get("server", {})
+    bind = host or cfg.get("host", "127.0.0.1")
+    where = port or int(cfg.get("port", 7007))
+
+    if bind not in ("127.0.0.1", "localhost"):
+        # 이 서버는 이 기계의 파일을 읽고 이 기계의 브라우저를 연다. 바깥에 열면
+        # 그 두 가지가 그대로 남의 것이 된다.
+        typer.secho(
+            f"  경고: {bind} 로 바인딩합니다. 이 서버는 로컬 파일을 읽고 브라우저를 "
+            "조작하므로 외부에 노출하지 마세요.",
+            fg=typer.colors.RED,
+        )
+
+    typer.secho(f"Prova 웹 UI  http://{bind}:{where}", bold=True)
+    typer.echo("  종료하려면 Ctrl+C")
+    uvicorn.run("prova.server.app:app", host=bind, port=where, log_level="warning")
 
 
 @app.command()
