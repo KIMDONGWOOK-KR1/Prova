@@ -517,6 +517,15 @@ def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, s
         return False, reason
     if total_col.status != "ok" or not total_col.texts:
         return False, f"{total_target!r} 을(를) 화면에서 찾지 못했습니다 ({total_col.detail})"
+    # 반복이 정당한 열(금액)과 달리 합계는 하나여야 한다 — 여럿을 조용히
+    # 첫 값으로 접으면 근거가 거짓이 된다(판정 불능 = FAIL 원칙, 이 파일의
+    # '정확히 1개' 원칙과 같다). dom_locator 의 반복 라벨 경로는 합계가 정말
+    # 하나인지까지는 모르므로(그건 소비자만 아는 사실이다), 그 판단은 여기서 한다.
+    if len(total_col.texts) > 1:
+        return False, (
+            f"합계({total_target!r}) 요소가 {len(total_col.texts)}개 찾혔습니다 — "
+            f"어느 것이 합계인지 판정할 수 없습니다"
+        )
 
     parsed_rows = [_parse_amount(v) for v in rows.texts]
     if any(p is None for p in parsed_rows):

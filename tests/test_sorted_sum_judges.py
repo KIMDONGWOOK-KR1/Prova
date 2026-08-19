@@ -57,3 +57,8 @@ class TestSum:
         ok, why = _judge_sum_matches(EXP_SUM, _state(
             금액=["삼만원"], 합계=["30000"]))
         assert not ok and "파싱" in why
+
+    def test_합계_요소가_여러_개면_판정_불능으로_실패한다(self):
+        ok, why = _judge_sum_matches(EXP_SUM, _state(
+            금액=["1,000", "2,000"], 합계=["3,000원", "9,999원"]))
+        assert not ok and "2개" in why
