@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>주문조회</title>
+  <style>
+    body { font-family: "Malgun Gothic", sans-serif; background:#f4f5f7; margin:0;
+           display:flex; align-items:center; justify-content:center; min-height:100vh; }
+    .card { background:#fff; padding:36px 40px; border-radius:10px; width:420px;
+            box-shadow:0 2px 12px rgba(0,0,0,.08); }
+    h1 { font-size:22px; margin:0 0 24px; }
+    ul { list-style:none; margin:0; padding:0; }
+    li { display:flex; justify-content:space-between; gap:12px; padding:10px 0;
+         border-bottom:1px solid #eee; font-size:14px; }
+    .total-row { display:flex; justify-content:space-between; margin-top:16px;
+                 padding-top:14px; border-top:2px solid #333; font-size:15px;
+                 font-weight:700; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>주문조회</h1>
+
+    <!-- 마크업은 good/bad 가 완전히 동일하다. 두 실행의 차이가 정렬 순서(O1)와
+         합계 계산(O2)에서만 나오게 하기 위한 것이다. -->
+    <ul aria-label="주문 목록">
+      {% for order in orders %}
+      <li>
+        <span aria-label="주문번호">{{ order.주문번호 }}</span>
+        <span aria-label="주문일">{{ order.주문일 }}</span>
+        <span aria-label="금액">{{ order.금액_표시 }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+
+    <!-- 판정이 aria-label 요소의 텍스트를 그대로 파싱한다(금액은 정규식
+         ^[\d,]+원?$ 로 검사). "합계" 캡션을 aria-label 요소 밖에 따로 두는
+         이유는, 안에 같이 넣으면 파싱 대상 텍스트에 "합계"라는 글자가 섞여
+         금액으로 읽히지 않기 때문이다. 주문일·금액 span 도 같은 이유로
+         값 외의 글자를 넣지 않는다. -->
+    <div class="total-row">
+      <span>합계</span>
+      <div aria-label="합계">{{ total_text }}</div>
+    </div>
+  </div>
+</body>
+</html>

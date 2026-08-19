@@ -119,6 +119,21 @@ E1 이 흐름 검증(models.Flow)을 만든 이유다. 실무에서 troubles 로
 REGISTERED 를 good/bad 가 공유하면 good 이 가입시킨 계정을 bad 의 로그인이
 찾아내고, **E1 이 good 을 한 번 돌린 뒤에는 사라진다.** 실행 순서에 따라 결과가
 달라지는 테스트는 결과를 신뢰할 수 없다.
+
+## bad 주문조회에 심은 의도적 불일치 2종
+
+로그인 가드는 상품등록과 동일하게 양쪽 변형에 다 있다 — 여기서 재는 변수는
+정렬·합계 두 가지뿐이라, 가드까지 갈리면 세 번째 변수가 섞인다.
+
+    O1  주문일 오름차순(과거 → 최근)으로 정렬한다 (기획서는 내림차순을 요구)
+        → 목록 자체는 다섯 건이 다 나온다. '값이 틀렸다' 가 아니라 '순서가
+           틀렸다' 는, 검색 화면의 D1(대소문자)과 같은 부류의 결함이다 —
+           위반값이 아니라 정상 데이터로만 잡아낼 수 있다.
+    O2  합계에서 화면에 마지막으로 "표시된" 행의 금액을 뺀다
+        → O1 과 맞물려 값이 달라진다: bad 는 오름차순으로 보여주므로 마지막
+           표시 행이 ORD-005(1,290,000)가 되어, 합계는 1,859,000 이 아니라
+           569,000 으로 뜬다. 시드가 바뀌어도 결함이 정직하게 유지되도록
+           하드코딩한 값이 아니라 "표시된 행의 합 - 마지막 행" 으로 계산한다.
 """
 
 from __future__ import annotations
@@ -189,6 +204,29 @@ MSG_PRODUCT_NAME_LENGTH = "상품명은 50자 이내로 입력해주세요."
 MSG_PRODUCT_PRICE_NUMERIC = "가격은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_STOCK_NUMERIC = "재고수량은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_SUCCESS = "상품이 등록되었습니다."
+
+# 주문조회 시드 데이터. 기획서 §1-2 '테스트 주문 데이터' 표 그대로 — 시드가
+# 표와 어긋나면 검증이 성립하지 않는다. 주문일 내림차순으로 적어 두었지만
+# 렌더 시점에는 항상 명시적으로 다시 정렬한다(good: 내림차순, bad: O1 로
+# 오름차순) — 상수의 나열 순서에 기대면 그 사실이 코드에 보이지 않는다.
+SEED_ORDERS = (
+    {"주문번호": "ORD-005", "주문일": "2026-08-15", "상품명": "노트북",
+     "금액": 1290000, "상태": "배송중"},
+    {"주문번호": "ORD-004", "주문일": "2026-08-12", "상품명": "마우스",
+     "금액": 39000, "상태": "배송완료"},
+    {"주문번호": "ORD-003", "주문일": "2026-08-09", "상품명": "키보드",
+     "금액": 89000, "상태": "배송완료"},
+    {"주문번호": "ORD-002", "주문일": "2026-08-03", "상품명": "모니터",
+     "금액": 429000, "상태": "취소"},
+    {"주문번호": "ORD-001", "주문일": "2026-07-28", "상품명": "케이블",
+     "금액": 12000, "상태": "배송완료"},
+)
+
+
+def _format_amount(amount: int) -> str:
+    """'1290000' -> '1,290,000원'. 판정 쪽 정규식(^[\\d,]+원?$)과 짝이다."""
+    return f"{amount:,}원"
+
 
 # F1: bad 가 노출하는, 노출하면 안 되는 문구.
 #
@@ -335,6 +373,25 @@ def render_product(
         request=request,
         name="product.html",
         context={"variant": variant, "error": error, "success": success},
+    )
+
+
+def render_orders(
+    request: Request,
+    variant: str,
+    orders: tuple[dict, ...],
+    total: int,
+) -> HTMLResponse:
+    rows = [
+        {"주문번호": o["주문번호"], "주문일": o["주문일"],
+         "금액_표시": _format_amount(o["금액"])}
+        for o in orders
+    ]
+    return templates.TemplateResponse(
+        request=request,
+        name="orders.html",
+        context={"variant": variant, "orders": rows,
+                 "total_text": _format_amount(total)},
     )
 
 
@@ -604,6 +661,20 @@ def good_product_submit(
 
 
 # ---------------------------------------------------------------------------
+# good/orders — 기획서를 전부 지킨 구현
+# ---------------------------------------------------------------------------
+
+
+@app.get("/good/orders", response_class=HTMLResponse)
+def good_orders(request: Request):
+    if "session_good" not in request.cookies:
+        return RedirectResponse("/good/login", status_code=303)
+    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"], reverse=True)
+    total = sum(o["금액"] for o in rows)
+    return render_orders(request, "good", rows, total)
+
+
+# ---------------------------------------------------------------------------
 # bad/signup — 의도적으로 규칙을 빠뜨린 구현
 # ---------------------------------------------------------------------------
 
@@ -683,6 +754,29 @@ def bad_product_submit(
     if not stock.isdigit():
         return render_product(request, "bad", error=MSG_PRODUCT_STOCK_NUMERIC)
     return render_product(request, "bad", success=MSG_PRODUCT_SUCCESS)
+
+
+# ---------------------------------------------------------------------------
+# bad/orders — 의도적으로 심은 결함 O1(정렬)·O2(합계)
+# ---------------------------------------------------------------------------
+#
+# 로그인 가드는 good 과 동일하다(P2 와 반대) — 여기서 재는 변수는 O1·O2 뿐이라
+# 가드까지 다르게 두면 세 번째 변수가 섞인다.
+
+
+@app.get("/bad/orders", response_class=HTMLResponse)
+def bad_orders(request: Request):
+    if "session_bad" not in request.cookies:
+        return RedirectResponse("/bad/login", status_code=303)
+    # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
+    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"])
+    # O2: 합계에서 화면에 마지막으로 "표시된" 행의 금액을 뺀다. O1 때문에
+    # bad 는 오름차순으로 보여주므로 마지막 표시 행은 ORD-005(1,290,000)다 —
+    # 합계 = 1,859,000 - 1,290,000 = 569,000. 하드코딩하지 않고 "표시된 행의
+    # 합 - 마지막 행" 으로 계산해, 시드가 바뀌어도 결함이 정직하게 유지되게
+    # 한다.
+    total = sum(o["금액"] for o in rows) - rows[-1]["금액"]
+    return render_orders(request, "bad", rows, total)
 
 
 # ---------------------------------------------------------------------------
@@ -782,6 +876,8 @@ def index():
         "<li><a href='/bad/find-account'>/bad/find-account — 계정 존재 여부를 노출</a></li>"
         "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
+        "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"
+        "<li><a href='/bad/orders'>/bad/orders — 정렬(O1)·합계(O2) 결함</a></li>"
         "</ul>"
         "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
         "<ul>"
