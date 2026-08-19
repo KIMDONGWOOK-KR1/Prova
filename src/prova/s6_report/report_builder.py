@@ -28,7 +28,8 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-from prova.models import SpecDocument, TestReport, Verdict
+from prova.models import CaseSelection, SpecDocument, TestReport, Verdict
+from prova.theme import TOKENS_CSS
 # 전략 이름 -> 사람이 읽는 설명. 표를 dom_locator 에 두는 이유는 전략 이름을
 # 만드는 곳과 같은 파일이라야 새 전략을 추가할 때 눈에 들어오기 때문이다 —
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
@@ -53,6 +54,7 @@ def build_report(
     coverage: list[str] | None = None,
     spec_source: str = "",
     backend: str = "",
+    selection: CaseSelection | None = None,
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -76,6 +78,7 @@ def build_report(
         summary=summary,
         cases=verdicts,
         created_at=datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
+        selection=selection,
     )
 
 
@@ -93,19 +96,16 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 # HTML
 # ---------------------------------------------------------------------------
 
-_CSS = """
-:root {
-  --bg:#f6f7f9; --card:#fff; --line:#e3e6ea; --text:#1c1f23; --muted:#666d75;
-  --pass:#1a7f4b; --pass-bg:#e8f6ee; --fail:#c02626; --fail-bg:#fdecec;
-  --accent:#2f6fed;
-}
+# 색·간격·서체는 theme.TOKENS_CSS 가 유일한 출처다. 여기서 색을 새로 만들면
+# 웹 UI 안에 iframe 으로 떴을 때 같은 화면에 파란색이 두 가지가 된다.
+_CSS = TOKENS_CSS + """
 * { box-sizing:border-box; }
 body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
-       font-family:"Malgun Gothic","Segoe UI",sans-serif; font-size:14px; line-height:1.6; }
+       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal); }
 .wrap { max-width:1080px; margin:0 auto; }
 h1 { font-size:24px; margin:0 0 4px; }
 .meta { color:var(--muted); font-size:13px; margin-bottom:24px; }
-.meta code { background:#eceff3; padding:1px 5px; border-radius:3px; font-size:12px; }
+.meta code { background:var(--bg-inset); padding:1px 5px; border-radius:3px; font-size:12px; }
 .cards { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
 .card { background:var(--card); border:1px solid var(--line); border-radius:8px;
         padding:16px 20px; min-width:120px; flex:1; }
@@ -125,10 +125,10 @@ h2 { font-size:17px; margin:28px 0 12px; }
        white-space:nowrap; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:#eef2fb; color:var(--accent); font-weight:600; }
+.tag.rule { background:var(--accent-bg); color:var(--accent-fg); font-weight:600; }
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; }
-.body { border-top:1px solid var(--line); padding:14px 16px; background:#fbfcfd; }
+.body { border-top:1px solid var(--line); padding:14px 16px; background:var(--bg-canvas); }
 .reason { background:var(--fail-bg); border-left:3px solid var(--fail); padding:10px 12px;
           border-radius:0 4px 4px 0; margin-bottom:14px; }
 table.kv { width:100%; border-collapse:collapse; margin-bottom:12px; }
@@ -137,28 +137,28 @@ table.kv th { text-align:left; width:110px; vertical-align:top; color:var(--mute
 table.kv td { padding:5px 0; word-break:break-all; }
 .steps { border-collapse:collapse; width:100%; font-size:13px; }
 .steps th, .steps td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
-.steps th { background:#f0f2f5; font-weight:600; }
+.steps th { background:var(--bg-inset); font-weight:600; }
 .steps td.err { color:var(--fail); }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 .shots a { display:block; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
-             background:#fff; display:block; }
+             background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
-.heal { background:#f3eefb; border:1px solid #cbb8e8; border-radius:6px;
+.heal { background:var(--note-bg); border:1px solid var(--note-fg); border-radius:6px;
         padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
-.heal b { color:#6b3fa0; }
+.heal b { color:var(--note-fg); }
 .heal .why { color:var(--muted); margin:2px 0 8px; }
-.gap { background:#eef4fb; border:1px solid #b8cfe8; border-radius:6px;
+.gap { background:var(--info-bg); border:1px solid var(--accent-border); border-radius:6px;
        padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
-.gap b { color:var(--accent); }
+.gap b { color:var(--info-fg); }
 .gap .why { color:var(--muted); margin:2px 0 8px; }
-.warn { background:#fff8e1; border:1px solid #f0d68a; border-radius:6px;
+.warn { background:var(--warn-bg); border:1px solid var(--warn-fg); border-radius:6px;
         padding:10px 14px; margin-bottom:18px; }
 .warn b { display:block; margin-bottom:4px; }
 .empty { color:var(--muted); padding:12px 0; }
 .screens { border-collapse:collapse; font-size:13px; margin:14px 0 4px; }
 .screens th, .screens td { border:1px solid var(--line); padding:5px 10px; text-align:left; }
-.screens th { background:#f0f2f5; font-weight:600; }
+.screens th { background:var(--bg-inset); font-weight:600; }
 .screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
 .screens td.f { color:var(--fail); font-weight:700; }
 .screens td.k { color:var(--muted); font-size:12px; }
@@ -340,6 +340,58 @@ def render_html(report: TestReport) -> str:
             f"{total}건만 실행했습니다. 이 통과율은 전체 상태를 뜻하지 않습니다.</div></div>"
         )
 
+    # 자연어 요청으로 고른 실행. --only 와 같은 부분 실행이지만 위험이 더 크다 —
+    # 필터는 사람이 쓴 문자열이라 무엇이 빠졌는지 스스로 알지만, 요청 해석은
+    # 모델이 골랐으므로 무엇이 빠졌는지 사람이 모른다. 그래서 제외 목록을
+    # 통째로 싣는다.
+    sel = report.selection
+    sel_html = ""
+    if sel and sel.request:
+        rows = [f"<div>요청: <code>{_esc(sel.request)}</code></div>"]
+        if sel.reason:
+            rows.append(f"<div>선택 근거: {_esc(sel.reason)}</div>")
+        for w in sel.warnings:
+            rows.append(f"<div>· {_esc(w)}</div>")
+        if sel.fallback:
+            rows.append(
+                "<div>요청을 해석하지 못해 <b>전체 케이스를 실행</b>했습니다 — "
+                "해석 실패는 적게 검사하는 쪽이 아니라 많이 검사하는 쪽으로 넘어집니다.</div>"
+            )
+        # 요청이 화면을 이름으로 지목했는데 일부만 골라진 경우. '몇 건 제외' 만
+        # 보면 그 화면을 확인했다고 읽힌다 — 실모델 측정에서 "회원가입이 잘
+        # 되는지" 에 17건 중 6건만 골라진 것이 프롬프트로는 안 고쳐졌고, 이
+        # 표시가 그 남은 구멍의 방어선이다.
+        risky = [c for c in sel.coverage if c.named and c.partial]
+        for c in risky:
+            rows.append(
+                f"<div class='why'><b>'{_esc(c.name)}' 화면은 {c.total}건 중 "
+                f"{c.selected}건만 실행됩니다</b> — 요청이 이 화면을 가리켰지만 "
+                "일부만 골라졌습니다. 이 화면의 통과율은 화면 전체의 상태를 뜻하지 않습니다.</div>"
+            )
+        partial = [c for c in sel.coverage if c.partial or c.selected == 0]
+        if partial:
+            rows.append("<div class='why'><b>화면별 확인 범위</b></div>")
+            for c in sel.coverage:
+                kind = "흐름 " if c.kind == "flow" else ""
+                rows.append(
+                    f"<div>· {kind}{_esc(c.name)} — {c.selected}/{c.total}건</div>"
+                )
+        if sel.excluded:
+            rows.append(
+                f"<div class='why'><b>이번 실행에서 제외한 케이스 ({len(sel.excluded)}건)</b> — "
+                "아래는 <b>통과한 것이 아니라 실행하지 않은 것</b>입니다.</div>"
+            )
+            rows += [f"<div>· {_esc(cid)}</div>" for cid in sel.excluded]
+        who = "요청을 확인한 뒤 사람이 승인한 실행" if sel.approved else "자연어 요청으로 고른 실행"
+        sel_html = (
+            f"<div class='gap'><b>{who} "
+            f"({len(sel.selected)}건 실행"
+            + (f" · {len(sel.excluded)}건 제외" if sel.excluded else "")
+            + ")</b>"
+            + "".join(rows)
+            + "</div>"
+        )
+
     gaps = s.get("coverage_gaps") or []
     gap_html = ""
     if gaps:
@@ -419,7 +471,7 @@ def render_html(report: TestReport) -> str:
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
 </div>
-{mock_warn}{filter_warn}{heal_html}{settle_html}{gap_html}{warn_html}
+{mock_warn}{filter_warn}{sel_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>
