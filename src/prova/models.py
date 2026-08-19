@@ -369,6 +369,78 @@ class TestCase(BaseModel):
     expected: Expectation
 
 
+class ScreenCoverage(BaseModel):
+    """한 화면(또는 흐름)을 이번 실행에서 얼마나 확인했는가.
+
+    ## 왜 '몇 건 제외' 만으로는 부족한가
+
+    실모델 측정에서 "회원가입이 잘 되는지 확인해줘" 에 7B 가 17건 중 6건을 골랐다.
+    리포트에는 "11건 제외" 라고만 남는데, 그것만 보면 **회원가입 화면을 확인했다고
+    읽힌다.** 실제로는 그 화면의 3분의 1만 봤다.
+
+    화면 단위로 세어 두면 "회원가입 6/17" 이 되고, 통과율이 그 화면의 상태를 뜻하지
+    않는다는 사실이 드러난다.
+    """
+
+    kind: Literal["screen", "flow"] = "screen"
+    key: str
+    #: 사람이 읽는 이름 (없으면 key 를 쓴다)
+    name: str = ""
+    selected: int = 0
+    total: int = 0
+    #: 요청이 이 화면을 이름으로 지목했는가.
+    #:
+    #: 지목했는데 일부만 골랐다면 특히 위험하다 — 사람은 그 화면을 통째로
+    #: 확인했다고 읽는다.
+    named: bool = False
+
+    @property
+    def partial(self) -> bool:
+        return 0 < self.selected < self.total
+
+
+class CaseSelection(BaseModel):
+    """자연어 요청이 어떤 케이스를 고르게 했는지 (S2 이후, S3 이전).
+
+    ## 왜 별도 자료형인가
+
+    이 층은 **미탐을 만들 수 있는 유일한 경로**다. 지금까지 케이스 선택에 LLM 이
+    관여하지 않았기 때문에 "리포트에 없는 결함은 없는 결함" 이 성립했다. 요청
+    해석이 케이스를 고르기 시작하면, 모델이 잘못 골라서 못 본 것과 정말 없는 것이
+    리포트에서 같아 보인다.
+
+    그래서 고른 결과만이 아니라 **무엇을 왜 제외했는지**를 함께 싣는다. 2차 경로
+    보정과 대기 시간을 리포트에 남긴 것과 같은 이유다 — 도구가 판단을 했으면 그
+    사실이 리포트에 있어야 한다.
+    """
+
+    #: 사용자가 쓴 요청 원문. 비어 있으면 요청 없이 전체를 실행한 것이다.
+    request: str = ""
+    #: 실제로 실행한 case_id (원본 순서 유지)
+    selected: list[str] = Field(default_factory=list)
+    #: 생성됐지만 이번에 실행하지 않은 case_id. 리포트에서 coverage_gaps 와
+    #: 나란히 보인다 — 둘 다 "판정이 아니라 검증 범위에 대한 사실" 이다.
+    excluded: list[str] = Field(default_factory=list)
+    #: 모델이 밝힌 선택 근거
+    reason: str = ""
+    #: 요청을 해석하지 못해 전체를 실행했는가.
+    #:
+    #: 해석 실패는 반드시 '더 많이 검사하는' 쪽으로 넘어진다. 적게 고르면 결함이
+    #: 숨지만 많이 고르면 숨지 않는다 — 방향이 한쪽뿐이라 안전한 쪽이 정해져 있다.
+    fallback: bool = False
+    #: 사람이 목록을 확인하고 승인했는가 (웹 UI 의 계획 확인 단계).
+    #:
+    #: 모델이 고른 것과 사람이 고른 것을 리포트에서 구분하기 위해 둔다. 사람의
+    #: 선택을 모델이 한 것처럼 적으면, 도구가 한 판단을 남기는 것과 반대 방향의
+    #: 같은 부정확이다.
+    approved: bool = False
+    #: 지어낸 case_id, 해석 실패 등 사람이 알아야 할 사실
+    warnings: list[str] = Field(default_factory=list)
+    #: 화면·흐름별로 몇 건 중 몇 건을 골랐는지. '11건 제외' 만으로는 어느 화면을
+    #: 반쪽만 봤는지 알 수 없다 (ScreenCoverage 참고).
+    coverage: list[ScreenCoverage] = Field(default_factory=list)
+
+
 # ---------------------------------------------------------------------------
 # S3 · 요소 탐지 결과
 # ---------------------------------------------------------------------------
@@ -467,6 +539,9 @@ class TestReport(BaseModel):
     summary: dict = Field(default_factory=dict)  # {total, pass, fail, healed, pass_rate}
     cases: list[Verdict] = Field(default_factory=list)
     created_at: str = ""
+    #: 자연어 요청으로 케이스를 골랐다면 그 내역. 요청 없이 전체를 실행했으면 None.
+    #: 통과율만 보는 사람이 '무엇을 안 봤는지' 를 알 수 있어야 한다.
+    selection: Optional[CaseSelection] = None
 
     @staticmethod
     def summarize(verdicts: list[Verdict]) -> dict:
