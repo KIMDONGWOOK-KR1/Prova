@@ -27,10 +27,12 @@ Verdict.evidence 에 기대·실제·URL·스크린샷을 담는다. FAIL 만이
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
+from typing import Optional
 
 from prova.models import Expectation, StepResult, TestCase, Verdict
-from prova.s3_grounder.dom_locator import CollectionCount
+from prova.s3_grounder.dom_locator import CollectionCount, CollectionTexts
 from prova.text_utils import contains_loose, normalize_ws
 
 
@@ -62,6 +64,10 @@ class PageState:
     # 라벨 -> "" (접근성 속성으로 찾을 수 있음) 또는 실패 사유.
     # type="labels_findable" 에서만 채워진다.
     findable: dict[str, str] | None = None
+    # 라벨 -> 반복 목록의 각 항목 텍스트 (type="sorted_desc"·"sum_matches" 에서만
+    # 채워진다). collection 필드와 같은 조건부 원칙 — 이 두 판정이 아닌 케이스까지
+    # 채우면 근거에 늘 딸려 나와 리포트를 읽는 사람이 매번 그게 뭔지 확인해야 한다.
+    column_texts: dict[str, CollectionTexts] | None = None
 
     # 브라우저 기본 검증이 제출을 막았는가 (form.checkValidity() == false).
     #
@@ -79,6 +85,7 @@ def capture_page_state(
     options: list[str] | None = None,
     placeholders: dict[str, str] | None = None,
     findable: dict[str, str] | None = None,
+    column_texts: dict[str, CollectionTexts] | None = None,
 ) -> PageState:
     """Playwright Page 에서 판정에 필요한 정보만 뽑는다.
 
@@ -122,6 +129,7 @@ def capture_page_state(
         options=options,
         placeholders=placeholders,
         findable=findable,
+        column_texts=column_texts,
         blocked_by_browser=blocked,
     )
 
@@ -418,6 +426,117 @@ def _judge_labels_findable(
     return False, " / ".join(parts)
 
 
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+_AMOUNT_RE = re.compile(r"^[\d,]+원?$")
+
+
+def _parse_amount(text: str) -> Optional[int]:
+    """'1,290,000원' 같은 문구를 정수로 바꾼다. 숫자·쉼표·'원' 외의 문자가
+    하나라도 섞이면 파싱하지 않고 None 을 돌려준다 — 억지로 숫자만 긁어내면
+    '약 3만원' 같은 문구도 30000 으로 읽어, 화면이 실제로 무엇을 보여줬는지가
+    사유에서 사라진다."""
+    t = text.strip()
+    if not _AMOUNT_RE.fullmatch(t):
+        return None
+    return int(t.rstrip("원").replace(",", ""))
+
+
+def _column(state: PageState, target: str | None) -> tuple[CollectionTexts | None, str]:
+    """column_texts 에서 라벨 하나를 꺼낸다. 없으면 None 과 사유를 함께 돌려준다."""
+    if not target:
+        return None, "기대 라벨이 지정되지 않았습니다 (케이스 생성 오류)"
+    if state.column_texts is None or target not in state.column_texts:
+        return None, f"{target!r} 을 수집하지 않았습니다 (실행 단계에서 수집되지 않음)"
+    return state.column_texts[target], ""
+
+
+def _judge_sorted_desc(expected: Expectation, state: PageState) -> tuple[bool, str]:
+    """반복 목록이 target 컬럼 기준 내림차순(최신 우선)인가.
+
+    ## 씨앗 표와 대조하지 않는 이유
+
+    이 판정은 화면이 스스로 모순인지만 본다 — 화면에 찍힌 날짜들을 그 화면
+    안에서 비교할 뿐, 시딩할 때 넣은 원본 순서와는 대조하지 않는다(스펙 §3-4).
+    씨앗과 대조하려면 이 판정이 씨앗 데이터를 알아야 하는데, 그러면 판정이
+    '화면이 옳은가' 가 아니라 '씨딩과 화면이 같은가' 를 묻게 되어 화면 자체의
+    정렬 로직 결함(예: 문자열 정렬로 날짜를 섞는 버그)을 놓칠 수 있다.
+
+    ## 요소 0개를 실패로 두는 이유
+
+    빈 목록은 '정렬 규칙을 어기지 않았다' 가 아니라 '아무것도 확인하지 못했다'
+    이다. 통과시키면 목록이 렌더되지 않는 결함이 있어도 이 케이스가 초록불을
+    낸다 — 아무것도 확인하지 않은 초록불은 오탐보다 나쁘다.
+    """
+    target = expected.order_target
+    got, reason = _column(state, target)
+    if got is None:
+        return False, reason
+    if got.status != "ok":
+        return False, f"{target!r} 을(를) 셀 수 없습니다 — {got.detail}"
+    values = got.texts
+    if not values:
+        return False, f"{target!r} 항목이 0개 — 정렬을 확인할 수 없습니다 ({got.detail})"
+
+    parsed = [_DATE_RE.fullmatch(v.strip()) for v in values]
+    if not all(parsed):
+        bad = [v for v, m in zip(values, parsed) if not m]
+        return False, f"{target!r} 의 값이 날짜 형식(YYYY-MM-DD)이 아니어서 파싱 실패: {bad}"
+
+    for i in range(len(values) - 1):
+        if values[i] < values[i + 1]:
+            return False, (
+                f"{target!r} 정렬이 깨짐 — {values[i]!r} 다음에 더 최근인 "
+                f"{values[i + 1]!r} 이(가) 옴 (인덱스 {i}->{i + 1})"
+            )
+    return True, f"{target!r} {len(values)}개 항목이 내림차순으로 정렬됨"
+
+
+def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, str]:
+    """반복 목록 각 행의 금액 합이 화면이 보여주는 합계와 같은가.
+
+    _judge_sorted_desc 와 같은 이유로 씨앗 데이터와 대조하지 않는다 — 화면에
+    찍힌 행들의 합과 화면에 찍힌 합계 문구, 그 둘만 서로 대조한다(스펙 §3-4).
+    구현이 합계를 잘못 계산하는 결함은 이렇게만 잡을 수 있다. 씨앗과 대조하면
+    씨딩 데이터 자체가 흔들릴 때 이 판정도 같이 흔들린다.
+
+    행이 0개면 확인할 것이 없다는 뜻이 아니라 아무것도 못 봤다는 뜻이므로 FAIL —
+    _judge_sorted_desc 의 0개 처리와 같은 원칙이다.
+    """
+    row_target = expected.sum_row_target
+    total_target = expected.sum_total_target
+    rows, reason = _column(state, row_target)
+    if rows is None:
+        return False, reason
+    if rows.status != "ok":
+        return False, f"{row_target!r} 을(를) 셀 수 없습니다 — {rows.detail}"
+    if not rows.texts:
+        return False, f"{row_target!r} 항목이 0개 — 합계를 확인할 수 없습니다 ({rows.detail})"
+
+    total_col, reason = _column(state, total_target)
+    if total_col is None:
+        return False, reason
+    if total_col.status != "ok" or not total_col.texts:
+        return False, f"{total_target!r} 을(를) 화면에서 찾지 못했습니다 ({total_col.detail})"
+
+    parsed_rows = [_parse_amount(v) for v in rows.texts]
+    if any(p is None for p in parsed_rows):
+        bad = [v for v, p in zip(rows.texts, parsed_rows) if p is None]
+        return False, f"{row_target!r} 의 값을 금액으로 파싱 실패: {bad}"
+
+    total_text = total_col.texts[0]
+    total_amount = _parse_amount(total_text)
+    if total_amount is None:
+        return False, f"{total_target!r} 의 값 {total_text!r} 을(를) 금액으로 파싱 실패"
+
+    computed = sum(parsed_rows)
+    if computed == total_amount:
+        return True, f"{row_target!r} 합계 {computed} 이(가) {total_target!r} {total_amount} 와 일치"
+    return False, (
+        f"{row_target!r} 행 {len(parsed_rows)}개의 합은 {computed} 인데, "
+        f"화면의 {total_target!r} 은(는) {total_amount} 로 표시됨 — 불일치"
+    )
+
+
 _JUDGES = {
     "error_message": _judge_error_message,
     "error_shown": _judge_error_shown,
@@ -429,6 +548,8 @@ _JUDGES = {
     "options_present": _judge_options_present,
     "placeholders_match": _judge_placeholders_match,
     "labels_findable": _judge_labels_findable,
+    "sorted_desc": _judge_sorted_desc,
+    "sum_matches": _judge_sum_matches,
 }
 
 

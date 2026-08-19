@@ -41,7 +41,9 @@ from prova.s2_case_generator.generator import generate_cases, generate_flow_case
 from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s3_grounder.dom_locator import (
     CollectionCount,
+    CollectionTexts,
     check_findable,
+    collect_item_texts,
     count_items,
     read_options,
     read_placeholders,
@@ -317,6 +319,7 @@ def _verify_when_ready(
             state.page, console_errors,
             _count_for(state, case), _options_for(state, case),
             _placeholders_for(state, case), _findable_for(state, case),
+            _texts_for(state, case),
         )
         return verify(case, step_results, page_state)
 
@@ -393,6 +396,33 @@ def _count_for(state: AgentState, case: TestCase) -> Optional[CollectionCount]:
          if e.label == expected.count_target), None
     )
     return count_items(state.page, expected.count_target, hint)
+
+
+def _texts_for(state: AgentState, case: TestCase) -> Optional[dict[str, CollectionTexts]]:
+    """정렬·합계 검증 케이스면 필요한 라벨의 반복 목록 텍스트를 모은다.
+
+    _count_for 와 같은 조건부 원칙이다 — 어떤 라벨을 모을지는 케이스 유형이
+    정한다. sorted_desc 는 라벨 하나(order_target), sum_matches 는 둘
+    (sum_row_target·sum_total_target)이 필요해서 유형별로 갈라 모은다.
+    """
+    expected = case.expected
+    if expected.type == "sorted_desc":
+        labels = [expected.order_target] if expected.order_target else []
+    elif expected.type == "sum_matches":
+        labels = [t for t in (expected.sum_row_target, expected.sum_total_target) if t]
+    else:
+        return None
+    if not labels:
+        return None
+
+    out: dict[str, CollectionTexts] = {}
+    for label in labels:
+        hint = next(
+            (e for screen in state.doc.screens for e in screen.elements
+             if e.label == label), None
+        )
+        out[label] = collect_item_texts(state.page, label, hint)
+    return out
 
 
 def _options_for(state: AgentState, case: TestCase) -> Optional[list[str]]:
