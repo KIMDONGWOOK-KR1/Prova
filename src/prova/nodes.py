@@ -26,7 +26,14 @@ from typing import Optional
 from playwright.sync_api import Page
 
 from prova.llm.base import LLMClient
-from prova.models import ScreenSpec, SpecDocument, TestCase, TestReport, Verdict
+from prova.models import (
+    CaseSelection,
+    ScreenSpec,
+    SpecDocument,
+    TestCase,
+    TestReport,
+    Verdict,
+)
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
@@ -72,11 +79,20 @@ class AgentState:
     # 담긴다 — 화면 수에 따라 상태 모양이 갈리면 노드마다 분기가 생긴다.
     doc: Optional[SpecDocument] = None
     cases: list[TestCase] = field(default_factory=list)
+    # 선택 전 전체 케이스 (생성 순서 그대로).
+    #
+    # cases 는 자연어 선택 뒤 살아남은 것만 담는다. 그런데 계획 확인 화면은
+    # **제외된 것도 제목·화면·규칙과 함께** 보여야 한다 — 사람이 "이 제외가
+    # 안전한가" 를 판단하는 자리이므로, 판단이 가장 필요한 행에 정보가 없으면
+    # 확인 단계가 형식만 남는다.
+    all_cases: list[TestCase] = field(default_factory=list)
     # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것. 판정이 아니라
     # **검증 범위**에 대한 사실이므로 verdicts 와 따로 담는다.
     coverage_gaps: list[str] = field(default_factory=list)
     verdicts: list[Verdict] = field(default_factory=list)
     report: Optional[TestReport] = None
+    # 자연어 요청으로 케이스를 골랐다면 그 내역. 요청이 없었으면 None 이다.
+    selection: Optional[CaseSelection] = None
 
     # 2차 경로(화면 이미지로 요소 찾기) 제어.
     #
@@ -379,5 +395,6 @@ def build_final_report(state: AgentState) -> AgentState:
         coverage=state.coverage_gaps,
         spec_source=state.pdf_path,
         backend=getattr(state.llm, "name", "") if state.llm else "",
+        selection=state.selection,
     )
     return state
