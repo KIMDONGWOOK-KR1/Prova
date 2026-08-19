@@ -51,6 +51,7 @@ SYSTEM_PROMPT = """\
 | 소문자 N자 이상 포함 | require_lowercase | N (정수) |
 | 숫자 N자 이상 포함 | require_digit | N (정수) |
 | 특수문자 N자 이상 포함 | require_special | N (정수) |
+| 숫자만 입력 가능 | numeric | true |
 | 정규식 패턴 | pattern | 정규식 문자열 |
 | 다른 항목과 같은 값 (비밀번호 확인 등) | same_as | 그 항목의 element_id (문자열) |
 

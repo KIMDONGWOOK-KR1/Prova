@@ -1,0 +1,61 @@
+{
+  "screen_id": "product",
+  "screen_name": "상품 등록",
+  "url_path": "/product",
+  "elements": [
+    {
+      "element_id": "name",
+      "type": "input",
+      "label": "상품명",
+      "required": true,
+      "constraints": {
+        "max_length": 50
+      },
+      "error_message": "상품명은 50자 이내로 입력해주세요.",
+      "placeholder": "상품명을 입력하세요"
+    },
+    {
+      "element_id": "price",
+      "type": "input",
+      "label": "가격",
+      "required": true,
+      "constraints": {
+        "numeric": true
+      },
+      "error_message": "가격은 숫자만 입력할 수 있습니다.",
+      "placeholder": "숫자만 입력"
+    },
+    {
+      "element_id": "stock",
+      "type": "input",
+      "label": "재고수량",
+      "required": true,
+      "constraints": {
+        "numeric": true
+      },
+      "error_message": "재고수량은 숫자만 입력할 수 있습니다.",
+      "placeholder": "숫자만 입력"
+    },
+    {
+      "element_id": "submit",
+      "type": "button",
+      "label": "등록하기",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    }
+  ],
+  "success_condition": "모든 검증을 통과하면 \"상품이 등록되었습니다.\" 문구를 노출한다",
+  "failure_conditions": [
+    "필수 입력이 비어 있으면 \"필수 입력 항목입니다.\" 를 노출한다"
+  ],
+  "required_message": "필수 입력 항목입니다.",
+  "warnings": [],
+  "scenarios": [],
+  "precondition": {
+    "requires_login": true,
+    "account_email": "seller@test.com",
+    "account_password": "Wrong1!",
+    "login_screen_id": "login"
+  }
+}
