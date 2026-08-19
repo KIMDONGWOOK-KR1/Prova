@@ -416,10 +416,13 @@ class CollectionTexts:
     이유로, texts 도 '못 찾았다' 를 빈 배열로 뭉개지 않는다.
     """
 
-    target: str
     status: Literal["ok", "absent", "ambiguous"]
     texts: list[str] = field(default_factory=list)
     detail: str = ""
+    # target 을 맨 뒤·기본값 있게 둔 이유: assertion_engine 처럼 판정 쪽에서
+    # target 없이 세 인자(status·texts·detail)만으로 만들어 쓰는 자리가 있다.
+    # 형제 타입 CollectionCount 처럼 앞에 필수로 두면 그 호출이 깨진다.
+    target: str = ""
 
 
 def collect_item_texts(page, target: str, hint: UIElement | None = None) -> CollectionTexts:
