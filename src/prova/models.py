@@ -131,6 +131,18 @@ class Scenario(BaseModel):
     expect_absent: Optional[str] = None
 
 
+class Precondition(BaseModel):
+    """화면 진입 전에 세워야 할 전제. 지금은 로그인 하나만 표현한다.
+
+    kind 일반화는 두 번째 전제가 실재할 때(스펙 §7)에 한다.
+    """
+
+    requires_login: bool
+    account_email: str
+    account_password: str
+    login_screen_id: str = "login"
+
+
 class ScreenSpec(BaseModel):
     """설계 문서에서 추출한 화면 단위 명세. S1의 출력.
 
@@ -156,6 +168,8 @@ class ScreenSpec(BaseModel):
     # error_shown 으로 검증한다 — 문구를 억측하면 오탐이 된다.
     required_message: Optional[str] = None
     warnings: list[str] = Field(default_factory=list)
+    # 이 화면에 진입하기 위한 전제. 없으면 누구나 진입할 수 있다.
+    precondition: Optional[Precondition] = None
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
         return next((e for e in self.elements if e.element_id == element_id), None)
@@ -480,6 +494,8 @@ class StepResult(BaseModel):
     error_code: Optional[str] = None
     error_detail: Optional[str] = None
     location: Optional[ElementLocation] = None
+    # 전제를 세우는 스텝인지 — 리포트가 구분해 보여준다.
+    phase: Literal["setup", "test"] = "test"
 
 
 # ---------------------------------------------------------------------------
