@@ -445,6 +445,45 @@ class ParsedDocument:
                 front.append(page)
         return docs, warnings
 
+    def declared_precondition_account(self) -> Optional[list[list[str]]]:
+        """'전제' 절 아래에서 계정 표(헤더 '이메일|비밀번호')를 찾는다.
+
+        ## 왜 라벨이 아니라 절 제목 위치로 찾는가
+
+        지금까지의 declared_* 는 표의 **열 제목**으로 표를 골랐다. 이 표는 그럴 수
+        없다 — 화면 개요 표('항목|내용')처럼 §5 테스트 계정 표도 같은 '이메일|
+        비밀번호' 헤더를 쓴다. 열 제목만으로는 어느 표가 '전제' 절의 계정인지
+        구분할 수 없다. 그래서 본문에서 '전제' 절 제목이 나온 지점을 먼저 찾고,
+        그 뒤에 나오는 표 중 헤더가 맞는 첫 표를 계정 표로 본다.
+
+        절 제목은 본문에 '3. 전제' 처럼 번호와 함께 한 줄로 남는다(표 안 글자는
+        _extract_body_text 가 걷어낸다 — parse_pdf 참고). 그 줄 전체가 번호 +
+        '전제' 뿐일 때만 절의 시작으로 본다. 문장 속에 낱말로 등장하는 경우
+        ('...상태를 전제한다')와 구별해야 하기 때문이다.
+
+        ## 왜 헤더도 다시 확인하는가
+
+        절 제목 이후 첫 표가 항상 계정 표라는 보장은 없다(같은 페이지에 다른
+        표가 먼저 있을 수 있다). 헤더가 다르면 계정 표가 아니라고 보고 None 을
+        돌려준다 — 억측해서 엉뚱한 값으로 계정을 덮어쓰는 것보다, 판별 못 함을
+        인정하는 편이 안전하다.
+        """
+        heading_re = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
+        found = False
+        for page in self.pages:
+            if not found:
+                for line in page.body_text.splitlines():
+                    if heading_re.match(line):
+                        found = True
+                        break
+            if not found:
+                continue
+            for table in page.tables:
+                header = [normalize_ws(h) for h in table.header]
+                if header == ["이메일", "비밀번호"]:
+                    return [list(r) for r in table.rows]
+        return None
+
     def declared_flows(self) -> list[dict]:
         """'화면 흐름' 표를 그대로 흐름으로 옮긴다. LLM 을 쓰지 않는다.
 
