@@ -94,7 +94,9 @@ class TestAmbiguous:
 
 class TestConstruction:
     def test_세_인자만으로_만들_수_있다(self):
-        """판정 쪽(assertion_engine)이 target 없이 만들어 쓴다 — 필수로 만들면
-        그쪽이 깨진다."""
+        """판정 쪽(assertion_engine)이 이 세 인자만으로 만들어 쓴다 — target
+        필드는 없다(아무도 읽지 않아 지웠다. dom_locator 의 반환값은 이미
+        딕셔너리 키로 라벨을 들고 있어 CollectionTexts 자신이 라벨을 다시
+        담을 이유가 없었다)."""
         ct = CollectionTexts(status="ok", texts=["a"], detail="")
-        assert ct.target == ""
+        assert ct.status == "ok" and ct.texts == ["a"]

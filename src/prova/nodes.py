@@ -195,6 +195,13 @@ def run_cases(state: AgentState) -> AgentState:
 
     for case in state.cases:
         console_errors.clear()
+        if case.precondition_unmet:
+            # 전제(로그인)를 세울 스텝 자체를 만들지 못한 케이스다
+            # (TestCase.precondition_unmet 설명 참고). 브라우저로 실행하면
+            # 로그인 없이 본 스텝이 돌아 element_not_found 등으로 오분류되므로,
+            # 아예 실행하지 않고 여기서 곧바로 precondition_failed 로 판정한다.
+            state.verdicts.append(_precondition_unmet_verdict(state, case))
+            continue
         # 케이스 격리 — 앞 케이스가 남긴 세션이 다음 판정을 오염시키지 않게 한다.
         # 가드 케이스(비로그인 전제)가 실행 순서와 무관하게 정직해지고, 전제가
         # 있는 케이스는 어차피 setup 으로 매번 로그인한다 — storage_state 를
@@ -217,6 +224,44 @@ def run_cases(state: AgentState) -> AgentState:
             _verify_when_ready(state, case, step_results, console_errors))
 
     return state
+
+
+def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
+    """실행 없이 precondition_failed 를 합성한다 (TestCase.precondition_unmet).
+
+    ## 왜 실행하지 않는가
+
+    setup_steps 가 비어 있으므로 그대로 두면 본 스텝이 로그인 없이 돈다.
+    입력이야 채워지겠지만 제출은 인증되지 않은 상태로 처리되고, 그 결과가
+    구현 결함 때문인지 전제가 없어서인지 구분할 수 없는 잡음이 된다. 그래서
+    아예 실행하지 않는다 — '실행하지 않았음' 을 사유에 명시해, 이 FAIL 이
+    화면을 조작해 본 결과가 아니라는 사실이 리포트에서 드러나게 한다.
+
+    ## 사유를 어디서 가져오는가
+
+    generator.generate_cases 가 expand_precondition 의 경고를 이미
+    spec.warnings 에 남겨 뒀다(예: "로그인 화면(login)에서 이메일/비밀번호/
+    제출 요소를 찾지 못해 전제 스텝을 만들지 못했습니다."). 그 문장을 다시
+    찾아 쓴다 — 같은 사실을 두 곳에 다른 말로 적으면 언젠가 어긋난다.
+    """
+    screen = state.doc.screen_by_id(case.screen_id) if state.doc else None
+    reason = next(
+        (w for w in (screen.warnings if screen else [])
+         if "전제 스텝을 만들지 못했습니다" in w),
+        "전제 스텝을 만들지 못했습니다 (사유 미상)",
+    )
+    detail = f"전제(로그인)를 세울 수 없어 실행하지 않았습니다 — {reason}"
+    return Verdict(
+        case_id=case.case_id, title=case.title, type=case.type,
+        screen_id=case.screen_id, flow_id=case.flow_id,
+        violates=case.violates, target_element=case.target_element,
+        verdict="FAIL",
+        failure_category="precondition_failed",
+        failure_detail=detail,
+        evidence={"actual": detail},
+        elapsed_ms=0,
+        step_results=[],
+    )
 
 
 def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> list[StepResult]:

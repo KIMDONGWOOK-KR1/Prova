@@ -149,6 +149,44 @@ def arrival_check(page, expected: Expectation) -> tuple[bool, str]:
     return ok, "; ".join(reasons)
 
 
+def _wait_for_arrival(ctx: ExecutionContext, expected: Expectation) -> tuple[bool, str]:
+    """arrival_check 를 settle 창 동안 반복한다 — 대기는 FAIL 을 PASS 로만 바꾼다.
+
+    ## 왜 필요한가
+
+    setup 의 다섯 번째 스텝(로그인 성공 확인)과 흐름의 중간 도착 확인은 둘 다
+    제출 직후 곧바로 URL/문구를 본다. 동기식 폼 POST 라면 그걸로 충분하지만,
+    비동기 로그인(제출 -> fetch -> 응답 후 리다이렉트)에서는 그 순간 아직
+    이전 화면에 있다. 여기서 한 번만 보고 실패로 확정하면, 구현이 옳은 비동기
+    로그인이 setup 실패로 기록되고 그 화면 전체가 precondition_failed 로
+    오분류된다 — nodes._verify_when_ready 가 판정 대기로 막는 것과 같은
+    종류의 오탐을 여기서는 도착 확인이 만든다.
+
+    ## 원칙은 _verify_when_ready 와 같다
+
+    한 방향으로만 바꾼다 — FAIL 을 PASS 로 바꿀 수 있고 그 반대는 없다.
+    상한을 넘기면 마지막(실패) 결과를 그대로 쓴다. 이미 도착해 있으면 즉시
+    돌려주고 기다리지 않는다.
+
+    ## 왜 이 케이스만을 위한 새 설정을 만들지 않는가
+
+    ExecutionContext 에는 이 대기만을 위한 시간이 없다. 새 필드를 추가하는
+    대신 이미 있는 step_timeout_ms 를 재사용한다 — 이 스텝 하나가 "제출 뒤
+    화면이 바뀌기를 기다리는" 성격이고, 그건 스텝 하나의 타임아웃과 같은
+    종류의 대기이기 때문이다. AgentState.settle_timeout_ms(S5 판정 대기)는
+    여기서 쓰지 않는다 — ExecutionContext 는 그 값을 모르고, 이 스텝만을 위해
+    그 값을 새로 실어 나르는 것은 설정을 하나 더 만드는 일이다.
+    """
+    interval_ms = 100
+    arrived, reason = arrival_check(ctx.page, expected)
+    waited = 0
+    while not arrived and waited < ctx.step_timeout_ms:
+        ctx.page.wait_for_timeout(interval_ms)
+        waited += interval_ms
+        arrived, reason = arrival_check(ctx.page, expected)
+    return arrived, reason
+
+
 def _capture(ctx: ExecutionContext, seq: int) -> tuple[str | None, str | None]:
     """스크린샷과 DOM 스냅샷을 저장하고 리포트 기준 상대 경로를 돌려준다.
 
@@ -371,7 +409,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
             # 흐름의 중간 도착 확인. 여기서 끊기면 그 화면이 지목되고, 마지막
             # 화면이 애먼 소리를 듣지 않는다 (arrival_check 설명 참고).
             if step.expected is not None:
-                arrived, reason = arrival_check(ctx.page, step.expected)
+                arrived, reason = _wait_for_arrival(ctx, step.expected)
                 if not arrived:
                     status, error_code = "error", "assertion_mismatch"
                     error_detail = reason

@@ -251,6 +251,32 @@ class TestPreconditionCorrection:
         assert spec.precondition.account_email == "seller@test.com"
         assert spec.precondition.account_password == "Seller1!"
 
+    def test_경고가_달라진_필드를_모두_밝힌다(self):
+        """이메일만 언급하면(과거 버그) 비밀번호가 함께 틀렸다는 사실이
+        경고에서 사라진다 — 어느 필드가 달랐는지 둘 다 남겨야 한다."""
+        spec = ScreenSpec(screen_id="product", screen_name="상품 등록",
+                          url_path="/product",
+                          precondition=Precondition(requires_login=True,
+                                                    account_email="wrong@x.com",
+                                                    account_password="wrong"))
+        table = [["이메일", "비밀번호"], ["seller@test.com", "Seller1!"]]
+        _apply_declared_precondition(spec, table)
+        warning = spec.warnings[0]
+        assert "이메일" in warning and "wrong@x.com" in warning and "seller@test.com" in warning
+        assert "비밀번호" in warning and "wrong" in warning and "Seller1!" in warning
+
+    def test_이메일만_같으면_비밀번호_차이만_밝힌다(self):
+        spec = ScreenSpec(screen_id="product", screen_name="상품 등록",
+                          url_path="/product",
+                          precondition=Precondition(requires_login=True,
+                                                    account_email="seller@test.com",
+                                                    account_password="wrong"))
+        table = [["이메일", "비밀번호"], ["seller@test.com", "Seller1!"]]
+        _apply_declared_precondition(spec, table)
+        warning = spec.warnings[0]
+        assert "비밀번호" in warning
+        assert "이메일" not in warning
+
     def test_전제_절이_없으면_건드리지_않는다(self):
         spec = ScreenSpec(screen_id="login", screen_name="로그인",
                           url_path="/login")

@@ -316,6 +316,42 @@ class TestSummaryBuckets:
         assert s["by_flow"]["f"] == {"total": 1, "pass": 0, "fail": 1}
         assert s["total"] == 2 and s["fail"] == 1
 
+    def test_전제_실패는_화면_칸의_fail_이_아니라_precondition_칸에_들어간다(self):
+        """전제(로그인) 실패는 이 화면의 결함이 아니다(명세서 §3-6·§3-7) — 로그인
+        화면이 이미 자신의 FAIL 을 낸다. 화면별 집계의 'fail' 에 합치면 같은
+        결함이 이 화면에도 있는 것처럼 불어난다. 케이스 자체는 여전히 FAIL 이므로
+        전체 요약의 total/fail 은 그대로여야 한다 — 바뀌는 것은 화면별 귀속뿐이다."""
+        from prova.models import TestReport
+
+        setup_fail_step = StepResult(seq=4, action="click", target="로그인",
+                                     status="error", phase="setup",
+                                     error_code="element_not_found")
+        precondition_v = verify(
+            TestCase(case_id="product-valid-001", screen_id="product", title="t",
+                     type="positive",
+                     setup_steps=[TestStep(seq=1, action="navigate", target="/login")],
+                     steps=[TestStep(seq=1, action="navigate", target="/product")],
+                     expected=Expectation(type="toast_or_redirect")),
+            [setup_fail_step], state())
+        assert precondition_v.failure_category == "precondition_failed"
+
+        other_fail_v = verify(
+            TestCase(case_id="product-price-numeric-001", screen_id="product",
+                     title="t2", type="negative", violates="numeric",
+                     steps=[TestStep(seq=1, action="navigate", target="/product")],
+                     expected=Expectation(type="error_shown")),
+            steps_ok(1), state(text=""))
+        assert other_fail_v.verdict == "FAIL"
+        assert other_fail_v.failure_category != "precondition_failed"
+
+        s = TestReport.summarize([precondition_v, other_fail_v])
+        # 화면별 칸: 전제 실패는 precondition 칸으로, 일반 실패는 fail 칸으로.
+        assert s["by_screen"]["product"] == {
+            "total": 2, "pass": 0, "fail": 1, "precondition": 1,
+        }
+        # 전체 요약은 바뀌지 않는다 — 케이스 둘 다 여전히 FAIL 이다.
+        assert s["total"] == 2 and s["fail"] == 2 and s["pass"] == 0
+
 
 class TestOptionsPresent:
     """선택 항목 판정 — 빠진 것만 본다."""

@@ -98,3 +98,73 @@ class TestSeedRowCases:
         assert not any(c.case_id.startswith("orders-sorted-") for c in cases)
         assert any(c.case_id.startswith("orders-sum-") for c in cases)
         assert any("정렬" in w for w in spec.warnings)
+
+
+class TestSeedColumnAmbiguity:
+    """열 이름이 아니라 값의 모양으로 찾다 보니, 모양이 같은 열이 둘이면
+    어느 것인지 코드가 정할 수 없다 (I1). 억측해 하나를 고르면 기획서가
+    실제로 검증하려던 열이 아닌 다른 열을 검사하고도 통과라고 말할 수 있는
+    조용한 오탐이 된다 — 그래서 아무것도 만들지 않고 둘 다 이름으로 알린다."""
+
+    def test_날짜_모양_열이_두_개면_정렬_케이스를_만들지_않고_둘_다_알린다(self):
+        seed_rows = [
+            {**row, "배송일": row["주문일"]} for row in SEED_ROWS
+        ]
+        elements = orders_elements() + [
+            UIElement(element_id="ship_date", type="text", label="배송일"),
+        ]
+        spec = orders_spec(seed_rows=seed_rows, elements=elements)
+        cases = generate_cases(spec)
+
+        assert not any(c.case_id.startswith("orders-sorted-") for c in cases)
+        # 합계는 금액 열이 하나뿐이므로 영향받지 않는다 — 두 검증은 독립이다.
+        assert any(c.case_id.startswith("orders-sum-") for c in cases)
+
+        warning = next(w for w in spec.warnings if "정렬" in w or "sorted_desc" in w)
+        assert "주문일" in warning and "배송일" in warning
+        assert "여러 개" in warning
+
+    def test_금액_모양_열이_두_개면_합계_케이스를_만들지_않고_둘_다_알린다(self):
+        seed_rows = [
+            {**row, "수량": "1"} for row in SEED_ROWS
+        ]
+        elements = orders_elements() + [
+            UIElement(element_id="qty", type="text", label="수량"),
+        ]
+        spec = orders_spec(seed_rows=seed_rows, elements=elements)
+        cases = generate_cases(spec)
+
+        assert any(c.case_id.startswith("orders-sorted-") for c in cases)
+        assert not any(c.case_id.startswith("orders-sum-") for c in cases)
+
+        warning = next(w for w in spec.warnings if "합계" in w or "sum_matches" in w)
+        assert "금액" in warning and "수량" in warning
+        assert "여러 개" in warning
+
+
+class TestSeedCountCase:
+    """씨앗 행 수만큼 화면에 렌더됐는지 확인하는 케이스 (I5).
+
+    정렬·합계는 화면이 스스로 모순인지만 보므로, 행이 통째로 하나 안
+    렌더돼도(예: 마지막 행 누락) 둘 다 통과할 수 있다 — 건수를 직접 세는
+    케이스가 있어야 그 누락이 걸린다."""
+
+    def test_시드_건수_케이스가_만들어진다(self):
+        spec = orders_spec()
+        cases = generate_cases(spec)
+
+        count_cases = [c for c in cases if c.case_id.startswith("orders-seedcount-")]
+        assert len(count_cases) == 1
+        case = count_cases[0]
+        assert case.expected.type == "result_count"
+        assert case.expected.count == len(SEED_ROWS)
+        assert case.expected.count_target == "주문 목록"
+        assert [s.action for s in case.steps] == ["navigate"]
+
+    def test_목록_요소가_없으면_건수_케이스_대신_경고한다(self):
+        elements = [e for e in orders_elements() if e.type != "list"]
+        spec = orders_spec(elements=elements)
+        cases = generate_cases(spec)
+
+        assert not any(c.case_id.startswith("orders-seedcount-") for c in cases)
+        assert any("목록" in w and "result_count" in w for w in spec.warnings)

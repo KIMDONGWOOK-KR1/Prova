@@ -55,7 +55,7 @@ PRODUCT_PDF = "fixtures/specs/product_spec.pdf"
 BADLOGIN_PDF = "fixtures/specs/product_badlogin_spec.pdf"
 
 
-def _run(pdf: str, variant: str, sut_base: str, tmp_path):
+def _run(pdf: str, variant: str, sut_base: str, tmp_path, step_timeout_ms: int = 10000):
     """product 화면 케이스만 실행한다 (로그인 화면 케이스는 test_pipeline_e2e.py 몫)."""
     report, run_dir = run_pipeline(
         pdf_path=pdf,
@@ -64,6 +64,7 @@ def _run(pdf: str, variant: str, sut_base: str, tmp_path):
         run_id=f"test-product-{variant}-{pdf.split('/')[-1]}",
         runs_root=tmp_path,
         only="product",
+        step_timeout_ms=step_timeout_ms,
     )
     return report, run_dir
 
@@ -81,7 +82,17 @@ def bad_run(sut_base, tmp_path_factory):
 @pytest.fixture(scope="module")
 def badlogin_run(sut_base, tmp_path_factory):
     # 브리프대로 /good 에 대고 돈다 — 전제 계정이 틀렸을 뿐 구현은 올바르다.
-    return _run(BADLOGIN_PDF, "good", sut_base, tmp_path_factory.mktemp("product-badlogin"))
+    #
+    # step_timeout_ms 를 짧게 준다. 여기서 확인하는 것은 "틀린 비밀번호가
+    # precondition_failed 로 분류되는가" 이지 도착 확인의 대기 시간이 아니다.
+    # 틀린 비밀번호는 아무리 기다려도 로그인에 성공하지 않으므로(비동기 지연이
+    # 아니라 논리적 실패) playwright_driver._wait_for_arrival 의 settle 창이
+    # 매 케이스마다 기본값(10s) 만큼 헛되이 흘러간다 — 케이스 수만큼 곱해지면
+    # 이 테스트 하나가 수십 초~수 분으로 늘어난다. 실물 페이지의 리다이렉트는
+    # 이보다 훨씬 빨리 오므로(동기식) 짧은 값으로도 실패 분류라는 목적은
+    # 그대로 지켜진다.
+    return _run(BADLOGIN_PDF, "good", sut_base,
+               tmp_path_factory.mktemp("product-badlogin"), step_timeout_ms=1500)
 
 
 @pytest.fixture(scope="module")

@@ -82,9 +82,21 @@ class TestGood:
         case = _case(report, "orders-precondition-guard-")
         assert case.verdict == "PASS", case.failure_detail
 
+    def test_건수_케이스가_만들어져_통과했다(self, good_run):
+        """씨앗 5행이 모두 렌더됐는지 직접 센다 — 정렬·합계만으로는 행이
+        통째로 하나 빠져도 잡히지 않는다(I5)."""
+        report, _ = good_run
+        case = _case(report, "orders-seedcount-")
+        assert case.verdict == "PASS", case.failure_detail
+
     def test_케이스가_생성됐다(self, good_run):
         report, _ = good_run
         assert report.summary["total"] > 0
+
+    def test_전체_다섯_건이다(self, good_run):
+        """valid + sorted + sum + seedcount + guard = 5건."""
+        report, _ = good_run
+        assert report.summary["total"] == 5, [c.case_id for c in report.cases]
 
 
 class TestBad:
@@ -113,6 +125,20 @@ class TestBad:
         report, _ = bad_run
         case = _case(report, "orders-valid-")
         assert case.verdict == "PASS", case.failure_detail
+
+    def test_건수_케이스는_통과한다(self, bad_run):
+        """bad 도 5행을 전부 렌더한다 — O1(정렬 순서)·O2(합계 계산)는 건수와
+        무관하므로 이 케이스는 bad 에서도 PASS 해야 한다(I5)."""
+        report, _ = bad_run
+        case = _case(report, "orders-seedcount-")
+        assert case.verdict == "PASS", case.failure_detail
+
+    def test_전체_다섯_건_중_셋만_통과한다(self, bad_run):
+        """valid + seedcount + guard = PASS 3건, sorted + sum = FAIL 2건."""
+        report, _ = bad_run
+        assert report.summary["total"] == 5, [c.case_id for c in report.cases]
+        assert report.summary["pass"] == 3
+        assert report.summary["fail"] == 2
 
     def test_정렬_실패_사유가_깨진_날짜_쌍을_말한다(self, bad_run):
         report, _ = bad_run
