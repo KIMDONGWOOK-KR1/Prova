@@ -69,6 +69,41 @@ EMPTY = [
     ("login", "장바구니 담기가 되는지 봐줘"),
 ]
 
+# ---------------------------------------------------------------------------
+# 홀드아웃 — 프롬프트를 고칠 때 보지 않은 문서(multi)와 새 말투로 잰다.
+#
+# 위의 CASES 를 보면서 프롬프트를 두 번 고쳤으므로 그 9/10 은 과적합됐을 수
+# 있다. 이 목록은 측정 전에 굳혔고, **이 결과를 보고 프롬프트를 고치지 않는다**
+# — 고치는 순간 이것도 튜닝 세트가 된다. 실패하면 실패로 보고한다.
+#
+# 새 유형: 흐름 지목(튜닝 세트에 없었다), 문구·라벨 케이스 지목, 의문문 말투.
+# ---------------------------------------------------------------------------
+HELDOUT: list[tuple[str, str, str, list[str]]] = [
+    ("multi", "가입 화면의 입력값 검사가 빠짐없이 붙어 있는지 봐야 해", "화면 지목(전 규칙)",
+     [r"signup-email-required", r"signup-email-format", r"signup-password-min_length",
+      r"signup-password_confirm-same_as", r"signup-nickname-max_length",
+      r"signup-agree_terms-required"]),
+    ("multi", "회원가입 마치고 그 계정으로 바로 로그인까지 되는지", "흐름 지목",
+     [r"flow-signup_then_login"]),
+    ("multi", "검색어를 너무 길게 넣으면 막아주나?", "단일 규칙(의문문)",
+     [r"search-query-max_length"]),
+    ("multi", "닉네임 글자수 제한 확인 부탁", "요소+규칙 축약",
+     [r"nickname-min_length", r"nickname-max_length"]),
+    ("multi", "로그인 쪽 안내 문구랑 라벨이 기획서랑 같은지", "문구·라벨 지목",
+     [r"login-placeholders", r"login-labels"]),
+    ("multi", "상품 검색 결과 개수가 맞게 나오는지", "건수 검증 지목",
+     [r"search-count-005", r"search-count-006"]),
+    ("multi", "약관 동의 안 하면 가입이 막히는지", "단일 요소",
+     [r"agree_terms-required"]),
+    ("multi", "가입 화면에서 로그인 화면으로 가는 링크가 동작하는지", "다른 흐름",
+     [r"flow-signup_link_to_login"]),
+]
+
+EMPTY_HELDOUT = [
+    ("multi", "포인트 적립이 되는지 봐줘"),
+    ("multi", "고객센터 문의가 접수되는지 확인"),
+]
+
 
 def spec_path(name: str) -> Path:
     return Path(f"fixtures/specs/{name}_spec.pdf")
@@ -87,13 +122,17 @@ def plan_for(name: str, request: str | None):
 
 def main() -> int:
     only = sys.argv[1] if len(sys.argv) > 1 else None
+    cases, empties, label = CASES, EMPTY, "튜닝 세트"
+    if only == "heldout":
+        cases, empties, label = HELDOUT, EMPTY_HELDOUT, "홀드아웃 (multi_spec)"
+        only = None
     rows, misses = [], 0
 
     print("=" * 78)
-    print("요청 해석 정확도 — 실모델(vLLM)")
+    print(f"요청 해석 정확도 — 실모델(vLLM) · {label}")
     print("=" * 78)
 
-    for name, request, kind, wanted in CASES:
+    for name, request, kind, wanted in cases:
         if only and only != name:
             continue
         try:
@@ -138,7 +177,7 @@ def main() -> int:
 
     print("\n" + "-" * 78)
     print("0건 거부 확인 (기획서에 없는 화면을 요청)")
-    for name, request in EMPTY:
+    for name, request in empties:
         if only and only != name:
             continue
         try:
