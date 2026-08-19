@@ -306,19 +306,45 @@ ITEM_ROLES = {"list": "listitem", "table": "row"}
 
 
 def _locate_collection(page, target: str, hint: UIElement | None):
-    """반복 목록의 컨테이너를 라벨로 찾는다. count_items 와 collect_item_texts 가
-    공유하는 탐색 core — '어디를 볼 것인가' 는 두 경로에서 같아야 한다.
+    """반복 목록을 라벨로 찾는다. count_items 와 collect_item_texts 가 공유하는
+    탐색 core — '어디를 볼 것인가' 는 두 경로에서 같아야 한다.
 
     이 핵심을 공유하지 않으면 라벨이 없거나 컨테이너가 여러 개인 상황에서 두
     함수가 서로 다른 판정(absent/ambiguous)을 내릴 수 있고, 그러면 개수와 값이
     '같은 곳을 본 결과'라는 전제가 깨진다.
 
+    ## 두 가지 반복 모양
+
+    hint.type 이 list/table 이면 **컨테이너 + 항목** 모양이다 — 목록 라벨을 가진
+    요소 하나(<ul aria-label=...>) 안에 항목(listitem/row)이 반복된다. 건수
+    세기(expect_count, 검색 결과 목록)가 이 모양이다.
+
+    그 외(text 등)면 **반복되는 라벨 자체**가 항목이다 — 감싸는 컨테이너가
+    따로 없고, 같은 aria-label 을 가진 요소가 행마다 그대로 반복된다(주문조회의
+    '주문일'·'금액' 처럼: `<span aria-label="주문일">` 이 행마다 하나씩 있다).
+    이때는 target 라벨로 찾은 요소들 자체가 항목이므로 item_role 을 None 으로
+    돌려준다 — 호출자가 그 밑에서 다시 항목을 찾지 않는다. 개수 제약도 다르다 —
+    컨테이너는 '정확히 1개' 여야 하지만, 반복 라벨은 **여러 개인 것이 정상**이다
+    (행이 5개면 5개 나와야 한다). '합계' 처럼 화면에 한 번만 있는 라벨도 이
+    경로로 자연히 1개가 나온다.
+
     Returns:
         (status, container, item_role, found, detail) 튜플.
-        status 가 "ok" 일 때만 container 가 유효한 Locator 다. found 는 라벨과
-        일치한 컨테이너 개수 — ambiguous 일 때 호출자가 몇 개가 겹쳤는지 그대로
-        보고할 수 있게 남겨 둔다.
+        status 가 "ok" 일 때만 container 가 유효한 Locator 다. item_role 이
+        None 이면 container 자체가 이미 항목 목록이다. found 는 라벨과 일치한
+        컨테이너(또는 반복 라벨) 개수 — ambiguous 일 때 호출자가 몇 개가
+        겹쳤는지 그대로 보고할 수 있게 남겨 둔다.
     """
+    if hint is not None and hint.type not in ("list", "table"):
+        try:
+            items = page.get_by_label(target, exact=True)
+            found = items.count()
+        except Exception as exc:
+            return "absent", None, None, 0, f"요소 조회 실패: {exc}"
+        if found == 0:
+            return "absent", None, None, 0, f"라벨 {target!r} 인 요소가 화면에 없음"
+        return "ok", items, None, found, ""
+
     container_role = _role_for(hint) if hint else "list"
     item_role = ITEM_ROLES.get(container_role, "listitem")
 
@@ -388,6 +414,14 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
         # count 에도 남긴다. absent 일 때는 0 그대로다.
         return CollectionCount(target=target, status=status, count=found, detail=detail)
 
+    # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명 참고) —
+    # container 자체가 이미 항목 목록이므로 개수도 이미 found 에 있다.
+    if item_role is None:
+        return CollectionCount(
+            target=target, status="ok", count=found,
+            detail=f"라벨 {target!r} 요소 {found}개",
+        )
+
     try:
         n = container.get_by_role(item_role).count()
     except Exception as exc:
@@ -450,15 +484,19 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
         return CollectionTexts(target=target, status=status, texts=[], detail=detail)
 
     try:
-        items = container.get_by_role(item_role)
+        # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명
+        # 참고) — container 자체가 이미 항목 목록이므로 그 아래에서 다시
+        # 찾지 않는다.
+        items = container if item_role is None else container.get_by_role(item_role)
         texts = [normalize_ws(t) for t in items.all_inner_texts()]
     except Exception as exc:
         return CollectionTexts(target=target, status="absent",
                                texts=[], detail=f"항목 조회 실패: {exc}")
 
+    where = f"{target!r}" if item_role is None else f"{target!r} 안의 {item_role}"
     return CollectionTexts(
         target=target, status="ok", texts=texts,
-        detail=f"{target!r} 안의 {item_role} {len(texts)}개",
+        detail=f"{where} {len(texts)}개",
     )
 
 
