@@ -23,7 +23,7 @@ from __future__ import annotations
 import pytest
 
 from prova.models import UIElement
-from prova.s3_grounder.dom_locator import collect_item_texts
+from prova.s3_grounder.dom_locator import CollectionTexts, collect_item_texts
 
 
 @pytest.fixture(scope="module")
@@ -90,3 +90,11 @@ class TestAmbiguous:
         assert result.status == "ambiguous"
         assert result.texts == []
         assert result.detail
+
+
+class TestConstruction:
+    def test_세_인자만으로_만들_수_있다(self):
+        """판정 쪽(assertion_engine)이 target 없이 만들어 쓴다 — 필수로 만들면
+        그쪽이 깨진다."""
+        ct = CollectionTexts(status="ok", texts=["a"], detail="")
+        assert ct.target == ""
