@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import Flow, Scenario, ScreenSpec, SpecDocument
+from prova.models import Flow, Precondition, Scenario, ScreenSpec, SpecDocument
 from prova.s1_spec_extractor.pdf_parser import (
     ParsedDocument,
     normalize_ws,
@@ -275,9 +275,19 @@ def build_user_prompt(
     hint = ""
     if lines:
         hint = "\n## 반드시 지킬 것\n\n" + "\n\n".join(lines) + "\n"
+
+    # '전제' 절의 계정은 어차피 표에서 코드가 읽어 _apply_declared_precondition 이
+    # 덮어쓴다(표가 이긴다). 그래도 이 지시를 두는 이유는 requires_login 자체는
+    # 표에 적혀 있지 않고 본문 문장으로만 드러나기 때문이다 — 모델이 절 자체를
+    # 못 보면 precondition 이 통째로 null 이 되고, 표를 찾아도 덮어쓸 대상이 없어
+    # 새로 만들어야 한다(그 경로도 있지만, 우선 모델이 놓치지 않게 부탁한다).
+    precondition_hint = (
+        "\n'전제' 절이 있으면 precondition.requires_login 을 true 로 하고 그 절의 "
+        "계정을 옮겨 적으세요. 없으면 precondition 을 null 로 두세요.\n"
+    )
     return (
         f"{FEW_SHOT}\n## 실제 기획서\n\n기획서 텍스트:\n{doc_text}\n"
-        f"{hint}\n출력 JSON:"
+        f"{hint}{precondition_hint}\n출력 JSON:"
     )
 
 
@@ -308,6 +318,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message())
     _apply_declared_scenarios(spec, declared_scenarios)
+    _apply_declared_precondition(spec, doc.declared_precondition_account())
     _drop_invented_strings(spec, doc)
 
     # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
@@ -461,6 +472,60 @@ def _apply_declared_scenarios(
             f"({len(declared)}건). 모델이 낸 것과 달랐습니다 — "
             f"모델: {llm_scenarios}. 프롬프트를 확인하세요."
         )
+
+
+def _apply_declared_precondition(
+    spec: ScreenSpec, account_table: list[list[str]] | None
+) -> None:
+    """'전제' 절의 계정은 표가 이긴다 (스펙 §3-1·§8).
+
+    ## 왜 LLM 결과를 덮어쓰는가
+
+    _apply_declared_scenarios 와 같은 이유다. 표 헤더가 '이메일|비밀번호' 인
+    표에서 첫 데이터 행의 값을 옮기는 데는 추론이 없다. 옮겨 적는 일을 LLM 에
+    맡기면 다른 declared_* 들과 같은 실패가 반복된다 — 옮겨적기 오탈자다.
+
+    account_table 은 이미 pdf_parser 가 '전제' 절 제목 뒤에서 헤더가 맞는 표를
+    찾아 넘긴 것이다(declared_precondition_account 참고). 여기서도 헤더를 다시
+    확인한다 — 그 함수의 판별을 신뢰하되, 이 함수만 단독으로 불려도(단위 테스트
+    처럼) 안전하도록.
+
+    ## 전제가 아예 없으면 만든다
+
+    spec.precondition 이 None 인데 계정 표는 있다면, **모델이 전제 절 자체를
+    놓친 것**이다. 그때는 requires_login=True 로 새로 만든다 — 사람이 적어 둔
+    계정이 있다는 사실 자체가 로그인 전제의 증거이고, 표가 모델의 침묵보다
+    강한 신호다.
+    """
+    if not account_table or len(account_table) < 2:
+        return
+    header = [normalize_ws(h) for h in account_table[0]]
+    if header != ["이메일", "비밀번호"]:
+        return
+    row = account_table[1]
+    if len(row) < 2:
+        return
+    email, password = row[0].strip(), row[1].strip()
+    if not email or not password:
+        return
+
+    if spec.precondition is None:
+        spec.precondition = Precondition(
+            requires_login=True, account_email=email, account_password=password
+        )
+        return
+
+    if (spec.precondition.account_email, spec.precondition.account_password) == (
+        email,
+        password,
+    ):
+        return
+    spec.warnings.append(
+        f"전제 계정을 기획서 표대로 {email!r} 로 맞췄습니다 "
+        f"(모델: {spec.precondition.account_email!r}). 프롬프트를 확인하세요."
+    )
+    spec.precondition.account_email = email
+    spec.precondition.account_password = password
 
 
 def _drop_invented_strings(spec: ScreenSpec, doc: ParsedDocument) -> None:

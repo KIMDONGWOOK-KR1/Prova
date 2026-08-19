@@ -13,8 +13,9 @@ S1 이 요소를 빠뜨리면 리포트에는 '구현 결함' 처럼 보인다. 
 
 from __future__ import annotations
 
-from prova.models import ScreenSpec, UIElement
+from prova.models import Precondition, ScreenSpec, UIElement
 from prova.s1_spec_extractor.extractor import (
+    _apply_declared_precondition,
     _apply_declared_required_message,
     _apply_declared_scenarios,
     _apply_declared_types,
@@ -232,6 +233,29 @@ class TestApplyDeclaredRequiredMessage:
         _apply_declared_required_message(spec, None)
         assert spec.required_message == "모델이 낸 문구"
         assert spec.warnings == []
+
+
+class TestPreconditionCorrection:
+    """전제 계정은 표가 이긴다 (스펙 §3-1·§8) — 모델이 옮겨 적다 틀려도
+    기획서 표의 값으로 덮어쓴다. 옮겨적기 실패는 실측된 실패 모양이다."""
+
+    def test_전제_표의_계정으로_덮어쓴다(self):
+        spec = ScreenSpec(screen_id="product", screen_name="상품 등록",
+                          url_path="/product",
+                          precondition=Precondition(requires_login=True,
+                                                    account_email="wrong@x.com",
+                                                    account_password="wrong"))
+        # '전제' 절의 계정 표 (§5 테스트 계정과 같은 2열 형식)
+        table = [["이메일", "비밀번호"], ["seller@test.com", "Seller1!"]]
+        _apply_declared_precondition(spec, table)
+        assert spec.precondition.account_email == "seller@test.com"
+        assert spec.precondition.account_password == "Seller1!"
+
+    def test_전제_절이_없으면_건드리지_않는다(self):
+        spec = ScreenSpec(screen_id="login", screen_name="로그인",
+                          url_path="/login")
+        _apply_declared_precondition(spec, None)
+        assert spec.precondition is None
 
 
 class TestDocumentWarnings:
