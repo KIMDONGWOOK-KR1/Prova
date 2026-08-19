@@ -285,3 +285,29 @@ class TestScenarioDefects:
     def test_정상_시나리오는_경고가_없다(self):
         spec = self.spec_with_scenario(given={"query": "노트북"}, expect_text="검색 결과 3건")
         assert spec_defects(spec) == []
+
+
+class TestNumeric:
+    """가격·재고수량의 '숫자만 입력 가능' 규칙 (스펙 §2-1).
+
+    format 은 이메일에 묶여 있고 pattern 의 일반 정규식 위반값 생성은
+    결정적으로 만들 수 없다. numeric 은 위반값이 자명하다.
+    """
+
+    def test_숫자만이_만족한다(self):
+        assert satisfies("12000", {"numeric": True})
+        assert not satisfies("만원", {"numeric": True})
+        assert not satisfies("12,000", {"numeric": True})  # 입력값은 순수 숫자만
+
+    def test_위반값은_그_규칙만_어긴다(self):
+        el = UIElement(element_id="price", type="input", label="가격",
+                       required=True, constraints={"numeric": True})
+        vios = violations_for_element(el)
+        v = next(x for x in vios if x.rule == "numeric")
+        assert not satisfies(v.value, {"numeric": True})
+        assert satisfies(v.value, {})  # 다른 규칙이 없으니 나머지는 자동 충족
+
+    def test_정상값은_숫자다(self):
+        el = UIElement(element_id="price", type="input", label="가격",
+                       constraints={"numeric": True})
+        assert valid_value_for(el).isdigit()
