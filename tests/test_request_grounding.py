@@ -166,3 +166,48 @@ class TestUnchanged:
         """어휘 검사를 통과한 뒤 모델이 없으면, 여전히 '더 많이' 쪽으로 넘어진다."""
         picked, sel = select_cases(cases, "비밀번호 규칙만", None, doc=doc)
         assert picked == cases and sel.fallback is True
+
+
+class TestSplitStopwords:
+    """낱말 쪼개기가 만드는 일반어 조각이 검사를 무력화하지 않는다.
+
+    홀드아웃 측정에서 "고객센터 문의가 접수되는지 확인" 이 통과했다 — 라벨
+    '비밀번호 확인' 을 쪼갠 '확인' 이 매치된 것이다. '확인' 은 거의 모든 요청에
+    들어가므로, 이 한 조각이 검사 전체를 사실상 꺼 버린다.
+    """
+
+    @pytest.fixture
+    def confirm_doc(self) -> SpecDocument:
+        return SpecDocument(screens=[ScreenSpec(
+            screen_id="signup", screen_name="회원가입", url_path="/signup",
+            elements=[
+                UIElement(element_id="password", type="input", label="비밀번호"),
+                UIElement(element_id="password_confirm", type="input", label="비밀번호 확인"),
+            ],
+        )])
+
+    @pytest.fixture
+    def signup_cases(self) -> list[TestCase]:
+        return [case("signup-valid-001", "정상 회원가입", "signup"),
+                case("signup-password_confirm-same_as-009", "비밀번호 일치 확인", "signup")]
+
+    def test_일반어_조각만으로는_통과하지_못한다(self, signup_cases, confirm_doc):
+        """'확인' 은 '비밀번호 확인' 의 조각이지만, 그것만 겹치는 요청은 이 기획서와
+        무관하다."""
+        with pytest.raises(ValueError):
+            select_cases(signup_cases, "고객센터 문의가 접수되는지 확인",
+                         llm_picking(["signup-valid-001"]), doc=confirm_doc)
+
+    def test_온전한_이름은_그대로_통과한다(self, signup_cases, confirm_doc):
+        """거르는 것은 쪼개진 조각뿐이다. '비밀번호 확인' 전체는 어휘에 남는다."""
+        picked, _ = select_cases(
+            signup_cases, "비밀번호 확인란이 제대로 동작하는지",
+            llm_picking(["signup-password_confirm-same_as-009"]), doc=confirm_doc)
+        assert picked
+
+    def test_내용어_조각은_여전히_통과한다(self, signup_cases, confirm_doc):
+        """'비밀번호' 는 내용어라 조각으로도 유효하다."""
+        picked, _ = select_cases(
+            signup_cases, "비밀번호가 일치하는지 봐줘",
+            llm_picking(["signup-password_confirm-same_as-009"]), doc=confirm_doc)
+        assert picked

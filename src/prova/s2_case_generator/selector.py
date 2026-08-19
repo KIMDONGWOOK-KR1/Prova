@@ -110,6 +110,17 @@ _SELECTION_SYSTEM = """\
 # 요청 전체를 뜻하는 말. 기획서 어휘가 하나도 없어도 뜻이 명확한 경우다.
 _ALL_WORDS = ("전부", "전체", "모두", "모든", "다 확인", "빠짐없이", "싹")
 
+# 낱말 쪼개기에서 버리는 말 — '검사하는 행위' 를 가리키는 일반어.
+#
+# 홀드아웃 측정에서 "고객센터 문의가 접수되는지 확인" 이 어휘 검사를 통과했다.
+# 라벨 '비밀번호 확인' 을 쪼갠 '확인' 이 매치된 것이다. '확인' 은 거의 모든
+# 요청에 들어가는 말이라, 이대로면 검사가 사실상 무력화된다.
+#
+# 온전한 이름('비밀번호 확인')은 그대로 어휘에 남는다 — 여기서 거르는 것은
+# 쪼개서 나온 조각뿐이다. 그래서 "비밀번호 확인란이 동작하는지" 는 여전히
+# 통과한다('비밀번호 확인'·'비밀번호' 가 매치).
+_SPLIT_STOPWORDS = frozenset({"확인", "입력", "검사", "검증", "테스트", "동작", "화면"})
+
 
 def spec_vocabulary(
     cases: list[TestCase], doc: Optional[SpecDocument] = None
@@ -170,7 +181,7 @@ def spec_vocabulary(
     # 않으면 조용히 낡는다. 낱말 쪼개기는 기획서에서 자동으로 따라온다.
     for term in list(vocab):
         for word in re.split(r"[\s_\-/]+", term):
-            if len(word) >= 2:
+            if len(word) >= 2 and word not in _SPLIT_STOPWORDS:
                 vocab.add(word)
 
     return {v for v in vocab if len(v) >= 2}, screens, labels
