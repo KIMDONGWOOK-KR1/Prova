@@ -315,3 +315,4 @@ uv run python scripts/embed_media.py
 | [15-async-rendering.md](15-async-rendering.md) | 검증 대상 웹앱도 우리가 만들었다 (실물 마크업 4종 측정) |
 | [16-forbidden-text.md](16-forbidden-text.md) | 없어야 할 것이 없는가 (비밀번호 찾기 · 계정 존재 여부 노출) |
 | [17-audit.md](17-audit.md) | 각각은 옳은데 함께 두면 구멍이 난다 (전체 점검) |
+| [18-natural-language-request.md](18-natural-language-request.md) | **자연어로 요청받기** — 그 해석이 결함을 덮지 못하게 막기 + 로컬 웹 UI |
