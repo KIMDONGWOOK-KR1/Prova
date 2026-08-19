@@ -285,10 +285,14 @@ CaseType = Literal["positive", "negative", "boundary"]
 #   text_absent    특정 문구가 화면에 **나타나지 않아야** 한다
 #                  (지금까지와 방향이 반대다. 계정 존재 여부 노출처럼 '알려주면
 #                   안 되는' 요구가 실재한다 — Scenario.expect_absent 참고)
+#   sorted_desc    반복 목록이 특정 컬럼 기준 내림차순으로 정렬돼야 한다
+#                  (씨앗 표와 대조하지 않는다 — 화면이 스스로 모순인지만 본다)
+#   sum_matches    반복 목록 각 행의 금액 합이 화면이 보여주는 합계와 같아야 한다
+#                  (마찬가지로 화면 내부 일관성만 본다 — 스펙 §3-4)
 ExpectedType = Literal[
     "toast_or_redirect", "error_message", "error_shown", "redirect", "text_visible",
     "result_count", "options_present", "placeholders_match", "labels_findable",
-    "text_absent",
+    "text_absent", "sorted_desc", "sum_matches",
 ]
 
 
@@ -333,6 +337,11 @@ class Expectation(BaseModel):
     # 사실이 리포트에서 사라진다.** 보정은 케이스를 살리는 것이고, 지적은 그대로
     # 남아야 한다.
     labels: list[str] = Field(default_factory=list)
+    # --- type="sorted_desc" 전용 ---
+    order_target: Optional[str] = None  # 정렬 여부를 확인할 반복 목록의 라벨 (예: "주문일")
+    # --- type="sum_matches" 전용 ---
+    sum_row_target: Optional[str] = None  # 합산할 각 행의 라벨 (예: "금액")
+    sum_total_target: Optional[str] = None  # 화면이 보여주는 합계의 라벨 (예: "합계")
 
 
 class TestStep(BaseModel):
