@@ -77,6 +77,7 @@ RULE_LABELS = {
     "require_special": "특수문자 포함",
     "pattern": "정규식 패턴",
     "same_as": "다른 항목과 일치",
+    "numeric": "숫자만 입력",
 }
 
 # 사용자가 문자를 직접 입력하지 않는 요소 유형.
@@ -159,6 +160,9 @@ def satisfies(value: str, constraints: dict, ref_value: Optional[str] = None) ->
             return False
         elif key == "pattern" and not re.fullmatch(str(expected), value):
             return False
+        elif key == "numeric" and expected:
+            if not value.isdigit():
+                return False
     return True
 
 
@@ -210,6 +214,16 @@ def valid_value_for(element: UIElement, ref_value: Optional[str] = None) -> str:
         return ref_value or ""
 
     c = element.constraints
+    if c.get("numeric"):
+        # min/max_length 가 함께 있으면 그 길이에 맞춰 숫자로 채운다.
+        min_len = int(c.get("min_length", 0))
+        max_len = c.get("max_length")
+        if max_len is not None:
+            target_len = int(max_len)
+        else:
+            target_len = max(min_len, 5)  # 기본값: 최소 길이 또는 5자
+        return "1" * target_len
+
     if c.get("format") == "email":
         return "user@test.com"
     if "pattern" in c:
@@ -288,6 +302,10 @@ def _violation_value(
 
     if rule == "format" and constraints.get("format") == "email":
         return "not-an-email"
+
+    if rule == "numeric":
+        # 숫자가 하나도 없는 짧은 한국어 — 위반이 자명하고 리포트에서 읽힌다.
+        return "만원"
 
     if rule == "same_as":
         return _same_as_violation_value(ref_value, others)
