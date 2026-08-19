@@ -415,6 +415,7 @@
     border-bottom: 1px solid var(--line-soft);
   }
   .step:last-child { border-bottom: none; }
+  .step > *:not(.n) { grid-column: 2; }
 
   .step .n {
     font-family: var(--font-mono);
@@ -1884,16 +1885,16 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
 
     <div class="steps col">
       <div class="step"><span class="n">1</span>
-        어림잡은 좌표가 버튼을 살짝 비켜 갔다 (폼 안 빈 여백)</div>
+        <p>어림잡은 좌표가 버튼을 살짝 비켜 갔다 (폼 안 빈 여백)</p></div>
       <div class="step"><span class="n">2</span>
-        Playwright 의 <code>mouse.click(x, y)</code> 는 거기에 아무것도 없어도
-        <strong>조용히 성공한다</strong></div>
+        <p>Playwright 의 <code>mouse.click(x, y)</code> 는 거기에 아무것도 없어도
+        <strong>조용히 성공한다</strong></p></div>
       <div class="step"><span class="n">3</span>
-        폼이 제출되지 않았다 → 에러 문구도 결과도 나오지 않았다</div>
+        <p>폼이 제출되지 않았다 → 에러 문구도 결과도 나오지 않았다</p></div>
       <div class="step"><span class="n">4</span>
-        판정은 그것을 "기획서가 지정한 에러가 안 뜬다" 로 읽었다</div>
+        <p>판정은 그것을 "기획서가 지정한 에러가 안 뜬다" 로 읽었다</p></div>
       <div class="step"><span class="n">5</span>
-        리포트: <span class="tag fail">구현 결함 7건</span></div>
+        <p>리포트: <span class="tag fail">구현 결함 7건</span></p></div>
     </div>
 
     <div class="note">
@@ -2355,14 +2356,14 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
 
     <div class="steps col">
       <div class="step"><span class="n">1</span>
-        <strong>상한이 있다.</strong> 넘으면 마지막 판정을 그대로 보고한다. 통과할 때까지
-        무한정 기다리면 진짜 결함이 전부 사라진다</div>
+        <p><strong>상한이 있다.</strong> 넘으면 마지막 판정을 그대로 보고한다. 통과할 때까지
+        무한정 기다리면 진짜 결함이 전부 사라진다</p></div>
       <div class="step"><span class="n">2</span>
-        <strong>기다린 시간을 리포트에 남긴다.</strong> 2차 경로의 보정을 남기는 것과 같은
-        이유다 — 도구가 편의를 제공했으면 그 사실이 리포트에 있어야 한다</div>
+        <p><strong>기다린 시간을 리포트에 남긴다.</strong> 2차 경로의 보정을 남기는 것과 같은
+        이유다 — 도구가 편의를 제공했으면 그 사실이 리포트에 있어야 한다</p></div>
       <div class="step"><span class="n">3</span>
-        <strong>스텝이 끊긴 케이스는 기다리지 않는다.</strong> 기다려도 달라지지 않고,
-        진짜로 깨진 케이스마다 상한을 버린다</div>
+        <p><strong>스텝이 끊긴 케이스는 기다리지 않는다.</strong> 기다려도 달라지지 않고,
+        진짜로 깨진 케이스마다 상한을 버린다</p></div>
     </div>
 
 <pre class="out"><code>결과를 기다린 뒤 통과한 케이스 (7건, 최대 300ms)
@@ -2944,8 +2945,8 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 493개 통과 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 17개,
+    코드 <code>C:\dev\prova</code> · 테스트 575개 통과 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 18개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 
