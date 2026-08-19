@@ -97,6 +97,8 @@ HELDOUT: list[tuple[str, str, str, list[str]]] = [
      [r"agree_terms-required"]),
     ("multi", "가입 화면에서 로그인 화면으로 가는 링크가 동작하는지", "다른 흐름",
      [r"flow-signup_link_to_login"]),
+    ("orders", "주문 내역이 최신순으로 나오는지 확인해줘", "정렬 지목",
+     [r"orders-sorted"]),
 ]
 
 EMPTY_HELDOUT = [
