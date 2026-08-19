@@ -27,7 +27,7 @@ Verdict.evidence 에 기대·실제·URL·스크린샷을 담는다. FAIL 만이
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from prova.models import Expectation, StepResult, TestCase, Verdict
 from prova.s3_grounder.dom_locator import CollectionCount
@@ -40,8 +40,12 @@ class PageState:
 
     url: str
     text: str                      # 화면에 보이는 전체 텍스트
-    error_texts: list[str]         # 에러 영역([role=alert] 등)의 텍스트만
-    console_errors: list[str]      # JS 콘솔 오류
+    # 전제 실패 판정(setup_failure)은 에러 문구나 콘솔 로그를 보지 않고 스텝
+    # 결과만으로 끝난다. 그 판정만 시험하는 테스트가 이 두 필드를 채울 이유가
+    # 없으므로 빈 목록을 기본값으로 둔다 — 실제 실행 경로(nodes.capture_page_state)는
+    # 여전히 항상 값을 채워 넘긴다.
+    error_texts: list[str] = field(default_factory=list)   # 에러 영역([role=alert] 등)의 텍스트만
+    console_errors: list[str] = field(default_factory=list)  # JS 콘솔 오류
     # 반복 목록을 센 결과 (type="result_count" 케이스에서만 채워진다).
     #
     # 왜 여기서 직접 세지 않는가: 무엇을 세야 하는지는 케이스의 기대값이 정하고,
@@ -455,6 +459,31 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         healed=any(r.location.healed for r in step_results
                    if r.location and r.status == "ok"),
     )
+
+    # 전제(로그인 등) 실패는 기존 스텝 실패 분류보다 먼저 본다.
+    #
+    # 전제가 깨졌으면 이 케이스는 '이 화면의 결함' 이 아니다 — 전제를 세우는
+    # 화면(로그인)이 이미 자신의 FAIL 을 낸다. 여기서 element_not_found 같은
+    # 일반 분류로 묶으면, 그 결함이 전제로 삼는 화면마다 하나씩 더 있는 것처럼
+    # 리포트에 불어난다 (명세서 §3-6).
+    setup_failure = next(
+        (r for r in step_results if r.phase == "setup" and r.status == "error"), None)
+    if setup_failure is not None:
+        return Verdict(
+            **base,
+            verdict="FAIL",
+            failure_category="precondition_failed",
+            failure_detail=(
+                f"전제(로그인)를 세우지 못했습니다 — {setup_failure.error_detail}"
+            ),
+            evidence={
+                "expected": _expected_summary(case.expected),
+                "actual": f"전제 스텝 {setup_failure.seq} 에서 중단",
+                "url": state.url,
+                "screenshot": setup_failure.screenshot,
+                "step_error": setup_failure.error_detail,
+            },
+        )
 
     failed_step = next((r for r in step_results if r.status == "error"), None)
     if failed_step is not None:
