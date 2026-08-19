@@ -160,9 +160,8 @@ def satisfies(value: str, constraints: dict, ref_value: Optional[str] = None) ->
             return False
         elif key == "pattern" and not re.fullmatch(str(expected), value):
             return False
-        elif key == "numeric" and expected:
-            if not value.isdigit():
-                return False
+        elif key == "numeric" and expected and not value.isdigit():
+            return False
     return True
 
 
@@ -304,8 +303,19 @@ def _violation_value(
         return "not-an-email"
 
     if rule == "numeric":
-        # 숫자가 하나도 없는 짧은 한국어 — 위반이 자명하고 리포트에서 읽힌다.
-        return "만원"
+        # 숫자가 하나도 없는 값 — 한글이라 isdigit() 에 절대 걸리지 않는다.
+        # 형제 길이 규칙은 만족시켜야 한다 (핵심 계약: 이 규칙만 어긴다).
+        base = "만원"
+        min_len = int(others.get("min_length", 0))
+        max_len = others.get("max_length")
+        if len(base) < min_len:
+            base += "천" * (min_len - len(base))
+        if max_len is not None:
+            limit = int(max_len)
+            if limit < 1:
+                return None  # 길이 0 은 required 위반과 구분되지 않는다
+            base = base[:limit]
+        return base
 
     if rule == "same_as":
         return _same_as_violation_value(ref_value, others)
