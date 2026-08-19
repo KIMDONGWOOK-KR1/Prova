@@ -548,16 +548,6 @@ class Verdict(BaseModel):
     elapsed_ms: int = 0
     step_results: list[StepResult] = Field(default_factory=list)
 
-    # failure_category/failure_detail 의 짧은 별칭. 필드 이름을 바꾸면 기존
-    # 리포트·테스트가 전부 깨지므로 새로 만들지 않고 속성으로만 덧붙인다.
-    @property
-    def category(self) -> Optional[FailureCategory]:
-        return self.failure_category
-
-    @property
-    def reason(self) -> Optional[str]:
-        return self.failure_detail
-
 
 class TestReport(BaseModel):
     """실행 전체의 최종 리포트. S6의 출력."""

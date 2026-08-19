@@ -21,8 +21,8 @@ def test_setup_실패는_precondition_failed_로_분류된다():
                           error_code="element_not_found")]
     verdict = verify(_case(), results, PageState(url="x", text=""))
     assert verdict.verdict == "FAIL"
-    assert verdict.category == "precondition_failed"
-    assert "전제" in verdict.reason
+    assert verdict.failure_category == "precondition_failed"
+    assert "전제" in verdict.failure_detail
 
 
 def test_test_스텝_실패는_기존_분류를_유지한다():
@@ -32,4 +32,4 @@ def test_test_스텝_실패는_기존_분류를_유지한다():
                           status="error", phase="test",
                           error_code="element_not_found")]
     verdict = verify(_case(), results, PageState(url="x", text=""))
-    assert verdict.category != "precondition_failed"
+    assert verdict.failure_category != "precondition_failed"
