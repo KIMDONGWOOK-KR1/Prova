@@ -59,11 +59,38 @@ class MockLLM:
 
         golden 이 없으면 응답을 등록하지 않는다 — 그러면 S1 에서 '등록되지 않은
         스키마' 오류가 나서, 조용히 빈 결과로 진행되는 일이 없다.
+
+        ## 화면이 여럿인 문서 — UI 는 어느 기획서를 고를지 모른 채 mock 을 만든다
+
+        상품등록·주문조회처럼 전제(로그인) 화면을 같은 PDF 에 담는 기획서는
+        페이지(화면)마다 S1 을 따로 부른다. 이 PDF 자신의 골든 하나만 등록하면
+        두 번째 이후 화면 호출도 같은 응답을 받아 화면 ID 가 뒤섞인다 — 로그인
+        페이지가 '주문 조회' 로 추출되는 식이다(웹 UI 스모크에서 실측했다).
+
+        그래서 `fixtures/specs/*_spec.golden.json` 을 전부 화면별로도 등록해
+        둔다. 화면 ID 정확 매칭(`_pick_screen`, 표의 행 모양)이 이미 있으므로
+        관계없는 골든이 섞여도 오염되지 않는다 — 프롬프트에 그 화면 ID 가 없으면
+        애초에 후보에 들지 않는다. 요청한 PDF 자신의 골든은 마지막에 다시 한 번
+        등록해, 같은 screen_id 를 공유하는 다른 픽스처(`product_spec` vs
+        `product_badlogin_spec`)보다 우선하게 한다 — **부른 이가 지정한 문서가
+        이긴다.**
         """
         inst = cls()
+        for other in sorted(Path(pdf_path).parent.glob("*_spec.golden.json")):
+            try:
+                data = json.loads(other.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            sid = data.get("screen_id")
+            if sid:
+                inst.register_screen(sid, data)
+
         golden = Path(pdf_path).with_suffix(".golden.json")
         if golden.exists():
-            inst.register("ScreenSpec", json.loads(golden.read_text(encoding="utf-8")))
+            data = json.loads(golden.read_text(encoding="utf-8"))
+            inst.register("ScreenSpec", data)
+            if data.get("screen_id"):
+                inst.register_screen(data["screen_id"], data)
         return inst
 
     @classmethod

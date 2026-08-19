@@ -42,6 +42,10 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str) -> tuple[object, list[str
     if backend == "mock":
         from prova.llm.mock_backend import MockLLM
 
+        # UI 는 어느 기획서를 고를지 모른 채 mock 을 만든다 — 화면이 여럿인
+        # 문서(상품등록·주문조회처럼 전제 화면을 같이 담는 것)도 열릴 수 있다.
+        # 화면 ID 정확 매칭이 있으므로(for_spec 참고) 골든 전부를 등록해도
+        # 오염되지 않는다.
         return MockLLM.for_spec(pdf), [
             "mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다."
         ]
