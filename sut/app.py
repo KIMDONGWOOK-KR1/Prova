@@ -97,6 +97,23 @@ E1 이 흐름 검증(models.Flow)을 만든 이유다. 실무에서 troubles 로
 기획-구현 불일치가 대개 이 모양이다 — 화면 단위로는 다 맞는데 이어 붙이면
 안 되는 것.
 
+## 상품등록에 처음 생긴 세션
+
+로그인이 성공하면 서버가 쿠키를 내려준다: `session_{variant}=ok`. 서명하지
+않는다 — 이 쿠키는 보안 경계가 아니라 '로그인했다' 는 사실만 표시하는
+테스트용 상태다. 상품등록 화면은 이 쿠키가 있어야 열린다.
+
+## bad 상품등록에 심은 의도적 불일치 2종
+
+    P1  가격이 숫자인지 검사하지 않는다 (재고수량 검사는 남아 있다)
+        → "만원" 같은 값도 통과해 등록된다. 같은 화면 안에 있는 두 숫자
+           필드 중 하나만 결함이 있다 — 필드마다 케이스를 나눠야 잡히는
+           결함이다.
+    P2  로그인 가드가 없다
+        → 쿠키 없이 URL 을 직접 열어도 화면이 뜬다. E1 과 반대 방향의
+           결함이다 — E1 은 화면 사이를 이어야 드러났고, P2 는 화면 하나
+           만으로 드러난다(가드 자체가 그 화면의 책임이기 때문이다).
+
 ## 변형별로 상태를 나눠 두는 이유
 
 REGISTERED 를 good/bad 가 공유하면 good 이 가입시킨 계정을 bad 의 로그인이
@@ -124,9 +141,11 @@ app = FastAPI(title="Prova SUT — 미니 로그인·회원가입·검색 앱")
 # **bad 에 심은 결함이 good 을 한 번 돌린 뒤에는 사라진다.** 실행 순서에 따라
 # 결과가 달라지는 테스트는 결과를 신뢰할 수 없다.
 REGISTERED = {
-    "good": {"user@test.com": "Abcd123!"},
-    "bad": {"user@test.com": "Abcd123!"},
+    "good": {"user@test.com": "Abcd123!", "seller@test.com": "Seller1!"},
+    "bad": {"user@test.com": "Abcd123!", "seller@test.com": "Seller1!"},
 }
+# seller@test.com — 판매자 계정. 상품등록 전제용(기획서 §5 전제 절과 일치해야
+# 한다). 양쪽 변형에 같은 자격으로 넣어 둔다 — 위와 같은 이유로 공유하지 않는다.
 
 # 로그인 기획서에 정의된 에러 메시지 (good 버전이 사용)
 MSG_REQUIRED = "필수 입력 항목입니다."
@@ -163,6 +182,13 @@ MSG_NO_RESULTS = "검색 결과가 없습니다."
 
 # 비밀번호 찾기 기획서에 정의된 문구
 MSG_RESET_SENT = "재설정 메일을 보냈습니다."
+
+# 상품등록 기획서에 정의된 문구. 필수 입력 문구는 MSG_REQUIRED 를 그대로 쓴다 —
+# 기획서의 문구가 같은데 상수를 새로 만들면 진실이 두 곳에 생긴다.
+MSG_PRODUCT_NAME_LENGTH = "상품명은 50자 이내로 입력해주세요."
+MSG_PRODUCT_PRICE_NUMERIC = "가격은 숫자만 입력할 수 있습니다."
+MSG_PRODUCT_STOCK_NUMERIC = "재고수량은 숫자만 입력할 수 있습니다."
+MSG_PRODUCT_SUCCESS = "상품이 등록되었습니다."
 
 # F1: bad 가 노출하는, 노출하면 안 되는 문구.
 #
@@ -299,6 +325,19 @@ def render_welcome(request: Request, variant: str, nickname: str) -> HTMLRespons
     )
 
 
+def render_product(
+    request: Request,
+    variant: str,
+    error: str | None = None,
+    success: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="product.html",
+        context={"variant": variant, "error": error, "success": success},
+    )
+
+
 # ---------------------------------------------------------------------------
 # 기획서를 지킨 검증 — 사본은 이 두 함수뿐이다
 # ---------------------------------------------------------------------------
@@ -412,7 +451,12 @@ def _register_login(variant: str, dashboard_inline: bool) -> None:
         if dashboard_inline:
             # spa: URL 은 /{variant}/login 그대로이고 화면 내용만 대시보드다.
             return render_dashboard(request, variant, email)
-        return RedirectResponse(f"/{variant}/dashboard", status_code=303)
+        resp = RedirectResponse(f"/{variant}/dashboard", status_code=303)
+        if variant == "good":
+            # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기
+            # 때문이다. 상품등록 화면의 로그인 가드가 이 쿠키 유무만 본다.
+            resp.set_cookie("session_good", "ok")
+        return resp
 
     @app.get(f"/{variant}/dashboard", response_class=HTMLResponse)
     def dashboard(request: Request):
@@ -463,7 +507,10 @@ def bad_login_submit(
     if REGISTERED["bad"].get(email) != password:
         # B3: 기획서와 다른 문구를 쓴다
         return render_login(request, "bad", MSG_NO_ACCOUNT_WRONG)
-    return RedirectResponse("/bad/dashboard", status_code=303)
+    resp = RedirectResponse("/bad/dashboard", status_code=303)
+    # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기 때문이다.
+    resp.set_cookie("session_bad", "ok")
+    return resp
 
 
 @app.get("/bad/dashboard", response_class=HTMLResponse)
@@ -525,6 +572,38 @@ def good_welcome(request: Request):
 
 
 # ---------------------------------------------------------------------------
+# good/product — 기획서를 전부 지킨 구현
+# ---------------------------------------------------------------------------
+
+
+@app.get("/good/product", response_class=HTMLResponse)
+def good_product_form(request: Request):
+    if "session_good" not in request.cookies:
+        return RedirectResponse("/good/login", status_code=303)
+    return render_product(request, "good")
+
+
+@app.post("/good/product", response_class=HTMLResponse)
+def good_product_submit(
+    request: Request,
+    name: str = Form(default=""),
+    price: str = Form(default=""),
+    stock: str = Form(default=""),
+):
+    if "session_good" not in request.cookies:
+        return RedirectResponse("/good/login", status_code=303)
+    if not name or not price or not stock:
+        return render_product(request, "good", error=MSG_REQUIRED)
+    if len(name) > 50:
+        return render_product(request, "good", error=MSG_PRODUCT_NAME_LENGTH)
+    if not price.isdigit():
+        return render_product(request, "good", error=MSG_PRODUCT_PRICE_NUMERIC)
+    if not stock.isdigit():
+        return render_product(request, "good", error=MSG_PRODUCT_STOCK_NUMERIC)
+    return render_product(request, "good", success=MSG_PRODUCT_SUCCESS)
+
+
+# ---------------------------------------------------------------------------
 # bad/signup — 의도적으로 규칙을 빠뜨린 구현
 # ---------------------------------------------------------------------------
 
@@ -573,6 +652,37 @@ def bad_signup_submit(
 @app.get("/bad/welcome", response_class=HTMLResponse)
 def bad_welcome(request: Request):
     return render_welcome(request, "bad", "테스터")
+
+
+# ---------------------------------------------------------------------------
+# bad/product — 의도적으로 규칙을 빠뜨린 구현
+# ---------------------------------------------------------------------------
+
+
+@app.get("/bad/product", response_class=HTMLResponse)
+def bad_product_form(request: Request):
+    # P2: 로그인 가드가 없다 — 쿠키 유무를 확인하지 않는다
+    return render_product(request, "bad")
+
+
+@app.post("/bad/product", response_class=HTMLResponse)
+def bad_product_submit(
+    request: Request,
+    name: str = Form(default=""),
+    price: str = Form(default=""),
+    stock: str = Form(default=""),
+):
+    # P2: 로그인 가드가 없다 — 쿠키 유무를 확인하지 않는다
+    if not name or not price or not stock:
+        return render_product(request, "bad", error=MSG_REQUIRED)
+    if len(name) > 50:
+        return render_product(request, "bad", error=MSG_PRODUCT_NAME_LENGTH)
+
+    # P1: 가격이 숫자인지 검사하지 않는다 (price.isdigit() 호출 누락)
+
+    if not stock.isdigit():
+        return render_product(request, "bad", error=MSG_PRODUCT_STOCK_NUMERIC)
+    return render_product(request, "bad", success=MSG_PRODUCT_SUCCESS)
 
 
 # ---------------------------------------------------------------------------
@@ -670,6 +780,8 @@ def index():
         "<li><a href='/bad/search'>/bad/search — 의도적 불일치 구현</a></li>"
         "<li><a href='/good/find-account'>/good/find-account — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/find-account'>/bad/find-account — 계정 존재 여부를 노출</a></li>"
+        "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
+        "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "</ul>"
         "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
         "<ul>"
