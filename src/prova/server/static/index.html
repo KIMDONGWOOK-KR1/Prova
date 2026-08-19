@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>Prova</title>
+<!--
+  외부 자원을 불러오지 않는다. 리포트가 폐쇄망에서 열려야 한다는 원칙과 같다 —
+  CDN 폰트도 아이콘도 없고, 아이콘은 인라인 SVG 다.
+
+  tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
+  두 벌로 갈라진다.
+-->
+<link rel="stylesheet" href="/static/tokens.css">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
+  <aside class="side">
+
+    <div class="brand">
+      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
+        <rect x="1" y="1" width="24" height="24" rx="6"
+              stroke="var(--accent-solid)" stroke-width="1.6"/>
+        <path d="M7.5 18.5V7.5h4.6a3.4 3.4 0 0 1 0 6.8H7.5"
+              stroke="var(--accent-solid)" stroke-width="1.9"
+              stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M14 16.6l2.2 2.2 4.3-4.6" stroke="var(--pass-fg)"
+              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div>
+        <div class="name">Prova</div>
+        <div class="sub">설계 문서 기반 QA 에이전트</div>
+      </div>
+    </div>
+
+    <div class="side-scroll">
+
+      <section class="panel">
+        <h2>실행 설정</h2>
+
+        <div class="field">
+          <label for="pdf">기획서</label>
+          <select id="pdf"></select>
+        </div>
+
+        <div class="field">
+          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF 올리기</button>
+          <input type="file" id="upload" accept="application/pdf" class="sr">
+        </div>
+
+        <div class="field">
+          <label for="url">테스트 대상 URL</label>
+          <input type="url" id="url" value="http://localhost:8100/bad"
+                 placeholder="http://localhost:8100/good" spellcheck="false">
+          <div style="margin-top:8px" class="seg" role="group" aria-label="구현 변형">
+            <button type="button" id="segGood" aria-pressed="false">/good</button>
+            <button type="button" id="segBad" aria-pressed="true">/bad</button>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="backend">LLM 백엔드</label>
+          <select id="backend">
+            <option value="mock">mock — 모델 없이 파이프라인만</option>
+            <option value="vllm">vllm — 로컬 7B</option>
+          </select>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>무엇을 확인할까요</h2>
+        <div class="field">
+          <label for="request" class="sr">자연어 요청</label>
+          <textarea id="request" placeholder="예) 회원가입이 잘 되는지 확인해줘&#10;비워 두면 전체 케이스를 실행합니다"></textarea>
+        </div>
+        <button class="btn primary block" id="planBtn" type="button">계획 만들기</button>
+      </section>
+
+      <section class="panel">
+        <h2>최근 실행</h2>
+        <div class="runs" id="runs"></div>
+      </section>
+
+    </div>
+
+    <div class="panel" style="border-top:1px solid var(--border-subtle)">
+      <div class="chips" id="chips"></div>
+    </div>
+  </aside>
+
+  <!-- ═══ 메인 ═══════════════════════════════════════════════════════ -->
+  <main class="main">
+
+    <div class="topbar">
+      <div class="crumbs" id="crumbs"></div>
+      <div class="chips" id="stageChips"></div>
+    </div>
+
+    <div class="stage" id="stage"></div>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
