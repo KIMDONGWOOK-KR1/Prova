@@ -193,6 +193,11 @@ def run_cases(state: AgentState) -> AgentState:
 
     for case in state.cases:
         console_errors.clear()
+        # 케이스 격리 — 앞 케이스가 남긴 세션이 다음 판정을 오염시키지 않게 한다.
+        # 가드 케이스(비로그인 전제)가 실행 순서와 무관하게 정직해지고, 전제가
+        # 있는 케이스는 어차피 setup 으로 매번 로그인한다 — storage_state 를
+        # 기본으로 채택하지 않은 스펙 §7 과 같은 판단이다.
+        state.page.context.clear_cookies()
         ctx = ExecutionContext(
             page=state.page,
             base_url=state.base_url,

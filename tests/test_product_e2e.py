@@ -26,6 +26,21 @@ test_pipeline_e2e.py 가 지킨다. 그래서 `run_pipeline` 을 `only="product"
 전제 계정의 비밀번호만 다르다(`Wrong1!`) — 나머지 화면 정의는 product_spec.md 와
 완전히 같다. `/good` 구현(전제·검증 모두 올바른 구현)에 대고 돌려서, 구현이 아니라
 **기획서가 준 전제 계정 자체가 틀렸을 때**의 분류를 확인한다.
+
+## TestFullDocumentNoFilter 는 왜 따로 있는가
+
+위 세 픽스처는 전부 `only="product"` 로 걸러서 돌린다. 그런데 실제 CLI 사용은
+필터 없이 문서 전체(로그인 + 상품등록)를 한 번에 돈다. 한 `run_pipeline` 호출은
+브라우저 컨텍스트(쿠키 저장소) 하나를 케이스 전부가 공유하므로, 필터 없이 돌리면
+로그인 화면의 `login-valid-001` 이 먼저 실행돼 도메인 전역 세션 쿠키
+(`session_good`)를 남기고, 그 뒤에 도는 `product-precondition-guard-001` 은
+**이미 로그인된 상태로 열려** '비로그인 접근' 을 확인하지 못한 채 리다이렉트가
+없다는 이유로 FAIL — 올바른 구현을 오탐으로 지목하는 것이다.
+
+`nodes.run_cases` 가 케이스마다 실행 전에 쿠키를 지우도록 고친 뒤에는(케이스
+격리) 실행 순서·필터 여부와 무관하게 가드 케이스가 정직해진다. 이 테스트는
+그 격리가 실제로 동작하는지, `only` 필터에 의존하지 않고도 오탐이 없는지를
+직접 확인한다 — 격리가 없으면 반드시 실패하는 시나리오다.
 """
 
 from __future__ import annotations
@@ -69,6 +84,19 @@ def badlogin_run(sut_base, tmp_path_factory):
     return _run(BADLOGIN_PDF, "good", sut_base, tmp_path_factory.mktemp("product-badlogin"))
 
 
+@pytest.fixture(scope="module")
+def good_full_run(sut_base, tmp_path_factory):
+    """필터 없이 문서 전체(로그인+상품등록)를 돈다 — 케이스 격리를 실제로 시험한다."""
+    report, run_dir = run_pipeline(
+        pdf_path=PRODUCT_PDF,
+        base_url=f"{sut_base}/good",
+        llm=MockLLM.for_document(LOGIN_PDF, PRODUCT_PDF),
+        run_id="test-product-good-full",
+        runs_root=tmp_path_factory.mktemp("product-good-full"),
+    )
+    return report, run_dir
+
+
 class TestGood:
     def test_전부_통과한다(self, good_run):
         report, _ = good_run
@@ -102,6 +130,38 @@ class TestBad:
         stock_case = next(
             v for v in report.cases if "stock-numeric" in v.case_id)
         assert stock_case.verdict == "PASS", stock_case.failure_detail
+
+
+class TestFullDocumentNoFilter:
+    """`only` 필터 없이 문서 전체를 돌려도 오탐이 없다 — 케이스 격리의 증거.
+
+    격리(nodes.run_cases 의 clear_cookies)가 없으면 로그인 화면의 정상 케이스가
+    남긴 세션 쿠키 때문에 product-precondition-guard-001 이 스푸리어스하게
+    FAIL 한다. 이 테스트는 그 시나리오를 그대로 재현해, 격리가 실제로 막는지
+    확인한다.
+    """
+
+    def test_필터_없이_돌려도_오탐이_없다(self, good_full_run):
+        report, _ = good_full_run
+        failures = [v for v in report.cases if v.verdict == "FAIL"]
+        assert not failures, (
+            "필터 없이 전체 문서를 돌렸을 때 오탐이 났다 — 케이스 격리가 "
+            "깨졌을 가능성이 크다:\n"
+            + "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
+        )
+
+    def test_로그인과_상품등록_케이스가_모두_들어있다(self, good_full_run):
+        """0건이나 반쪽만 돌고 통과한 것을 '전부 통과' 로 착각하지 않게 한다."""
+        report, _ = good_full_run
+        screen_ids = {v.screen_id for v in report.cases}
+        assert screen_ids == {"login", "product"}
+        assert report.summary["total"] >= 15
+
+    def test_가드_케이스가_실제로_실행됐다(self, good_full_run):
+        report, _ = good_full_run
+        guard = next(
+            v for v in report.cases if "precondition-guard" in v.case_id)
+        assert guard.verdict == "PASS", guard.failure_detail
 
 
 class TestBrokenLogin:
