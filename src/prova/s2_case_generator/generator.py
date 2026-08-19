@@ -51,7 +51,12 @@ from prova.s2_case_generator.rule_expander import (
 # LLM 에 맡기지 않는 이유: success_condition 은 이미 S1 이 정리한 짧은 문장이고,
 # 여기서 필요한 건 경로(/로 시작하는 토큰)와 인용부호 안 문구다. 둘 다 표면
 # 패턴으로 잡히므로 추론이 필요 없다.
-_PATH_RE = re.compile(r"(/[a-zA-Z0-9_\-/]+)")
+#
+# '/' 다음이 반드시 영문자여야 한다 — 숫자로 시작하면 "세션은 24/7 유지된다"
+# 같은 문장의 "24/7" 에서 "/7" 을 경로로 잘못 뽑는다. 경로는 기획서에서
+# 항상 영문 세그먼트로 시작하므로(/login, /dashboard) 이 제약이 실제 경로를
+# 놓치지 않는다.
+_PATH_RE = re.compile(r"(/[a-zA-Z][a-zA-Z0-9_\-/]*)")
 _QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,40})[\"'“”‘’]")
 
 # 씨앗 표(seed_rows)에서 날짜 열·금액 열을 값의 **모양**으로 찾을 때 쓴다.
@@ -269,9 +274,23 @@ def generate_cases(
         if setup:
             for c in cases:
                 c.setup_steps = [s.model_copy() for s in setup]
-            g = guard_case(spec, spec.precondition, doc, seq=len(cases) + 1)
-            if g is not None:
-                cases.append(g)
+        else:
+            # 전제를 세울 수 없다(로그인 화면이 문서에 없거나 요소를 못 찾음).
+            # 이대로 setup_steps 를 비워 두면 이 케이스들은 로그인 없이 본
+            # 스텝을 실행하게 되고, 그 실패는 element_not_found 등으로
+            # 오분류된다 — "전제가 깨졌다" 는 진짜 원인이 리포트에서 사라진다.
+            # 그래서 실행을 아예 건너뛰도록 표시만 남긴다
+            # (nodes.run_cases 가 이 표시를 보고 precondition_failed 로
+            # 직접 판정한다. TestCase.precondition_unmet 설명 참고).
+            for c in cases:
+                c.precondition_unmet = True
+        # 가드 케이스(비로그인 접근 확인)는 setup 성공 여부와 무관하게 만든다
+        # — 로그인 화면의 존재(guard_case 가 확인하는 것은 그 url_path 뿐)만
+        # 있으면 되고, 이메일/비밀번호 요소가 없어 setup 을 못 만든 것과는
+        # 관계없는 별개의 확인이다.
+        g = guard_case(spec, spec.precondition, doc, seq=len(cases) + 1)
+        if g is not None:
+            cases.append(g)
 
     return cases
 
@@ -356,20 +375,36 @@ def _scenario_cases(
 
 def _seed_column_label(
     seed_rows: list[dict[str, str]], pattern: re.Pattern
-) -> Optional[str]:
-    """seed_rows 의 첫 행 키 순서로, 모든 행의 값이 pattern 과 맞는 첫 열 이름.
+) -> tuple[Optional[str], list[str]]:
+    """seed_rows 의 모든 행의 값이 pattern 과 맞는 열 이름들을 찾는다.
+
+    Returns:
+        (label, matches). matches 는 pattern 에 맞는 후보 열 이름 전부(표의
+        열 순서대로). label 은 후보가 **정확히 하나**일 때만 그 이름이고,
+        0개 또는 2개 이상이면 None 이다.
 
     한 행이라도 그 열이 없거나 값이 비면 그 열은 후보에서 빠진다 — 씨앗 표는
     코드가 만든 것이 아니라 기획서에서 그대로 옮긴 것이므로, 열이 고르지
     않으면(일부 행에 빠짐) '이 열이 그 의미다' 라고 확신할 근거가 약하다.
+
+    ## 왜 후보가 여럿이면 억측하지 않는가
+
+    이전에는 첫 번째로 맞는 열을 그냥 골랐다. 그런데 씨앗 표에 값의 모양이
+    같은 열이 둘 있으면(주문일·배송일이 둘 다 YYYY-MM-DD) 그중 무엇을
+    골랐는지는 열의 등장 순서에 달린 우연이다. 우연히 고른 열로 정렬 케이스를
+    만들면, 기획서가 실제로 검증하려던 열이 아닌 다른 열을 검사하고도 통과라고
+    말할 수 있다 — 조용한 오탐이다. 그래서 후보가 둘 이상이면 아무것도 고르지
+    않고, 호출자가 그 사실을 경고로 남긴다(이 모듈의 다른 곳과 같은
+    '판정 불능이면 만들지 않는다' 원칙).
     """
     if not seed_rows:
-        return None
-    for key in seed_rows[0]:
-        values = [row.get(key, "").strip() for row in seed_rows]
-        if all(values) and all(pattern.fullmatch(v) for v in values):
-            return key
-    return None
+        return None, []
+    matches = [
+        key for key in seed_rows[0]
+        if (values := [row.get(key, "").strip() for row in seed_rows])
+        and all(values) and all(pattern.fullmatch(v) for v in values)
+    ]
+    return (matches[0] if len(matches) == 1 else None), matches
 
 
 def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
@@ -408,7 +443,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
     cases: list[TestCase] = []
     seq = start_seq
 
-    date_label = _seed_column_label(spec.seed_rows, _SEED_DATE_RE)
+    date_label, date_matches = _seed_column_label(spec.seed_rows, _SEED_DATE_RE)
     if date_label is not None and date_label in labels:
         cases.append(TestCase(
             case_id=f"{spec.screen_id}-sorted-{seq:03d}",
@@ -419,6 +454,15 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             expected=Expectation(type="sorted_desc", order_target=date_label),
         ))
         seq += 1
+    elif len(date_matches) > 1:
+        # 후보가 둘 이상이면 무엇을 검사한 것인지 확신할 수 없다 — 하나를
+        # 우연히 골라 검사하고 통과라고 말하는 것이 조용한 오탐이다
+        # (_seed_column_label 설명 참고).
+        spec.warnings.append(
+            f"'{spec.screen_name}' 의 시드 표에서 날짜(YYYY-MM-DD) 열이 여러 개"
+            f"({', '.join(date_matches)})라 어느 것인지 정할 수 없어 정렬"
+            f"(sorted_desc) 케이스를 만들지 않았습니다."
+        )
     else:
         spec.warnings.append(
             "테스트 주문 데이터 표에서 날짜(YYYY-MM-DD) 열을 찾지 못했거나 "
@@ -426,7 +470,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             "않았습니다."
         )
 
-    amount_label = _seed_column_label(spec.seed_rows, _SEED_AMOUNT_RE)
+    amount_label, amount_matches = _seed_column_label(spec.seed_rows, _SEED_AMOUNT_RE)
     total_element = next(
         (e for e in spec.elements if e.label == "합계" and e.type == "text"), None
     )
@@ -444,6 +488,12 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             ),
         ))
         seq += 1
+    elif len(amount_matches) > 1:
+        spec.warnings.append(
+            f"'{spec.screen_name}' 의 시드 표에서 금액(숫자·쉼표) 열이 여러 개"
+            f"({', '.join(amount_matches)})라 어느 것인지 정할 수 없어 합계"
+            f"(sum_matches) 케이스를 만들지 않았습니다."
+        )
     elif amount_label is None or amount_label not in labels:
         spec.warnings.append(
             "테스트 주문 데이터 표에서 금액(숫자·쉼표) 열을 찾지 못했거나 "
@@ -454,6 +504,30 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         spec.warnings.append(
             "테스트 주문 데이터 표는 있지만 화면 요소 표에 '합계' 요소가 없어 "
             "합계(sum_matches) 케이스를 만들지 않았습니다."
+        )
+
+    # 건수(result_count) 케이스 — 씨앗 행 수만큼 화면에 렌더됐는지 확인한다
+    # (스펙 §1-2). 정렬·합계는 '화면이 스스로 모순인지' 만 보므로 행이 통째로
+    # 누락돼도(예: 마지막 한 행이 안 나옴) 둘 다 통과할 수 있다 — 건수를 직접
+    # 세는 케이스가 없으면 그 누락이 어느 케이스에도 걸리지 않는다.
+    collection = _collection_element(spec)
+    if collection is not None:
+        n = len(spec.seed_rows)
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-seedcount-{seq:03d}",
+            screen_id=spec.screen_id,
+            title=f"시드 주문 {n}건이 모두 표시되는지 확인",
+            type="positive",
+            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            expected=Expectation(
+                type="result_count", count=n, count_target=collection.label,
+            ),
+        ))
+        seq += 1
+    else:
+        spec.warnings.append(
+            "테스트 주문 데이터 표는 있지만 화면 요소 표에 반복 목록(list) "
+            "요소가 없어 건수(result_count) 케이스를 만들지 않았습니다."
         )
 
     return cases

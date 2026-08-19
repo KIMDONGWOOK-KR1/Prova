@@ -453,10 +453,6 @@ class CollectionTexts:
     status: Literal["ok", "absent", "ambiguous"]
     texts: list[str] = field(default_factory=list)
     detail: str = ""
-    # target 을 맨 뒤·기본값 있게 둔 이유: assertion_engine 처럼 판정 쪽에서
-    # target 없이 세 인자(status·texts·detail)만으로 만들어 쓰는 자리가 있다.
-    # 형제 타입 CollectionCount 처럼 앞에 필수로 두면 그 호출이 깨진다.
-    target: str = ""
 
 
 def collect_item_texts(page, target: str, hint: UIElement | None = None) -> CollectionTexts:
@@ -481,7 +477,7 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
     """
     status, container, item_role, _found, detail = _locate_collection(page, target, hint)
     if status != "ok":
-        return CollectionTexts(target=target, status=status, texts=[], detail=detail)
+        return CollectionTexts(status=status, texts=[], detail=detail)
 
     try:
         # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명
@@ -490,12 +486,12 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
         items = container if item_role is None else container.get_by_role(item_role)
         texts = [normalize_ws(t) for t in items.all_inner_texts()]
     except Exception as exc:
-        return CollectionTexts(target=target, status="absent",
+        return CollectionTexts(status="absent",
                                texts=[], detail=f"항목 조회 실패: {exc}")
 
     where = f"{target!r}" if item_role is None else f"{target!r} 안의 {item_role}"
     return CollectionTexts(
-        target=target, status="ok", texts=texts,
+        status="ok", texts=texts,
         detail=f"{where} {len(texts)}개",
     )
 

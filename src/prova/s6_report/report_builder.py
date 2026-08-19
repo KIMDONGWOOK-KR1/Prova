@@ -193,28 +193,37 @@ def _steps_html(verdict: Verdict) -> str:
         # 열어 볼 수 없었다 — 탐지 실패를 조사할 때 가장 필요한 자료다.
         evidence = (f"<a href='{_esc(r.dom_snapshot)}'>DOM</a>"
                     if r.dom_snapshot else "")
+        # 전제(setup)와 본 스텝(test)을 구분해 보여준다. 둘 다 seq 가 1부터
+        # 따로 매겨지므로(nodes._run_case_steps 참고) 열이 없으면 "스텝 3" 이
+        # 어느 단계의 3번인지 표만 봐서는 알 수 없다 — models.py 의 phase
+        # 필드가 "리포트가 구분해 보여준다" 고 약속한 자리가 여기다.
+        phase_label = "준비" if r.phase == "setup" else "실행"
         rows.append(
-            f"<tr><td>{r.seq}</td><td>{_esc(r.action)}</td><td>{_esc(r.target)}</td>"
+            f"<tr><td>{_esc(phase_label)}</td><td>{r.seq}</td>"
+            f"<td>{_esc(r.action)}</td><td>{_esc(r.target)}</td>"
             f"<td>{_esc(strategy)}</td><td{cls}>{_esc(r.status)}</td>"
             f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
             f"<td>{evidence}</td></tr>"
         )
     return (
-        "<table class='steps'><thead><tr><th>#</th><th>동작</th><th>대상</th>"
+        "<table class='steps'><thead><tr><th>단계</th><th>#</th><th>동작</th><th>대상</th>"
         "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
 
 def _shots_html(verdict: Verdict) -> str:
-    shots = [(r.seq, r.screenshot) for r in verdict.step_results if r.screenshot]
+    shots = [(r.seq, r.screenshot, r.phase) for r in verdict.step_results if r.screenshot]
     if not shots:
         return ""
     items = "".join(
         f"<a href='{_esc(path)}' target='_blank'>"
         f"<img src='{_esc(path)}' alt='step {seq}'>"
-        f"<div class='cap'>step {seq}</div></a>"
-        for seq, path in shots
+        # 준비(setup) 스텝의 스크린샷임을 캡션에서 밝힌다 — steps 표와 같은
+        # 이유다. 준비·실행 둘 다 step1.png 부터 다시 시작하므로("step 1"이
+        # 두 번 나온다) 접두어가 없으면 어느 단계의 캡처인지 구분할 수 없다.
+        f"<div class='cap'>{'준비 ' if phase == 'setup' else ''}step {seq}</div></a>"
+        for seq, path, phase in shots
     )
     return f"<div class='shots'>{items}</div>"
 

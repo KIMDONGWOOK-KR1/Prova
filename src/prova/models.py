@@ -135,11 +135,17 @@ class Precondition(BaseModel):
     """화면 진입 전에 세워야 할 전제. 지금은 로그인 하나만 표현한다.
 
     kind 일반화는 두 번째 전제가 실재할 때(스펙 §7)에 한다.
+
+    세 필드 모두 기본값을 둔다 — 명세서 §3-1 의 계약이다. 기본값이 없으면
+    Precondition 을 만드는 모든 자리(테스트 포함)가 세 값을 다 채워야 하고,
+    '전제 없음' 을 표현하려는 코드가 requires_login=False 와 함께 빈 계정을
+    매번 타이핑하게 된다. 그 반복이 늘어나면 어느 자리는 결국 값을 잘못
+    채우고, 그건 전제 계정이 조용히 틀리는 것과 같은 실패 모양이다.
     """
 
-    requires_login: bool
-    account_email: str
-    account_password: str
+    requires_login: bool = False
+    account_email: str = ""
+    account_password: str = ""
     login_screen_id: str = "login"
 
 
@@ -397,6 +403,16 @@ class TestCase(BaseModel):
     # 전제를 세우는 스텝. S2 가 코드로 생성하며, 실패하면 FAIL + precondition_failed 로
     # 분류된다 (명세서 §3-2 참조).
     setup_steps: list[TestStep] = Field(default_factory=list)
+    # 전제가 선언됐지만(precondition.requires_login) 그 스텝 자체를 만들 수
+    # 없었다 — 로그인 화면이 문서에 없거나, 있어도 이메일/비밀번호/제출 요소를
+    # 찾지 못한 경우다(expand_precondition 참고). setup_steps 를 비운 채 그냥
+    # 두면 이 케이스는 로그인 없이 본 스텝을 실행하게 되고, 그 실패가
+    # element_not_found 같은 엉뚱한 분류로 리포트에 남는다 — "전제를 세울 수
+    # 없다" 는 진짜 원인이 사라진다.
+    #
+    # 그래서 여기 표시만 남긴다. nodes.run_cases 가 이 표시를 보고 스텝을
+    # **실행하지 않고** precondition_failed 로 직접 판정한다 (명세서 §3-2·§3-6).
+    precondition_unmet: bool = False
     expected: Expectation
 
 

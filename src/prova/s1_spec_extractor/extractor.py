@@ -522,9 +522,17 @@ def _apply_declared_precondition(
         password,
     ):
         return
+    # 어느 필드가 달랐는지 밝힌다. 이메일만 놓고 "이메일을 맞췄다" 고 두 번
+    # 말하면(모델 값도 이메일, 표 값도 이메일), 비밀번호가 함께 틀렸을 때도
+    # 그 사실이 경고에서 사라진다 — 프롬프트를 고치는 사람이 절반만 보게 된다.
+    diffs = []
+    if spec.precondition.account_email != email:
+        diffs.append(f"이메일 {spec.precondition.account_email!r} -> {email!r}")
+    if spec.precondition.account_password != password:
+        diffs.append(f"비밀번호 {spec.precondition.account_password!r} -> {password!r}")
     spec.warnings.append(
-        f"전제 계정을 기획서 표대로 {email!r} 로 맞췄습니다 "
-        f"(모델: {spec.precondition.account_email!r}). 프롬프트를 확인하세요."
+        f"전제 계정을 기획서 표대로 맞췄습니다 ({'; '.join(diffs)}). "
+        f"프롬프트를 확인하세요."
     )
     spec.precondition.account_email = email
     spec.precondition.account_password = password

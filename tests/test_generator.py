@@ -54,6 +54,13 @@ class TestParseSuccessExpectation:
         exp = parse_success_expectation(spec)
         assert exp.value == "" and exp.url_contains is None
 
+    def test_숫자로_시작하는_구분자를_경로로_오인하지_않는다(self):
+        """"24/7" 의 "/7" 이 경로로 잘못 뽑히면 존재하지 않는 url_contains 를
+        기대하게 되어, 올바른 구현이 이동하지 않았다는 이유로 FAIL 이 된다."""
+        spec = minimal_spec(success_condition="세션은 24/7 유지된다")
+        exp = parse_success_expectation(spec)
+        assert exp.url_contains is None
+
 
 class TestGenerateCases:
     def test_정상케이스가_맨_앞에_온다(self, login_spec):

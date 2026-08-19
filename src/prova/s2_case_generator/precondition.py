@@ -13,7 +13,10 @@ from prova.models import (Expectation, Precondition, ScreenSpec,
 # _PATH_RE 와 같은 패턴이다 — 여기서 다시 import 하지 않는 이유는 generator.py
 # 가 이 모듈(precondition)을 불러 쓰므로(순환 import), 같은 3줄짜리 패턴을
 # 다시 만드는 편이 의존을 꼬는 것보다 싸다.
-_PATH_RE = re.compile(r"(/[a-zA-Z0-9_\-/]+)")
+#
+# '/' 다음을 영문자로 제한하는 이유는 generator._PATH_RE 와 같다 — "24/7"
+# 같은 숫자 표현의 "/7" 을 경로로 오인하지 않는다.
+_PATH_RE = re.compile(r"(/[a-zA-Z][a-zA-Z0-9_\-/]*)")
 
 
 def _find_label(screen: ScreenSpec, element_id: str) -> Optional[str]:
