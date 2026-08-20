@@ -99,6 +99,16 @@ class TestDeclaredElementRows:
         doc = ParsedDocument(source="x", pages=[ParsedPage(page_no=1)])
         assert doc.declared_element_rows() == []
 
+    def test_규칙_열이_없으면_rules_는_None_이다(self):
+        """빈 문자열('규칙 열은 있는데 셀이 비었다')과 구분해야 한다.
+        열이 없으면 '규칙이 없다' 를 표가 말해 준 것이 아니므로, 소비자가
+        constraints 경고를 억제하는 근거로 쓰면 안 된다."""
+        table = ParsedTable(rows=[
+            ["요소 ID", "유형", "라벨"],
+            ["a", "입력", "가"],
+        ])
+        assert doc_with(table).declared_element_rows()[0]["rules"] is None
+
 
 class TestBackfill:
     def test_모델이_빠뜨린_요소를_표에서_채운다(self):
@@ -175,3 +185,20 @@ class TestBackfill:
         spec = spec_with()
         _backfill_declared_elements(spec, doc_with(ORDERS_TABLE))
         assert not any("위반 케이스" in w for w in spec.warnings)
+
+    def test_같은_라벨의_요소가_이미_있으면_채우지_않는다(self):
+        """모델이 요소를 빠뜨린 게 아니라 ID 를 지어낸 경우다 — 실측에서
+        screen_id 를 지어낸 전례가 있는 실패 모양. id 만 대조해 채우면 같은
+        라벨의 요소가 둘이 되어, 그라운딩의 '정확히 1개' 원칙과 충돌하고
+        케이스가 중복 생성된다."""
+        invented = UIElement(element_id="orders_list", type="list", label="주문 목록")
+        spec = spec_with(invented)
+        _backfill_declared_elements(spec, doc_with(ORDERS_TABLE))
+        ids = [e.element_id for e in spec.elements]
+        assert "order_list" not in ids, "라벨이 겹치면 쌍둥이를 만들면 안 된다"
+        assert ids[0] == "orders_list"
+        assert any("orders_list" in w and "주문 목록" in w for w in spec.warnings), (
+            "ID 가 다르게 추출됐을 가능성을 사람에게 알려야 한다"
+        )
+        # 라벨이 겹치지 않는 나머지는 정상적으로 채운다
+        assert {"order_date", "order_amount", "order_total"} <= set(ids)

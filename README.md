@@ -178,7 +178,7 @@ CHEETAH에 vLLM을 올리고 `--backend` 없이 실행한다.
 
 ```powershell
 uv run prova check     # vLLM 연결 + 정형 출력 동작 확인
-uv run pytest          # 테스트 745개 (vLLM 없으면 정확도 측정 69개는 자동 skip)
+uv run pytest          # 테스트 754개 (vLLM 없으면 정확도 측정 69개는 자동 skip)
 ```
 
 ---

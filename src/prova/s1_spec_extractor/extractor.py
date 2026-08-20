@@ -325,14 +325,6 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_seed_rows(spec, doc.declared_seed_rows())
     _drop_invented_strings(spec, doc)
 
-    # constraints 가 하나도 없으면 거의 확실히 추출 실패다. 조용히 넘어가면
-    # negative 케이스가 아예 생성되지 않아 리포트가 근거 없이 초록불이 된다.
-    if not any(e.constraints for e in spec.elements):
-        spec.warnings.append(
-            "입력 검증 규칙(constraints)이 하나도 추출되지 않았습니다. "
-            "기획서에 규칙이 없는 화면이 아니라면 S1 추출 실패를 의심하세요."
-        )
-
     spec.warnings.extend(structural_warnings(spec, doc))
     return spec
 
@@ -390,9 +382,23 @@ def _backfill_declared_elements(spec: ScreenSpec, doc: ParsedDocument) -> None:
     읽었을 수 있고, 백필은 빈자리만 채운다.
     """
     got = {e.element_id for e in spec.elements}
+    by_label = {e.label: e.element_id for e in spec.elements}
     for row in doc.declared_element_rows():
         if row["element_id"] in got or row["type"] is None:
             continue
+        # 같은 라벨의 요소가 이미 있으면 빠진 게 아니라 모델이 ID 를 다르게
+        # 낸 경우다(실측에서 screen_id 를 지어낸 전례가 있는 실패 모양).
+        # id 만 보고 채우면 같은 라벨의 요소가 둘이 되어 그라운딩의
+        # '정확히 1개' 원칙과 충돌하고 케이스가 중복 생성된다.
+        other = by_label.get(row["label"])
+        if other is not None:
+            spec.warnings.append(
+                f"기획서 표의 '{row['element_id']}' 요소를 채우지 않았습니다 — "
+                f"같은 라벨('{row['label']}')의 요소가 '{other}' 로 이미 추출되어 "
+                f"있습니다. 모델이 요소 ID 를 다르게 냈을 수 있습니다."
+            )
+            continue
+        by_label[row["label"]] = row["element_id"]
         spec.elements.append(UIElement(
             element_id=row["element_id"],
             type=row["type"],
@@ -716,11 +722,31 @@ def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
             "비활성화되어, 요소·유형·안내 문구가 검증 없이 쓰입니다."
         )
 
-    if not any(e.type == "button" for e in spec.elements):
+    # 채울 수 있는 요소(입력·선택·체크박스)가 있어야 제출할 폼이 있다.
+    # 주문조회처럼 표시 전용 요소뿐인 화면에 이 경고를 내면 사실과 다르다 —
+    # 2026-08-20 실모델 관통에서 15/15 통과한 화면에 "모든 케이스가 실패로
+    # 나옵니다" 가 떴다. 틀린 경고는 진짜 경고를 묻는다.
+    fillable = {"input", "select", "checkbox"}
+    if (any(e.type in fillable for e in spec.elements)
+            and not any(e.type == "button" for e in spec.elements)):
         warnings.append(
             "버튼 요소를 하나도 추출하지 못했습니다. 제출 버튼이 없으면 테스트가 "
             "폼을 제출하지 못해, 구현이 옳아도 모든 케이스가 실패로 나옵니다."
         )
+
+    # constraints 가 하나도 없으면 대개 추출 실패다. 조용히 넘어가면 negative
+    # 케이스가 아예 생성되지 않아 리포트가 근거 없이 초록불이 된다. 단,
+    # 요소 표의 규칙 열이 전부 비어 있으면 **표가 '규칙 없는 화면' 을 말해 준
+    # 것**이므로 침묵한다 — 규칙 열 자체가 없으면(rules=None) 규칙이 본문
+    # 서술에만 있을 수 있어 의심을 유지한다.
+    if not any(e.constraints for e in spec.elements):
+        rows = doc.declared_element_rows()
+        table_says_no_rules = bool(rows) and all(r["rules"] == "" for r in rows)
+        if not table_says_no_rules:
+            warnings.append(
+                "입력 검증 규칙(constraints)이 하나도 추출되지 않았습니다. "
+                "기획서에 규칙이 없는 화면이 아니라면 S1 추출 실패를 의심하세요."
+            )
 
     # 기획서가 예시값을 표로 줬는데 추출에서 빠진 경우. 그러면 정상 케이스가
     # 코드가 만든 값을 쓰게 되고, 그 값은 규칙은 만족하지만 시스템에 등록된 값이
