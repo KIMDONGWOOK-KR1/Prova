@@ -215,6 +215,64 @@ class ParsedDocument:
         return [v.replace(" ", "")
                 for v in self._column(table, lambda h: "요소" in h and "ID" in h.upper())]
 
+    def declared_element_rows(self) -> list[dict]:
+        """UI 요소 표를 행 단위로 읽는다 — 결정적 표 독해에 하나를 더한다.
+
+        ## 왜 필요한가 (2026-08-20 실측)
+
+        실모델 7B 가 주문조회 화면의 요소 4개를 두 번 다 0개 추출했다. 로그인·
+        상품등록의 입력·버튼 요소는 옮기면서 **표시 전용 요소(목록·텍스트)는
+        통째로 빠뜨린다.** 요소가 없으면 정렬·합계·건수 케이스가 생성되지 않아
+        심은 결함을 실행조차 못 했다. 그때 경고("표에는 4개, 추출은 0개")가
+        말해 주듯 파서는 표를 이미 읽고 있었다 — 대조에서 백필로 올린다.
+
+        열 매핑: 요소 ID·유형·라벨·필수·입력 검증 규칙·안내 문구·에러 메시지.
+        '-' 는 기획서의 '없음' 표기이므로 빈 값으로 옮긴다. 유형은
+        ELEMENT_TYPE_WORDS 로만 매핑하고 모르는 표현은 None 으로 둔다 —
+        억지로 매핑하면 틀린 유형을 확신을 갖고 만들게 된다
+        (declared_element_types 와 같은 판단). ID 나 라벨이 빈 행은 버린다.
+        규칙 셀은 자유 서술이라 여기서 옮기지 않는다 — 원문을 rules 로 넘겨
+        백필 쪽이 '규칙을 못 옮겼다' 를 경고하는 데만 쓴다.
+        """
+        table = self._element_table()
+        if table is None:
+            return []
+        header = [normalize_ws(h) for h in table.header]
+
+        def col(match) -> Optional[int]:
+            return next((i for i, h in enumerate(header) if match(h)), None)
+
+        def cell(row: list[str], i: Optional[int]) -> str:
+            value = row[i].strip() if i is not None and i < len(row) else ""
+            return "" if value == "-" else value
+
+        id_col = col(lambda h: "요소" in h and "ID" in h.upper())
+        type_col = col(lambda h: "유형" in h)
+        label_col = col(lambda h: "라벨" in h)
+        required_col = col(lambda h: "필수" in h)
+        rules_col = col(lambda h: "규칙" in h)
+        placeholder_col = col(lambda h: "안내" in h)
+        error_col = col(lambda h: "에러" in h)
+        if id_col is None or label_col is None:
+            return []
+
+        rows: list[dict] = []
+        for row in table.rows[1:]:
+            element_id = cell(row, id_col).replace(" ", "")
+            label = cell(row, label_col)
+            if not element_id or not label:
+                continue
+            rows.append({
+                "element_id": element_id,
+                "type": ELEMENT_TYPE_WORDS.get(normalize_ws(cell(row, type_col))),
+                "label": label,
+                "required": "필수" in cell(row, required_col),
+                "rules": cell(row, rules_col),
+                "placeholder": cell(row, placeholder_col),
+                "error_message": cell(row, error_col),
+            })
+        return rows
+
     def declared_labels(self) -> list[str]:
         """UI 요소 표의 '라벨' 열. 예시값 표의 열 제목과 맞춰 보는 데 쓴다."""
         table = self._element_table()

@@ -25,7 +25,8 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import Flow, Precondition, Scenario, ScreenSpec, SpecDocument
+from prova.models import (Flow, Precondition, Scenario, ScreenSpec,
+                          SpecDocument, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
     ParsedDocument,
     normalize_ws,
@@ -315,6 +316,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     spec = ScreenSpec.model_validate(raw)
 
     _normalize_element_ids(spec)
+    _backfill_declared_elements(spec, doc)
     _apply_declared_types(spec, doc.declared_element_types())
     _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message())
@@ -360,6 +362,55 @@ def _normalize_element_ids(spec: ScreenSpec) -> None:
         ref = element.constraints.get("same_as")
         if ref in renames:
             element.constraints["same_as"] = renames[ref]
+
+
+def _backfill_declared_elements(spec: ScreenSpec, doc: ParsedDocument) -> None:
+    """모델이 빠뜨린 요소를 기획서 표에서 직접 채운다 — 결정적 표 독해의 연장.
+
+    ## 왜 대조로는 부족한가 (2026-08-20 실측)
+
+    실모델 7B 관통에서 주문조회 요소 4개(전부 표시 전용: 목록·텍스트)가 두 번
+    다 0개 추출됐다. structural_warnings 의 누락 경고는 정확히 떴지만, 요소가
+    없으니 정렬·합계·건수 케이스가 생성되지 않아 심은 결함 O1·O2 를 실행조차
+    못 했다. **경고가 "표에는 4개" 라고 아는 것은 파서가 표를 이미 읽고 있다는
+    뜻이다** — 표에 그대로 적힌 사실은 LLM 에 맡기지 않는다는 원칙대로,
+    전제 계정·시드 표처럼 코드가 채운다.
+
+    ## 채우는 것과 채우지 않는 것
+
+    ID·유형·라벨·필수·안내 문구·에러 메시지는 표에 그대로 적힌 사실이라 옮긴다.
+    입력 검증 규칙 셀은 자유 서술("8자 이상, 대문자 1자 이상")이라 결정적으로
+    옮길 수 없다 — constraints 는 빈 채로 두고, 규칙이 적혀 있었다면 그 요소의
+    위반 케이스가 생성되지 않는다는 사실을 경고한다(미탐은 보이게 만든다).
+    유형을 매핑하지 못한 행도 채우지 않는다 — 틀린 유형으로 채우면 목록 요소를
+    입력란처럼 조작하거나(오탐) 그 반대가 된다(미탐). 못 채운 요소는
+    structural_warnings 의 누락 경고가 그대로 알린다.
+
+    이미 추출된 요소는 건드리지 않는다 — 모델이 본문에서 constraints 까지
+    읽었을 수 있고, 백필은 빈자리만 채운다.
+    """
+    got = {e.element_id for e in spec.elements}
+    for row in doc.declared_element_rows():
+        if row["element_id"] in got or row["type"] is None:
+            continue
+        spec.elements.append(UIElement(
+            element_id=row["element_id"],
+            type=row["type"],
+            label=row["label"],
+            required=row["required"],
+            placeholder=row["placeholder"] or None,
+            error_message=row["error_message"] or None,
+        ))
+        spec.warnings.append(
+            f"'{row['label']}' 요소를 모델이 빠뜨려 기획서 표에서 직접 채웠습니다 "
+            f"(유형 {row['type']!r}). 프롬프트를 확인하세요."
+        )
+        if row["rules"]:
+            spec.warnings.append(
+                f"'{row['label']}' 의 입력 검증 규칙({row['rules']!r})은 자유 "
+                f"서술이라 표에서 옮기지 못했습니다. 이 요소의 위반 케이스는 "
+                f"생성되지 않습니다 — 규칙이 검증에서 빠졌습니다."
+            )
 
 
 def _apply_declared_types(spec: ScreenSpec, declared: dict[str, str]) -> None:
