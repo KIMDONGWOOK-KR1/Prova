@@ -77,13 +77,90 @@ class TestStructuralWarnings:
         spec = spec_with(UIElement(element_id="email", type="input", label="이메일"))
         assert any("버튼" in w for w in structural_warnings(spec, doc))
 
+    def test_표시_전용_화면은_버튼_경고를_내지_않는다(self):
+        """주문조회처럼 입력이 없는 화면에는 제출할 폼이 없다. 2026-08-20
+        실모델 관통에서 15/15 통과한 화면에 '모든 케이스가 실패로 나옵니다'
+        경고가 떴다 — 사실과 다른 경고는 진짜 경고를 묻는다(늑대 소리)."""
+        rows = [["요소 ID", "유형", "라벨"],
+                ["order_list", "목록", "주문 목록"],
+                ["order_total", "텍스트", "합계"]]
+        doc = ParsedDocument(
+            source="x",
+            pages=[ParsedPage(page_no=1, tables=[ParsedTable(rows=rows)])])
+        spec = spec_with(
+            UIElement(element_id="order_list", type="list", label="주문 목록"),
+            UIElement(element_id="order_total", type="text", label="합계"))
+        assert not any("버튼" in w for w in structural_warnings(spec, doc))
+
+    def test_채울_수_있는_요소가_있으면_버튼_경고를_낸다(self):
+        """select·checkbox 도 제출이 필요한 폼이다."""
+        doc = element_table("agree")
+        spec = spec_with(
+            UIElement(element_id="agree", type="checkbox", label="약관 동의"))
+        assert any("버튼" in w for w in structural_warnings(spec, doc))
+
     def test_모두_추출되면_경고가_없다(self):
         doc = element_table("email", "login_btn")
         spec = spec_with(
-            UIElement(element_id="email", type="input", label="이메일"),
+            UIElement(element_id="email", type="input", label="이메일",
+                      constraints={"format": "email"}),
             button("login_btn"),
         )
         assert structural_warnings(spec, doc) == []
+
+
+class TestConstraintsWarning:
+    """'규칙이 하나도 추출되지 않았다' 경고 — 표가 답을 아는 경우는 침묵한다.
+
+    2026-08-20 실모델 관통에서 주문조회 화면(규칙 열이 전부 '-')에 'S1 추출
+    실패를 의심하세요' 가 떴다. 파서가 표에서 '규칙이 없다' 를 이미 읽을 수
+    있는데도 의심하라고 말하면 늑대 소리가 된다.
+    """
+
+    def _doc(self, rules_cell: str | None) -> ParsedDocument:
+        if rules_cell is None:
+            rows = [["요소 ID", "유형", "라벨"], ["a", "입력", "가"]]
+        else:
+            rows = [["요소 ID", "유형", "라벨", "입력 검증 규칙"],
+                    ["a", "입력", "가", rules_cell]]
+        return ParsedDocument(
+            source="x",
+            pages=[ParsedPage(page_no=1, tables=[ParsedTable(rows=rows)])])
+
+    def _spec(self) -> ScreenSpec:
+        return spec_with(UIElement(element_id="a", type="input", label="가"),
+                         button())
+
+    def test_표가_규칙_없음을_말하면_경고하지_않는다(self):
+        warnings = structural_warnings(self._spec(), self._doc("-"))
+        assert not any("constraints" in w for w in warnings)
+
+    def test_표에_규칙이_적혀_있는데_비면_경고한다(self):
+        warnings = structural_warnings(self._spec(), self._doc("8자 이상"))
+        assert any("constraints" in w for w in warnings)
+
+    def test_규칙_열이_없으면_경고한다(self):
+        """열이 없으면 표가 '규칙 없음' 을 말해 준 것이 아니다 — 규칙이 본문
+        서술에만 있을 수 있으므로 의심을 유지한다."""
+        warnings = structural_warnings(self._spec(), self._doc(None))
+        assert any("constraints" in w for w in warnings)
+
+    def test_요소_표가_아예_없어도_경고한다(self):
+        doc = ParsedDocument(source="x", pages=[ParsedPage(page_no=1)])
+        warnings = structural_warnings(self._spec(), doc)
+        assert any("constraints" in w for w in warnings)
+
+    def test_규칙이_추출됐으면_경고하지_않는다(self):
+        spec = spec_with(
+            UIElement(element_id="a", type="input", label="가",
+                      constraints={"min_length": 8}),
+            button())
+        warnings = structural_warnings(spec, self._doc("8자 이상"))
+        assert not any("constraints" in w for w in warnings)
+
+
+class TestMissingTable:
+    """대조할 표 자체가 없는 기획서의 처리."""
 
     def test_대조할_표가_없으면_없는_누락을_경고하지_않는다(self):
         """ID 열이 없는 기획서에서 '요소가 빠졌다' 고 하면 안 된다.

@@ -232,7 +232,9 @@ class ParsedDocument:
         억지로 매핑하면 틀린 유형을 확신을 갖고 만들게 된다
         (declared_element_types 와 같은 판단). ID 나 라벨이 빈 행은 버린다.
         규칙 셀은 자유 서술이라 여기서 옮기지 않는다 — 원문을 rules 로 넘겨
-        백필 쪽이 '규칙을 못 옮겼다' 를 경고하는 데만 쓴다.
+        백필 쪽이 '규칙을 못 옮겼다' 를 경고하는 데만 쓴다. 규칙 열 자체가
+        없으면 rules 는 None 이다 — 빈 문자열('열은 있는데 셀이 비었다')과
+        구분해야 소비자가 "표가 규칙 없음을 말했다" 를 오판하지 않는다.
         """
         table = self._element_table()
         if table is None:
@@ -267,7 +269,7 @@ class ParsedDocument:
                 "type": ELEMENT_TYPE_WORDS.get(normalize_ws(cell(row, type_col))),
                 "label": label,
                 "required": "필수" in cell(row, required_col),
-                "rules": cell(row, rules_col),
+                "rules": cell(row, rules_col) if rules_col is not None else None,
                 "placeholder": cell(row, placeholder_col),
                 "error_message": cell(row, error_col),
             })
