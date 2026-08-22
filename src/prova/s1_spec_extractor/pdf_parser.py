@@ -49,7 +49,7 @@ from typing import Optional
 
 import pdfplumber
 
-from prova.text_utils import normalize_ws
+from prova.text_utils import normalize_ws, quoted_re
 
 # 건수 열을 값의 모양으로 찾을 때 쓴다. 음수·소수는 건수가 아니다.
 _INT_RE = re.compile(r"\d+")
@@ -65,7 +65,7 @@ _INT_RE = re.compile(r"\d+")
 _EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|누락|공백")
 
 # 표 칸 안의 인용된 문구. 기획서가 쓰는 인용부호가 여러 가지다.
-_QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,60})[\"'“”‘’]")
+_QUOTED_RE = quoted_re(60)
 
 # 흐름 표의 '화면 순서'·'이동 방법' 칸에서 항목을 가르는 구분자.
 # 화살표 표현이 기획서마다 다르고(->, →, >, 쉼표) PDF 변환에서 모양이 바뀌기도 한다.
@@ -209,11 +209,29 @@ class ParsedDocument:
         표에 ID 열이 없으면 빈 목록을 돌려준다 — 대조할 근거가 없으면 검사하지
         않는 것이 맞다. 있는 것처럼 추측하면 없는 누락을 경고하게 된다.
         """
+        # 행 독해(declared_element_rows)를 쓰지 않는다 — 그쪽은 라벨 열까지
+        # 요구하는데, ID 대조는 라벨 없는 표에서도 의미가 있다. 열 찾기 규칙만
+        # 공유한다.
         table = self._element_table()
         if table is None:
             return []
         return [v.replace(" ", "")
-                for v in self._column(table, lambda h: "요소" in h and "ID" in h.upper())]
+                for v in self._column(table, self._ELEMENT_COLUMNS["id"])]
+
+    #: UI 요소 표의 열을 찾는 규칙 — **여기 한 곳에만 둔다.** 2026-08-22 까지
+    #: 독해 함수 여섯 개가 각자 열을 찾았고 실제로 어긋나 있었다: 안내 문구 열을
+    #: 한쪽은 "안내" 로, 다른 쪽은 "안내 or placeholder" 로 찾아, 헤더가
+    #: 'Placeholder' 인 기획서에서는 백필한 요소가 곧바로 '모델이 틀렸다' 경고를
+    #: 받았다(모델 탓이 아닌데). 열 찾기가 두 벌이면 한쪽만 고쳐진다.
+    _ELEMENT_COLUMNS = {
+        "id": lambda h: "요소" in h and "ID" in h.upper(),
+        "type": lambda h: "유형" in h,
+        "label": lambda h: "라벨" in h,
+        "required": lambda h: "필수" in h,
+        "rules": lambda h: "규칙" in h,
+        "placeholder": lambda h: "안내" in h or "placeholder" in h.lower(),
+        "error": lambda h: "에러" in h,
+    }
 
     def declared_element_rows(self) -> list[dict]:
         """UI 요소 표를 행 단위로 읽는다 — 결정적 표 독해에 하나를 더한다.
@@ -241,20 +259,21 @@ class ParsedDocument:
             return []
         header = [normalize_ws(h) for h in table.header]
 
-        def col(match) -> Optional[int]:
+        def col(name: str) -> Optional[int]:
+            match = self._ELEMENT_COLUMNS[name]
             return next((i for i, h in enumerate(header) if match(h)), None)
 
         def cell(row: list[str], i: Optional[int]) -> str:
-            value = row[i].strip() if i is not None and i < len(row) else ""
-            return "" if value == "-" else value
+            value = normalize_ws(row[i]) if i is not None and i < len(row) else ""
+            return "" if value in ("-", "—") else value
 
-        id_col = col(lambda h: "요소" in h and "ID" in h.upper())
-        type_col = col(lambda h: "유형" in h)
-        label_col = col(lambda h: "라벨" in h)
-        required_col = col(lambda h: "필수" in h)
-        rules_col = col(lambda h: "규칙" in h)
-        placeholder_col = col(lambda h: "안내" in h)
-        error_col = col(lambda h: "에러" in h)
+        id_col = col("id")
+        type_col = col("type")
+        label_col = col("label")
+        required_col = col("required")
+        rules_col = col("rules")
+        placeholder_col = col("placeholder")
+        error_col = col("error")
         if id_col is None or label_col is None:
             return []
 
@@ -277,10 +296,7 @@ class ParsedDocument:
 
     def declared_labels(self) -> list[str]:
         """UI 요소 표의 '라벨' 열. 예시값 표의 열 제목과 맞춰 보는 데 쓴다."""
-        table = self._element_table()
-        if table is None:
-            return []
-        return self._column(table, lambda h: "라벨" in h)
+        return [r["label"] for r in self.declared_element_rows()]
 
     def declared_screen_meta(self) -> dict[str, str]:
         """화면 개요 표('항목 | 내용' 2열)에서 화면 ID 와 경로를 읽는다.
@@ -341,24 +357,7 @@ class ParsedDocument:
 
     def declared_label_to_id(self) -> dict[str, str]:
         """UI 요소 표에서 '라벨 -> 요소 ID'. 행 단위로 짝지어 어긋나지 않게 한다."""
-        table = self._element_table()
-        if table is None:
-            return {}
-        header = [normalize_ws(h) for h in table.header]
-        id_col = next((i for i, h in enumerate(header)
-                       if "요소" in h and "ID" in h.upper()), None)
-        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
-        if id_col is None or label_col is None:
-            return {}
-
-        mapping: dict[str, str] = {}
-        for row in table.rows[1:]:
-            if len(row) <= max(id_col, label_col):
-                continue
-            label, element_id = row[label_col].strip(), row[id_col].strip()
-            if label and element_id:
-                mapping[label] = element_id.replace(" ", "")
-        return mapping
+        return {r["label"]: r["element_id"] for r in self.declared_element_rows()}
 
     def declared_placeholders(self) -> dict[str, str]:
         """UI 요소 표의 '안내 문구' 열. 라벨 -> placeholder 다.
@@ -375,24 +374,8 @@ class ParsedDocument:
         버튼·체크박스·목록에는 placeholder 가 없다. '-' 를 값으로 받으면 화면에서
         placeholder="-" 를 찾다 실패해 없는 결함을 보고하게 된다.
         """
-        table = self._element_table()
-        if table is None:
-            return {}
-        header = [normalize_ws(h) for h in table.header]
-        col = next((i for i, h in enumerate(header)
-                    if "안내" in h or "placeholder" in h.lower()), None)
-        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
-        if col is None or label_col is None:
-            return {}
-
-        found: dict[str, str] = {}
-        for row in table.rows[1:]:
-            if len(row) <= max(col, label_col):
-                continue
-            label, text = row[label_col].strip(), normalize_ws(row[col])
-            if label and text and text not in ("-", "—"):
-                found[label] = text
-        return found
+        return {r["label"]: r["placeholder"]
+                for r in self.declared_element_rows() if r["placeholder"]}
 
     def declared_required_message(self) -> Optional[str]:
         """실패 조건 표에서 '값이 비어 있을 때' 노출하는 문구를 읽는다.
@@ -718,24 +701,8 @@ class ParsedDocument:
         엇갈릴 수 있고, 라벨은 declared_sample_values 와 declared_label_to_id 가
         이미 쓰는 키다.
         """
-        table = self._element_table()
-        if table is None:
-            return {}
-        header = [normalize_ws(h) for h in table.header]
-        type_col = next((i for i, h in enumerate(header) if "유형" in h), None)
-        label_col = next((i for i, h in enumerate(header) if "라벨" in h), None)
-        if type_col is None or label_col is None:
-            return {}
-
-        mapping: dict[str, str] = {}
-        for row in table.rows[1:]:
-            if len(row) <= max(type_col, label_col):
-                continue
-            label = row[label_col].strip()
-            declared = ELEMENT_TYPE_WORDS.get(normalize_ws(row[type_col]))
-            if label and declared:
-                mapping[label] = declared
-        return mapping
+        return {r["label"]: r["type"]
+                for r in self.declared_element_rows() if r["type"]}
 
     def declared_scenarios(self) -> Optional[list[dict]]:
         """입력-결과 예시 표를 그대로 시나리오로 옮긴다. LLM 을 쓰지 않는다.

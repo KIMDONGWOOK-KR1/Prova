@@ -118,8 +118,6 @@ class AgentState:
     # 0 으로 두면 기다리지 않는다(예전 동작).
     settle_timeout_ms: int = 2000
 
-    errors: list[str] = field(default_factory=list)
-
 
 def extract_spec(state: AgentState) -> AgentState:
     """S1 — PDF 에서 SpecDocument 를 추출한다 (화면 하나 이상).

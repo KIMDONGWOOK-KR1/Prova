@@ -337,3 +337,19 @@ class TestNumeric:
         v = next(x for x in vios if x.rule == "numeric")
         assert not satisfies(v.value, {"numeric": True})
         assert satisfies(v.value, {"min_length": 3, "max_length": 4})
+
+
+class TestUnsupportedRuleIsVisible:
+    def test_모르는_규칙_키는_경고한다(self):
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/s", elements=[
+            UIElement(element_id="age", type="input", label="나이",
+                      constraints={"min_value": 19}),
+        ])
+        assert any("나이" in d and "min_value" in d for d in spec_defects(spec))
+
+    def test_email_이_아닌_format_은_경고한다(self):
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/s", elements=[
+            UIElement(element_id="url", type="input", label="홈페이지",
+                      constraints={"format": "url"}),
+        ])
+        assert any("홈페이지" in d and "url" in d for d in spec_defects(spec))

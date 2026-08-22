@@ -69,7 +69,6 @@ class ExecutionContext:
     case_id: str
     step_timeout_ms: int = 10000
     screenshot_every_step: bool = True
-    console_errors: list[str] = field(default_factory=list)
     # 2차 경로. None 이면 접근성 속성으로 못 찾은 요소는 그대로 탐지 실패다.
     #
     # 기본이 None 인 이유: 보정은 **선택 기능**이어야 한다. 기본으로 켜 두면

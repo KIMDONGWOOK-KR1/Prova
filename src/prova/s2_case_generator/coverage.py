@@ -46,10 +46,10 @@ from __future__ import annotations
 import re
 
 from prova.models import ScreenSpec, TestCase
-from prova.text_utils import loosen
+from prova.text_utils import loosen, quoted_re
 
 # 표·문장 안의 인용된 문구. pdf_parser 와 같은 인용부호 집합을 본다.
-_QUOTED = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,80})[\"'“”‘’]")
+_QUOTED = quoted_re(80)
 
 
 def declared_messages(spec: ScreenSpec) -> dict[str, str]:

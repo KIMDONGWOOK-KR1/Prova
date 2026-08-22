@@ -81,7 +81,9 @@ class PlanRequest(BaseModel):
     pdf: str
     url: str
     request: Optional[str] = None
-    backend: str = "mock"
+    #: 기본값을 두지 않는다 — 요청이 빠뜨리면 조용히 mock 이 되는데, "mock 은
+    #: 사용자가 직접 고를 때만" 이 이 도구의 규칙이다. 화면은 항상 보낸다.
+    backend: str
 
 
 class RunRequest(PlanRequest):

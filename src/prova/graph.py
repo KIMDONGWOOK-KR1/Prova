@@ -22,9 +22,9 @@ nodes.py 의 함수들이 처음부터 (state) -> state 시그니처를 갖고 �
                    --조건--> classify_failure    (한도 초과)
 
 그때 run_cases 노드가 케이스·스텝 단위 루프로 펼쳐진다. 지금 한 노드에 담아둔
-이유는 1차에 분기가 없어서 쪼갤 이득이 없기 때문이다. AgentState 에 heal_count /
-max_heal 필드를 미리 둔 것은 그 확장에서 상태 구조가 흔들리지 않게 하기 위한
-것이다.
+이유는 분기가 없어서 쪼갤 이득이 없기 때문이다. 2차 경로(VLM 보정)는 실제로
+run_cases 안의 ExecutionContext(max_heal·heal_count)가 케이스 단위로 관리한다 —
+AgentState 에는 그 필드를 두지 않는다(nodes.py 의 설명 참고).
 """
 
 from __future__ import annotations

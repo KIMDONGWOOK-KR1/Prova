@@ -30,6 +30,7 @@ import re
 from typing import Optional
 
 from prova.llm.base import LLMClient, LLMError
+from prova.text_utils import quoted_re
 from prova.models import (
     Expectation,
     Flow,
@@ -57,7 +58,7 @@ from prova.s2_case_generator.rule_expander import (
 # 항상 영문 세그먼트로 시작하므로(/login, /dashboard) 이 제약이 실제 경로를
 # 놓치지 않는다.
 _PATH_RE = re.compile(r"(/[a-zA-Z][a-zA-Z0-9_\-/]*)")
-_QUOTED_RE = re.compile(r"[\"'“”‘’]([^\"'“”‘’]{2,40})[\"'“”‘’]")
+_QUOTED_RE = quoted_re(40)
 
 # 씨앗 표(seed_rows)에서 날짜 열·금액 열을 값의 **모양**으로 찾을 때 쓴다.
 #
@@ -586,6 +587,11 @@ def _polish_titles(cases: list[TestCase], spec: ScreenSpec, llm: LLMClient) -> N
         )
     except LLMError as exc:
         spec.warnings.append(f"케이스 제목 다듬기를 건너뛰었습니다: {exc}")
+        return
+
+    if not isinstance(raw, dict):
+        # 스키마를 무시한 백엔드의 응답. 제목은 판정과 무관하므로 여기서 죽으면 안 된다.
+        spec.warnings.append("케이스 제목 다듬기를 건너뛰었습니다: 응답이 객체가 아닙니다")
         return
 
     by_id = {c.case_id: c for c in cases}
