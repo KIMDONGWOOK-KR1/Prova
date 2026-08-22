@@ -118,11 +118,14 @@ Claude API가 필요하지 않다.
 측정 스크립트는 `scripts/` 에 있다. 도구를 재는 것과 도구 자체를 구분해 두려고
 `prova` 패키지 안에 넣지 않았다.
 
-| 스크립트 | 재는 것 | GPU |
+| 스크립트 | 하는 일 | GPU |
 |---|---|---|
 | `probe_s1_robustness.py` | 기획서가 훼손됐을 때 추출이 어떻게 깨지는가 (6종) | 필요 |
+| `probe_request_selection.py` | 자연어 요청 해석 재현율 — 튜닝 세트 / `heldout` | 필요 |
 | `build_iou_dataset.py` | — 탐지 시험지를 굳힌다 (`fixtures/iou`) | 불필요 |
 | `eval_vlm_iou.py` | 화면 이미지에서 요소를 찾는 정확도 (IoU·적중·오탐·속도) | 필요 |
+| `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
+| `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
 
 ---
 
@@ -198,7 +201,8 @@ src/prova/
 │   ├── generator.py            케이스 조립 + 기대 결정 + 요소 유형별 액션
 │   ├── selector.py             자연어 요청 -> 실행할 케이스 고르기 (부분집합만)
 │   └── coverage.py             기획서에 적혀 있는데 확인하지 않는 것을 찾는다
-├── s3_grounder/dom_locator.py  라벨 -> 실제 요소 (selector-first)
+├── s3_grounder/dom_locator.py  라벨 -> 실제 요소 (selector-first) + 2차 경로 진입점 (heal_with_vlm)
+├── vlm/                      2차 경로의 시각 모델 (base / mock_backend / qwen_vl / metrics)
 ├── s4_executor/                Playwright 실행 + 스텝별 증거 수집
 ├── s5_verifier/                PASS/FAIL 판정
 ├── s6_report/                  JSON + HTML 리포트
@@ -211,7 +215,7 @@ src/prova/
 │   └── static/                 작업 콘솔 (index.html · app.css · app.js, CDN 없음)
 └── cli.py                    prova run / prova serve / prova check
 
-sut/                          테스트 대상 미니 웹앱 — 로그인·회원가입·검색 (good / bad)
+sut/                          테스트 대상 미니 웹앱 — 6화면(로그인·회원가입·검색·비밀번호 찾기·상품등록·주문조회) good / bad + 도구를 시험하는 변형 6종
 fixtures/specs/               화면기획서 md / pdf / 정답(golden) — 화면마다 한 벌
 ├── multi_spec.md               통합 문서 — 화면별 md 에서 조립한다 (직접 고치지 않는다)
 └── _multi_*.md                 조립용 조각 ('_' 로 시작하면 PDF 로 만들지 않는다)
@@ -219,7 +223,7 @@ scripts/                      기획서 PDF 생성 · 통합 문서 조립 · �
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
 ├── reference/                계획서·주제개요서·멘토링보고서
-├── teaching/                 티칭 노트 17개 + overview.html (그림 자료)
+├── teaching/                 티칭 노트 19개 + overview.html (그림 자료)
 ├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
 └── README.md                 문서 안내
 ```
@@ -493,7 +497,7 @@ S5는 그것을 "기획서가 지정한 에러가 안 뜬다" 로 읽는다. 실
 
 ### 11. 기획서 본문에 없는 문구를 요구사항으로 쓰지 않는다
 
-픽스처 기획서 4개는 전부 우리가 마크다운으로 써서 스크립트로 PDF 로 만든 것이다. 7열이
+픽스처 기획서(화면별 6개 + 통합 문서)는 전부 우리가 마크다운으로 써서 스크립트로 PDF 로 만든 것이다. 7열이
 정확한 순서로, 정확한 헤더 이름으로, 표 형태로 있다. **S1 의 결정적 표 독해 여덟 개가
 전부 그 모양을 전제한다.** 그래서 지금까지의 '오탐 0건' 에는 조건이 숨어 있었다 —
 *우리가 만든 기획서에서는.*
@@ -709,6 +713,21 @@ CLI 에는 해석 결과를 보여줄 자리가 없다. `--request` 를 주면 �
 케이스 목록**이 통과율 바로 아래에 들어간다. 제외 목록에는 "통과한 것이 아니라
 실행하지 않은 것" 이라고 못 박는다.
 
+### 명세서와 다른 곳 — 설계 판단은 아니지만 적어 두는 것
+
+위 열네 군데는 **판단**이다. 그 외에 명세서 v1.0 과 코드가 단순히 다른 곳이 둘 있다.
+읽는 사람이 명세서를 먼저 보면 헤맨다.
+
+- **VLM 이 LocateAnything-3B 가 아니라 Qwen2.5-VL-3B-Instruct-AWQ 다.** 명세서 §2·§9 는
+  개요서의 참고 문서를 그대로 적었다. CHEETAH 의 MIG 조각(9.50 GiB)에서 vLLM 으로
+  서빙되는 AWQ 양자화 모델이 필요했고, OpenAI 호환 엔드포인트로 7B 와 같은 배관을
+  쓸 수 있는 것이 Qwen2.5-VL 이었다. 측정값(노트 13)은 전부 이 모델의 것이다.
+- **§2 의 클래스 이름(`SpecExtractor`·`TestCaseGenerator`·`SelfHealer`·
+  `FailureClassifier`·`ReportBuilder`)은 코드에 없다.** 단계는 모듈(`s1_spec_extractor`
+  …)과 함수(`extract_document`·`generate_test_cases`·`heal_with_vlm`·`verify`·
+  `build_report`)로 있다. 클래스로 감쌀 상태가 없어서다 — 파이프라인의 상태는
+  `AgentState` 하나에 있고 단계는 그것을 받아 돌려주는 함수다(노트 06).
+
 ---
 
 ## 구현 중 드러난 것들
@@ -880,8 +899,9 @@ LLM이 판단할 일이 아니었기 때문이다 — 열 제목에서 요소 ID
 ## 아직 안 한 것
 
 명세서 §0-2 의 **1차 범위는 닫혔다** — 6단계 파이프라인과 네 화면(로그인·회원가입·검색·
-비밀번호 찾기), 그리고 입력 검증 규칙 확인. 2차 항목 중 **Self-Healing 재탐색**(VLM)과
-**실패 원인 자동 분류**(규칙 기반)도 앞당겨 끝냈다.
+비밀번호 찾기), 그리고 입력 검증 규칙 확인. 2차 항목 세 가지 — **Self-Healing
+재탐색**(VLM), **실패 원인 자동 분류**(규칙 기반), **대상 확장**(상품등록·주문조회 —
+전제 상태와 자기일관 판정, 2026-08-20 실모델 관통) — 도 끝났다.
 
 계획서 1차 목표 네 개도 모두 닫혔다. 마지막이던 **자연어 → 테스트 시나리오 변환**은
 `--request` 와 `prova serve` 로 붙였고, 해석이 결함을 덮지 못하게 하는 네 가지 장치를
