@@ -28,6 +28,16 @@ from __future__ import annotations
 import re
 from typing import Optional
 
+#: 기획서 문장 안의 따옴표 묶음. 한 곳에 둔다 — 2026-08-22 까지 세 모듈이 각자
+#: 같은 패턴을 갖고 있었고(길이 상한만 달랐다), 따옴표 집합을 한쪽만 고치면 문구
+#: 추출이 조용히 갈렸다. 길이 상한은 쓰는 곳의 사정이라 인자로 받는다.
+_QUOTES = "\"'“”‘’"
+
+
+def quoted_re(max_len: int) -> "re.Pattern[str]":
+    """따옴표로 감싼 2~max_len 글자를 잡는 패턴. group(1) 이 안쪽 문구다."""
+    return re.compile(f"[{_QUOTES}]([^{_QUOTES}]{{2,{max_len}}})[{_QUOTES}]")
+
 _WS = re.compile(r"\s+")
 
 # PDF 폰트에 글리프가 없을 때 pdfplumber 가 남기는 자리표시자.

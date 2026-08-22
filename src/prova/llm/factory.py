@@ -51,14 +51,20 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str) -> tuple[object, list[str
         ]
 
     if backend == "vllm":
-        from prova.llm.vllm_backend import VLLMClient
+        from prova.llm.base import LLMError
+        from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL, VLLMClient
 
         client = VLLMClient(
-            base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
-            model=llm_cfg.get("model", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
+            base_url=llm_cfg.get("base_url", DEFAULT_BASE_URL),
+            model=llm_cfg.get("model", DEFAULT_MODEL),
             timeout=float(llm_cfg.get("timeout", 180)),
         )
-        client.health()  # 실행 전에 연결을 확인한다
+        try:
+            client.health()  # 실행 전에 연결을 확인한다
+        except LLMError as exc:
+            # docstring 의 약속(연결 실패 = BackendError)을 지킨다. CLI 와 서버가
+            # 각자 다른 예외를 잡고 있으면 한쪽만 고쳐진다.
+            raise BackendError(str(exc)) from exc
         return client, []
 
     raise BackendError(f"지원하지 않는 백엔드: {backend} (vllm | mock)")

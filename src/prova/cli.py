@@ -259,11 +259,11 @@ def check(config: Path = typer.Option(DEFAULT_CONFIG, "--config")) -> None:
     """vLLM 서버 연결과 모델 적재 상태를 확인한다."""
     cfg = _load_config(config)
     llm_cfg = cfg.get("llm", {})
-    from prova.llm.vllm_backend import VLLMClient
+    from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL, VLLMClient
 
     client = VLLMClient(
-        base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
-        model=llm_cfg.get("model", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
+        base_url=llm_cfg.get("base_url", DEFAULT_BASE_URL),
+        model=llm_cfg.get("model", DEFAULT_MODEL),
     )
     typer.echo(f"엔드포인트: {client.base_url}")
     try:

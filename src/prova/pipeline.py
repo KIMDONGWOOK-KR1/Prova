@@ -118,13 +118,15 @@ def build_plan(
     progress(f"     케이스 {n_all}개 (정상 {n_all - n_neg - n_flow} · 위반 {n_neg}"
              + (f" · 흐름 {n_flow}" if n_flow else "") + ")")
 
+    # 선택·필터로 잃기 전에 원본을 붙들어 둔다. 계획 화면이 제외된 케이스를
+    # 제목·화면·규칙과 함께 보여주려면 본문이 필요하다. --only 보다 **앞**에
+    # 잡는다 — 뒤에 잡으면 n_all(전체 수)과 all_cases(필터 후 목록)가 같은
+    # 응답에서 어긋난다.
+    state.all_cases = list(state.cases)
+
     state.cases = filter_cases(state.cases, only)
     if only:
         progress(f"     필터 '{only}' → {len(state.cases)}개만 실행")
-
-    # 선택으로 잃기 전에 원본을 붙들어 둔다. 계획 화면이 제외된 케이스를
-    # 제목·화면·규칙과 함께 보여주려면 본문이 필요하다.
-    state.all_cases = list(state.cases)
 
     # 케이스를 좁히는 자리. 여기가 **미탐을 만들 수 있는 유일한 자리**이므로
     # 무엇을 왜 뺐는지를 state.selection 에 담아 리포트까지 실어 보낸다.

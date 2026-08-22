@@ -370,6 +370,15 @@ def _violation_value(
     return None
 
 
+#: 위반값을 만들 줄 아는 규칙 키. 여기 없는 키는 케이스가 생성되지 않는다 —
+#: 그 사실을 spec_defects 가 경고한다 (조용히 빠지면 미탐이다).
+SUPPORTED_RULES = frozenset({
+    "format", "numeric", "same_as", "min_length", "max_length",
+    "require_uppercase", "require_lowercase", "require_digit", "require_special",
+    "pattern",
+})
+
+
 def violations_for_element(
     element: UIElement, ref_value: Optional[str] = None
 ) -> list[Violation]:
@@ -527,6 +536,22 @@ def spec_defects(spec: ScreenSpec) -> list[str]:
             defects.append(
                 f"'{element.label}' 은 선택 요소인데 선택 목록(options)이 "
                 f"비어 있습니다. 정상 케이스가 값을 고를 수 없습니다."
+            )
+
+        unknown = sorted(k for k in element.constraints if k not in SUPPORTED_RULES)
+        if unknown:
+            # _violation_value 가 모르는 키에 None 을 돌려 케이스를 조용히 안
+            # 만든다. 'format' 이 email 이 아닌 경우도 같다. 그 규칙은 검증에서
+            # 빠진 것이므로 보이게 한다 (2026-08-22).
+            defects.append(
+                f"'{element.label}' 의 규칙 {unknown} 은 이 도구가 위반값을 만들 줄 "
+                f"모르는 종류라 위반 케이스가 생성되지 않습니다 — 이 규칙은 검증에서 빠집니다."
+            )
+        fmt = element.constraints.get("format")
+        if fmt and fmt != "email":
+            defects.append(
+                f"'{element.label}' 의 형식 규칙 format={fmt!r} 은 email 만 지원합니다 — "
+                f"위반 케이스가 생성되지 않아 이 규칙은 검증에서 빠집니다."
             )
 
         if "pattern" in element.constraints and not element.sample_value:

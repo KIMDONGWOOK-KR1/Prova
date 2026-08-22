@@ -10,8 +10,9 @@
    그대로 뽑아낼 수 있다. TypedDict는 런타임 검증을 해주지 않는다.
 2) 필드 오타·타입 불일치를 실행 시점에 즉시 잡는다.
 
-로그인 화면만 검증하는 1차 목표라도 타입은 명세서 전체를 정의한다.
-회원가입·검색으로 확장할 때 이 파일을 다시 손대지 않기 위해서다.
+타입은 명세서 전체를 정의한다. 로그인 한 화면으로 시작했지만 회원가입·검색·
+비밀번호 찾기·상품등록·주문조회로 확장하는 동안 계약은 그대로였고, 늘어난 것은
+전제(Precondition)·씨앗 표(seed_rows)·자기일관 판정 유형뿐이다.
 """
 
 from __future__ import annotations
@@ -496,8 +497,9 @@ class CaseSelection(BaseModel):
 class ElementLocation(BaseModel):
     """자연어 target을 실제 조작 가능한 위치로 변환한 결과. S3의 출력.
 
-    1차 범위는 method='selector'만 쓴다. bbox/confidence는 2차 VLM fallback을
-    위해 미리 자리를 잡아둔 필드다.
+    method='selector' 는 접근성 속성으로 찾은 것(selector 로 되살릴 수 있다),
+    method='vlm' 은 화면 이미지로 찾은 것(bbox 좌표로만 조작한다). 둘의 처리는
+    S4 가 method 로 분기한다.
     """
 
     target: str

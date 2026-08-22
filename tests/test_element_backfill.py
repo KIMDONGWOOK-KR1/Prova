@@ -202,3 +202,28 @@ class TestBackfill:
         )
         # 라벨이 겹치지 않는 나머지는 정상적으로 채운다
         assert {"order_date", "order_amount", "order_total"} <= set(ids)
+
+
+class TestSingleSourceColumns:
+    """열 찾기 규칙은 한 곳(_ELEMENT_COLUMNS)이다 (2026-08-22).
+
+    그 전에는 독해 함수 여섯 개가 각자 열을 찾았고 실제로 어긋나 있었다 — 안내
+    문구 열을 백필은 "안내" 로, declared_placeholders 는 "안내 or placeholder" 로
+    찾아, 헤더가 'Placeholder' 인 기획서에서 백필된 요소가 곧바로 '모델이 틀렸다'
+    경고를 받았다. 두 독해가 같은 표에서 같은 답을 내는지 못 박는다.
+    """
+
+    TABLE = ParsedTable(rows=[
+        ["요소 ID", "유형", "라벨", "Placeholder"],
+        ["email", "입력", "이메일", "이메일을 입력하세요"],
+    ])
+
+    def test_영문_헤더도_두_독해가_같은_안내_문구를_읽는다(self):
+        doc = doc_with(self.TABLE)
+        rows = {r["label"]: r["placeholder"] for r in doc.declared_element_rows()}
+        assert rows == doc.declared_placeholders() == {"이메일": "이메일을 입력하세요"}
+
+    def test_유형과_라벨_대응도_행_독해와_같다(self):
+        doc = doc_with(self.TABLE)
+        assert doc.declared_element_types() == {"이메일": "input"}
+        assert doc.declared_label_to_id() == {"이메일": "email"}
