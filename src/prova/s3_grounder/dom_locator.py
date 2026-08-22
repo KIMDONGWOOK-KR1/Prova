@@ -33,6 +33,7 @@ self-healing 의 진입점이 된다 (GroundingError 를 S6 가 받는다).
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -377,7 +378,8 @@ def _locate_collection(page, target: str, hint: UIElement | None):
         except Exception as exc:
             return "error", None, None, 0, f"요소 조회 실패: {exc}"
         if found == 0:
-            return "absent", None, None, 0, f"라벨 {target!r} 인 요소가 화면에 없음"
+            # 라벨 경로가 비었을 때만 표 머리글 경로로 내려간다(아래 설명).
+            return _locate_table_cells(page, target)
         return "ok", items, None, found, ""
 
     container_role = _role_for(hint) if hint else "list"
@@ -390,10 +392,8 @@ def _locate_collection(page, target: str, hint: UIElement | None):
         return "error", None, item_role, 0, f"목록 조회 실패: {exc}"
 
     if found == 0:
-        return (
-            "absent", None, item_role, 0,
-            f"role={container_role} name={target!r} 인 목록이 화면에 없음",
-        )
+        # 라벨 경로가 비었다 — <caption> 이 붙은 순수 <table> 일 수 있다(아래 설명).
+        return _locate_table_by_caption(page, target, container_role)
     if found > 1:
         # 컨테이너의 '정확히 1개' 계약은 여기서도 유지한다. 어느 목록을 볼지
         # 모르는 상태에서 아무거나 고르면 그 결과를 신뢰할 수 없다.
@@ -403,6 +403,131 @@ def _locate_collection(page, target: str, hint: UIElement | None):
         )
 
     return "ok", container, item_role, 1, ""
+
+
+# ---------------------------------------------------------------------------
+# 시맨틱 <table> 경로 — aria-label 없는 순수 표 마크업
+# ---------------------------------------------------------------------------
+#
+# 반복 요소 탐지는 라벨(aria-label)로 간다. 주문조회 SUT 는 <ul aria-label> 로
+# 만들어 그 한계를 피해 갔지만, 실물 화면은 <table><thead><th>주문일</th>… 처럼
+# 라벨 없는 표로 온다. 그때 라벨 경로는 0개를 돌려주고 — 0건 기대는 PASS, 정렬
+# 기대는 absent FAIL — **탐지 한계가 화면 관측처럼 보인다.** 2026-08-22 까지
+# 그랬다.
+#
+# ## 계약
+#
+# - **라벨 경로가 0개일 때만** 내려온다. 라벨이 있는 화면의 판정 근거는 그대로다.
+# - 일치는 normalize_ws 정확 일치뿐이다. 부분 일치·유사도는 오탐을 만든다.
+# - 일치하는 caption/th 가 2개 이상이면 ambiguous — 집지 않는다. ground() 의
+#   '정확히 1개' 계약과 같은 이유다.
+# - 어느 경로로 찾았는지 detail 에 남긴다. 도구가 판단을 했으면 그 사실이
+#   리포트에 남아야 한다.
+#
+# ## 지원 범위 (밖이면 absent)
+#
+# - 열 값: <th> 가 한 열의 머리글이고, 값은 <tbody> 행의 같은 위치 셀이다.
+#   colspan 이 있는 머리글·머리글 없는 표는 지원하지 않는다.
+# - 행 값: <th> 가 <tbody>/<tfoot> 행 안에 있으면(행머리, '합계' 처럼) 같은 행의
+#   <td> 들이 값이다.
+# - 컨테이너: <caption> 텍스트가 라벨인 표. 항목은 <tbody> 행이다 — thead·tfoot
+#   행은 건수에 넣지 않는다.
+
+_TABLE_HEADER_JS = r"""
+(label) => {
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+  const out = [];
+  document.querySelectorAll("table").forEach((table, ti) => {
+    table.querySelectorAll("th").forEach((th) => {
+      if (norm(th.innerText) !== label) return;
+      const tr = th.parentElement;
+      const section = tr.parentElement;
+      const inHead = section.tagName === "THEAD"
+        || (section.tagName === "TABLE" && tr === table.rows[0]);
+      if (inHead) {
+        const cells = Array.from(tr.children);
+        out.push({table: ti, kind: "col", index: cells.indexOf(th) + 1,
+                  colspan: th.colSpan});
+      } else {
+        const rows = Array.from(table.querySelectorAll("tr"));
+        out.push({table: ti, kind: "row", index: rows.indexOf(tr) + 1, colspan: 1});
+      }
+    });
+  });
+  return out;
+}
+"""
+
+
+def _locate_table_cells(page, target: str):
+    """라벨 경로가 비었을 때, <th> 텍스트가 target 인 열(또는 행)의 셀을 찾는다.
+    반환 형식은 _locate_collection 과 같다(item_role 은 None — 셀 자체가 항목)."""
+    try:
+        matches = page.evaluate(_TABLE_HEADER_JS, normalize_ws(target))
+    except Exception as exc:
+        return "error", None, None, 0, f"표 머리글 조회 실패: {exc}"
+
+    if not matches:
+        return "absent", None, None, 0, f"라벨 {target!r} 인 요소도 표 머리글도 화면에 없음"
+    if len(matches) > 1:
+        return (
+            "ambiguous", None, None, len(matches),
+            f"표 머리글 {target!r} 가 {len(matches)}개 — 어느 것을 볼지 확정할 수 없음",
+        )
+
+    m = matches[0]
+    t = m["table"] + 1
+    if m["kind"] == "col":
+        if m["colspan"] != 1:
+            return ("absent", None, None, 0,
+                    f"표 머리글 {target!r} 가 여러 열에 걸쳐 있어(colspan) 열을 정할 수 없음")
+        cells = page.locator(f"xpath=(//table)[{t}]/tbody/tr/*[{m['index']}]")
+        detail = f"표 머리글 {target!r} {m['index']}열로 찾음 (aria-label 없음)"
+    else:
+        cells = page.locator(f"xpath=((//table)[{t}]//tr)[{m['index']}]/td")
+        detail = f"표 행머리 {target!r} 의 같은 행 값으로 찾음 (aria-label 없음)"
+
+    try:
+        found = cells.count()
+    except Exception as exc:
+        return "error", None, None, 0, f"표 셀 조회 실패: {exc}"
+    return "ok", cells, None, found, detail
+
+
+def _locate_table_by_caption(page, target: str, container_role: str):
+    """라벨 경로가 비었을 때, <caption> 이 target 인 <table> 을 컨테이너로 찾는다.
+    항목은 <tbody> 행이다. 반환 형식은 _locate_collection 과 같다."""
+    try:
+        tables = page.locator("table").filter(
+            has=page.locator("caption").filter(has_text=_exact_text_re(target))
+        )
+        found = tables.count()
+    except Exception as exc:
+        return "error", None, "row", 0, f"표 조회 실패: {exc}"
+
+    if found == 0:
+        return (
+            "absent", None, "row", 0,
+            f"role={container_role} name={target!r} 인 목록도 caption 이 {target!r} 인 표도 화면에 없음",
+        )
+    if found > 1:
+        return (
+            "ambiguous", None, "row", found,
+            f"caption 이 {target!r} 인 표가 {found}개 — 어느 것을 볼지 확정할 수 없음",
+        )
+    rows = tables.first.locator("tbody > tr")
+    try:
+        n = rows.count()
+    except Exception as exc:
+        return "error", None, None, 0, f"표 행 조회 실패: {exc}"
+    # item_role 을 None 으로 돌린다 — rows 자체가 항목 목록이다(반복 라벨 모양과 같다).
+    return "ok", rows, None, n, f"caption {target!r} 인 표의 본문 행 {n}개로 찾음 (aria-label 없음)"
+
+
+def _exact_text_re(text: str) -> re.Pattern[str]:
+    """normalize_ws 기준 정확 일치 — 앞뒤·사이 공백만 느슨하고 글자는 그대로여야 한다."""
+    body = r"\s+".join(re.escape(w) for w in normalize_ws(text).split(" "))
+    return re.compile(r"^\s*" + body + r"\s*$")
 
 
 @dataclass
@@ -452,9 +577,11 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
     # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명 참고) —
     # container 자체가 이미 항목 목록이므로 개수도 이미 found 에 있다.
     if item_role is None:
+        # detail 이 이미 채워져 있으면 2차 경로(표 머리글·caption)가 어떻게 찾았는지
+        # 적은 것이다 — 그 사실을 덮어쓰지 않는다.
         return CollectionCount(
             target=target, status="ok", count=found,
-            detail=f"라벨 {target!r} 요소 {found}개",
+            detail=detail or f"라벨 {target!r} 요소 {found}개",
         )
 
     try:
@@ -513,6 +640,7 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
     status, container, item_role, _found, detail = _locate_collection(page, target, hint)
     if status != "ok":
         return CollectionTexts(status=status, texts=[], detail=detail)
+    how = f" — {detail}" if detail else ""   # 2차 경로(표)로 찾았으면 그 사실을 남긴다
 
     try:
         # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명
@@ -527,7 +655,7 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
     where = f"{target!r}" if item_role is None else f"{target!r} 안의 {item_role}"
     return CollectionTexts(
         status="ok", texts=texts,
-        detail=f"{where} {len(texts)}개",
+        detail=f"{where} {len(texts)}개{how}",
     )
 
 

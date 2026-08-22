@@ -76,3 +76,32 @@ class TestBadOrders:
         _login(client, "bad")
         r = client.get("/bad/orders")
         assert "569,000" in _total(r.text)
+
+
+class TestTableMarkup:
+    """table/badtable 변형 — 같은 데이터·같은 결함을 aria-label 없는 순수 <table>
+    로 렌더한다. 탐지 경로(표 머리글)가 실물 화면 모양에서도 닿는지 보이기 위한
+    변형이므로 마크업에 aria-label 이 하나도 없어야 한다."""
+
+    def test_table_은_aria_label_이_없는_표다(self, client):
+        _login(client, "table")
+        html = client.get("/table/orders").text
+        assert "aria-label" not in html
+        assert "<table" in html and "<caption>주문 목록</caption>" in html
+        assert "<th>주문일</th>" in html and "<th>금액</th>" in html
+
+    def test_table_은_good_과_같은_순서·합계다(self, client):
+        _login(client, "table"); t = client.get("/table/orders").text
+        _login(client, "good"); g = client.get("/good/orders").text
+        assert re.findall(r"<td>(\d{4}-\d{2}-\d{2})</td>", t) == _dates(g)
+        assert re.search(r"<th>합계</th><td[^>]*>([^<]+)<", t).group(1) == _total(g)
+
+    def test_badtable_은_bad_와_같은_순서·합계다(self, client):
+        _login(client, "badtable"); t = client.get("/badtable/orders").text
+        _login(client, "bad"); b = client.get("/bad/orders").text
+        assert re.findall(r"<td>(\d{4}-\d{2}-\d{2})</td>", t) == _dates(b)
+        assert re.search(r"<th>합계</th><td[^>]*>([^<]+)<", t).group(1) == _total(b)
+
+    def test_table_도_가드가_있다(self, client):
+        r = client.get("/table/orders")
+        assert r.status_code == 303 and r.headers["location"] == "/table/login"

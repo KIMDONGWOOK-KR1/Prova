@@ -12,6 +12,10 @@
     ul { list-style:none; margin:0; padding:0; }
     li { display:flex; justify-content:space-between; gap:12px; padding:10px 0;
          border-bottom:1px solid #eee; font-size:14px; }
+    table { width:100%; border-collapse:collapse; font-size:14px; }
+    caption { text-align:left; font-weight:700; margin-bottom:8px; }
+    th, td { text-align:left; padding:10px 4px; border-bottom:1px solid #eee; }
+    tfoot th, tfoot td { border-top:2px solid #333; border-bottom:0; font-weight:700; }
     .total-row { display:flex; justify-content:space-between; margin-top:16px;
                  padding-top:14px; border-top:2px solid #333; font-size:15px;
                  font-weight:700; }
@@ -21,6 +25,21 @@
   <div class="card">
     <h1>주문조회</h1>
 
+    {% if markup == "table" %}
+    {# table/badtable 변형: ARIA 라벨이 하나도 없는 순수 <table>. 실물 화면이
+       이 모양으로 온다 — 탐지가 caption/th 로 닿는지 보이기 위한 변형이다.
+       데이터·결함은 good/bad 와 같다. (Jinja 주석 — 렌더 결과에 남지 않는다) #}
+    <table>
+      <caption>주문 목록</caption>
+      <thead><tr><th>주문번호</th><th>주문일</th><th>금액</th></tr></thead>
+      <tbody>
+        {% for order in orders %}
+        <tr><td>{{ order.주문번호 }}</td><td>{{ order.주문일 }}</td><td>{{ order.금액_표시 }}</td></tr>
+        {% endfor %}
+      </tbody>
+      <tfoot><tr><th>합계</th><td colspan="2">{{ total_text }}</td></tr></tfoot>
+    </table>
+    {% else %}
     <!-- 마크업은 good/bad 가 완전히 동일하다. 두 실행의 차이가 정렬 순서(O1)와
          합계 계산(O2)에서만 나오게 하기 위한 것이다. -->
     <ul aria-label="주문 목록">
@@ -42,6 +61,7 @@
       <span>합계</span>
       <div aria-label="합계">{{ total_text }}</div>
     </div>
+    {% endif %}
   </div>
 </body>
 </html>
