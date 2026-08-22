@@ -42,3 +42,19 @@ class TestExcludedWithoutRequest:
         html = render_html(_report(sel))
         assert "요청: <code></code>" not in html
         assert "승인" in html
+
+
+class TestWidened:
+    def test_코드가_더한_케이스가_모델_선택과_구분되어_실린다(self):
+        """모델이 고른 것과 코드가 넓힌 것을 리포트에서 구분할 수 있어야
+        '해석이 맞았는가' 를 되짚을 수 있다 (selector.widen_selection)."""
+        sel = CaseSelection(request="개수가 맞는지", selected=["search-count-005", "search-count-006"],
+                            excluded=[], reason="건수 케이스", widened=["search-count-006 (R1)"])
+        html = render_html(_report(sel))
+        assert "도구가 넓힌 케이스 1건" in html
+        assert "search-count-006 (R1)" in html
+
+    def test_더한_것이_없으면_줄이_없다(self):
+        sel = CaseSelection(request="개수가 맞는지", selected=["search-count-005"], excluded=["x"])
+        html = render_html(_report(sel))
+        assert "도구가 넓힌" not in html

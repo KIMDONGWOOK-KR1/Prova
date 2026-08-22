@@ -254,6 +254,11 @@ function planNotes() {
       out.push(alertBox("info", "이렇게 이해했습니다", esc(p.reason)));
     }
     for (const w of p.warnings || []) out.push(alertBox("warn", esc(w), ""));
+    if ((p.widened || []).length) {
+      // 모델이 고른 것과 코드가 더한 것을 구분해 보인다 (selector.widen_selection).
+      out.push(alertBox("info", `도구가 넓힌 케이스 ${p.widened.length}건`,
+        "모델이 가리킨 묶음(건수·정렬·흐름 등)을 코드가 채웠습니다: " + esc(p.widened.join(", "))));
+    }
   }
 
   // 요청이 화면을 이름으로 지목했는데 일부만 골라진 경우. "몇 건 제외" 만

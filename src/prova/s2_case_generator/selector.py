@@ -119,7 +119,12 @@ _ALL_WORDS = ("전부", "전체", "모두", "모든", "다 확인", "빠짐없�
 # 온전한 이름('비밀번호 확인')은 그대로 어휘에 남는다 — 여기서 거르는 것은
 # 쪼개서 나온 조각뿐이다. 그래서 "비밀번호 확인란이 동작하는지" 는 여전히
 # 통과한다('비밀번호 확인'·'비밀번호' 가 매치).
-_SPLIT_STOPWORDS = frozenset({"확인", "입력", "검사", "검증", "테스트", "동작", "화면"})
+#
+# '조회' 는 홀드아웃 B(2026-08-22)가 잡았다 — 화면 이름 '주문 조회' 의 조각이
+# "배송 조회가 되는지" 를 통과시켜 7B 가 orders-valid 를 골랐다. '확인' 과 같은
+# 모양의 코드 결함이라 같은 원칙으로 고쳤다. 홀드아웃을 보고 고친 것이므로 B 의
+# 거부 2건은 더 이상 일반화 증거가 아니다 — 다음 실물 기획서에서 다시 잰다.
+_SPLIT_STOPWORDS = frozenset({"확인", "입력", "검사", "검증", "테스트", "동작", "화면", "조회"})
 
 
 def spec_vocabulary(
@@ -353,6 +358,118 @@ def _all(cases: list[TestCase], request: str, doc: Optional[SpecDocument] = None
     )
 
 
+# ---------------------------------------------------------------------------
+# 선택 넓히기 — 모델이 가리킨 곳을 코드가 결정적으로 넓힌다
+# ---------------------------------------------------------------------------
+#
+# 홀드아웃 A(2026-08-19·20)의 빠뜨림 3건은 모두 같은 모양이었다 — 7B 가 **맞는 곳을
+# 가리키고도 묶음을 대표 하나로 접는다**: "개수가 맞게 나오는지" 에 count-005 만,
+# "가입하고 로그인까지" 에 valid 둘만, "최신순으로 나오는지" 에 orders-valid 만.
+# 프롬프트로 "전부 고르라" 고 세 번 말해도 접는다(노트 18).
+#
+# 그래서 모델에게 더 잘 고르라고 하지 않는다. 모델이 가리킨 곳을 코드가 넓힌다.
+# 방향은 넓히기뿐이다 — 이 층의 안전 방향("더 많이 검사하는 쪽") 그대로이고,
+# 더 담은 것은 시간만 더 쓴다. 넓힌 케이스마다 규칙 이름이 남아 모델이 고른 것과
+# 코드가 더한 것을 리포트에서 구분할 수 있다.
+#
+# R3 의 낱말 표는 기획서 동의어 표가 아니다 — **도구가 만드는 케이스 종류의 이름**
+# (RULE_LABELS 와 같은 자리)이라 기획서마다 낡지 않는다. 기획서 어휘 검사
+# (check_grounded)는 손대지 않는다.
+
+#: R1 — 하나를 고르면 같은 화면의 같은 종류를 전부 고르는 종류. 규칙 위반
+#: 케이스(violates)는 여기 없다 — "이메일 형식만" 에 required 까지 더하면 범위
+#: 지목을 무시하는 것이다.
+_GROUP_KINDS = frozenset({"count", "scenario", "sorted", "sum", "seedcount"})
+
+#: R3 — 요청에 이 낱말이 있고 고른 화면에 그 종류의 케이스가 있으면 더한다.
+_KIND_WORDS: dict[str, tuple[str, ...]] = {
+    "sorted": ("정렬", "최신순", "오래된순", "순서"),
+    "sum": ("합계", "총액", "총 금액"),
+    "count": ("개수", "건수", "몇 건", "몇 개"),
+    "seedcount": ("개수", "건수", "몇 건", "몇 개", "빠짐없이"),
+    "precondition-guard": ("가드", "로그인 안 한", "로그인 없이", "비로그인", "로그인하지 않"),
+    "placeholders": ("문구", "안내", "placeholder"),
+    "labels": ("문구", "라벨", "label"),
+    "options": ("선택지", "선택 항목", "항목대로", "옵션"),
+}
+
+
+def case_kind(case: TestCase) -> str:
+    """케이스 종류. case_id 의 가운데 조각에서 읽는다 — `{screen}-{kind}-{nnn}`.
+
+    규칙 위반은 "rule", 흐름은 "flow". options-{element} 는 "options" 로 접는다.
+    """
+    if case.flow_id:
+        return "flow"
+    if case.violates:
+        return "rule"
+    body = case.case_id
+    if body.startswith(case.screen_id + "-"):
+        body = body[len(case.screen_id) + 1:]
+    body = re.sub(r"-\d+$", "", body)
+    if body.startswith("options-"):
+        return "options"
+    return body
+
+
+def widen_selection(
+    cases: list[TestCase], picked_ids: list[str], request: str,
+    doc: Optional[SpecDocument] = None,
+) -> tuple[list[TestCase], list[tuple[str, str]]]:
+    """모델이 고른 case_id 를 세 규칙으로 넓힌다.
+
+    Returns:
+        (넓힌 케이스 — 생성 순서, [(더한 case_id, 규칙)]). 더한 것이 없으면 둘째는 빈
+        목록. 빈 입력이면 아무것도 더하지 않는다 — 0건 거부 계약은 그대로다.
+    """
+    chosen = {cid for cid in picked_ids}
+    if not chosen:
+        return [], []
+    by_id = {c.case_id: c for c in cases}
+    picked = [by_id[cid] for cid in picked_ids if cid in by_id]
+    added: list[tuple[str, str]] = []
+
+    def add(case: TestCase, rule: str) -> None:
+        if case.case_id not in chosen:
+            chosen.add(case.case_id)
+            added.append((case.case_id, rule))
+
+    # R1 — 묶음 완성
+    groups = {(c.screen_id, case_kind(c)) for c in picked if case_kind(c) in _GROUP_KINDS}
+    for c in cases:
+        if (c.screen_id, case_kind(c)) in groups:
+            add(c, "R1")
+
+    # R2 — 흐름 보강: 고른 정상 케이스의 화면들이 어떤 흐름의 화면을 모두 덮으면
+    valid_screens = {c.screen_id for c in picked if case_kind(c) == "valid"}
+    flows = {f.flow_id: f for f in (doc.flows if doc else [])}
+    for c in cases:
+        if not c.flow_id:
+            continue
+        flow = flows.get(c.flow_id)
+        screens = set(flow.screen_ids) if flow else _screens_from_flow_id(c.flow_id, cases)
+        if len(screens) >= 2 and screens <= valid_screens:
+            add(c, "R2")
+
+    # R3 — 종류 낱말: 고른 화면에서만
+    picked_screens = {c.screen_id for c in picked if not c.flow_id}
+    lowered = request.lower()
+    kinds = {k for k, words in _KIND_WORDS.items() if any(w in lowered for w in words)}
+    if kinds:
+        for c in cases:
+            if not c.flow_id and c.screen_id in picked_screens and case_kind(c) in kinds:
+                add(c, "R3")
+
+    return [c for c in cases if c.case_id in chosen], added
+
+
+def _screens_from_flow_id(flow_id: str, cases: list[TestCase]) -> set[str]:
+    """doc 이 없을 때 flow_id(`signup_then_login`)에서 화면 id 를 읽는다 — 흐름 id 는
+    화면 id 를 밑줄로 잇는 관례라서, 케이스에 있는 화면 id 만 받는다."""
+    known = {c.screen_id for c in cases}
+    return {seg for seg in re.split(r"_(?:then|link_to|to)_", flow_id) if seg in known}
+
+
 def select_cases(
     cases: list[TestCase],
     request: Optional[str],
@@ -425,16 +542,19 @@ def select_cases(
             f"'{text}' 에 해당하는 케이스가 없습니다.\n  실행 가능한 케이스: {available}"
         )
 
-    # 모델이 돌려준 순서가 아니라 생성 순서를 따른다. 흐름 케이스는 화면을
-    # 이어서 밟으므로 순서 자체가 의미를 갖는다.
-    picked = [c for c in cases if c.case_id in set(wanted)]
+    # 모델이 가리킨 곳을 코드가 넓힌다(widen_selection 참고). 모델이 돌려준 순서가
+    # 아니라 생성 순서를 따른다 — 흐름 케이스는 화면을 이어서 밟으므로 순서 자체가
+    # 의미를 갖는다.
+    picked, widened = widen_selection(cases, wanted, text, doc)
+    chosen = {c.case_id for c in picked}
     selection = CaseSelection(
         request=text,
         selected=[c.case_id for c in picked],
-        excluded=[c.case_id for c in cases if c.case_id not in set(wanted)],
+        excluded=[c.case_id for c in cases if c.case_id not in chosen],
         reason=(raw.get("reason") or "").strip(),
         warnings=warnings,
-        coverage=_coverage(cases, set(wanted), text, doc),
+        widened=[f"{cid} ({rule})" for cid, rule in widened],
+        coverage=_coverage(cases, chosen, text, doc),
     )
     return picked, selection
 

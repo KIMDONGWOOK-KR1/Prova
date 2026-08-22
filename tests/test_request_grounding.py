@@ -211,3 +211,34 @@ class TestSplitStopwords:
             signup_cases, "비밀번호가 일치하는지 봐줘",
             llm_picking(["signup-password_confirm-same_as-009"]), doc=confirm_doc)
         assert picked
+
+
+class TestSplitStopwordsOrders:
+    """홀드아웃 B(2026-08-22)가 잡은 같은 모양의 구멍 — 화면 이름 '주문 조회' 의
+    조각 '조회' 가 "배송 조회" 를 통과시켰다."""
+
+    @pytest.fixture
+    def orders_doc(self) -> SpecDocument:
+        return SpecDocument(screens=[ScreenSpec(
+            screen_id="orders", screen_name="주문 조회", url_path="/orders",
+            elements=[UIElement(element_id="order_list", type="list", label="주문 목록")],
+        )])
+
+    @pytest.fixture
+    def orders_cases(self) -> list[TestCase]:
+        return [case("orders-valid-001", "주문 조회 진입", "orders")]
+
+    def test_조회_조각만으로는_통과하지_못한다(self, orders_cases, orders_doc):
+        with pytest.raises(ValueError):
+            select_cases(orders_cases, "배송 조회가 되는지 봐줘",
+                         llm_picking(["orders-valid-001"]), doc=orders_doc)
+
+    def test_온전한_화면_이름은_통과한다(self, orders_cases, orders_doc):
+        picked, _ = select_cases(orders_cases, "주문 조회 화면 들어가지는지",
+                                 llm_picking(["orders-valid-001"]), doc=orders_doc)
+        assert picked
+
+    def test_내용어_조각_주문은_통과한다(self, orders_cases, orders_doc):
+        picked, _ = select_cases(orders_cases, "주문 내역이 나오는지",
+                                 llm_picking(["orders-valid-001"]), doc=orders_doc)
+        assert picked

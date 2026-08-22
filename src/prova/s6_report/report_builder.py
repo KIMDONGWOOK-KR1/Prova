@@ -376,6 +376,13 @@ def render_html(report: TestReport) -> str:
             rows.append(f"<div>선택 근거: {_esc(sel.reason)}</div>")
         for w in sel.warnings:
             rows.append(f"<div>· {_esc(w)}</div>")
+        if sel.widened:
+            # 모델이 고른 것과 코드가 더한 것을 구분해 남긴다 — 그래야 "해석이
+            # 맞았는가" 를 리포트만 보고 되짚을 수 있다 (selector.widen_selection).
+            rows.append(
+                f"<div>도구가 넓힌 케이스 {len(sel.widened)}건 — 모델이 가리킨 묶음을 "
+                f"코드가 채웠습니다: {_esc(', '.join(sel.widened))}</div>"
+            )
         if sel.fallback:
             rows.append(
                 "<div>요청을 해석하지 못해 <b>전체 케이스를 실행</b>했습니다 — "
