@@ -37,6 +37,45 @@ class TestExpand:
         assert steps == [] and any("login" in w for w in warnings)
 
 
+class TestLoginFieldsByMeaning:
+    """요소 ID 가 'email'/'password' 가 아니어도 전제 스텝을 만든다 (2026-08-22).
+
+    모듈 docstring 은 '라벨로 한다' 고 선언했는데 코드는 ID 문자열 둘에 기대고
+    있었다. 기획서가 `user_email`/`login_pw` 를 쓰면 전제 스텝이 통째로 안
+    만들어지고 그 화면 전 케이스가 precondition_unmet 이 됐다.
+    """
+
+    def _doc(self, login):
+        return SpecDocument(screens=[login, PRODUCT])
+
+    def test_ID_가_달라도_형식과_라벨로_고른다(self):
+        login = ScreenSpec(
+            screen_id="login", screen_name="로그인", url_path="/login",
+            elements=[
+                UIElement(element_id="user_email", type="input", label="이메일 주소",
+                          constraints={"format": "email"}),
+                UIElement(element_id="login_pw", type="input", label="비밀번호"),
+                UIElement(element_id="go", type="button", label="로그인"),
+            ])
+        steps, warns = expand_precondition(PRODUCT.precondition, self._doc(login))
+        assert warns == []
+        assert [s.target for s in steps[1:4]] == ["이메일 주소", "비밀번호", "로그인"]
+
+    def test_후보가_둘이면_고르지_않고_경고한다(self):
+        """틀린 칸에 비밀번호를 넣고 '전제 실패' 로 보고하면 원인이 숨는다."""
+        login = ScreenSpec(
+            screen_id="login", screen_name="로그인", url_path="/login",
+            elements=[
+                UIElement(element_id="a", type="input", label="이메일"),
+                UIElement(element_id="b", type="input", label="이메일 확인"),
+                UIElement(element_id="pw", type="input", label="비밀번호"),
+                UIElement(element_id="go", type="button", label="로그인"),
+            ])
+        steps, warns = expand_precondition(PRODUCT.precondition, self._doc(login))
+        assert steps == []
+        assert warns and "이메일" in warns[0]
+
+
 class TestLoginSuccessPath:
     """setup 이 '로그인 시도' 뿐 아니라 '성공' 까지 확인하는 근거(precondition.py 참고).
 

@@ -57,13 +57,18 @@ from pathlib import Path
 import pytest
 
 from prova.llm.base import LLMError
+from prova.llm.vllm_backend import ModelNotServed
 from prova.models import ScreenSpec
-from prova.s1_spec_extractor.extractor import extract_document, extract_from_pdf
+from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.rule_expander import satisfies
 from prova.text_utils import contains_loose, loosen
 
 SPEC_DIR = Path("fixtures/specs")
-SPECS = ["login", "signup", "search", "find_account"]
+# 2차 범위의 두 화면(product·orders)은 전제 화면(login)을 같은 문서에 담고 있어
+# 문서 추출(extract_document)을 거친 뒤 골든의 screen_id 로 대상 화면을 고른다.
+# 2026-08-22 까지 이 둘이 목록에 없었다 — numeric 규칙·전제·씨앗 표처럼 가장
+# 최근에 추가된 추출 경로가 실모델 대조 없이 mock 골든으로만 돌고 있었다.
+SPECS = ["login", "signup", "search", "find_account", "product", "orders"]
 
 # 통합 문서(multi_spec.pdf)에 담긴 화면. SPECS 와 일부러 다르다.
 #
@@ -85,6 +90,10 @@ SUCCESS_TOKENS = {
     "search": [],
     # 비밀번호 찾기는 이동하지 않고 문구만 노출한다. 경로 조각이 없다.
     "find_account": ["재설정 메일을 보냈습니다"],
+    "product": ["상품이 등록되었습니다"],
+    # 주문조회는 진입 즉시 목록이 보이는 화면 — 제출도 이동도 없다. 실질 검증은
+    # 정렬·합계 판정(sorted_desc·sum_matches)이 맡는다.
+    "orders": [],
 }
 
 
@@ -109,6 +118,11 @@ def client():
     )
     try:
         inst.health(timeout=4.0)  # skip 판단은 빨라야 한다
+    except ModelNotServed as exc:
+        # 서버는 살아 있는데 다른 모델(예: IoU 채점용 VL)이 떠 있다. 환경이 없는
+        # 게 아니라 잘못 구성된 것이므로 skip 이 아니라 실패다 — skip 으로 접으면
+        # 69개가 조용히 빠지고 추출 정확도를 아무것도 확인하지 않은 채 초록불이 된다.
+        pytest.fail(f"vLLM 이 다른 모델을 서빙 중입니다 — 7B 를 되돌리세요: {exc}")
     except LLMError as exc:
         pytest.skip(f"vLLM 에 연결할 수 없습니다 — {exc}")
     return inst
@@ -122,9 +136,14 @@ def pair(request, client) -> tuple[ScreenSpec, ScreenSpec, str]:
         json.loads((SPEC_DIR / f"{stem}_spec.golden.json").read_text(encoding="utf-8"))
     )
     try:
-        extracted = extract_from_pdf(str(SPEC_DIR / f"{stem}_spec.pdf"), client)
+        doc = extract_document(str(SPEC_DIR / f"{stem}_spec.pdf"), client)
     except LLMError as exc:
         pytest.fail(f"{stem}: S1 추출이 실패했습니다: {exc}")
+    extracted = doc.screen_by_id(golden.screen_id)
+    assert extracted is not None, (
+        f"{stem}: 추출 결과에 화면 {golden.screen_id!r} 가 없다 — "
+        f"있는 것: {[s.screen_id for s in doc.screens]}"
+    )
     return extracted, golden, stem
 
 
@@ -155,6 +174,17 @@ class TestScreenLevel:
             assert contains_loose(extracted.success_condition, token), (
                 f"성공 조건에 {token!r} 가 없다: {extracted.success_condition!r}"
             )
+
+
+    def test_전제와_씨앗_표가_일치한다(self, pair):
+        """둘 다 결정적 표 독해가 채우는 값이다(_apply_declared_*). 모델이 아니라
+        파서를 검증하는 셈이지만, 실물 PDF 렌더링을 거친 표가 그대로 읽히는지는
+        여기서만 확인된다."""
+        extracted, golden, _ = pair
+        if golden.precondition is not None:
+            assert extracted.precondition == golden.precondition
+        if golden.seed_rows:
+            assert extracted.seed_rows == golden.seed_rows
 
 
 class TestConstraints:

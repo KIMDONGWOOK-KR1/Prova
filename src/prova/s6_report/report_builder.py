@@ -362,10 +362,16 @@ def render_html(report: TestReport) -> str:
     # 필터는 사람이 쓴 문자열이라 무엇이 빠졌는지 스스로 알지만, 요청 해석은
     # 모델이 골랐으므로 무엇이 빠졌는지 사람이 모른다. 그래서 제외 목록을
     # 통째로 싣는다.
+    # 요청이 비어 있어도 제외가 있으면 싣는다 — 웹 UI 는 요청 없이 체크박스만
+    # 꺼서 실행할 수 있고, 그때 이 절을 건너뛰면 제외 목록이 통째로 사라진
+    # 100% 짜리 리포트가 나온다 (2026-08-22).
     sel = report.selection
     sel_html = ""
-    if sel and sel.request:
-        rows = [f"<div>요청: <code>{_esc(sel.request)}</code></div>"]
+    if sel and (sel.request or sel.excluded):
+        if sel.request:
+            rows = [f"<div>요청: <code>{_esc(sel.request)}</code></div>"]
+        else:
+            rows = ["<div>요청 없이 계획 화면에서 <b>승인한 케이스만</b> 실행했습니다.</div>"]
         if sel.reason:
             rows.append(f"<div>선택 근거: {_esc(sel.reason)}</div>")
         for w in sel.warnings:

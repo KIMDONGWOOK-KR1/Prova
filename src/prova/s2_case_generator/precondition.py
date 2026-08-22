@@ -19,11 +19,35 @@ from prova.models import (Expectation, Precondition, ScreenSpec,
 _PATH_RE = re.compile(r"(/[a-zA-Z][a-zA-Z0-9_\-/]*)")
 
 
-def _find_label(screen: ScreenSpec, element_id: str) -> Optional[str]:
-    for el in screen.elements:
-        if el.element_id == element_id:
-            return el.label
-    return None
+def _pick_one(screen: ScreenSpec, kind: str) -> tuple[Optional[str], Optional[str]]:
+    """로그인 화면에서 이메일/비밀번호 입력란의 **라벨**을 고른다.
+
+    요소 ID 로 찾지 않는다. 2026-08-22 까지 `element_id == "email"` 로 찾았는데,
+    그건 우리 픽스처의 이름일 뿐이다 — 실물 기획서가 `user_email` 을 쓰면 전제
+    스텝이 통째로 안 만들어지고 그 화면 전 케이스가 precondition_unmet 이 됐다.
+    의미(입력란 + 이메일 형식 규칙 또는 라벨의 낱말)로 고르되, **후보가 정확히
+    하나일 때만** 답한다. 둘이면 틀린 칸에 값을 넣고 "전제 실패" 로 보고하게 되어
+    원인이 숨는다.
+
+    Returns:
+        (label, 경고). 둘 중 하나만 값이 있다.
+    """
+    inputs = [el for el in screen.elements if el.type == "input"]
+    if kind == "email":
+        cands = [el for el in inputs
+                 if el.constraints.get("format") == "email"
+                 or "이메일" in el.label or "email" in el.label.lower()]
+        word = "이메일"
+    else:
+        cands = [el for el in inputs
+                 if "비밀번호" in el.label or "password" in el.label.lower()]
+        word = "비밀번호"
+    if len(cands) == 1:
+        return cands[0].label, None
+    if not cands:
+        return None, f"{word} 입력란"
+    return None, (f"{word} 입력란 후보가 {len(cands)}개"
+                  f"({', '.join(el.label for el in cands)})라 하나로 확정할 수 없음")
 
 
 def _login_success_path(login: ScreenSpec) -> Optional[str]:
@@ -57,12 +81,13 @@ def expand_precondition(
     if login is None:
         return [], [f"전제가 가리키는 로그인 화면({pre.login_screen_id})이 "
                     f"문서에 없어 전제 스텝을 만들지 못했습니다."]
-    email = _find_label(login, "email")
-    password = _find_label(login, "password")
+    email, why_e = _pick_one(login, "email")
+    password, why_p = _pick_one(login, "password")
     submit = next((el.label for el in login.elements if el.type == "button"), None)
     if not (email and password and submit):
-        return [], [f"로그인 화면({login.screen_id})에서 이메일/비밀번호/제출 "
-                    f"요소를 찾지 못해 전제 스텝을 만들지 못했습니다."]
+        missing = [w for w in (why_e, why_p, None if submit else "제출 버튼") if w]
+        return [], [f"로그인 화면({login.screen_id})에서 전제 스텝을 만들지 못했습니다 — "
+                    f"{'; '.join(missing)}."]
     steps = [
         TestStep(seq=1, action="navigate", target=login.url_path),
         TestStep(seq=2, action="fill", target=email, value=pre.account_email),

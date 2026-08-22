@@ -243,11 +243,16 @@ def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
     """
     try:
         return ground(ctx.page, target, hint)
-    except GroundingError:
+    except GroundingError as first:
         if ctx.vlm is None or ctx.heal_count >= ctx.max_heal:
             raise
-        location = heal_with_vlm(ctx.page, target, ctx.vlm, hint,
-                                 ctx.min_confidence)
+        try:
+            location = heal_with_vlm(ctx.page, target, ctx.vlm, hint,
+                                     ctx.min_confidence)
+        except GroundingError as second:
+            # 1차 시도를 버리지 않는다. "후보 2개" 가 개발자가 고칠 사실인데,
+            # 2차 예외만 던지면 그 진단이 "요소 없음" 으로 덮인다.
+            raise GroundingError(target, first.attempts + second.attempts) from second
         ctx.heal_count += 1
         return location
 
@@ -275,6 +280,22 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
         locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
 
 
+class UnsupportedHealAction(RuntimeError):
+    """2차 경로(좌표)로는 할 수 없는 동작. 탐지 실패도 구현 결함도 아닌 도구의 한계다.
+
+    GroundingError 로 던지면 `reason` 이 "찾았으나 화면에 보이지 않음" 으로 읽혀
+    개발자가 없는 가시성 버그를 찾게 된다 (2026-08-22 까지 그랬다).
+    """
+
+    def __init__(self, action: str, target: str) -> None:
+        self.action = action
+        self.target = target
+        super().__init__(
+            f"2차 경로(화면 이미지)는 '{action}' 동작을 지원하지 않습니다 — "
+            f"'{target}' 은 좌표로 조작할 수 없습니다. 라벨 연결을 고쳐야 1차 경로로 검증됩니다"
+        )
+
+
 def _act_by_coords(ctx: ExecutionContext, location: ElementLocation,
                    step: TestStep) -> None:
     """좌표로 조작한다. 보정된 요소에는 Locator 가 없다.
@@ -297,7 +318,7 @@ def _act_by_coords(ctx: ExecutionContext, location: ElementLocation,
     보정은 케이스를 살리는 장치이고, 살릴 수 없는 것을 살린 척하지는 않는다.
     """
     if step.action in ("select", "uncheck"):
-        raise GroundingError(location.target, [Attempt(strategy="vlm-unsupported", count=1)])
+        raise UnsupportedHealAction(step.action, location.target)
 
     x, y = bbox_center(location)
     _require_actionable(ctx, location, step, x, y)
@@ -423,6 +444,10 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         status, error_code, error_detail = "error", "assertion_mismatch", exc.reason
     except GroundingError as exc:
         status, error_code, error_detail = "error", "element_not_found", exc.reason
+    except UnsupportedHealAction as exc:
+        # 요소는 (2차 경로로) 찾았고 구현이 틀린 것도 아니다 — 도구가 이 동작을
+        # 못 한다. input_error 로 두고 사유에 그 사실을 그대로 적는다.
+        status, error_code, error_detail = "error", "input_error", str(exc)
     except PlaywrightTimeout as exc:
         status, error_code = "error", "timeout"
         error_detail = f"{ctx.step_timeout_ms}ms 초과 — {str(exc).splitlines()[0]}"

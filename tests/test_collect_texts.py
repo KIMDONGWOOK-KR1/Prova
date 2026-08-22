@@ -92,6 +92,29 @@ class TestAmbiguous:
         assert result.detail
 
 
+class TestToolError:
+    """조회가 예외를 내면 absent 가 아니라 error 다. absent 는 판정 재료(0건일 수
+    있다)지만 error 는 도구 실패라 어떤 기대값과도 PASS 가 되면 안 된다."""
+
+    class _BrokenPage:
+        def get_by_label(self, *a, **k):
+            raise RuntimeError("page closed")
+
+        def get_by_role(self, *a, **k):
+            raise RuntimeError("page closed")
+
+    def test_collect_item_texts_는_예외를_error_로_보고한다(self):
+        result = collect_item_texts(self._BrokenPage(), "주문일", list_hint())
+        assert result.status == "error"
+        assert "page closed" in result.detail
+
+    def test_count_items_도_예외를_error_로_보고한다(self):
+        from prova.s3_grounder.dom_locator import count_items
+        result = count_items(self._BrokenPage(), "주문일", list_hint())
+        assert result.status == "error"
+        assert result.count == 0
+
+
 class TestConstruction:
     def test_세_인자만으로_만들_수_있다(self):
         """판정 쪽(assertion_engine)이 이 세 인자만으로 만들어 쓴다 — target

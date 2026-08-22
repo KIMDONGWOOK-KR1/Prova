@@ -52,6 +52,17 @@ DEFAULT_BASE_URL = "http://localhost:8000/v1"
 DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
 
 
+class ModelNotServed(LLMError):
+    """서버는 살아 있는데 요청한 모델이 없다.
+
+    연결 실패와 갈라 둔 이유: 측정 테스트는 '환경이 없다'(연결 실패)면 skip 하고
+    '환경이 잘못 구성됐다'(다른 모델이 서빙 중)면 크게 실패해야 한다. 7B 자리에
+    VL 을 띄워 둔 채 풀스위트를 돌리면 골든 대조 69개가 "연결할 수 없습니다" 라는
+    거짓 사유로 조용히 skip 되던 것을 2026-08-22 에 잡았다. LLMError 의 하위
+    클래스라 기존 `except LLMError` 호출자는 그대로 동작한다.
+    """
+
+
 class VLLMClient:
     """OpenAI 호환 엔드포인트로 로컬 모델을 호출한다."""
 
@@ -96,7 +107,7 @@ class VLLMClient:
             ) from exc
         available = [m.id for m in models.data]
         if self.model not in available:
-            raise LLMError(
+            raise ModelNotServed(
                 f"요청한 모델 '{self.model}' 이 서버에 없습니다. 사용 가능: {available}"
             )
         return self.model

@@ -227,6 +227,15 @@ class TestResultCount:
         v = verify(self.count_case(3), steps_ok(), state(collection=None))
         assert v.verdict == "FAIL"
 
+    def test_도구_오류는_0건_기대여도_FAIL(self):
+        """'못 찾았다(absent)' 와 '조회 자체가 터졌다(error)' 는 다른 사실이다.
+        브라우저가 깨진 실행에서 Playwright 예외를 absent 로 접으면 기대 0건
+        케이스가 '0건으로 확인' 초록불이 된다 — 2026-08-22 에 잡은 미탐."""
+        v = verify(self.count_case(0), steps_ok(),
+                   state(collection=self.counted("error")))
+        assert v.verdict == "FAIL"
+        assert "도구" in v.evidence["actual"] or "조회" in v.evidence["actual"]
+
     def test_센_결과가_근거에_숫자로_남는다(self):
         v = verify(self.count_case(3), steps_ok(), state(collection=self.counted("ok", 3)))
         assert v.evidence["counted"] == {

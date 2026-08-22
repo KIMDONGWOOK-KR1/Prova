@@ -124,3 +124,31 @@ class TestScriptIsIdempotent:
             [sys.executable, str(_SCRIPT), "--check"], capture_output=True, text=True
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+class TestProductBadloginTwin:
+    """`product_badlogin_spec` 은 `product_spec` 의 손복사 쌍둥이다 — 비밀번호만 틀리다.
+
+    통합 문서(multi_spec)는 조립 스크립트가 있어 낡음이 잡히지만 이 쌍은 없었다.
+    product_spec 의 요소 표를 고치면 badlogin 쪽은 낡은 화면을 측정하면서 계속
+    통과한다 — 한 번 겪은 사고(이 파일 docstring)의 재발 자리. 두 파일의 차이가
+    **의도한 그 줄뿐**임을 못 박는다 (2026-08-22).
+    """
+
+    def _lines(self, name: str) -> list[str]:
+        return (SPEC_DIR / name).read_text(encoding="utf-8").splitlines()
+
+    def test_md_는_문서번호와_비밀번호_줄만_다르다(self):
+        a, b = self._lines("product_spec.md"), self._lines("product_badlogin_spec.md")
+        assert len(a) == len(b), "줄 수가 다르다 — 한쪽만 고쳐졌다"
+        diff = [(x, y) for x, y in zip(a, b) if x != y]
+        assert len(diff) == 2, f"차이가 {len(diff)}줄: {diff}"
+        assert all("문서번호" in x for x, _ in diff[:1])
+        assert "Seller1!" in diff[1][0] and "Wrong1!" in diff[1][1]
+
+    def test_골든은_account_password_만_다르다(self):
+        import json
+        a = json.loads((SPEC_DIR / "product_spec.golden.json").read_text(encoding="utf-8"))
+        b = json.loads((SPEC_DIR / "product_badlogin_spec.golden.json").read_text(encoding="utf-8"))
+        b["precondition"]["account_password"] = a["precondition"]["account_password"]
+        assert a == b, "비밀번호 외의 차이가 있다 — 쌍둥이가 낡았다"

@@ -509,10 +509,12 @@ def _register_login(variant: str, dashboard_inline: bool) -> None:
             # spa: URL 은 /{variant}/login 그대로이고 화면 내용만 대시보드다.
             return render_dashboard(request, variant, email)
         resp = RedirectResponse(f"/{variant}/dashboard", status_code=303)
-        if variant == "good":
-            # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기
-            # 때문이다. 상품등록 화면의 로그인 가드가 이 쿠키 유무만 본다.
-            resp.set_cookie("session_good", "ok")
+        # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기
+        # 때문이다. 상품등록·주문조회의 로그인 가드가 이 쿠키 유무만 본다.
+        # 변형마다 이름이 다르다(`session_{variant}`) — 모든 변형이 심는다.
+        # good 에만 심으면 slow/hashed 변형에 전제 화면을 추가하는 순간 가드가
+        # 깨진 것처럼 보이는데 원인은 여기 세 줄이다 (2026-08-22 정리).
+        resp.set_cookie(f"session_{variant}", "ok")
         return resp
 
     @app.get(f"/{variant}/dashboard", response_class=HTMLResponse)

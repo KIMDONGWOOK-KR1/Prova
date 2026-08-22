@@ -5,9 +5,13 @@
 외부에서 띄워 둔 서버에 의존하면 테스트가 환경에 따라 통과·실패를 오간다.
 uvicorn 을 스레드로 올려 테스트가 수명을 소유한다.
 
-세션 범위로 한 번만 띄우는 이유: 검증 대상은 상태를 갖지 않는다(회원가입도
-계정을 저장하지 않는다). 그래서 여러 테스트 파일이 같은 서버를 공유해도 서로의
-결과에 영향을 주지 않고, 기동 비용을 화면 수만큼 곱하지 않아도 된다.
+세션 범위로 한 번만 띄우는 이유: 기동 비용을 화면 수만큼 곱하지 않기 위해서다.
+
+다만 검증 대상이 **상태를 아주 안 갖는 것은 아니다** — 회원가입이 프로세스 전역
+`sut.app.REGISTERED` 에 계정을 쓴다(2026-08-20 이후). e2e 는 같은 프로세스의
+스레드 서버를 치고 SUT 단위 테스트는 모듈을 직접 import 하므로 전부 같은 dict 다.
+그래서 아래 autouse 픽스처가 테스트마다 그 표를 스냅샷/복원한다. 이게 없으면
+`REGISTERED` 를 읽는 판정이 하나만 늘어도 실행 순서에 따라 결과가 달라진다.
 """
 
 from __future__ import annotations
@@ -19,6 +23,19 @@ from pathlib import Path
 
 import pytest
 import uvicorn
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sut_state():
+    """SUT 의 등록 계정 표를 테스트 전후로 되돌린다 (모듈 docstring 참고)."""
+    import copy
+
+    from sut import app as sut_app
+
+    snapshot = copy.deepcopy(sut_app.REGISTERED)
+    yield
+    sut_app.REGISTERED.clear()
+    sut_app.REGISTERED.update(snapshot)
 
 
 def _free_port() -> int:
