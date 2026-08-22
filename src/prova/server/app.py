@@ -176,6 +176,7 @@ def plan(body: PlanRequest) -> dict:
             "reason": sel.reason,
             "fallback": sel.fallback,
             "warnings": sel.warnings,
+            "widened": sel.widened,
             "request": sel.request,
             # 화면별 확인 범위. named 는 요청이 그 화면을 이름으로 지목했는가다 —
             # 지목했는데 일부만 골라졌으면 화면이 그 사실을 크게 보여야 한다.

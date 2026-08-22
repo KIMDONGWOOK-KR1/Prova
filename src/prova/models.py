@@ -484,6 +484,11 @@ class CaseSelection(BaseModel):
     approved: bool = False
     #: 지어낸 case_id, 해석 실패 등 사람이 알아야 할 사실
     warnings: list[str] = Field(default_factory=list)
+    #: 모델이 고른 것에 코드가 더한 case_id — "case_id (규칙)" 꼴. 모델이 가리킨
+    #: 묶음을 대표 하나로 접는 버릇을 코드가 결정적으로 넓힌 결과다
+    #: (selector.widen_selection). 모델이 고른 것과 구분해 남겨야 "해석이
+    #: 맞았는가" 를 되짚을 수 있다.
+    widened: list[str] = Field(default_factory=list)
     #: 화면·흐름별로 몇 건 중 몇 건을 골랐는지. '11건 제외' 만으로는 어느 화면을
     #: 반쪽만 봤는지 알 수 없다 (ScreenCoverage 참고).
     coverage: list[ScreenCoverage] = Field(default_factory=list)
