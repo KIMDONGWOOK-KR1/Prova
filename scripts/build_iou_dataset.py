@@ -162,6 +162,9 @@ NO_PASSWORD = (Target("비밀번호", "input", "input[name=password]", present=F
 NO_QUERY = (Target("검색어", "input", "input[name=query]", present=False),)
 NO_AGREE = (Target("약관 동의", "checkbox", "input#agree_terms", present=False),)
 
+# 범위: login·signup·search·find_account 의 4화면이다. product·orders(2026-08-20
+# 추가)는 시험지를 굳힌 08-18 이후에 생겨 없다 — 다시 채점할 때 더한다. 더하면
+# dataset_id 가 바뀌므로 이전 점수와 비교하지 않는다(README 참고).
 STATES: tuple[State, ...] = (
     State("login-empty", "/good/login", "로그인 · 첫 진입",
           LOGIN + NO_QUERY + NO_AGREE),
