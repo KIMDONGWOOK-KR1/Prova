@@ -30,7 +30,10 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
 
 `/slow`·`/spa`·`/hashed`·`/native`·`/nolabel`·`/slowleak` 은 검증 로직이 good 과
 같고 **도구를 시험하는 변수 하나**만 다른 변형이다(아래 등록기 참고). 이 변형들은
-login·signup·search 에만 있다 — product·orders 에 넣지 않은 것은 범위 결정이다.
+login·signup·search 에만 있다 — product 에 넣지 않은 것은 범위 결정이다.
+orders 에는 `/table`(good 과 같음)·`/badtable`(bad 와 같음)이 있다 — aria-label 이
+하나도 없는 순수 `<table>` 마크업으로, 시험하는 변수는 '표 머리글 탐지' 하나다
+(2026-08-22).
 
 ## 중요: 두 버전의 HTML 마크업은 완전히 동일하다
 
@@ -400,6 +403,7 @@ def render_orders(
     variant: str,
     orders: tuple[dict, ...],
     total: int,
+    markup: str = "list",
 ) -> HTMLResponse:
     rows = [
         {"주문번호": o["주문번호"], "주문일": o["주문일"],
@@ -410,7 +414,7 @@ def render_orders(
         request=request,
         name="orders.html",
         context={"variant": variant, "orders": rows,
-                 "total_text": _format_amount(total)},
+                 "total_text": _format_amount(total), "markup": markup},
     )
 
 
@@ -498,6 +502,10 @@ LOGIN_VARIANTS = {
     "hashed": False,
     "native": False,
     "spa": True,
+    # 주문조회의 순수 <table> 변형 — 로그인 가드가 session_{variant} 를 보므로
+    # 로그인 화면도 함께 있어야 한다.
+    "table": False,
+    "badtable": False,
 }
 
 #: 검색 화면을 가진 변형 (bad 는 결함이 있어 따로 둔다).
@@ -686,13 +694,26 @@ def good_product_submit(
 # ---------------------------------------------------------------------------
 
 
+def _good_orders_data() -> tuple[list[dict], int]:
+    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"], reverse=True)
+    return rows, sum(o["금액"] for o in rows)
+
+
 @app.get("/good/orders", response_class=HTMLResponse)
 def good_orders(request: Request):
     if "session_good" not in request.cookies:
         return RedirectResponse("/good/login", status_code=303)
-    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"], reverse=True)
-    total = sum(o["금액"] for o in rows)
+    rows, total = _good_orders_data()
     return render_orders(request, "good", rows, total)
+
+
+# table — good 과 데이터가 같고 마크업만 aria-label 없는 순수 <table> 이다.
+@app.get("/table/orders", response_class=HTMLResponse)
+def table_orders(request: Request):
+    if "session_table" not in request.cookies:
+        return RedirectResponse("/table/login", status_code=303)
+    rows, total = _good_orders_data()
+    return render_orders(request, "table", rows, total, markup="table")
 
 
 # ---------------------------------------------------------------------------
@@ -790,14 +811,28 @@ def bad_orders(request: Request):
     if "session_bad" not in request.cookies:
         return RedirectResponse("/bad/login", status_code=303)
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
+    rows, total = _bad_orders_data()
+    return render_orders(request, "bad", rows, total)
+
+
+def _bad_orders_data() -> tuple[list[dict], int]:
+    # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
     rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"])
     # O2: 합계에서 화면에 마지막으로 "표시된" 행의 금액을 뺀다. O1 때문에
     # bad 는 오름차순으로 보여주므로 마지막 표시 행은 ORD-005(1,290,000)다 —
     # 합계 = 1,859,000 - 1,290,000 = 569,000. 하드코딩하지 않고 "표시된 행의
     # 합 - 마지막 행" 으로 계산해, 시드가 바뀌어도 결함이 정직하게 유지되게
     # 한다.
-    total = sum(o["금액"] for o in rows) - rows[-1]["금액"]
-    return render_orders(request, "bad", rows, total)
+    return rows, sum(o["금액"] for o in rows) - rows[-1]["금액"]
+
+
+# badtable — bad 와 결함(O1·O2)이 같고 마크업만 순수 <table> 이다.
+@app.get("/badtable/orders", response_class=HTMLResponse)
+def badtable_orders(request: Request):
+    if "session_badtable" not in request.cookies:
+        return RedirectResponse("/badtable/login", status_code=303)
+    rows, total = _bad_orders_data()
+    return render_orders(request, "badtable", rows, total, markup="table")
 
 
 # ---------------------------------------------------------------------------
@@ -899,6 +934,8 @@ def index():
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/orders'>/bad/orders — 정렬(O1)·합계(O2) 결함</a></li>"
+        "<li><a href='/table/orders'>/table/orders — good 과 같고 마크업만 순수 &lt;table&gt;</a></li>"
+        "<li><a href='/badtable/orders'>/badtable/orders — bad 와 같고 마크업만 순수 &lt;table&gt;</a></li>"
         "</ul>"
         "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
         "<ul>"

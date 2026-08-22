@@ -455,6 +455,13 @@ def _column(state: PageState, target: str | None) -> tuple[CollectionTexts | Non
     return state.column_texts[target], ""
 
 
+def _where(got: CollectionTexts) -> str:
+    """값을 어디서 읽었는지를 사유에 붙인다. 라벨 경로면 빈 문자열이고, 표 머리글
+    같은 2차 경로로 읽었으면 그 사실이 남는다 — 도구가 판단을 했으면 리포트에
+    남아야 한다. 리포트만 보고 "왜 이 값들인가" 를 되짚을 수 있어야 한다."""
+    return f" · 읽은 곳: {got.detail}" if "aria-label 없음" in got.detail else ""
+
+
 def _judge_sorted_desc(expected: Expectation, state: PageState) -> tuple[bool, str]:
     """반복 목록이 target 컬럼 기준 내림차순(최신 우선)인가.
 
@@ -491,9 +498,9 @@ def _judge_sorted_desc(expected: Expectation, state: PageState) -> tuple[bool, s
         if values[i] < values[i + 1]:
             return False, (
                 f"{target!r} 정렬이 깨짐 — {values[i]!r} 다음에 더 최근인 "
-                f"{values[i + 1]!r} 이(가) 옴 (인덱스 {i}->{i + 1})"
+                f"{values[i + 1]!r} 이(가) 옴 (인덱스 {i}->{i + 1}){_where(got)}"
             )
-    return True, f"{target!r} {len(values)}개 항목이 내림차순으로 정렬됨"
+    return True, f"{target!r} {len(values)}개 항목이 내림차순으로 정렬됨{_where(got)}"
 
 
 def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, str]:
@@ -543,11 +550,12 @@ def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, s
         return False, f"{total_target!r} 의 값 {total_text!r} 을(를) 금액으로 파싱 실패"
 
     computed = sum(parsed_rows)
+    where = _where(rows) + _where(total_col)
     if computed == total_amount:
-        return True, f"{row_target!r} 합계 {computed} 이(가) {total_target!r} {total_amount} 와 일치"
+        return True, f"{row_target!r} 합계 {computed} 이(가) {total_target!r} {total_amount} 와 일치{where}"
     return False, (
         f"{row_target!r} 행 {len(parsed_rows)}개의 합은 {computed} 인데, "
-        f"화면의 {total_target!r} 은(는) {total_amount} 로 표시됨 — 불일치"
+        f"화면의 {total_target!r} 은(는) {total_amount} 로 표시됨 — 불일치{where}"
     )
 
 
@@ -675,6 +683,14 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
             "target": state.collection.target,
             "status": state.collection.status,
             "count": state.collection.count,
+        }
+
+    if state.column_texts:
+        # 열 값을 어디서 어떻게 읽었는지(라벨 경로 / 표 머리글 경로)를 기계가 읽을
+        # 수 있게 남긴다 — 사유 문장에만 있으면 집계할 때 다시 파싱해야 한다.
+        evidence["columns"] = {
+            label: {"status": col.status, "count": len(col.texts), "detail": col.detail}
+            for label, col in state.column_texts.items()
         }
 
     if passed:

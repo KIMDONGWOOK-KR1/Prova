@@ -163,3 +163,43 @@ class TestBad:
         assert "2026-07-28" in html and "2026-08-03" in html
         assert "1,859,000" in html or "1859000" in html.replace(",", "")
         assert "569,000" in html or "569000" in html.replace(",", "")
+
+
+# ---------------------------------------------------------------------------
+# 순수 <table> 마크업 — 탐지 경로가 aria-label 없이도 닿는가
+# ---------------------------------------------------------------------------
+#
+# table/badtable 변형은 good/bad 와 데이터·결함이 같고 마크업만 <table> 이다.
+# 판정이 good/bad 와 같아야 한다 — 다르면 탐지 한계가 판정에 새는 것이다.
+
+
+@pytest.fixture(scope="module")
+def table_run(sut_base, tmp_path_factory):
+    return _run("table", sut_base, tmp_path_factory.mktemp("orders-table"))
+
+
+@pytest.fixture(scope="module")
+def badtable_run(sut_base, tmp_path_factory):
+    return _run("badtable", sut_base, tmp_path_factory.mktemp("orders-badtable"))
+
+
+class TestTableMarkup:
+    def test_표_마크업에서도_전부_통과한다(self, table_run):
+        report, _ = table_run
+        failures = [v for v in report.cases if v.verdict == "FAIL"]
+        assert not failures, "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
+        assert report.summary["total"] == 5
+
+    def test_표_마크업에서도_심은_결함만_지목한다(self, badtable_run):
+        report, _ = badtable_run
+        fails = {v.case_id for v in report.cases if v.verdict == "FAIL"}
+        assert {c for c in fails if "orders-sorted-" in c}, fails
+        assert {c for c in fails if "orders-sum-" in c}, fails
+        assert all("orders-sorted-" in c or "orders-sum-" in c for c in fails), fails
+
+    def test_표_경로로_찾은_사실이_사유에_남는다(self, badtable_run):
+        """도구가 판단을 했으면 그 사실이 리포트에 남아야 한다 — 정렬 FAIL 사유에
+        '표 머리글' 로 찾았다는 말이 있어야 한다."""
+        report, _ = badtable_run
+        case = _case(report, "orders-sorted-")
+        assert "표 머리글" in (case.failure_detail or ""), case.failure_detail
