@@ -126,6 +126,61 @@ class TestHealing:
             heal_with_vlm(page, "검색", MockVLM(), SEARCH_BTN)
 
 
+class TestHealFailureReason:
+    """보정 실패의 **사유**가 남아야 한다 (2026-08-22).
+
+    스크린샷 실패·VL 서버 오류·신뢰도 미달·좌표 비정상이 전부 `vlm=0개` 로
+    접혀 "일치하는 요소가 없음" 으로 찍혔다. 실행 중 VL 서버가 죽어도 리포트는
+    "요소를 못 찾았다" 고 말했다 — 도구 오류가 탐지 실패로 둔갑한다. 그리고
+    1차 경로의 진단("후보 2개")도 2차 예외로 덮여 사라졌다.
+    """
+
+    def test_서버_오류는_사유에_도구_오류로_남는다(self, page, sut_base):
+        page.goto(f"{sut_base}/nolabel/search")
+        from prova.vlm.base import VLMError
+
+        class Down:
+            def locate(self, **kw):
+                raise VLMError("connection refused")
+
+        with pytest.raises(GroundingError) as info:
+            heal_with_vlm(page, "검색", Down(), SEARCH_BTN)
+        assert "도구 오류" in info.value.reason or "서버" in info.value.reason
+        assert "connection refused" in info.value.reason
+
+    def test_신뢰도_미달은_수치가_사유에_남는다(self, page, sut_base):
+        page.goto(f"{sut_base}/nolabel/search")
+        vlm = MockVLM()
+        vlm.register("검색", (0.1, 0.1, 0.2, 0.2), confidence=0.31)
+        with pytest.raises(GroundingError) as info:
+            heal_with_vlm(page, "검색", vlm, SEARCH_BTN)
+        assert "신뢰도" in info.value.reason and "0.31" in info.value.reason
+
+    def test_좌표_비정상은_사유에_남는다(self, page, sut_base):
+        page.goto(f"{sut_base}/nolabel/search")
+        vlm = MockVLM()
+        vlm.register("검색", (0.8, 0.8, 0.2, 0.2))
+        with pytest.raises(GroundingError) as info:
+            heal_with_vlm(page, "검색", vlm, SEARCH_BTN)
+        assert "좌표" in info.value.reason
+
+    def test_드라이버는_1차_시도를_버리지_않는다(self, page, sut_base, tmp_path):
+        """라벨이 둘인 화면에서 보정까지 실패하면, 사유는 여전히 '후보가 여러 개'
+        여야 한다 — 그게 개발자가 고칠 사실이다."""
+        from prova.s4_executor.playwright_driver import ExecutionContext, _locate
+
+        page.set_content(
+            '<button aria-label="검색">1</button><button aria-label="검색">2</button>'
+        )
+        ctx = ExecutionContext(page=page, base_url="http://x", specs=[], run_dir=tmp_path,
+                               case_id="c", vlm=MockVLM(), max_heal=2)
+        with pytest.raises(GroundingError) as info:
+            _locate(ctx, "검색", SEARCH_BTN)
+        assert any(a.count > 1 for a in info.value.attempts)
+        assert any(a.strategy == "vlm" for a in info.value.attempts)
+        assert "여러 개" in info.value.reason
+
+
 class TestLocatedSanity:
     """좌표 검사는 브라우저 없이 값으로 확인한다."""
 

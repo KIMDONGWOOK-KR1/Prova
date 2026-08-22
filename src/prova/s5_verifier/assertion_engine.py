@@ -300,6 +300,11 @@ def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, 
     if got.status == "ambiguous":
         return False, f"건수를 셀 수 없습니다 — {got.detail}"
 
+    if got.status == "error":
+        # 도구가 조회에 실패한 것이다. 기대가 0건이어도 '0건으로 확인' 이 아니다 —
+        # 확인하지 않은 것과 확인해서 0건인 것은 다르다.
+        return False, f"건수를 세지 못했습니다 — 도구 오류 ({got.detail}). 구현 결함이 아닙니다"
+
     if got.status == "absent":
         if want == 0:
             return True, f"{target!r} 이 렌더되지 않음 — 0건으로 확인"

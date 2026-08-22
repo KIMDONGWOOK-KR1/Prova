@@ -58,8 +58,19 @@ def selecting_llm(monkeypatch):
 
 @pytest.fixture
 def client(monkeypatch, tmp_path):
-    # 리포트가 저장소의 runs/ 를 어지럽히지 않게 한다.
-    monkeypatch.chdir(server_app.Path.cwd())
+    # 리포트가 저장소의 runs/ 를 어지럽히지 않게 한다. chdir 은 못 쓴다 —
+    # 서버가 fixtures/specs·configs 를 상대 경로로 읽는다. 실행 뿌리(RUNS)만
+    # 옮긴다. (2026-08-22 까지 `chdir(Path.cwd())` 라는 no-op 이었고, 실행
+    # 기록 테스트가 저장소에 쌓인 잔여물에 기대고 있었다.)
+    runs = tmp_path / "runs"
+    runs.mkdir()
+    monkeypatch.setattr(server_app, "RUNS", runs)
+    # /runs 정적 마운트는 import 시점에 디렉터리를 굳히므로 함께 옮긴다.
+    from starlette.routing import Mount
+    static = next(r.app for r in server_app.app.routes
+                  if isinstance(r, Mount) and r.name == "runs")
+    monkeypatch.setattr(static, "directory", runs)
+    monkeypatch.setattr(static, "all_directories", [runs])
     server_app.runner.__init__()  # 작업 상태를 테스트마다 초기화
     return TestClient(server_app.app)
 
@@ -237,10 +248,29 @@ class TestRunHistory:
             assert r["run_id"] and r["summary"]
             assert client.get(f"/api/report/{r['run_id']}").status_code == 200
 
-    def test_최신순이다(self, client):
+    def test_최신순이다(self, client, sut_base):
+        """실행 2건을 여기서 직접 만든다 — 앞 테스트의 잔여물에 기대면 빈 환경에서
+        `[] == sorted([])` 로 공허하게 통과한다."""
+        for _ in range(2):
+            res = client.post("/api/run", json={
+                "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+                "case_ids": ["login-valid-001"],
+            })
+            wait(client, res.json()["job_id"])
+            time.sleep(1.1)  # run_id 가 초 단위라 같은 초에 겹치면 덮어쓴다
         runs = client.get("/api/runs").json()["runs"]
+        assert len(runs) >= 2
         stamps = [r["created_at"] for r in runs]
         assert stamps == sorted(stamps, reverse=True)
+
+    def test_저장소의_runs_를_쓰지_않는다(self, client, sut_base, tmp_path):
+        res = client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "case_ids": ["login-valid-001"],
+        })
+        wait(client, res.json()["job_id"])
+        made = list((tmp_path / "runs").iterdir())
+        assert made, "실행 결과가 격리된 runs/ 에 쓰여야 한다"
 
 
 class TestShell:

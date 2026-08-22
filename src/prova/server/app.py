@@ -211,6 +211,7 @@ def run(body: RunRequest) -> dict:
             base_url=body.url,
             llm=llm,
             run_id=run_id,
+            runs_root=RUNS,  # 목록·리포트 조회(RUNS)와 같은 뿌리여야 한다
             case_ids=body.case_ids,
             request=body.request,
             reason=body.reason,

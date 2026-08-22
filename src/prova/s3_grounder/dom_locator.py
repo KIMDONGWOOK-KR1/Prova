@@ -39,15 +39,12 @@ from typing import Literal
 from prova.models import ElementLocation, UIElement
 from prova.text_utils import normalize_ws
 
-#: 전략 이름 -> 사람이 읽는 설명. 리포트의 스텝 표에 쓴다.
-#
-# 점검에서 이 표가 어디에도 쓰이지 않는 것을 찾았다 — 주석은 "리포트와 평가 지표에
-# 쓴다" 고 했는데 리포트는 원시 이름(label·role)을 그대로 찍고 있었다. 그리고
-# 2차 경로가 생긴 뒤에도 vlm 이 빠져 있었다. 주석이 하는 일을 말하지 않으면
-# 읽는 사람이 코드를 잘못 이해한다.
+#: 전략 이름 -> 사람이 읽는 설명. 리포트의 스텝 표(report_builder.strategy_label)가
+#: 쓴다. 새 전략을 더하면 여기에도 더한다 — 없으면 원시 이름이 그대로 찍힌다.
 STRATEGY_LABELS = {
     "label": "<label> 연결",
     "placeholder": "안내 문구",
+    "placeholder_hint": "안내 문구 (기획서 값)",
     "role": "접근성 role+name",
     "text": "텍스트 일치",
     "vlm": "화면 이미지 (2차)",
@@ -77,21 +74,36 @@ class GroundingError(RuntimeError):
 
     @property
     def reason(self) -> str:
-        """왜 실패했는지 한 줄로. 리포트의 실패 상세에 들어간다."""
+        """왜 실패했는지 한 줄로. 리포트의 실패 상세에 들어간다.
+
+        1차 경로의 사유를 먼저 말하고, 2차 경로(vlm)가 사유를 남겼으면 뒤에
+        붙인다. 2차 예외가 1차 진단을 덮어 "후보 2개" 가 "요소 없음" 으로
+        바뀌던 것을 2026-08-22 에 고쳤다 — 개발자가 고칠 사실은 1차 쪽이다.
+        """
         if any(a.count > 1 for a in self.attempts):
-            return "후보가 여러 개여서 어느 것을 조작할지 확정할 수 없음"
-        if any(a.count == 1 and not a.visible for a in self.attempts):
-            return "요소를 찾았으나 화면에 보이지 않음"
-        return "일치하는 요소가 없음"
+            base = "후보가 여러 개여서 어느 것을 조작할지 확정할 수 없음"
+        elif any(a.count == 1 and not a.visible for a in self.attempts):
+            base = "요소를 찾았으나 화면에 보이지 않음"
+        else:
+            base = "일치하는 요소가 없음"
+        extra = [a.detail for a in self.attempts if a.detail]
+        if extra:
+            return f"{base} · 2차 경로: {'; '.join(extra)}"
+        return base
 
 
 @dataclass
 class Attempt:
-    """전략 하나의 시도 결과. 실패 원인을 설명하고 평가 지표를 내는 근거."""
+    """전략 하나의 시도 결과. 실패 원인을 설명하고 평가 지표를 내는 근거.
+
+    detail 은 '몇 개 찾았다' 로는 설명이 안 되는 실패(2차 경로의 서버 오류·신뢰도
+    미달·좌표 비정상)의 사유다. 1차 전략은 비워 둔다.
+    """
 
     strategy: str
     count: int
     visible: bool = False
+    detail: str = ""
 
 
 def _describe(locator, strategy: str, target: str) -> str:
@@ -119,10 +131,15 @@ def _try_strategies(page, target: str, hint: UIElement | None):
     ]
 
     # 힌트로 placeholder 를 알고 있으면 그 값으로도 시도한다. 기획서가 라벨과
-    # placeholder 를 따로 적어 둔 경우에 대응한다.
+    # placeholder 를 따로 적어 둔 경우에 대응한다. 전략 이름을 'placeholder' 와
+    # 갈라 둔 이유: 이 후보가 쓴 값은 target(라벨)이 아니라 hint.placeholder 다.
+    # 같은 이름으로 기록하면 resolve_locator 가 라벨로 다시 찾아 0개가 되고,
+    # 탐지는 성공했는데 조작만 실패하는 — 구현 결함처럼 보이는 — 상태가 된다
+    # (2026-08-22 까지 그랬다).
     if hint and hint.placeholder:
         candidates.insert(
-            2, ("placeholder", lambda: page.get_by_placeholder(hint.placeholder, exact=True))
+            2, ("placeholder_hint",
+                lambda: page.get_by_placeholder(hint.placeholder, exact=True))
         )
 
     for strategy, build in candidates:
@@ -144,6 +161,13 @@ def _try_strategies(page, target: str, hint: UIElement | None):
             attempts.append(Attempt(strategy=strategy, count=count))
 
     return None, None, attempts
+
+
+def _value_for(strategy: str, target: str, hint: UIElement | None) -> str:
+    """전략이 실제로 조회에 쓴 값. placeholder_hint 만 target 이 아니다."""
+    if strategy == "placeholder_hint" and hint and hint.placeholder:
+        return hint.placeholder
+    return target
 
 
 def _role_for(hint: UIElement | None) -> str:
@@ -255,7 +279,7 @@ def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
     return ElementLocation(
         target=target,
         method="selector",
-        selector=_describe(locator, strategy, target),
+        selector=_describe(locator, strategy, _value_for(strategy, target, hint)),
         confidence=1.0,
         healed=False,
         strategy=strategy,
@@ -275,6 +299,12 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
         return page.get_by_label(target, exact=True)
     if strategy == "placeholder":
         return page.get_by_placeholder(target, exact=True)
+    if strategy == "placeholder_hint":
+        if hint is None or not hint.placeholder:
+            # 기록은 있는데 되살릴 힌트가 없다 — 라벨로 찾으면 0개가 되어 조작
+            # 실패로 둔갑하므로, 탐지 실패로 명확히 돌린다.
+            raise GroundingError(target, [Attempt(strategy=strategy, count=0)])
+        return page.get_by_placeholder(hint.placeholder, exact=True)
     if strategy == "role":
         return page.get_by_role(_role_for(hint), name=target, exact=True)
     if strategy == "text":
@@ -330,6 +360,11 @@ def _locate_collection(page, target: str, hint: UIElement | None):
 
     Returns:
         (status, container, item_role, found, detail) 튜플.
+        status 는 "ok" | "absent" | "ambiguous" | "error". "error" 는 조회 자체가
+        예외를 낸 경우(브라우저가 닫힘 등)로, absent(화면에 없음)와 다르다 —
+        absent 는 판정 재료가 될 수 있지만(0건 기대), error 는 어떤 기대값과도
+        PASS 가 되면 안 된다. 2026-08-22 까지 둘을 absent 로 합쳐, 깨진 실행이
+        "0건으로 확인" 초록불을 낼 수 있었다.
         status 가 "ok" 일 때만 container 가 유효한 Locator 다. item_role 이
         None 이면 container 자체가 이미 항목 목록이다. found 는 라벨과 일치한
         컨테이너(또는 반복 라벨) 개수 — ambiguous 일 때 호출자가 몇 개가
@@ -340,7 +375,7 @@ def _locate_collection(page, target: str, hint: UIElement | None):
             items = page.get_by_label(target, exact=True)
             found = items.count()
         except Exception as exc:
-            return "absent", None, None, 0, f"요소 조회 실패: {exc}"
+            return "error", None, None, 0, f"요소 조회 실패: {exc}"
         if found == 0:
             return "absent", None, None, 0, f"라벨 {target!r} 인 요소가 화면에 없음"
         return "ok", items, None, found, ""
@@ -351,8 +386,8 @@ def _locate_collection(page, target: str, hint: UIElement | None):
     try:
         container = page.get_by_role(container_role, name=target, exact=True)
         found = container.count()
-    except Exception as exc:  # role 조회 자체가 실패한 경우
-        return "absent", None, item_role, 0, f"목록 조회 실패: {exc}"
+    except Exception as exc:  # role 조회 자체가 실패한 경우 — 도구 실패다
+        return "error", None, item_role, 0, f"목록 조회 실패: {exc}"
 
     if found == 0:
         return (
@@ -389,7 +424,7 @@ class CollectionCount:
     """
 
     target: str
-    status: str          # "ok" | "absent" | "ambiguous"
+    status: str          # "ok" | "absent" | "ambiguous" | "error"(도구 실패)
     count: int = 0
     detail: str = ""
 
@@ -425,7 +460,7 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
     try:
         n = container.get_by_role(item_role).count()
     except Exception as exc:
-        return CollectionCount(target=target, status="absent",
+        return CollectionCount(target=target, status="error",
                                detail=f"항목 조회 실패: {exc}")
 
     return CollectionCount(
@@ -450,7 +485,7 @@ class CollectionTexts:
     이유로, texts 도 '못 찾았다' 를 빈 배열로 뭉개지 않는다.
     """
 
-    status: Literal["ok", "absent", "ambiguous"]
+    status: Literal["ok", "absent", "ambiguous", "error"]
     texts: list[str] = field(default_factory=list)
     detail: str = ""
 
@@ -486,7 +521,7 @@ def collect_item_texts(page, target: str, hint: UIElement | None = None) -> Coll
         items = container if item_role is None else container.get_by_role(item_role)
         texts = [normalize_ws(t) for t in items.all_inner_texts()]
     except Exception as exc:
-        return CollectionTexts(status="absent",
+        return CollectionTexts(status="error",
                                texts=[], detail=f"항목 조회 실패: {exc}")
 
     where = f"{target!r}" if item_role is None else f"{target!r} 안의 {item_role}"
@@ -523,6 +558,12 @@ def read_options(page, target: str, hint: UIElement | None = None) -> list[str] 
             locator = page.get_by_role(role, name=target, exact=True)
             if locator.count() != 1:
                 return None
+        # <option> 은 네이티브 <select> 에만 있다. div 기반 커스텀 combobox 에서
+        # 같은 조회를 하면 예외 없이 빈 목록이 나와 '항목 0개' 로 보고된다 —
+        # 못 읽은 것을 구현 결함으로 말하는 것이므로, <select> 가 아니면 None.
+        tag = locator.evaluate("el => el.tagName.toLowerCase()")
+        if tag != "select":
+            return None
         texts = locator.locator("option").all_text_contents()
     except Exception:
         return None
@@ -609,23 +650,31 @@ def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None,
     Raises:
         GroundingError: 호출 실패, 좌표가 이상함, 신뢰도 미달.
             보정 실패를 새 예외로 만들지 않는 이유: 호출자에게 필요한 사실은
-            '요소를 확정하지 못했다' 하나이고, 그 처리는 이미 있다.
+            '요소를 확정하지 못했다' 하나이고, 그 처리는 이미 있다. 다만 **사유는
+            Attempt.detail 에 남긴다** — 서버가 죽은 것과 모델이 자신 없어 한 것은
+            고칠 곳이 다르고(도구 vs 문턱값 vs 모델), 둘 다 "요소 없음" 으로 찍히면
+            실행 중 VL 서버가 죽어도 리포트가 탐지 실패라고 말한다.
     """
     from prova.vlm.base import VLMError  # 순환 import 회피 (vlm 은 S3 를 모른다)
+
+    def fail(detail: str):
+        return GroundingError(target, [Attempt(strategy="vlm", count=0, detail=detail)])
 
     try:
         shot = page.screenshot()
     except Exception as exc:
-        raise GroundingError(target, [Attempt(strategy="vlm", count=0)]) from exc
+        raise fail(f"도구 오류 — 스크린샷 실패 ({exc})") from exc
 
     try:
         found = vlm.locate(image_png=shot, target=target,
                            hint=VLM_HINTS.get(hint.type, "") if hint else "")
-    except VLMError:
-        raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
+    except VLMError as exc:
+        raise fail(f"도구 오류 — VL 서버 호출 실패 ({exc}); 구현 결함이 아닙니다") from exc
 
-    if found.confidence < min_confidence or not found.is_sane():
-        raise GroundingError(target, [Attempt(strategy="vlm", count=0)])
+    if found.confidence < min_confidence:
+        raise fail(f"신뢰도 {found.confidence:.2f} < 문턱값 {min_confidence:.2f}")
+    if not found.is_sane():
+        raise fail(f"좌표 비정상 {tuple(round(v, 2) for v in found.bbox)}")
 
     return ElementLocation(
         target=target,

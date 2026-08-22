@@ -529,6 +529,16 @@ def spec_defects(spec: ScreenSpec) -> list[str]:
                 f"비어 있습니다. 정상 케이스가 값을 고를 수 없습니다."
             )
 
+        if "pattern" in element.constraints and not element.sample_value:
+            # valid_value_for 가 정규식을 역생성하지 못해 빈 값을 돌려준다. 그
+            # 빈 값이 required 위반으로 먼저 걸려 정상 케이스가 구현 결함 없이
+            # FAIL 한다 — 경고 없이 두면 오탐이 숨는다 (2026-08-22).
+            defects.append(
+                f"'{element.label}' 은 정규식 규칙(pattern)만 있고 예시값이 없습니다. "
+                f"정규식으로는 정상값을 만들 수 없어 정상 케이스가 빈 값을 넣게 됩니다 — "
+                f"기획서에 예시값을 적어 주세요."
+            )
+
     defects.extend(_scenario_defects(spec))
     return defects
 

@@ -160,6 +160,24 @@ class TestNonTextElements:
         assert valid_value_for(spec.elements[0]) == ""
         assert any("선택 목록" in d for d in spec_defects(spec))
 
+    def test_pattern_규칙만_있고_예시값이_없으면_경고한다(self):
+        """정규식은 역생성이 안 되어 정상값이 빈 문자열이 된다 → required 위반으로
+        정상 케이스가 FAIL. 구현 결함이 아닌데 경고가 없으면 오탐이 숨는다
+        (2026-08-22)."""
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/s", elements=[
+            UIElement(element_id="phone", type="input", label="휴대폰",
+                      constraints={"pattern": r"^01\d-\d{4}-\d{4}$"}),
+        ])
+        assert any("휴대폰" in d and "예시" in d for d in spec_defects(spec))
+
+    def test_pattern_규칙에_예시값이_있으면_경고하지_않는다(self):
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/s", elements=[
+            UIElement(element_id="phone", type="input", label="휴대폰",
+                      constraints={"pattern": r"^01\d-\d{4}-\d{4}$"},
+                      sample_value="010-1234-5678"),
+        ])
+        assert not any("휴대폰" in d for d in spec_defects(spec))
+
     def test_필수_아닌_체크박스는_위반이_없다(self):
         e = UIElement(element_id="news", type="checkbox", label="뉴스레터 수신")
         assert violations_for_element(e) == []
