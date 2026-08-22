@@ -12,8 +12,10 @@
 
 브라우저를 열지 않는다 — build_plan 은 S1~S2 와 선택까지만 하므로 몇 초면 끝난다.
 
-    uv run python scripts/probe_request_selection.py            # 전체
+    uv run python scripts/probe_request_selection.py            # 튜닝 세트
     uv run python scripts/probe_request_selection.py login      # 한 기획서만
+    uv run python scripts/probe_request_selection.py heldout    # 홀드아웃 A (튜닝 세트로 강등)
+    uv run python scripts/probe_request_selection.py heldout-b  # 홀드아웃 B — 보고에 쓰는 숫자
 """
 
 from __future__ import annotations
@@ -106,6 +108,47 @@ EMPTY_HELDOUT = [
     ("multi", "고객센터 문의가 접수되는지 확인"),
 ]
 
+# ---------------------------------------------------------------------------
+# 홀드아웃 B — 2026-08-22 에 굳혔다. 선택 넓히기(widen_selection)를 구현하기
+# **전에** 적고 커밋했다.
+#
+# 위 HELDOUT(A)은 6/9 의 빠뜨림 3건(흐름·건수·정렬)을 보고 넓히기 규칙을 설계했으므로
+# 이 시점부터 **튜닝 세트**다. A 의 숫자는 더 이상 일반화 증거가 아니다 — 보고에는
+# B 를 쓴다. B 의 결과를 보고는 고치지 않는다. 실패하면 실패로 보고한다.
+#
+# 유형은 A 와 같게 두고(흐름·건수·정렬·문구·축약·의문문) 문서와 말투를 바꿨다.
+# product·orders 문서는 A 에 거의 없었다.
+# ---------------------------------------------------------------------------
+HELDOUT_B: list[tuple[str, str, str, list[str]]] = [
+    ("orders", "주문 합계 금액이 화면에 맞게 찍히는지 봐줘", "합계 지목",
+     [r"orders-sum"]),
+    ("orders", "로그인 안 한 상태로 주문조회 들어가면 막히나?", "가드 지목(의문문)",
+     [r"orders-precondition-guard"]),
+    ("orders", "주문조회 화면 전반적으로 점검 부탁", "화면 지목(전 종류)",
+     [r"orders-valid", r"orders-sorted", r"orders-sum", r"orders-seedcount",
+      r"orders-precondition-guard"]),
+    ("product", "가격이랑 재고에 숫자 아닌 값 넣으면 튕기는지", "두 항목 규칙",
+     [r"product-price-numeric", r"product-stock-numeric"]),
+    ("product", "상품명 길이 제한 걸리는지 확인", "요소+규칙 축약",
+     [r"product-name-max_length"]),
+    ("product", "상품등록 화면 문구가 기획서 그대로인지", "문구·라벨 지목",
+     [r"product-placeholders", r"product-labels"]),
+    ("multi", "검색했을 때 결과 건수가 기획서랑 같게 나오나", "건수 검증(의문문)",
+     [r"search-count-005", r"search-count-006"]),
+    ("multi", "가입 끝나고 이어서 로그인하는 것까지 한 번에", "흐름 지목(축약)",
+     [r"flow-signup_then_login"]),
+    ("multi", "로그인 화면의 비밀번호 규칙 세 가지 다 걸리는지", "규칙 묶음",
+     [r"login-password-min_length", r"login-password-require_uppercase",
+      r"login-password-require_special"]),
+    ("multi", "가입 경로 선택지가 기획서 항목대로 다 있는지", "선택 항목 대조",
+     [r"signup-options-signup_path"]),
+]
+
+EMPTY_HELDOUT_B = [
+    ("orders", "배송 조회가 되는지 봐줘"),
+    ("product", "쿠폰 적용이 되는지 확인"),
+]
+
 
 def spec_path(name: str) -> Path:
     return Path(f"fixtures/specs/{name}_spec.pdf")
@@ -126,7 +169,10 @@ def main() -> int:
     only = sys.argv[1] if len(sys.argv) > 1 else None
     cases, empties, label = CASES, EMPTY, "튜닝 세트"
     if only == "heldout":
-        cases, empties, label = HELDOUT, EMPTY_HELDOUT, "홀드아웃 (multi_spec)"
+        cases, empties, label = HELDOUT, EMPTY_HELDOUT, "홀드아웃 A (2026-08-22 부터 튜닝 세트)"
+        only = None
+    elif only == "heldout-b":
+        cases, empties, label = HELDOUT_B, EMPTY_HELDOUT_B, "홀드아웃 B (보고용)"
         only = None
     rows, misses = [], 0
 
