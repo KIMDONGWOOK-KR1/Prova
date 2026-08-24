@@ -169,6 +169,28 @@ class TestDeclaredElementTypes:
         assert doc.declared_element_types() == {"가": "input"}
 
 
+class TestDateElementType:
+    """유형 '날짜' — 자동 채움에서 빠지는 입력 (specs/2026-08-24 날짜 필터).
+
+    유형 '입력' 으로 두면 정상 케이스가 규칙 없는 이 필드에 자유 문자열
+    견본값을 채우려 하는데, input[type=date] 는 ISO 날짜만 받아 fill 이
+    깨진다. 날짜 입력의 값은 filter 케이스가 시드 표에서 계산해 넣는다.
+    """
+
+    def test_유형_날짜가_date_로_매핑된다(self):
+        from prova.s1_spec_extractor.pdf_parser import ELEMENT_TYPE_WORDS
+        assert ELEMENT_TYPE_WORDS["날짜"] == "date"
+
+    def test_date_는_자동_채움_대상이_아니다(self):
+        from prova.models import ScreenSpec, UIElement
+        from prova.s2_case_generator.generator import _fillable_inputs
+        spec = ScreenSpec(
+            screen_id="s", screen_name="s", url_path="/s",
+            elements=[UIElement(element_id="start_date", type="date", label="시작일")],
+        )
+        assert _fillable_inputs(spec) == []
+
+
 class TestForbiddenTextColumn:
     """'노출되면 안 되는 문구' 열 — 지금까지와 방향이 반대인 요구사항.
 

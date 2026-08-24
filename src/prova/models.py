@@ -28,7 +28,12 @@ from pydantic import BaseModel, Field
 # "list" 는 반복 목록(검색 결과 목록 등)이다. 다른 유형과 성질이 다르다 —
 # 값을 채우는 대상이 아니고, 화면에 몇 개가 렌더됐는지를 세는 대상이다.
 # 그래서 S2 의 _fillable_inputs 에서 빠지고, S3 는 별도 경로로 다룬다.
-ElementType = Literal["input", "button", "link", "select", "checkbox", "text", "list"]
+# "date" 는 값을 자동으로 채우지 않는 입력이다 — input[type=date] 는 ISO 날짜만
+# 받아 자유 문자열 견본값이 통하지 않는다. 값은 filter 케이스가 시드 표에서
+# 계산해 넣는다 (generator._filter_cases).
+ElementType = Literal[
+    "input", "button", "link", "select", "checkbox", "text", "list", "date"
+]
 
 
 class UIElement(BaseModel):
