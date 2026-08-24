@@ -93,10 +93,14 @@ class TestGood:
         report, _ = good_run
         assert report.summary["total"] > 0
 
-    def test_전체_다섯_건이다(self, good_run):
-        """valid + sorted + sum + seedcount + guard = 5건."""
+    def test_전체_여섯_건이다(self, good_run):
+        """valid + labels + sorted + sum + seedcount + guard = 6건.
+
+        labels 케이스는 날짜 필터 요소(시작일·종료일·조회)가 §2 에 생기면서
+        처음 만들어졌다 — 그 라벨들이 화면에서 찾아지는지 본다.
+        """
         report, _ = good_run
-        assert report.summary["total"] == 5, [c.case_id for c in report.cases]
+        assert report.summary["total"] == 6, [c.case_id for c in report.cases]
 
 
 class TestBad:
@@ -133,11 +137,11 @@ class TestBad:
         case = _case(report, "orders-seedcount-")
         assert case.verdict == "PASS", case.failure_detail
 
-    def test_전체_다섯_건_중_셋만_통과한다(self, bad_run):
-        """valid + seedcount + guard = PASS 3건, sorted + sum = FAIL 2건."""
+    def test_전체_여섯_건_중_넷만_통과한다(self, bad_run):
+        """valid + labels + seedcount + guard = PASS 4건, sorted + sum = FAIL 2건."""
         report, _ = bad_run
-        assert report.summary["total"] == 5, [c.case_id for c in report.cases]
-        assert report.summary["pass"] == 3
+        assert report.summary["total"] == 6, [c.case_id for c in report.cases]
+        assert report.summary["pass"] == 4
         assert report.summary["fail"] == 2
 
     def test_정렬_실패_사유가_깨진_날짜_쌍을_말한다(self, bad_run):
@@ -188,7 +192,7 @@ class TestTableMarkup:
         report, _ = table_run
         failures = [v for v in report.cases if v.verdict == "FAIL"]
         assert not failures, "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
-        assert report.summary["total"] == 5
+        assert report.summary["total"] == 6
 
     def test_표_마크업에서도_심은_결함만_지목한다(self, badtable_run):
         report, _ = badtable_run

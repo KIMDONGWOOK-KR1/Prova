@@ -13,8 +13,9 @@ S1 이 요소를 빠뜨리면 리포트에는 '구현 결함' 처럼 보인다. 
 
 from __future__ import annotations
 
-from prova.models import Precondition, ScreenSpec, UIElement
+from prova.models import DateFilter, Precondition, ScreenSpec, UIElement
 from prova.s1_spec_extractor.extractor import (
+    _apply_declared_date_filter,
     _apply_declared_precondition,
     _apply_declared_required_message,
     _apply_declared_scenarios,
@@ -416,3 +417,51 @@ class TestAllWarnings:
         a = ScreenSpec(screen_id="login", screen_name="로그인", url_path="/login",
                        warnings=["문제 하나"])
         assert SpecDocument(screens=[a]).all_warnings == ["문제 하나"]
+
+
+class TestApplyDeclaredDateFilter:
+    """'날짜 필터' 표가 진실이다 (specs/2026-08-24).
+
+    표가 없으면 LLM 이 지어낸 필터도 지운다 — 억측한 필터로 기간 조회
+    케이스를 만들면 무엇을 검증했는지 말할 수 없다. 표가 있는데 필수 항목이
+    빠졌으면 경고하고 만들지 않는다(판정 불능이면 만들지 않는다).
+    """
+
+    FULL = {
+        "시작일 요소": "시작일", "종료일 요소": "종료일", "조회 버튼": "조회",
+        "대상 목록": "주문 목록", "날짜 컬럼": "주문일",
+        "빈 결과 문구": "기간 내 주문이 없습니다.",
+    }
+
+    def _spec(self) -> ScreenSpec:
+        return ScreenSpec(screen_id="orders", screen_name="주문 조회", url_path="/orders")
+
+    def test_표가_있으면_date_filter_를_채운다(self):
+        spec = self._spec()
+        _apply_declared_date_filter(spec, dict(self.FULL))
+        f = spec.date_filter
+        assert (f.start_label, f.end_label, f.submit_label) == ("시작일", "종료일", "조회")
+        assert (f.target_label, f.date_column) == ("주문 목록", "주문일")
+        assert f.empty_message == "기간 내 주문이 없습니다."
+
+    def test_표가_없으면_LLM_이_지어낸_필터를_지운다(self):
+        spec = self._spec()
+        spec.date_filter = DateFilter(
+            start_label="a", end_label="b", submit_label="c",
+            target_label="d", date_column="e",
+        )
+        _apply_declared_date_filter(spec, None)
+        assert spec.date_filter is None
+
+    def test_필수_키가_빠지면_경고하고_채우지_않는다(self):
+        spec = self._spec()
+        _apply_declared_date_filter(spec, {"시작일 요소": "시작일"})
+        assert spec.date_filter is None
+        assert any("날짜 필터" in w for w in spec.warnings)
+
+    def test_빈_결과_문구는_선택이다(self):
+        spec = self._spec()
+        declared = {k: v for k, v in self.FULL.items() if k != "빈 결과 문구"}
+        _apply_declared_date_filter(spec, declared)
+        assert spec.date_filter is not None
+        assert spec.date_filter.empty_message is None

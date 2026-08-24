@@ -19,11 +19,25 @@
     .total-row { display:flex; justify-content:space-between; margin-top:16px;
                  padding-top:14px; border-top:2px solid #333; font-size:15px;
                  font-weight:700; }
+    .filter { display:flex; gap:8px; margin-bottom:16px; font-size:13px;
+              align-items:center; }
+    .filter input { margin-left:4px; }
+    .empty { color:#888; font-size:14px; margin:12px 0 0; }
   </style>
 </head>
 <body>
   <div class="card">
     <h1>주문조회</h1>
+
+    {# 필터 폼은 목록 마크업 밖이라 list/table 변형이 공유한다. 라벨은 label
+       요소로 감싼다 — table 변형의 'ARIA 라벨 0개' 성질을 폼이 깨면 안 된다.
+       (Jinja 주석 — 렌더 결과에 남지 않는다. HTML 주석이면 이 글의 단어가
+       마크업 검사 테스트에 걸린다) #}
+    <form method="get" class="filter">
+      <label>시작일 <input type="date" name="start_date" value="{{ start_date }}"></label>
+      <label>종료일 <input type="date" name="end_date" value="{{ end_date }}"></label>
+      <button type="submit">조회</button>
+    </form>
 
     {% if markup == "table" %}
     {# table/badtable 변형: ARIA 라벨이 하나도 없는 순수 <table>. 실물 화면이
@@ -61,6 +75,10 @@
       <span>합계</span>
       <div aria-label="합계">{{ total_text }}</div>
     </div>
+    {% endif %}
+
+    {% if not orders and empty_message %}
+    <p class="empty">{{ empty_message }}</p>
     {% endif %}
   </div>
 </body>

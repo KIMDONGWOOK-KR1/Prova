@@ -27,6 +27,8 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
                 P2    로그인 가드 없음
     orders      O1    주문 목록이 오름차순 (기획서는 최신순)
                 O2    합계가 마지막 표시 행을 뺀 값 (O1 과 겹쳐 569,000)
+                O3    날짜 필터가 시작일 당일을 뺀다 (경계 비교 등호 누락)
+                O4    날짜 필터 후 합계를 재계산하지 않는다 (필터 전 값 유지)
 
 `/slow`·`/spa`·`/hashed`·`/native`·`/nolabel`·`/slowleak` 은 검증 로직이 good 과
 같고 **도구를 시험하는 변수 하나**만 다른 변형이다(아래 등록기 참고). 이 변형들은
@@ -226,6 +228,7 @@ MSG_PRODUCT_NAME_LENGTH = "상품명은 50자 이내로 입력해주세요."
 MSG_PRODUCT_PRICE_NUMERIC = "가격은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_STOCK_NUMERIC = "재고수량은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_SUCCESS = "상품이 등록되었습니다."
+MSG_ORDERS_EMPTY = "기간 내 주문이 없습니다."
 
 # 주문조회 시드 데이터. 기획서 §1-2 '테스트 주문 데이터' 표 그대로 — 시드가
 # 표와 어긋나면 검증이 성립하지 않는다. 주문일 내림차순으로 적어 두었지만
@@ -404,6 +407,8 @@ def render_orders(
     orders: tuple[dict, ...],
     total: int,
     markup: str = "list",
+    start_date: str = "",
+    end_date: str = "",
 ) -> HTMLResponse:
     rows = [
         {"주문번호": o["주문번호"], "주문일": o["주문일"],
@@ -414,7 +419,10 @@ def render_orders(
         request=request,
         name="orders.html",
         context={"variant": variant, "orders": rows,
-                 "total_text": _format_amount(total), "markup": markup},
+                 "total_text": _format_amount(total), "markup": markup,
+                 "start_date": start_date, "end_date": end_date,
+                 # 빈 결과 문구는 good/bad 공통이다 — 결함은 O3·O4 뿐이어야 한다.
+                 "empty_message": MSG_ORDERS_EMPTY if not rows else None},
     )
 
 
@@ -694,26 +702,44 @@ def good_product_submit(
 # ---------------------------------------------------------------------------
 
 
-def _good_orders_data() -> tuple[list[dict], int]:
-    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"], reverse=True)
+def _filter_rows(
+    rows: list[dict] | tuple[dict, ...],
+    start: str,
+    end: str,
+    *,
+    include_start: bool = True,
+) -> list[dict]:
+    """주문일(ISO 문자열 — 사전순=시간순)로 기간을 거른다. 빈 값은 그 방향 무제한."""
+    def keep(o: dict) -> bool:
+        d = o["주문일"]
+        ok_start = not start or (start <= d if include_start else start < d)
+        return ok_start and (not end or d <= end)
+    return [o for o in rows if keep(o)]
+
+
+def _good_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
+    rows = sorted(_filter_rows(SEED_ORDERS, start, end),
+                  key=lambda o: o["주문일"], reverse=True)
     return rows, sum(o["금액"] for o in rows)
 
 
 @app.get("/good/orders", response_class=HTMLResponse)
-def good_orders(request: Request):
+def good_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_good" not in request.cookies:
         return RedirectResponse("/good/login", status_code=303)
-    rows, total = _good_orders_data()
-    return render_orders(request, "good", rows, total)
+    rows, total = _good_orders_data(start_date, end_date)
+    return render_orders(request, "good", rows, total,
+                         start_date=start_date, end_date=end_date)
 
 
 # table — good 과 데이터가 같고 마크업만 aria-label 없는 순수 <table> 이다.
 @app.get("/table/orders", response_class=HTMLResponse)
-def table_orders(request: Request):
+def table_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_table" not in request.cookies:
         return RedirectResponse("/table/login", status_code=303)
-    rows, total = _good_orders_data()
-    return render_orders(request, "table", rows, total, markup="table")
+    rows, total = _good_orders_data(start_date, end_date)
+    return render_orders(request, "table", rows, total, markup="table",
+                         start_date=start_date, end_date=end_date)
 
 
 # ---------------------------------------------------------------------------
@@ -807,32 +833,38 @@ def bad_product_submit(
 
 
 @app.get("/bad/orders", response_class=HTMLResponse)
-def bad_orders(request: Request):
+def bad_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_bad" not in request.cookies:
         return RedirectResponse("/bad/login", status_code=303)
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
-    rows, total = _bad_orders_data()
-    return render_orders(request, "bad", rows, total)
+    rows, total = _bad_orders_data(start_date, end_date)
+    return render_orders(request, "bad", rows, total,
+                         start_date=start_date, end_date=end_date)
 
 
-def _bad_orders_data() -> tuple[list[dict], int]:
+def _bad_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
-    rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"])
+    all_rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"])
     # O2: 합계에서 화면에 마지막으로 "표시된" 행의 금액을 뺀다. O1 때문에
     # bad 는 오름차순으로 보여주므로 마지막 표시 행은 ORD-005(1,290,000)다 —
     # 합계 = 1,859,000 - 1,290,000 = 569,000. 하드코딩하지 않고 "표시된 행의
     # 합 - 마지막 행" 으로 계산해, 시드가 바뀌어도 결함이 정직하게 유지되게
     # 한다.
-    return rows, sum(o["금액"] for o in rows) - rows[-1]["금액"]
+    total = sum(o["금액"] for o in all_rows) - all_rows[-1]["금액"]
+    # O3: 시작일 비교에서 등호가 빠졌다 — 시작일 당일 주문이 결과에서 사라진다.
+    # O4: 필터를 걸어도 합계를 다시 계산하지 않는다 — 필터 전 값(total) 그대로.
+    rows = _filter_rows(all_rows, start, end, include_start=False)
+    return rows, total
 
 
-# badtable — bad 와 결함(O1·O2)이 같고 마크업만 순수 <table> 이다.
+# badtable — bad 와 결함(O1·O2·O3·O4)이 같고 마크업만 순수 <table> 이다.
 @app.get("/badtable/orders", response_class=HTMLResponse)
-def badtable_orders(request: Request):
+def badtable_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_badtable" not in request.cookies:
         return RedirectResponse("/badtable/login", status_code=303)
-    rows, total = _bad_orders_data()
-    return render_orders(request, "badtable", rows, total, markup="table")
+    rows, total = _bad_orders_data(start_date, end_date)
+    return render_orders(request, "badtable", rows, total, markup="table",
+                         start_date=start_date, end_date=end_date)
 
 
 # ---------------------------------------------------------------------------

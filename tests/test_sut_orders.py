@@ -105,3 +105,56 @@ class TestTableMarkup:
     def test_table_도_가드가_있다(self, client):
         r = client.get("/table/orders")
         assert r.status_code == 303 and r.headers["location"] == "/table/login"
+
+
+class TestDateFilter:
+    """날짜 필터 — 심은 결함 O3(경계일 제외)·O4(합계 미재계산) (specs/2026-08-24).
+
+    good/bad 는 필터에서도 O3·O4 외에 다르면 안 된다 — 빈 값 전체·빈 결과
+    문구는 양쪽 모두 올바르게 구현한다(결함 분리). 폼은 목록 마크업 밖이라
+    table 쌍둥이와 공유되고, aria-label 대신 label 로 감싼다 — table 변형의
+    'aria-label 0개' 성질을 폼이 깨면 안 된다.
+    """
+
+    RANGE = "?start_date=2026-08-03&end_date=2026-08-12"
+    EMPTY = "?start_date=2026-08-16&end_date=2026-08-17"
+
+    def _get(self, client, variant: str, query: str) -> str:
+        _login(client, variant)
+        r = client.get(f"/{variant}/orders{query}")
+        assert r.status_code == 200
+        return r.text
+
+    def test_good_은_경계_포함_3건이다(self, client):
+        html = self._get(client, "good", self.RANGE)
+        assert html.count("ORD-0") == 3
+        assert "ORD-002" in html and "ORD-005" not in html
+
+    def test_good_합계는_표시_행의_합이다(self, client):
+        html = self._get(client, "good", self.RANGE)
+        assert "557,000" in html  # 39,000 + 89,000 + 429,000
+
+    def test_good_빈_기간은_문구를_노출한다(self, client):
+        html = self._get(client, "good", self.EMPTY)
+        assert "기간 내 주문이 없습니다." in html and "ORD-0" not in html
+
+    def test_good_빈_값은_전체_5건이고_문구가_없다(self, client):
+        html = self._get(client, "good", "")
+        assert html.count("ORD-0") == 5
+        assert "기간 내 주문이 없습니다." not in html
+
+    def test_bad_는_시작_경계일을_뺀다(self, client):
+        html = self._get(client, "bad", self.RANGE)
+        assert "ORD-002" not in html and html.count("ORD-0") == 2
+
+    def test_bad_합계는_필터_전_값_그대로다(self, client):
+        html = self._get(client, "bad", self.RANGE)
+        assert "569,000" in html  # 무필터 O2 값 — 재계산하지 않는다(O4)
+
+    def test_bad_도_빈_문구는_올바르다(self, client):
+        assert "기간 내 주문이 없습니다." in self._get(client, "bad", self.EMPTY)
+
+    def test_table_쌍둥이도_같은_필터_결과다(self, client):
+        html = self._get(client, "table", self.RANGE)
+        assert "aria-label" not in html
+        assert html.count("ORD-0") == 3 and "ORD-002" in html
