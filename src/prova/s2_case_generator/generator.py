@@ -218,6 +218,18 @@ def generate_cases(
     없으므로 이 단계를 건너뛴다 — 흐름 케이스가 이미 doc 을 받는 것과 같은
     이유다.
     """
+    if spec.source_kind == "figma":
+        # figma 스펙에는 valid·위반 케이스의 근거(성공 조건·규칙·계정)가 없다.
+        # 경로 매핑이 없는 화면은 navigate 대상이 없으므로 아무것도 만들지
+        # 않는다 — 그 사실의 경고는 추출기가 문서 수준에 이미 남겼다.
+        if not spec.url_path:
+            return []
+        static_cases: list[TestCase] = []
+        static_cases.extend(_option_cases(spec, start_seq=1))
+        static_cases.extend(_placeholder_case(spec))
+        static_cases.extend(_label_case(spec))
+        return static_cases
+
     cases: list[TestCase] = []
     inputs = _fillable_inputs(spec)
 

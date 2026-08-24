@@ -153,7 +153,11 @@ def generate_test_cases(state: AgentState) -> AgentState:
     cases: list[TestCase] = []
     for screen in state.doc.screens:
         cases.extend(generate_cases(screen, llm=state.llm, doc=state.doc))
-    cases.extend(generate_flow_cases(state.doc))
+    if all(s.source_kind == "document" for s in state.doc.screens):
+        cases.extend(generate_flow_cases(state.doc))
+    # figma 출처가 섞이면 흐름 케이스를 만들지 않는다 — 도착을 판정할
+    # 근거(문구·경로)가 figma 에 없다. 흐름 자체는 doc.flows 에 추출돼
+    # 리포트가 '추출했으나 검증하지 않음' 을 말할 수 있다.
     state.cases = cases
 
     # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것을 여기서 센다.
