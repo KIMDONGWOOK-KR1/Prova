@@ -69,6 +69,10 @@ def build_report(
         # [화면 ID] 가 붙어 어디를 고쳐야 하는지가 드러난다 (all_warnings 참고).
         summary["spec_warnings"] = doc.all_warnings
         summary["screen_names"] = {s.screen_id: s.screen_name for s in doc.screens}
+        if any(s.source_kind == "figma" for s in doc.screens):
+            # 입력 출처를 리포트가 말해야 한다 — figma 입력은 검증 규칙·성공
+            # 조건을 담지 않으므로, 초록불이 '전부 확인됨' 으로 읽히면 안 된다.
+            summary["input_kind"] = "figma"
     # 확인하지 않은 것. 통과율과 나란히 놓여야 '통과' 의 범위를 알 수 있다.
     if coverage:
         summary["coverage_gaps"] = list(coverage)
@@ -481,6 +485,13 @@ def render_html(report: TestReport) -> str:
             "<div class='warn'><b>mock 백엔드로 실행된 리포트입니다</b>"
             "<div>설계 문서 추출에 실제 모델이 쓰이지 않았습니다. "
             "이 결과를 실제 검증 결과로 사용하지 마세요.</div></div>"
+        )
+    if s.get("input_kind") == "figma":
+        # 초록불의 범위를 리포트가 말한다 — figma 입력은 규칙·성공 조건이 없다.
+        mock_warn += (
+            "<div class='warn'><b>입력: Figma 디자인</b>"
+            "<div>검증 규칙·성공 조건이 없어 정적 대조(라벨·안내 문구·선택 항목)만 "
+            "수행했습니다. 규칙 검증은 기획서 입력이 필요합니다.</div></div>"
         )
 
     names = s.get("screen_names") or {}

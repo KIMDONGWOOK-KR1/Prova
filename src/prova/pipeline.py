@@ -65,6 +65,8 @@ def build_plan(
     request: Optional[str] = None,
     case_ids: Optional[list[str]] = None,
     reason: str = "",
+    figma_json: Optional[str] = None,
+    screen_urls: Optional[dict[str, str]] = None,
     on_progress=None,
     **state_kwargs,
 ) -> tuple[AgentState, int]:
@@ -98,6 +100,8 @@ def build_plan(
         run_id=run_id,
         run_dir=run_dir if run_dir is not None else Path("runs") / run_id,
         llm=llm,
+        figma_json=figma_json,
+        screen_urls=screen_urls or {},
         **state_kwargs,
     )
 
@@ -176,6 +180,8 @@ def run_pipeline(
     case_ids: Optional[list[str]] = None,
     reason: str = "",
     hold_sec: float = 0.0,
+    figma_json: Optional[str] = None,
+    screen_urls: Optional[dict[str, str]] = None,
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
@@ -217,6 +223,8 @@ def run_pipeline(
         request=request,
         case_ids=case_ids,
         reason=reason,
+        figma_json=figma_json,
+        screen_urls=screen_urls,
         vlm=vlm,
         step_timeout_ms=step_timeout_ms,
         settle_timeout_ms=settle_timeout_ms,

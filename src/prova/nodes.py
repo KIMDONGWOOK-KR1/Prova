@@ -35,6 +35,7 @@ from prova.models import (
     TestReport,
     Verdict,
 )
+from prova.s1_figma.extractor import extract_figma_document
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
@@ -75,6 +76,10 @@ class AgentState:
     # 기본이 None 인 이유는 ExecutionContext.vlm 과 같다 — 보정은 선택 기능이다.
     vlm: Optional[object] = None
     page: Optional[Page] = None
+    # Figma 경로 입력. figma_json 이 있으면 extract_spec 이 PDF 대신 이것을 읽는다.
+    # screen_urls 는 {screen_id: url_path} — Figma 에는 경로가 없으므로 사용자가 준다.
+    figma_json: Optional[str] = None
+    screen_urls: dict[str, str] = field(default_factory=dict)
 
     # 산출물
     #
@@ -122,9 +127,17 @@ class AgentState:
 def extract_spec(state: AgentState) -> AgentState:
     """S1 — PDF 에서 SpecDocument 를 추출한다 (화면 하나 이상).
 
-    읽는 필드: pdf_path, llm
+    읽는 필드: pdf_path (또는 figma_json·screen_urls), llm
     쓰는 필드: doc
     """
+    if state.figma_json:
+        # Figma 경로 — LLM 을 부르지 않는다. 응답은 이미 구조화된 트리라서
+        # 모델을 거치면 검증 가능한 사실이 검증 불가능한 추측이 된다.
+        state.doc = extract_figma_document(state.figma_json, state.screen_urls)
+        for screen in state.doc.screens:
+            screen.warnings.extend(spec_defects(screen))
+        return state
+
     if state.llm is None:
         raise ValueError("extract_spec 에는 LLM 백엔드가 필요합니다")
 
@@ -520,7 +533,7 @@ def build_final_report(state: AgentState) -> AgentState:
         verdicts=state.verdicts,
         doc=state.doc,
         coverage=state.coverage_gaps,
-        spec_source=state.pdf_path,
+        spec_source=state.figma_json or state.pdf_path,
         backend=getattr(state.llm, "name", "") if state.llm else "",
         selection=state.selection,
     )

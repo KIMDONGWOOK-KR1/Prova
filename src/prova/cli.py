@@ -51,8 +51,16 @@ def _make_llm(backend: str, cfg: dict, pdf: Path):
 
 @app.command()
 def run(
-    pdf: Path = typer.Option(..., "--pdf", help="설계 문서 PDF 경로"),
+    pdf: Optional[Path] = typer.Option(None, "--pdf", help="설계 문서 PDF 경로"),
     url: str = typer.Option(..., "--url", help="테스트 대상 base URL"),
+    figma_json: Optional[Path] = typer.Option(
+        None, "--figma-json", metavar="경로",
+        help="Figma API 응답(JSON)으로 실행한다 (scripts/fetch_figma.py 산출물). "
+             "--pdf 와 함께 쓸 수 없다. LLM 을 부르지 않는다."),
+    screen_url: list[str] = typer.Option(
+        [], "--screen-url", metavar="화면=/경로",
+        help="화면↔경로 매핑 (예: 로그인=/login). Figma 에는 경로가 없으므로 "
+             "사용자가 준다. 반복 지정."),
     backend: Optional[str] = typer.Option(None, "--backend", help="vllm | mock"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config"),
     run_id: Optional[str] = typer.Option(None, "--run-id"),
@@ -79,7 +87,35 @@ def run(
         help="VLM 서버가 서빙하는 모델 이름 (vLLM 의 --served-model-name 과 같게)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
-    if not pdf.exists():
+    # Figma 경로 검증 — 억측하지 않는다: 입력이 둘이거나 없으면 바로 끝낸다.
+    if figma_json and pdf:
+        typer.secho("--figma-json 과 --pdf 는 함께 쓸 수 없습니다.", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if not figma_json and not pdf:
+        typer.secho("--pdf 또는 --figma-json 이 필요합니다.", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if figma_json and request:
+        typer.secho(
+            "--figma-json 은 --request 와 함께 쓸 수 없습니다 — 요청 해석은 LLM 이 "
+            "필요한데 figma 경로는 LLM 을 쓰지 않습니다 (1단계 미지원).",
+            fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if figma_json and engine == "graph":
+        typer.secho("--figma-json 은 pipeline 엔진에서만 동작합니다.", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if figma_json and not figma_json.exists():
+        typer.secho(f"Figma 응답 파일을 찾을 수 없습니다: {figma_json}", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    screen_urls: dict[str, str] = {}
+    for pair in screen_url:
+        if "=" not in pair:
+            typer.secho(f"--screen-url 형식은 '화면=/경로' 입니다: {pair!r}",
+                        fg=typer.colors.RED)
+            raise typer.Exit(2)
+        k, _, v = pair.partition("=")
+        screen_urls[k.strip()] = v.strip()
+
+    if pdf and not pdf.exists():
         typer.secho(f"설계 문서를 찾을 수 없습니다: {pdf}", fg=typer.colors.RED)
         raise typer.Exit(2)
 
@@ -106,27 +142,34 @@ def run(
             raise typer.Exit(2)
 
     typer.secho(f"Prova 실행 {rid}", bold=True)
-    typer.echo(f"  설계 문서 : {pdf}")
+    if figma_json:
+        typer.echo(f"  Figma 응답: {figma_json} (LLM 미사용 — 정적 대조만)")
+    else:
+        typer.echo(f"  설계 문서 : {pdf}")
     typer.echo(f"  대상 URL  : {url}")
-    typer.echo(f"  백엔드    : {backend}")
+    if not figma_json:
+        typer.echo(f"  백엔드    : {backend}")
     typer.echo(f"  실행 엔진 : {engine}")
     if vlm:
         typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
     typer.echo("")
 
-    try:
-        llm = _make_llm(backend, cfg, pdf)
-    except LLMError as exc:
-        typer.secho(f"\nLLM 백엔드를 준비할 수 없습니다:\n{exc}", fg=typer.colors.RED)
-        typer.secho(
-            "\nLLM 없이 파이프라인만 확인하려면 --backend mock 을 쓰세요.",
-            fg=typer.colors.YELLOW,
-        )
-        raise typer.Exit(1)
+    if figma_json:
+        llm = None  # figma 경로는 LLM 을 부르지 않는다 — 추출이 결정적이다
+    else:
+        try:
+            llm = _make_llm(backend, cfg, pdf)
+        except LLMError as exc:
+            typer.secho(f"\nLLM 백엔드를 준비할 수 없습니다:\n{exc}", fg=typer.colors.RED)
+            typer.secho(
+                "\nLLM 없이 파이프라인만 확인하려면 --backend mock 을 쓰세요.",
+                fg=typer.colors.YELLOW,
+            )
+            raise typer.Exit(1)
 
     exec_cfg = cfg.get("execution", {})
     common = dict(
-        pdf_path=str(pdf),
+        pdf_path=str(pdf) if pdf else "",
         base_url=url,
         llm=llm,
         run_id=rid,
@@ -174,6 +217,8 @@ def run(
                 only=only,
                 request=request,
                 hold_sec=hold,
+                figma_json=str(figma_json) if figma_json else None,
+                screen_urls=screen_urls or None,
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
         except ValueError as exc:
