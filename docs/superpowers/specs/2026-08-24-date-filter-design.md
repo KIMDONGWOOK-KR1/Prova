@@ -26,9 +26,17 @@
 
 | 요소 ID | 유형 | 라벨 |
 |---|---|---|
-| start_date | 입력 | 시작일 |
-| end_date | 입력 | 종료일 |
+| start_date | 날짜 | 시작일 |
+| end_date | 날짜 | 종료일 |
 | filter_btn | 버튼 | 조회 |
+
+**유형은 '입력'이 아니라 '날짜'다** (구현 중 보정, 2026-08-24): 유형 '입력' 으로
+적으면 `_fillable_inputs` 가 정상 케이스에서 이 필드들을 자동으로 채우는데,
+규칙 없는 입력의 견본값은 자유 문자열이라 `input[type=date]` fill 이 깨진다.
+`ElementType` 에 `"date"` 를 신설하고 `ELEMENT_TYPE_WORDS` 에 `"날짜"` 를
+매핑하며, 자동 채움(`input`/`select`/`checkbox`)에서 제외한다. 부수 효과:
+orders 화면에 버튼이 처음 생기므로 정상 케이스가 navigate+click(조회)이 된다 —
+빈 값 조회 = 전체 표시이므로 성공 조건 그대로 통과한다.
 
 새 절 **"6. 날짜 필터"**:
 
@@ -109,6 +117,10 @@ fill+click 후 컬렉션 판정은 기존 경로 그대로 (새 ActionType/Expec
 - 풀스위트 858+신규, skip 0. 푸시 전 비밀 스캔
   (`168\.131|ssh -p [0-9]|jovyan@|kdw51@|PRIVATE KEY`).
 - 문서는 구현 완료 후: teaching 노트 신규, README 결과 표·남은 것, overview 재생성.
+- **홀드아웃 주의**: orders 화면의 케이스 집합이 커지므로
+  `probe_request_selection.py` 의 "화면 전 케이스" 류 기대 목록에 filter 케이스가
+  기계적으로 추가된다. 판정 기준 변경이 아니라 집합 정의의 갱신이지만, 갱신 후
+  수치는 기존 B 9/10 과 1:1 비교할 수 없다 — 측정 기록에 그 사실을 남긴다.
 
 ## 범위에서 뺀 것
 
