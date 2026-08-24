@@ -169,6 +169,29 @@ class TestDeclaredElementTypes:
         assert doc.declared_element_types() == {"가": "input"}
 
 
+class TestDeclaredDateFilter:
+    """'날짜 필터' 절의 항목|값 표 — 케이스 생성의 결정적 근거 (specs/2026-08-24).
+
+    화면 개요 표와 헤더('항목|값')가 같아 열 제목만으로는 구분할 수 없다.
+    declared_precondition_account 처럼 절 제목 위치로 찾는다.
+    """
+
+    def test_orders_기획서의_날짜_필터_표를_읽는다(self):
+        pdf = Path("fixtures/specs/orders_spec.pdf")
+        if not pdf.exists():
+            pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+        docs, _ = parse_pdf(pdf).split_screens()
+        got = docs[-1].declared_date_filter()
+        assert got == {
+            "시작일 요소": "시작일", "종료일 요소": "종료일", "조회 버튼": "조회",
+            "대상 목록": "주문 목록", "날짜 컬럼": "주문일",
+            "빈 결과 문구": "기간 내 주문이 없습니다.",
+        }
+
+    def test_절이_없는_기획서는_None(self, doc):
+        assert doc.declared_date_filter() is None
+
+
 class TestDateElementType:
     """유형 '날짜' — 자동 채움에서 빠지는 입력 (specs/2026-08-24 날짜 필터).
 
