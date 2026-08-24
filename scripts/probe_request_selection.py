@@ -124,9 +124,13 @@ HELDOUT_B: list[tuple[str, str, str, list[str]]] = [
      [r"orders-sum"]),
     ("orders", "로그인 안 한 상태로 주문조회 들어가면 막히나?", "가드 지목(의문문)",
      [r"orders-precondition-guard"]),
+    # 2026-08-24 날짜 필터 작업으로 orders 의 케이스 집합이 커졌다(labels 1 +
+    # filter 8). '전 종류' 의 정의가 따라 커진 것이라 기대 목록을 기계적으로
+    # 갱신했다 — 판정 기준 변경이 아니지만, 이후 수치는 갱신 전 B 9/10 과
+    # 1:1 비교할 수 없다 (docs/measurements/request-selection-2026-08-22.md).
     ("orders", "주문조회 화면 전반적으로 점검 부탁", "화면 지목(전 종류)",
-     [r"orders-valid", r"orders-sorted", r"orders-sum", r"orders-seedcount",
-      r"orders-precondition-guard"]),
+     [r"orders-valid", r"orders-labels", r"orders-sorted", r"orders-sum",
+      r"orders-seedcount", r"orders-filter", r"orders-precondition-guard"]),
     ("product", "가격이랑 재고에 숫자 아닌 값 넣으면 튕기는지", "두 항목 규칙",
      [r"product-price-numeric", r"product-stock-numeric"]),
     ("product", "상품명 길이 제한 걸리는지 확인", "요소+규칙 축약",
