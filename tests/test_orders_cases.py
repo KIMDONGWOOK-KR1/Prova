@@ -7,8 +7,8 @@
 금액 열·합계 요소가 없다) 그건 기획서의 구멍이므로 경고를 남긴다.
 """
 
-from prova.models import ScreenSpec, UIElement
-from prova.s2_case_generator.generator import generate_cases
+from prova.models import DateFilter, ScreenSpec, UIElement
+from prova.s2_case_generator.generator import _filter_cases, generate_cases
 
 SEED_ROWS = [
     {"주문번호": "ORD-005", "주문일": "2026-08-15", "상품명": "노트북",
@@ -168,3 +168,107 @@ class TestSeedCountCase:
 
         assert not any(c.case_id.startswith("orders-seedcount-") for c in cases)
         assert any("목록" in w and "result_count" in w for w in spec.warnings)
+
+
+def filter_spec(**overrides) -> ScreenSpec:
+    """날짜 필터가 선언된 orders 스펙 (specs/2026-08-24)."""
+    spec = orders_spec(**overrides)
+    spec.elements += [
+        UIElement(element_id="start_date", type="date", label="시작일"),
+        UIElement(element_id="end_date", type="date", label="종료일"),
+        UIElement(element_id="filter_btn", type="button", label="조회"),
+    ]
+    spec.date_filter = DateFilter(
+        start_label="시작일", end_label="종료일", submit_label="조회",
+        target_label="주문 목록", date_column="주문일",
+        empty_message="기간 내 주문이 없습니다.",
+    )
+    return spec
+
+
+class TestFilterCases:
+    """기간 조회 케이스 — 시드 표 기반 + 자기일관성 (specs/2026-08-24).
+
+    기간은 고유 날짜의 양끝을 하나씩 남기고 잡는다 — 양끝 밖에 각 1건 이상이
+    남아 '걸러졌는가' 를 셀 수 있고, 경계가 실제 주문일이라 경계 포함이
+    검증된다. 필터 절은 있는데 계산 근거가 무너지면 전부 경고한다.
+    """
+
+    def test_기간은_고유_날짜의_양끝을_하나씩_남기고_잡는다(self):
+        cases = _filter_cases(filter_spec(), start_seq=10)
+        fills = [s for s in cases[0].steps if s.action == "fill"]
+        assert [s.value for s in fills] == ["2026-08-03", "2026-08-12"]
+
+    def test_케이스_여덟_개가_생성된다(self):
+        cases = _filter_cases(filter_spec(), start_seq=10)
+        assert len(cases) == 8
+        assert all("-filter-" in c.case_id for c in cases)
+
+    def test_건수는_기간_내_시드_행_수다(self):
+        count = _filter_cases(filter_spec(), start_seq=10)[0]
+        assert count.expected.type == "result_count"
+        assert count.expected.count == 3
+        assert count.expected.count_target == "주문 목록"
+        assert [s.action for s in count.steps] == ["navigate", "fill", "fill", "click"]
+
+    def test_경계_포함과_기간_밖_배제를_시드의_고유값으로_확인한다(self):
+        cases = _filter_cases(filter_spec(), start_seq=10)
+        visible, absent = cases[1], cases[2]
+        assert visible.expected.type == "text_visible"
+        assert visible.expected.value == "ORD-002"  # 시작 경계일 행
+        assert absent.expected.type == "text_absent"
+        assert absent.expected.value == "ORD-005"  # 기간 밖 최신 행
+
+    def test_합계와_정렬은_필터_스텝_뒤에_같은_판정을_다시_건다(self):
+        cases = _filter_cases(filter_spec(), start_seq=10)
+        assert cases[3].expected.type == "sum_matches"
+        assert cases[3].expected.sum_row_target == "금액"
+        assert cases[3].expected.sum_total_target == "합계"
+        assert cases[4].expected.type == "sorted_desc"
+        assert cases[4].expected.order_target == "주문일"
+        assert [s.action for s in cases[4].steps] == ["navigate", "fill", "fill", "click"]
+
+    def test_빈_기간은_최대_날짜_다음날부터다(self):
+        empty = _filter_cases(filter_spec(), start_seq=10)[5]
+        fills = [s.value for s in empty.steps if s.action == "fill"]
+        assert fills == ["2026-08-16", "2026-08-17"]
+        assert empty.expected.type == "result_count"
+        assert empty.expected.count == 0
+
+    def test_빈_문구_케이스는_기획서가_문구를_정했을_때만(self):
+        spec = filter_spec()
+        message = _filter_cases(spec, start_seq=10)[6]
+        assert message.expected.type == "text_visible"
+        assert message.expected.value == "기간 내 주문이 없습니다."
+        spec.date_filter.empty_message = None
+        assert len(_filter_cases(spec, start_seq=10)) == 7
+
+    def test_빈_값_조회는_전체_건수다(self):
+        full = _filter_cases(filter_spec(), start_seq=10)[-1]
+        assert [s.action for s in full.steps] == ["navigate", "click"]
+        assert full.expected.type == "result_count"
+        assert full.expected.count == 5
+
+    def test_필터가_없으면_케이스도_경고도_없다(self):
+        spec = orders_spec()
+        assert _filter_cases(spec, start_seq=10) == []
+        assert spec.warnings == []
+
+    def test_시드가_없으면_경고하고_만들지_않는다(self):
+        spec = filter_spec(seed_rows=[])
+        assert _filter_cases(spec, start_seq=10) == []
+        assert any("기간 조회" in w for w in spec.warnings)
+
+    def test_날짜를_읽지_못하면_경고하고_만들지_않는다(self):
+        spec = filter_spec(seed_rows=[dict(r, 주문일="언젠가") for r in SEED_ROWS])
+        assert _filter_cases(spec, start_seq=10) == []
+        assert any("날짜로 읽지 못해" in w for w in spec.warnings)
+
+    def test_고유_날짜가_3개_미만이면_경고하고_만들지_않는다(self):
+        spec = filter_spec(seed_rows=[dict(r) for r in SEED_ROWS[:2]])
+        assert _filter_cases(spec, start_seq=10) == []
+        assert any("고유 날짜" in w for w in spec.warnings)
+
+    def test_generate_cases_에_통합된다(self):
+        cases = generate_cases(filter_spec())
+        assert len([c for c in cases if "-filter-" in c.case_id]) == 8

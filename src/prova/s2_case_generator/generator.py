@@ -27,6 +27,7 @@ LLM 실패가 검증 결과를 오염시키지 않는다. llm=None 이면 규칙
 from __future__ import annotations
 
 import re
+from datetime import date, timedelta
 from typing import Optional
 
 from prova.llm.base import LLMClient, LLMError
@@ -265,6 +266,7 @@ def generate_cases(
     cases.extend(_label_case(spec))
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
     cases.extend(_seed_row_cases(spec, start_seq=seq))
+    cases.extend(_filter_cases(spec, start_seq=seq))
 
     if llm is not None:
         _polish_titles(cases, spec, llm)
@@ -532,6 +534,160 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         )
 
     return cases
+
+
+def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
+    """날짜 필터 케이스 — 입력↔재조회 뒤의 화면을 검증한다 (specs/2026-08-24).
+
+    지금까지의 컬렉션 검증(정렬·합계·건수)은 전부 '진입 직후 화면' 에 대한
+    것이었다. 여기서 처음으로 '조작한 뒤의 화면' 이 검증 대상이 된다 — 스텝은
+    navigate → fill(시작일) → fill(종료일) → click(조회) 이고, 판정은 그
+    재조회 결과에 걸린다.
+
+    근거는 두 층이다. 시드 표 기반(기간 내 행 수·경계 포함/기간 밖 배제·
+    빈 기간·빈 값 전체)은 기획서 §5 표에서 결정적으로 계산하고, 자기일관성
+    (필터 후에도 정렬·합계 판정이 성립)은 기존 판정을 필터 스텝 뒤에 다시
+    건다. 근거가 다른 두 층이 서로를 보강한다 — 합계 미재계산은 시드로 못
+    잡고(합계는 화면이 계산하는 값이다), 행 누락은 자기일관성으로 못 잡는다.
+
+    ## 왜 기간을 고유 날짜의 양끝을 하나씩 남기고 잡는가
+
+    양끝 밖에 각각 1건 이상이 남아 '걸러졌는가' 를 셀 수 있고, 경계가 실제
+    주문일이라 '경계일 포함' 이 검증된다. 임의 기간을 잡으면 둘 다 우연에
+    맡겨진다.
+
+    ## 왜 date_filter 가 없을 때는 경고하지 않는가
+
+    필터 없는 화면이 정상이다(_seed_row_cases 가 seed_rows 없음에 침묵하는
+    것과 같은 원칙). 반대로 필터 절은 있는데 계산 근거가 무너진 경우는 전부
+    경고한다 — 기획서가 검증을 약속했는데 도구가 못 지키는 상황이므로.
+    """
+    f = spec.date_filter
+    if f is None:
+        return []
+    if not spec.seed_rows:
+        spec.warnings.append(
+            "날짜 필터 절은 있지만 테스트 주문 데이터 표가 없어 기간 조회 "
+            "케이스를 만들지 않았습니다."
+        )
+        return []
+    by_date: dict[date, list[dict[str, str]]] = {}
+    try:
+        for row in spec.seed_rows:
+            parsed = date.fromisoformat(row[f.date_column].strip())
+            by_date.setdefault(parsed, []).append(row)
+    except (KeyError, ValueError):
+        spec.warnings.append(
+            f"시드 표의 '{f.date_column}' 열을 날짜로 읽지 못해 기간 조회 "
+            "케이스를 만들지 않았습니다."
+        )
+        return []
+    dates = sorted(by_date)
+    if len(dates) < 3:
+        spec.warnings.append(
+            "시드 표의 고유 날짜가 3개 미만이라 기간 밖 주문을 남기는 기간을 "
+            "잡을 수 없어 기간 조회 케이스를 만들지 않았습니다."
+        )
+        return []
+
+    start, end = dates[1], dates[-2]
+    in_rows = [r for d in dates if start <= d <= end for r in by_date[d]]
+
+    def _steps(fills: list[tuple[str, str]]) -> list[TestStep]:
+        steps = [TestStep(seq=1, action="navigate", target=spec.url_path)]
+        for i, (label, value) in enumerate(fills, start=2):
+            steps.append(TestStep(seq=i, action="fill", target=label, value=value))
+        steps.append(TestStep(seq=len(steps) + 1, action="click", target=f.submit_label))
+        return steps
+
+    range_fills = [(f.start_label, start.isoformat()), (f.end_label, end.isoformat())]
+    empty_fills = [
+        (f.start_label, (dates[-1] + timedelta(days=1)).isoformat()),
+        (f.end_label, (dates[-1] + timedelta(days=2)).isoformat()),
+    ]
+
+    seq = start_seq
+    cases: list[TestCase] = []
+
+    def add(title: str, steps: list[TestStep], expected: Expectation) -> None:
+        nonlocal seq
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-filter-{seq:03d}", screen_id=spec.screen_id,
+            title=title, type="positive", steps=steps, expected=expected,
+        ))
+        seq += 1
+
+    add(f"기간 조회 시 기간 내 주문 {len(in_rows)}건이 표시되는지 확인",
+        _steps(range_fills),
+        Expectation(type="result_count", count=len(in_rows),
+                    count_target=f.target_label))
+
+    boundary_text = _unique_cell(by_date[start][0], spec.seed_rows, f.date_column)
+    if boundary_text is not None:
+        add("기간 시작일 당일 주문이 결과에 포함되는지 확인 (경계 포함)",
+            _steps(range_fills), Expectation(type="text_visible", value=boundary_text))
+    else:
+        spec.warnings.append(
+            "시드 표에서 시작 경계일 행을 유일하게 가리키는 값을 찾지 못해 "
+            "경계 포함 케이스를 만들지 않았습니다."
+        )
+    absent_text = _unique_cell(by_date[dates[-1]][0], spec.seed_rows, f.date_column)
+    if absent_text is not None:
+        add("기간 밖 주문이 결과에 나오지 않는지 확인",
+            _steps(range_fills), Expectation(type="text_absent", value=absent_text))
+    else:
+        spec.warnings.append(
+            "시드 표에서 기간 밖 행을 유일하게 가리키는 값을 찾지 못해 "
+            "기간 밖 배제 케이스를 만들지 않았습니다."
+        )
+
+    # 합계·정렬 재판정은 _seed_row_cases 가 무필터 케이스를 만들 수 있었던
+    # 조건과 같을 때만 만든다. 조건이 무너진 경우의 경고는 _seed_row_cases 가
+    # 이미 남기므로 여기서 또 남기지 않는다(같은 사실을 두 번 경고하지 않는다).
+    labels = {e.label for e in spec.elements}
+    amount_label, _ = _seed_column_label(spec.seed_rows, _SEED_AMOUNT_RE)
+    total_element = next(
+        (e for e in spec.elements if e.label == "합계" and e.type == "text"), None
+    )
+    if amount_label is not None and amount_label in labels and total_element is not None:
+        add("기간 조회 후에도 합계가 표시된 금액의 합과 일치하는지 확인",
+            _steps(range_fills),
+            Expectation(type="sum_matches", sum_row_target=amount_label,
+                        sum_total_target=total_element.label))
+    if f.date_column in labels:
+        add(f"기간 조회 후에도 {f.date_column} 이 최신순으로 정렬되는지 확인",
+            _steps(range_fills),
+            Expectation(type="sorted_desc", order_target=f.date_column))
+
+    add("주문 없는 기간을 조회하면 0건인지 확인", _steps(empty_fills),
+        Expectation(type="result_count", count=0, count_target=f.target_label))
+    if f.empty_message:
+        add(f"주문 없는 기간을 조회하면 '{f.empty_message}' 가 노출되는지 확인",
+            _steps(empty_fills), Expectation(type="text_visible", value=f.empty_message))
+
+    add(f"날짜를 비워 두고 조회하면 전체 {len(spec.seed_rows)}건이 표시되는지 확인",
+        _steps([]),
+        Expectation(type="result_count", count=len(spec.seed_rows),
+                    count_target=f.target_label))
+    return cases
+
+
+def _unique_cell(
+    row: dict[str, str], seed_rows: list[dict[str, str]], skip_col: str
+) -> Optional[str]:
+    """시드 행 하나를 화면에서 유일하게 가리키는 셀 값 (열 순서대로 첫 번째).
+
+    날짜 열은 제외한다 — 필터 입력값과 같은 문자열이라 '화면에 보인다/안
+    보인다' 의 근거로 쓸 수 없다. 유일하지 않은 값(상태 열의 '배송완료' 등)도
+    제외한다 — 다른 행 때문에 보이는 것을 이 행이 보인다고 착각하게 된다.
+    """
+    for col, val in row.items():
+        v = val.strip()
+        if col == skip_col or not v:
+            continue
+        if sum(1 for r in seed_rows if r.get(col, "").strip() == v) == 1:
+            return v
+    return None
 
 
 # ---------------------------------------------------------------------------
