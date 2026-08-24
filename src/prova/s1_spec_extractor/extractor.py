@@ -314,6 +314,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
         max_tokens=max_tokens,
     )
     spec = ScreenSpec.model_validate(raw)
+    spec.source_kind = "document"  # LLM 이 무엇을 냈든 이 경로의 출처는 문서다
 
     _normalize_element_ids(spec)
     _backfill_declared_elements(spec, doc)

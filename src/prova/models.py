@@ -211,6 +211,11 @@ class ScreenSpec(BaseModel):
     # '날짜 필터' 절. 없으면 기간 조회 케이스를 만들지 않는다 — 절이 있을 때만
     # S1 교정(_apply_declared_date_filter)이 채운다.
     date_filter: Optional[DateFilter] = None
+    # 이 스펙이 어디서 왔는가. "figma" 출처는 검증 규칙·성공 조건·테스트 계정을
+    # 담지 못한다 — S2 는 그 근거가 필요한 케이스(valid·위반·흐름)를 만들지 않고
+    # 정적 대조(라벨·안내 문구·선택 항목)만 만든다. 근거 없이 만들면 구현이
+    # 옳아도 FAIL 이 나는 오탐이 된다 (specs/2026-08-25).
+    source_kind: Literal["document", "figma"] = "document"
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
         return next((e for e in self.elements if e.element_id == element_id), None)
