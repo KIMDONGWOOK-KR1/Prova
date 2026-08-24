@@ -91,6 +91,7 @@ ELEMENT_TYPE_WORDS = {
     "체크박스": "checkbox",
     "텍스트": "text",
     "목록": "list",
+    "날짜": "date",
 }
 
 
