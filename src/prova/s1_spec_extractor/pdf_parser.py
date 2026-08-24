@@ -603,6 +603,30 @@ class ParsedDocument:
             lambda header, t: len(header) >= 2 and len(t.rows) >= 2,
         )
 
+    _DATE_FILTER_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*날짜\s*필터\s*$")
+
+    def declared_date_filter(self) -> Optional[dict[str, str]]:
+        """'날짜 필터' 절 아래 항목|값 표를 {항목: 값} 으로 읽는다.
+
+        declared_precondition_account 와 같은 이유로 절 제목 위치로 찾는다 —
+        '항목|값' 헤더는 화면 개요 표와 같아서 열 제목만으로는 구분할 수 없다.
+        절이나 표가 없으면 None — 기획서가 필터를 정의하지 않은 화면에서 필터
+        케이스를 억측으로 만들지 않기 위한 근거가 된다
+        (extractor._apply_declared_date_filter).
+        """
+        table = self._table_after_heading(
+            self._DATE_FILTER_HEADING_RE,
+            lambda header, t: [normalize_ws(h) for h in header]
+            in (["항목", "값"], ["항목", "내용"]),
+        )
+        if table is None:
+            return None
+        return {
+            normalize_ws(row[0]): row[1].strip()
+            for row in table.rows[1:]
+            if len(row) >= 2 and row[0].strip()
+        }
+
     def _table_after_heading(self, heading_re: re.Pattern, header_ok) -> Optional[ParsedTable]:
         """heading_re 절 제목보다 아래(나중)에 나오는 첫 표 중 header_ok 를 만족하는 표.
 
