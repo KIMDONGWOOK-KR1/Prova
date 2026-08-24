@@ -34,6 +34,30 @@
       "required": false,
       "constraints": {},
       "error_message": null
+    },
+    {
+      "element_id": "start_date",
+      "type": "date",
+      "label": "시작일",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "end_date",
+      "type": "date",
+      "label": "종료일",
+      "required": false,
+      "constraints": {},
+      "error_message": null
+    },
+    {
+      "element_id": "filter_btn",
+      "type": "button",
+      "label": "조회",
+      "required": false,
+      "constraints": {},
+      "error_message": null
     }
   ],
   "success_condition": "화면에 진입하면 주문 목록이 표시된다",
@@ -53,5 +77,13 @@
     {"주문번호": "ORD-003", "주문일": "2026-08-09", "상품명": "키보드", "금액": "89,000", "상태": "배송완료"},
     {"주문번호": "ORD-002", "주문일": "2026-08-03", "상품명": "모니터", "금액": "429,000", "상태": "취소"},
     {"주문번호": "ORD-001", "주문일": "2026-07-28", "상품명": "케이블", "금액": "12,000", "상태": "배송완료"}
-  ]
+  ],
+  "date_filter": {
+    "start_label": "시작일",
+    "end_label": "종료일",
+    "submit_label": "조회",
+    "target_label": "주문 목록",
+    "date_column": "주문일",
+    "empty_message": "기간 내 주문이 없습니다."
+  }
 }

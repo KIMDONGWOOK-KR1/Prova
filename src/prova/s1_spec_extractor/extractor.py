@@ -25,7 +25,7 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
-from prova.models import (Flow, Precondition, Scenario, ScreenSpec,
+from prova.models import (DateFilter, Flow, Precondition, Scenario, ScreenSpec,
                           SpecDocument, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
     ParsedDocument,
@@ -323,6 +323,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_scenarios(spec, declared_scenarios)
     _apply_declared_precondition(spec, doc.declared_precondition_account())
     _apply_declared_seed_rows(spec, doc.declared_seed_rows())
+    _apply_declared_date_filter(spec, doc.declared_date_filter())
     _drop_invented_strings(spec, doc)
 
     spec.warnings.extend(structural_warnings(spec, doc))
@@ -618,6 +619,46 @@ def _apply_declared_seed_rows(spec: ScreenSpec, rows: list[dict[str, str]]) -> N
             f"({len(rows)}행). 모델이 낸 것과 달랐습니다 — 프롬프트를 확인하세요."
         )
     spec.seed_rows = rows
+
+
+_DATE_FILTER_KEYS = {
+    "시작일 요소": "start_label",
+    "종료일 요소": "end_label",
+    "조회 버튼": "submit_label",
+    "대상 목록": "target_label",
+    "날짜 컬럼": "date_column",
+    "빈 결과 문구": "empty_message",
+}
+
+
+def _apply_declared_date_filter(spec: ScreenSpec, declared: Optional[dict[str, str]]) -> None:
+    """'날짜 필터' 표가 진실이다 — 표가 없으면 LLM 이 지어낸 필터도 지운다.
+
+    _apply_declared_seed_rows 와 방향은 같지만 한 걸음 더 간다: 표가 없을 때
+    seed_rows 는 LLM 결과를 남겨 두는데, 여기는 지운다. 씨앗 데이터는 본문
+    어딘가에 흩어져 있을 수 있어 모델의 읽기가 보탬이 될 여지가 있지만, 필터는
+    '무엇을 채우고 무엇을 눌러 무엇을 다시 세는가' 라는 실행 지시라서 틀리면
+    엉뚱한 요소를 조작한 결과를 검증 결과라고 말하게 된다.
+
+    표가 있는데 필수 항목이 빠졌으면 경고하고 만들지 않는다 — 반쪽 필터로
+    케이스를 만들면 무엇을 확인한 것인지 말할 수 없다(판정 불능이면 만들지
+    않는다 원칙). '빈 결과 문구' 만 선택 항목이다 — 문구가 없으면 문구 케이스
+    하나가 빠질 뿐 기간 조회 자체는 검증할 수 있다.
+    """
+    if declared is None:
+        spec.date_filter = None
+        return
+    kwargs = {v: declared[k] for k, v in _DATE_FILTER_KEYS.items() if declared.get(k)}
+    required = {"start_label", "end_label", "submit_label", "target_label", "date_column"}
+    missing = required - kwargs.keys()
+    if missing:
+        spec.date_filter = None
+        spec.warnings.append(
+            "날짜 필터 표에 필수 항목이 빠져 있어 기간 조회 케이스를 만들지 "
+            f"않았습니다 (빠진 항목 {len(missing)}개)."
+        )
+        return
+    spec.date_filter = DateFilter(**kwargs)
 
 
 def _drop_invented_strings(spec: ScreenSpec, doc: ParsedDocument) -> None:

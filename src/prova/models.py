@@ -155,6 +155,27 @@ class Precondition(BaseModel):
     login_screen_id: str = "login"
 
 
+class DateFilter(BaseModel):
+    """기획서 '날짜 필터' 절. 기간 조회 케이스 생성의 근거 (specs/2026-08-24).
+
+    라벨들은 selector 가 아니라 화면 요소의 자연어 라벨이다(TestStep.target 과
+    같은 원칙). date_column 은 화면이 아니라 **시드 표의 열 이름**이다 — 기간별
+    기대 건수·포함/제외 행을 S2 가 그 열로 계산한다.
+
+    LLM 스키마에도 실리지만(Field description) 진실은 declared 표다 —
+    extractor._apply_declared_date_filter 가 표 기준으로 덮는다.
+    """
+
+    start_label: str = Field(description="기간 시작일 입력 요소의 라벨")
+    end_label: str = Field(description="기간 종료일 입력 요소의 라벨")
+    submit_label: str = Field(description="조회(재조회) 버튼의 라벨")
+    target_label: str = Field(description="필터가 적용되는 반복 목록 요소의 라벨")
+    date_column: str = Field(description="시드 데이터 표에서 기간 판정에 쓰는 날짜 열 이름")
+    empty_message: Optional[str] = Field(
+        default=None, description="조회 결과가 없을 때 노출하기로 한 문구 (기획서가 정한 경우만)"
+    )
+
+
 class ScreenSpec(BaseModel):
     """설계 문서에서 추출한 화면 단위 명세. S1의 출력.
 
@@ -187,6 +208,9 @@ class ScreenSpec(BaseModel):
     # 제시하지 않으면 그 검증은 만들 수 없다 — 빈 목록이면 정렬·합계 케이스를
     # 만들지 않는다(스펙 §1-2).
     seed_rows: list[dict[str, str]] = Field(default_factory=list)
+    # '날짜 필터' 절. 없으면 기간 조회 케이스를 만들지 않는다 — 절이 있을 때만
+    # S1 교정(_apply_declared_date_filter)이 채운다.
+    date_filter: Optional[DateFilter] = None
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
         return next((e for e in self.elements if e.element_id == element_id), None)
