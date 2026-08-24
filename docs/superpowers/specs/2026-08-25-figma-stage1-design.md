@@ -74,7 +74,14 @@ Figma 가 말하지 않는 것을 채우는 척하지 않는다.
 
 ## 1단계가 검증하는 것 (그리고 하지 않는 것)
 
-부분 ScreenSpec 에서 기존 생성기가 자연히 만드는 것은 정적 대조 케이스다:
+**보정 (계획 작성 중 발견, 2026-08-25):** "기존 생성기가 자연히 정적 케이스만
+만든다" 는 가정은 틀렸다 — `generate_cases` 는 정상(valid) 케이스를 **무조건**
+만든다. 성공 조건 없는 Figma 스펙에서 valid 케이스는 임의 값 제출 → 에러 노출 →
+FAIL, 즉 오탐이 된다. 그래서 `ScreenSpec.source_kind`("document"/"figma") 를
+신설하고, figma 출처 스펙에서 `generate_cases` 는 **정적 대조 3종만** 만든다
+(같은 이유로 흐름 케이스 생성도 figma 출처에서는 막는다 — 추출은 한다).
+
+부분 ScreenSpec 에서 만드는 것은 정적 대조 케이스다:
 
 - `labels_findable` — 디자인의 요소가 구현 화면에 있다
 - `placeholders_match` — 안내 문구가 디자인과 같다
