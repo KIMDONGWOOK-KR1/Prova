@@ -127,3 +127,30 @@ class TestContract:
     def test_이미_고른_것은_다시_더하지_않는다(self):
         _, added = widen_selection(MULTI, ["search-count-005", "search-count-006"], "개수")
         assert added == []
+
+
+FILTERED_ORDERS = ORDERS + [
+    tc("orders-filter-002", "orders"),
+    tc("orders-filter-003", "orders"),
+    tc("orders-filter-006", "orders"),
+]
+
+
+class TestFilter묶음:
+    """기간 조회(filter) 묶음 — 케이스 8종이 한 검증의 각 면이다 (specs/2026-08-24)."""
+
+    def test_filter_하나를_고르면_같은_화면의_filter_전부(self):
+        picked, added = widen_selection(
+            FILTERED_ORDERS, ["orders-filter-002"], "기간 조회가 되는지 봐줘")
+        assert {"orders-filter-003", "orders-filter-006"} <= set(ids(picked))
+        assert ("orders-filter-003", "R1") in added
+
+    def test_기간_낱말이_있으면_고른_화면의_filter_를_더한다(self):
+        picked, added = widen_selection(
+            FILTERED_ORDERS, ["orders-valid-001"], "주문을 기간으로 걸러 보는 것 확인")
+        assert "orders-filter-002" in ids(picked)
+        assert ("orders-filter-002", "R3") in added
+
+    def test_낱말이_있어도_그_화면을_고르지_않았으면_더하지_않는다(self):
+        picked, _ = widen_selection(FILTERED_ORDERS, ["login-valid-001"], "날짜 필터")
+        assert not any("-filter-" in c for c in ids(picked))

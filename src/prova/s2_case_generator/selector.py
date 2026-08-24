@@ -379,7 +379,7 @@ def _all(cases: list[TestCase], request: str, doc: Optional[SpecDocument] = None
 #: R1 — 하나를 고르면 같은 화면의 같은 종류를 전부 고르는 종류. 규칙 위반
 #: 케이스(violates)는 여기 없다 — "이메일 형식만" 에 required 까지 더하면 범위
 #: 지목을 무시하는 것이다.
-_GROUP_KINDS = frozenset({"count", "scenario", "sorted", "sum", "seedcount"})
+_GROUP_KINDS = frozenset({"count", "scenario", "sorted", "sum", "seedcount", "filter"})
 
 #: R3 — 요청에 이 낱말이 있고 고른 화면에 그 종류의 케이스가 있으면 더한다.
 _KIND_WORDS: dict[str, tuple[str, ...]] = {
@@ -391,6 +391,10 @@ _KIND_WORDS: dict[str, tuple[str, ...]] = {
     "placeholders": ("문구", "안내", "placeholder"),
     "labels": ("문구", "라벨", "label"),
     "options": ("선택지", "선택 항목", "항목대로", "옵션"),
+    # 도구가 만드는 기간 조회 케이스의 이름이다 — RULE_LABELS 처럼 기획서마다
+    # 낡지 않는다. '조회' 는 넣지 않는다: 화면 이름 조각(_SPLIT_STOPWORDS)이라
+    # "주문 조회" 같은 화면 언급마다 filter 묶음이 딸려 오게 된다.
+    "filter": ("필터", "기간", "날짜"),
 }
 
 
