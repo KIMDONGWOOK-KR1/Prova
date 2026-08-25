@@ -34,7 +34,7 @@
 |---|---|
 | 화면 이름 일치 | 병합 — 기반은 기획서 화면 전체(규칙·성공조건·계정·시드·date_filter·url_path·source_kind="document") |
 | 요소 라벨 일치 | 짝지음. placeholder·options·type 대조 — 일치: 그 값으로 검증. **어긋남: 그 항목을 검증에서 빼고**(placeholder→None, options→기획서 것 유지하되 발견 기록, type 불일치→기획서 유형 유지+발견) 발견 기록 |
-| Figma 에만 있는 요소 | 병합 화면에 추가(element_id 는 Figma 노드 슬러그) + 발견 |
+| Figma 에만 있는 요소 | **검증에 넣지 않고 발견만** (구현 중 보정 — 넣으면 구현이 그 요소를 안 가졌다는 이유로 기획서 준수 구현이 FAIL, e2e 에서 실제로 났다. 구현 결함인지 디자인이 앞서간 것인지 판정할 근거가 없다) |
 | 기획서에만 있는 요소 | 유지 + 발견 |
 | Figma 단독 화면 | figma 정적 모드 그대로(source_kind="figma", `--screen-url` 필요) + 발견 |
 | 기획서 단독 화면 | 기존 그대로 + 발견 |
