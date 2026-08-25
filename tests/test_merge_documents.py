@@ -84,11 +84,13 @@ class TestElements:
         assert merged.screens[0].element_by_id("login_btn").type == "button"
         assert any("유형" in f for f in findings)
 
-    def test_디자인에만_있는_요소는_추가되고_발견(self):
+    def test_디자인에만_있는_요소는_검증에_넣지_않고_발견만(self):
+        """구현이 그 요소를 안 가진 것이 결함인지 디자인이 앞서간 것인지 판정할
+        근거가 없다 — 넣으면 기획서 준수 구현이 FAIL 이 된다(오탐)."""
         fig = figma_login()
         fig.elements.append(UIElement(element_id="n1_20", type="input", label="OTP"))
         merged, findings = merge_documents(*docs([pdf_login()], [fig]))
-        assert merged.screens[0].element_by_id("n1_20") is not None
+        assert merged.screens[0].element_by_id("n1_20") is None
         assert any("OTP" in f and "기획서에 없" in f for f in findings)
 
     def test_기획서에만_있는_요소는_유지되고_발견(self):

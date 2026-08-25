@@ -73,11 +73,14 @@ def _merge_screen(
     for figma_el in figma_screen.elements:
         if figma_el.label in matched_labels:
             continue
+        # 검증에 넣지 않는다 — 구현이 이 요소를 안 가진 것이 결함인지
+        # 디자인이 앞서간 것인지 판정할 근거가 없다. 넣으면 기획서 준수
+        # 구현이 FAIL 이 된다(오탐 — e2e 에서 실제로 났다).
         findings.append(
             f"{screen.screen_name} 화면의 요소 {figma_el.label!r} 는 "
-            "기획서에 없습니다 — 디자인 기준으로 정적 대조에 넣습니다."
+            "기획서에 없습니다 — 어느 쪽이 맞는지 정해지기 전에는 검증하지 "
+            "않습니다."
         )
-        screen.elements.append(figma_el.model_copy(deep=True))
     return screen
 
 
