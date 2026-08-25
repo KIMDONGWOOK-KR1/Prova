@@ -325,3 +325,4 @@ uv run python scripts/embed_media.py
 | [18-natural-language-request.md](18-natural-language-request.md) | **자연어로 요청받기** — 그 해석이 결함을 덮지 못하게 막기 + 로컬 웹 UI |
 | [19-preconditions-self-consistency.md](19-preconditions-self-consistency.md) | **전제가 있는 화면** (상품등록·주문조회) — 로그인 전제·케이스 격리, 그리고 화면이 스스로 모순인지 보는 정렬·합계 판정 |
 | [20-date-filter.md](20-date-filter.md) | **조작한 뒤의 화면을 검증한다** — 날짜 필터(입력↔재조회), 기대값은 시드 표 + 자기일관성 병행 |
+| [21-figma-path.md](21-figma-path.md) | **디자인을 검증 계약으로 읽는다** — Figma 컴포넌트 기반 결정적 추출, LLM 없이 정합성 QA |

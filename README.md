@@ -51,6 +51,7 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 | 주문조회 (2화면 문서) | `bad` | **7 PASS / 8 FAIL** — 로그인 화면 결함 6 + 심은 결함 2종(오래된순 정렬 O1, 합계 마지막 행 누락 O2)을 모두 지목, 오탐 0건 |
 | 주문조회 (`table` / `badtable` — aria-label 이 하나도 없는 순수 `<table>`) | mock (2026-08-22) | `good`/`bad` 와 **같은 판정** — 5/5 PASS · O1·O2 만 FAIL. 사유에 "표 머리글 '주문일' 2열로 찾음 (aria-label 없음)" 이 남는다 |
 | 주문조회 (날짜 필터 — **입력↔재조회**) | mock (2026-08-25) | `good` **14/14 PASS** · `bad` 는 O1(무필터·필터 후)·O2·O3(경계일 제외)·O4(필터 후 합계 미재계산)의 **6건만 FAIL** — 조작한 뒤의 화면에 처음 판정이 걸렸다(설계 판단 15). `table`/`badtable` 쌍둥이도 같은 판정 |
+| 로그인+회원가입 (**Figma 디자인** 입력 — 합성 응답, 2026-08-25) | LLM **미사용** (결정적 추출) | `good` **5/5 PASS** · `bad` 는 정적 대조가 잡을 수 있는 **둘만 FAIL**(로그인 placeholder 불일치 · C4 선택 항목 누락) — 디자인↔구현 정합성 QA. 규칙 검증은 이 입력의 범위 밖이고 리포트가 그 사실을 상자로 말한다(설계 판단 16) |
 
 위 네 행은 **CHEETAH 실물 7B 관통 실측**(2026-08-20)이다. 2026-08-19 의 mock
 백엔드 E2E(`tests/test_product_e2e.py`·`tests/test_orders_e2e.py`)로 배관과 판정
@@ -197,6 +198,9 @@ src/prova/
 ├── s1_spec_extractor/        PDF -> ScreenSpec
 │   ├── pdf_parser.py           결정적 추출 (pdfplumber, LLM 없음)
 │   └── extractor.py            LLM 구조화 + 표에서 읽은 사실로 교정
+├── s1_figma/                 Figma API 응답 -> ScreenSpec (전부 결정적, LLM 없음)
+│   ├── figma_parser.py         컴포넌트 기반 요소 인지 + 저장용 다듬기
+│   └── extractor.py            SpecDocument 조립 — 경로는 --screen-url 매핑
 ├── s2_case_generator/        ScreenSpec -> TestCase[]
 │   ├── rule_expander.py        규칙 -> 위반값 + 요소 간 의존 해석 (순수 함수, LLM 없음)
 │   ├── precondition.py         전제(로그인) 스텝 생성 (순수 함수, LLM 없음)
@@ -221,11 +225,12 @@ sut/                          테스트 대상 미니 웹앱 — 6화면(로그�
 fixtures/specs/               화면기획서 md / pdf / 정답(golden) — 화면마다 한 벌
 ├── multi_spec.md               통합 문서 — 화면별 md 에서 조립한다 (직접 고치지 않는다)
 └── _multi_*.md                 조립용 조각 ('_' 로 시작하면 PDF 로 만들지 않는다)
-scripts/                      기획서 PDF 생성 · 통합 문서 조립 · 데모 자료 생성
+fixtures/figma/               Figma API 응답 픽스처 (합성 + 실물, 다듬기는 fetch 스크립트가)
+scripts/                      기획서 PDF 생성 · 통합 문서 조립 · Figma fetch · 데모 자료 생성
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
 ├── reference/                계획서·주제개요서·멘토링보고서
-├── teaching/                 티칭 노트 20개 + overview.html (그림 자료)
+├── teaching/                 티칭 노트 21개 + overview.html (그림 자료)
 ├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
 └── README.md                 문서 안내
 ```
@@ -747,6 +752,26 @@ CLI 에는 해석 결과를 보여줄 자리가 없다. `--request` 를 주면 �
 버린다 — 억측한 실행 지시로 검증했다고 말하지 않기 위해서다
 (`_apply_declared_date_filter`).
 
+### 16. Figma 는 컴포넌트 이름으로만 읽고, 없는 것은 채우는 척하지 않는다
+
+Figma 경로(`src/prova/s1_figma/`)는 PDF 와 같은 계약(`SpecDocument`)을 만들되
+**LLM 을 부르지 않는다** — 응답이 이미 구조화된 트리라서, 모델을 끼우면 검증
+가능한 사실이 검증 불가능한 추측으로 바뀐다. 요소 유형은 INSTANCE 의 원본
+컴포넌트 이름(`Input`/`Button`/…)으로만 판정한다. 폐기한 첫 시도가 노드 이름
+키워드로 주웠다가 튜토리얼 본문 문장까지 버튼으로 만들었기 때문이다 — 이름은
+자유 텍스트, 컴포넌트는 구조다. 컴포넌트가 아닌 요소형 노드는 줍지 않고
+경고한다.
+
+Figma 가 말하지 않는 것 세 가지는 채우는 척하지 않는다. 검증 규칙·성공 조건이
+없으므로 `source_kind="figma"` 스펙에서 S2 는 정적 대조 3종(labels·
+placeholders·options)만 만든다 — 처음 설계는 "생성기가 자연히 그렇게 된다" 고
+가정했지만 정상 케이스가 무조건 생성돼 임의 값 제출 → 에러 → FAIL, 즉 구현이
+옳은데 실패하는 오탐이 났다. 경로(`/login`)가 없으므로 실행 시
+`--screen-url` 매핑으로 받고, 매핑 없는 화면은 실행하지 않고 경고한다. 흐름
+도착의 판정 근거가 없으므로 prototype 연결은 추출만 하고 케이스는 만들지
+않는다. 리포트는 "입력: Figma — 정적 대조만 수행" 상자로 초록불의 범위를
+말한다.
+
 ### 명세서와 다른 곳 — 설계 판단은 아니지만 적어 두는 것
 
 위 열네 군데는 **판단**이다. 그 외에 명세서 v1.0 과 코드가 단순히 다른 곳이 둘 있다.
@@ -967,7 +992,8 @@ LLM이 판단할 일이 아니었기 때문이다 — 열 제목에서 요소 ID
 | `screen_name` 과 `<title>` 대조 | 일부러 미룬다 — 오탐 위험이 높다 |
 | 화면 3개 이상을 지나는 흐름 | 미지원. 지금 흐름은 두 화면을 잇는다 |
 | 표 마크업의 나머지 모양 | 2026-08-22 에 `<caption>`·`<th>` 경로를 넣어 aria-label 없는 순수 `<table>` 은 닿는다(라벨 경로가 0개일 때만, 정확 일치만, 둘 이상이면 ambiguous). 아직 안 닿는 것: colspan 머리글, 머리글 없는 표, `<div role="grid">` 같은 비-table 격자 |
-| Figma 연동 · locator 캐시 · 병렬 실행 · CI 연동 | 없어도 명제를 증명하는 데 지장이 없다 |
+| Figma 2단계 | 1단계(정적 대조·SUT 관통)는 2026-08-25 합성 응답으로 닫혔다. 남은 것: 실물 응답 대조(픽스처 제작 중), 문서 병합(Figma 화면·요소 + 기획서 규칙 — 두 입력의 불일치 처리가 새 문제), 흐름 케이스(도착 판정 근거), 컴포넌트 이름 매핑 확장(실물을 본 뒤) |
+| locator 캐시 · 병렬 실행 · CI 연동 | 없어도 명제를 증명하는 데 지장이 없다 |
 
 ### GPU 제약 — 실측으로 확정됐다
 
