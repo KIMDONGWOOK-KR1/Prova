@@ -45,7 +45,7 @@ from prova.s3_grounder.dom_locator import (
     heal_with_vlm,
     resolve_locator,
 )
-from prova.text_utils import contains_loose
+from prova.text_utils import contains_loose, loosen
 
 
 @dataclass
@@ -364,12 +364,13 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
     전부 거짓이 된다. 좌표가 요소 위가 아니라는 것은 **요소를 확정하지 못했다**는 뜻이고,
     그 처리는 이미 있다.
 
-    ## 이 확인이 보증하지 않는 것
+    ## 이 확인이 보증하는 것과 못 하는 것 (2026-08-25 정체 대조 추가)
 
-    '의도한 그 요소' 인지는 알 수 없다. 우리가 그 요소를 특정할 수 없어서 보정하는
-    것이므로, 알 수 있다면 보정이 필요하지 않다. 여기서 막는 것은 '아무것도 없는 곳을
-    누르는' 명백한 경우다. 엉뚱한 버튼을 누르는 것은 못 막는다 — 그건 VLM 정확도의
-    문제이고 실물 모델로 측정해야 한다.
+    막는 것은 두 가지다 — '아무것도 없는 곳'(빈 여백), 그리고 '기획서의 **다른**
+    요소로 확인되는 곳'(접근성 이름이 다른 요소의 라벨과 일치 — 실측 오탐 7/10
+    의 모양). 못 막는 것은 이름 없는 엉뚱한 요소다 — 이름이 없으면 판정 근거가
+    없고, 라벨 없는 요소가 2차 경로의 존재 이유라서 모른다고 막으면 nolabel
+    화면에서 보정이 통째로 죽는다. 그 잔여 위험은 실물 모델 측정으로 잰다.
     """
     selector = _ACTIONABLE.get(step.action)
     if selector is None:
@@ -379,7 +380,17 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
             """([x, y, sel]) => {
                 const el = document.elementFromPoint(x, y);
                 if (!el) return null;
-                return el.closest(sel) ? el.tagName.toLowerCase() : "";
+                const target = el.closest(sel);
+                if (!target) return { ok: false, name: "" };
+                // 접근성 이름의 근사: aria-label -> 연결된 <label> -> 자기 텍스트.
+                // 완전한 acc-name 계산이 아니라, '기획서 라벨과 같은 이름인가'
+                // 를 판별할 수 있는 수준이면 된다.
+                let name = target.getAttribute("aria-label") || "";
+                if (!name && target.labels && target.labels.length)
+                    name = target.labels[0].textContent || "";
+                if (!name && ["BUTTON", "A"].includes(target.tagName))
+                    name = target.textContent || "";
+                return { ok: true, name: name.trim() };
             }""",
             [x, y, selector],
         )
@@ -388,12 +399,40 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
         # 보정이 필요한 화면에서 케이스가 통째로 죽는다.
         return
 
-    if not hit:
+    if hit is None or not hit["ok"]:
         raise GroundingError(
             location.target,
             [Attempt(strategy=f"vlm-좌표({round(x)},{round(y)})에 조작 가능한 요소 없음",
                      count=0)],
         )
+
+    # 정체 대조 — 좌표 아래 요소가 기획서의 **다른** 요소로 확인되면 누르지
+    # 않는다. 실측 오탐 7/10(2026-08-22)의 모양이 정확히 이것이었다: VLM 이
+    # 엉뚱한 요소의 좌표를 줘도 '조작 가능한 무언가' 이기만 하면 눌렀고, 그
+    # 결과를 판정이 구현 결함으로 읽었다.
+    #
+    # 막는 것은 증거가 확실할 때뿐이다 — 이름이 찾던 라벨과 다르고, 기획서의
+    # 다른 요소 라벨과 일치할 때. 이름이 없거나 모르는 텍스트면 통과한다:
+    # 라벨 없는 아이콘 버튼이 2차 경로의 존재 이유이므로, 모른다고 막으면
+    # nolabel 화면에서 보정이 통째로 죽는다.
+    name = loosen(hit["name"])
+    if name and name != loosen(location.target):
+        other = next(
+            (e.label for spec in ctx.specs for e in spec.elements
+             if e.label != location.target and loosen(e.label) == name),
+            None,
+        )
+        if other is not None:
+            raise GroundingError(
+                location.target,
+                [Attempt(
+                    strategy=(
+                        f"vlm-좌표({round(x)},{round(y)}) 아래 요소는 {other!r} — "
+                        f"찾던 {location.target!r} 이 아니라 기획서의 다른 요소입니다"
+                    ),
+                    count=0,
+                )],
+            )
 
 
 def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
