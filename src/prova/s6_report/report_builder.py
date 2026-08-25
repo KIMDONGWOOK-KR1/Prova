@@ -57,6 +57,7 @@ def build_report(
     spec_source: str = "",
     backend: str = "",
     selection: CaseSelection | None = None,
+    design_mismatches: list[str] | None = None,
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -69,13 +70,19 @@ def build_report(
         # [화면 ID] 가 붙어 어디를 고쳐야 하는지가 드러난다 (all_warnings 참고).
         summary["spec_warnings"] = doc.all_warnings
         summary["screen_names"] = {s.screen_id: s.screen_name for s in doc.screens}
-        if any(s.source_kind == "figma" for s in doc.screens):
+        if doc.screens and all(s.source_kind == "figma" for s in doc.screens):
             # 입력 출처를 리포트가 말해야 한다 — figma 입력은 검증 규칙·성공
             # 조건을 담지 않으므로, 초록불이 '전부 확인됨' 으로 읽히면 안 된다.
+            # 전체가 figma 일 때만이다 — 병합 문서는 규칙 검증이 있으므로
+            # '정적 대조만' 상자가 거짓말이 된다(불일치 상자가 따로 말한다).
             summary["input_kind"] = "figma"
     # 확인하지 않은 것. 통과율과 나란히 놓여야 '통과' 의 범위를 알 수 있다.
     if coverage:
         summary["coverage_gaps"] = list(coverage)
+    # 기획↔디자인 불일치 (병합 모드). 케이스가 전부 초록이어도 보여야 한다 —
+    # 구현을 고치기 전에 입력끼리의 모순부터 정리해야 하므로.
+    if design_mismatches:
+        summary["design_mismatches"] = list(design_mismatches)
 
     return TestReport(
         run_id=run_id,
@@ -492,6 +499,14 @@ def render_html(report: TestReport) -> str:
             "<div class='warn'><b>입력: Figma 디자인</b>"
             "<div>검증 규칙·성공 조건이 없어 정적 대조(라벨·안내 문구·선택 항목)만 "
             "수행했습니다. 규칙 검증은 기획서 입력이 필요합니다.</div></div>"
+        )
+    mismatches = s.get("design_mismatches") or []
+    if mismatches:
+        items = "".join(f"<li>{_esc(m)}</li>" for m in mismatches)
+        mock_warn += (
+            f"<div class='warn'><b>기획↔디자인 불일치 {len(mismatches)}건</b>"
+            f"<div>구현을 고치기 전에 두 입력 중 어느 쪽이 맞는지부터 정해야 "
+            f"합니다.<ul>{items}</ul></div></div>"
         )
 
     names = s.get("screen_names") or {}
