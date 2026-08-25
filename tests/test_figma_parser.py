@@ -113,10 +113,46 @@ class TestWarnings:
 
 
 class TestTransitions:
-    def test_prototype_연결을_추출한다(self):
+    def test_legacy_transitionNodeId_를_추출한다(self):
         frames, _ = parse_figma_file(
             figma_file([LOGIN, frame("2:1", "회원가입", [])], COMPONENTS))
         assert frames[0].transitions == [("1:9", "2:1")]
+
+    def test_실물_API_의_interactions_배열을_추출한다(self):
+        """실물 응답(2026-08-25 fetch)은 transitionNodeId 가 아니라 interactions
+        로 연결을 준다 — 실물이 이긴다."""
+        btn = instance("3:9", "9:2", [text("3:10", "text", "이동")],
+                       interactions=[{
+                           "trigger": {"type": "ON_CLICK"},
+                           "actions": [{"type": "NODE", "destinationId": "1:2",
+                                        "navigation": "NAVIGATE",
+                                        "transition": None}],
+                       }])
+        frames, _ = parse_figma_file(
+            figma_file([frame("3:0", "홈", [btn]), LOGIN], COMPONENTS))
+        assert frames[0].transitions == [("3:9", "1:2")]
+
+    def test_같은_연결이_두_표기로_와도_한_번만_센다(self):
+        btn = instance("4:9", "9:2", [text("4:10", "text", "이동")],
+                       transitionNodeId="1:2",
+                       interactions=[{
+                           "trigger": {"type": "ON_CLICK"},
+                           "actions": [{"type": "NODE", "destinationId": "1:2",
+                                        "navigation": "NAVIGATE"}],
+                       }])
+        frames, _ = parse_figma_file(
+            figma_file([frame("4:0", "홈", [btn]), LOGIN], COMPONENTS))
+        assert frames[0].transitions == [("4:9", "1:2")]
+
+    def test_NAVIGATE_가_아닌_액션은_무시한다(self):
+        btn = instance("5:9", "9:2", [text("5:10", "text", "열기")],
+                       interactions=[{
+                           "trigger": {"type": "ON_CLICK"},
+                           "actions": [{"type": "URL", "url": "https://x"}],
+                       }])
+        frames, _ = parse_figma_file(
+            figma_file([frame("5:0", "홈", [btn])], COMPONENTS))
+        assert frames[0].transitions == []
 
 
 class TestTrim:
@@ -128,6 +164,25 @@ class TestTrim:
         assert "styles" not in trimmed
         node = trimmed["document"]["children"][0]["children"][0]["children"][0]
         assert "fills" not in node
+
+    def test_interactions_는_비어있지_않을_때만_남긴다(self):
+        """실물 응답은 모든 노드에 interactions:[] 를 달고 온다 — 빈 배열까지
+        남기면 픽스처가 소음으로 부푼다. 연결이 있는 것만 남긴다."""
+        btn = instance("3:9", "9:2", [text("3:10", "text", "이동")],
+                       interactions=[{
+                           "trigger": {"type": "ON_CLICK"},
+                           "actions": [{"type": "NODE", "destinationId": "1:2",
+                                        "navigation": "NAVIGATE"}],
+                       }])
+        empty = instance("3:11", "9:1",
+                         [text("3:12", "label", "이메일")], interactions=[])
+        raw = figma_file([frame("3:0", "홈", [btn, empty])], COMPONENTS)
+        trimmed = trim_figma_response(raw)
+        home = trimmed["document"]["children"][0]["children"][0]
+        assert "interactions" in home["children"][0]
+        assert "interactions" not in home["children"][1]
+        assert parse_figma_file(trimmed)[0][0].transitions == \
+            parse_figma_file(raw)[0][0].transitions
         # 다듬어도 파싱 결과는 같아야 한다 — 다듬기가 사실을 지우면 안 된다
         assert parse_figma_file(trimmed)[0][0].elements == \
             parse_figma_file(raw)[0][0].elements

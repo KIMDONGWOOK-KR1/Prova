@@ -1,0 +1,649 @@
+{
+ "name": "Untitled",
+ "document": {
+  "id": "0:0",
+  "name": "Document",
+  "type": "DOCUMENT",
+  "children": [
+   {
+    "id": "0:1",
+    "name": "Page 1",
+    "type": "CANVAS",
+    "children": [
+     {
+      "id": "2:63",
+      "name": "Input",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "2:60",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "2:61",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "2:62",
+        "name": "placeholder",
+        "type": "TEXT",
+        "characters": "안내 문구"
+       }
+      ]
+     },
+     {
+      "id": "2:66",
+      "name": "Button",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "2:64",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "2:65",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "버튼"
+       }
+      ]
+     },
+     {
+      "id": "2:69",
+      "name": "Checkbox",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "2:67",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "2:68",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "체크박스"
+       }
+      ]
+     },
+     {
+      "id": "2:75",
+      "name": "Select",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "2:70",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "2:71",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "2:72",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목1"
+       },
+       {
+        "id": "2:73",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목2"
+       },
+       {
+        "id": "2:74",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목3"
+       }
+      ]
+     },
+     {
+      "id": "2:76",
+      "name": "로그인",
+      "type": "FRAME",
+      "children": [
+       {
+        "id": "2:77",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:77;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "이메일"
+         },
+         {
+          "id": "I2:77;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:77;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "이메일을 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:81",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:81;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "비밀번호"
+         },
+         {
+          "id": "I2:81;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:81;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "비밀번호를 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:85",
+        "name": "Button",
+        "type": "INSTANCE",
+        "componentId": "2:66",
+        "children": [
+         {
+          "id": "I2:85;2:64",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:85;2:65",
+          "name": "text",
+          "type": "TEXT",
+          "characters": "로그인"
+         }
+        ]
+       },
+       {
+        "id": "2:90",
+        "name": "가짜 입력란",
+        "type": "GROUP",
+        "children": [
+         {
+          "id": "2:88",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "2:89",
+          "name": "text",
+          "type": "TEXT",
+          "characters": "주소를 입력하세요"
+         }
+        ]
+       }
+      ]
+     },
+     {
+      "id": "2:91",
+      "name": "회원가입",
+      "type": "FRAME",
+      "children": [
+       {
+        "id": "2:92",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:92;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "이메일"
+         },
+         {
+          "id": "I2:92;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:92;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "이메일을 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:96",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:96;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "비밀번호"
+         },
+         {
+          "id": "I2:96;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:96;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "비밀번호를 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:100",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:100;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "비밀번호 확인"
+         },
+         {
+          "id": "I2:100;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:100;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "비밀번호를 다시 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:104",
+        "name": "Input",
+        "type": "INSTANCE",
+        "componentId": "2:63",
+        "children": [
+         {
+          "id": "I2:104;2:60",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "닉네임"
+         },
+         {
+          "id": "I2:104;2:61",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:104;2:62",
+          "name": "placeholder",
+          "type": "TEXT",
+          "characters": "닉네임을 입력하세요"
+         }
+        ]
+       },
+       {
+        "id": "2:108",
+        "name": "Select",
+        "type": "INSTANCE",
+        "componentId": "2:75",
+        "children": [
+         {
+          "id": "I2:108;2:70",
+          "name": "label",
+          "type": "TEXT",
+          "characters": "가입 경로"
+         },
+         {
+          "id": "I2:108;2:71",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:108;2:72",
+          "name": "option",
+          "type": "TEXT",
+          "characters": "검색"
+         },
+         {
+          "id": "I2:108;2:73",
+          "name": "option",
+          "type": "TEXT",
+          "characters": "지인 추천"
+         },
+         {
+          "id": "I2:108;2:74",
+          "name": "option",
+          "type": "TEXT",
+          "characters": "광고"
+         }
+        ]
+       },
+       {
+        "id": "2:114",
+        "name": "Checkbox",
+        "type": "INSTANCE",
+        "componentId": "2:69",
+        "children": [
+         {
+          "id": "I2:114;2:67",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:114;2:68",
+          "name": "text",
+          "type": "TEXT",
+          "characters": "약관 동의"
+         }
+        ]
+       },
+       {
+        "id": "2:117",
+        "name": "Button",
+        "type": "INSTANCE",
+        "componentId": "2:66",
+        "interactions": [
+         {
+          "trigger": {
+           "type": "ON_CLICK"
+          },
+          "actions": [
+           {
+            "type": "NODE",
+            "destinationId": "2:76",
+            "navigation": "NAVIGATE",
+            "transition": null,
+            "resetVideoPosition": false
+           }
+          ]
+         }
+        ],
+        "children": [
+         {
+          "id": "I2:117;2:64",
+          "name": "Rectangle",
+          "type": "RECTANGLE"
+         },
+         {
+          "id": "I2:117;2:65",
+          "name": "text",
+          "type": "TEXT",
+          "characters": "가입하기"
+         }
+        ]
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "1:2",
+    "name": "Components",
+    "type": "CANVAS",
+    "children": [
+     {
+      "id": "1:6",
+      "name": "Input",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:3",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "1:4",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:5",
+        "name": "placeholder",
+        "type": "TEXT",
+        "characters": "안내 문구"
+       }
+      ]
+     },
+     {
+      "id": "1:9",
+      "name": "Button",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:7",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:8",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "버튼"
+       }
+      ]
+     },
+     {
+      "id": "1:12",
+      "name": "Checkbox",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:10",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:11",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "체크박스"
+       }
+      ]
+     },
+     {
+      "id": "1:18",
+      "name": "Select",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:13",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "1:14",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:15",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목1"
+       },
+       {
+        "id": "1:16",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목2"
+       },
+       {
+        "id": "1:17",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목3"
+       }
+      ]
+     }
+    ]
+   },
+   {
+    "id": "1:64",
+    "name": "Components",
+    "type": "CANVAS",
+    "children": [
+     {
+      "id": "1:68",
+      "name": "Input",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:65",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "1:66",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:67",
+        "name": "placeholder",
+        "type": "TEXT",
+        "characters": "안내 문구"
+       }
+      ]
+     },
+     {
+      "id": "1:71",
+      "name": "Button",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:69",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:70",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "버튼"
+       }
+      ]
+     },
+     {
+      "id": "1:74",
+      "name": "Checkbox",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:72",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:73",
+        "name": "text",
+        "type": "TEXT",
+        "characters": "체크박스"
+       }
+      ]
+     },
+     {
+      "id": "1:80",
+      "name": "Select",
+      "type": "COMPONENT",
+      "children": [
+       {
+        "id": "1:75",
+        "name": "label",
+        "type": "TEXT",
+        "characters": "라벨"
+       },
+       {
+        "id": "1:76",
+        "name": "Rectangle",
+        "type": "RECTANGLE"
+       },
+       {
+        "id": "1:77",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목1"
+       },
+       {
+        "id": "1:78",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목2"
+       },
+       {
+        "id": "1:79",
+        "name": "option",
+        "type": "TEXT",
+        "characters": "항목3"
+       }
+      ]
+     }
+    ]
+   }
+  ]
+ },
+ "components": {
+  "2:63": {
+   "name": "Input"
+  },
+  "2:66": {
+   "name": "Button"
+  },
+  "2:69": {
+   "name": "Checkbox"
+  },
+  "2:75": {
+   "name": "Select"
+  },
+  "1:6": {
+   "name": "Input"
+  },
+  "1:9": {
+   "name": "Button"
+  },
+  "1:12": {
+   "name": "Checkbox"
+  },
+  "1:18": {
+   "name": "Select"
+  },
+  "1:68": {
+   "name": "Input"
+  },
+  "1:71": {
+   "name": "Button"
+  },
+  "1:74": {
+   "name": "Checkbox"
+  },
+  "1:80": {
+   "name": "Select"
+  }
+ }
+}

@@ -5,11 +5,18 @@ MockLLM 조차 없다 — figma 경로는 LLM 을 부르지 않는 것이 계약
 맞다는 것이 이 경로의 존재 이유이므로, good 픽스처는 구현과 일치해야 한다.
 """
 
+from pathlib import Path
+
 import pytest
 
 from prova.pipeline import build_plan, run_pipeline
 
-FIXTURE = "fixtures/figma/synthetic_login_signup.json"
+# 실물 응답(사용자 Figma 파일에서 fetch)이 있으면 그것으로 관통한다 — 실물이
+# 진실이다. 없으면(새로 클론한 환경 등) 합성으로 폴백하되, 이 폴백은 조용하지
+# 않다: 합성은 손으로 만든 모양이라 실물 API 의 표기 변화(interactions 사건
+# 같은)를 놓친다. 실물 대조는 TestRealFixture(test_figma_extractor)가 지킨다.
+_REAL = "fixtures/figma/login_signup.json"
+FIXTURE = _REAL if Path(_REAL).exists() else "fixtures/figma/synthetic_login_signup.json"
 URLS = {"로그인": "/login", "회원가입": "/signup"}
 
 
@@ -84,7 +91,10 @@ class TestBad:
         한다 — 오탐 0건."""
         report, _ = bad_run
         fails = {v.case_id: v for v in report.cases if v.verdict == "FAIL"}
-        assert set(fails) == {"로그인-placeholders-001", "회원가입-options-n2_14-001"}, \
+        # 노드 id 는 픽스처를 다시 그리면 바뀐다 — (화면, 종류)로 판별한다.
+        got = sorted((cid.split("-")[0], "options" if "-options-" in cid
+                      else cid.split("-")[1]) for cid in fails)
+        assert got == [("로그인", "placeholders"), ("회원가입", "options")], \
             {cid: v.failure_detail for cid, v in fails.items()}
 
     def test_실패_사유가_어느_문구가_다른지_말한다(self, bad_run):
