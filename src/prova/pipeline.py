@@ -182,6 +182,7 @@ def run_pipeline(
     hold_sec: float = 0.0,
     figma_json: Optional[str] = None,
     screen_urls: Optional[dict[str, str]] = None,
+    storage_state: Optional[str] = None,
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
@@ -240,6 +241,8 @@ def run_pipeline(
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
         context = browser.new_context(
+            # 로그인 세션 재사용(--session). None 이면 지금까지와 같다.
+            storage_state=storage_state,
             viewport=viewport or {"width": 1280, "height": 800},
             # 녹화 크기를 뷰포트보다 작게 잡는다. 1280x800 으로 녹화하면 webm 이 커지고
             # GIF 로 변환한 뒤 용량이 감당되지 않는다.
@@ -248,6 +251,14 @@ def run_pipeline(
         )
         page = context.new_page()
         state.page = page
+        guard_context = None
+        if storage_state:
+            # 가드(비로그인 차단) 검증은 세션이 실린 페이지에서 성립하지 않는다
+            # — 세션 없는 컨텍스트를 따로 열어 그 케이스만 거기서 돌린다.
+            guard_context = browser.new_context(
+                viewport=viewport or {"width": 1280, "height": 800})
+            state.guard_page = guard_context.new_page()
+            state.storage_state = storage_state
         try:
             state = run_cases(state)
             if hold_sec > 0:
@@ -259,6 +270,8 @@ def run_pipeline(
             # 판정이 중간에 실패해도 브라우저를 반드시 닫는다.
             # 영상은 컨텍스트를 닫는 시점에 파일로 기록되므로, 경로 조회는 close() 뒤에
             # 해야 한다.
+            if guard_context is not None:
+                guard_context.close()
             context.close()
             if record_video and page.video:
                 try:

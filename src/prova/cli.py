@@ -85,6 +85,11 @@ def run(
     vlm_model: Optional[str] = typer.Option(
         None, "--vlm-model", metavar="이름",
         help="VLM 서버가 서빙하는 모델 이름 (vLLM 의 --served-model-name 과 같게)"),
+    session: Optional[Path] = typer.Option(
+        None, "--session", metavar="경로",
+        help="prova login 으로 저장한 로그인 세션(storage_state). 스크립트로 "
+             "로그인할 수 없는 화면(SSO 등)용 — 비로그인 가드 검증은 세션 없는 "
+             "별도 컨텍스트에서 수행된다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # Figma 경로 검증. --pdf 와 함께 주면 병합 모드다(기획서 규칙 + 디자인
@@ -115,6 +120,13 @@ def run(
 
     if pdf and not pdf.exists():
         typer.secho(f"설계 문서를 찾을 수 없습니다: {pdf}", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if session and not session.exists():
+        typer.secho(f"세션 파일을 찾을 수 없습니다: {session} — "
+                    "prova login 으로 먼저 만드세요.", fg=typer.colors.RED)
+        raise typer.Exit(2)
+    if session and engine == "graph":
+        typer.secho("--session 은 pipeline 엔진에서만 동작합니다.", fg=typer.colors.RED)
         raise typer.Exit(2)
 
     cfg = _load_config(config)
@@ -221,6 +233,7 @@ def run(
                 hold_sec=hold,
                 figma_json=str(figma_json) if figma_json else None,
                 screen_urls=screen_urls or None,
+                storage_state=str(session) if session else None,
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
         except ValueError as exc:
@@ -268,6 +281,39 @@ def _print_summary(report, run_dir: Path) -> None:
 
     typer.echo("")
     typer.echo(f"  리포트: {run_dir / 'report.html'}")
+
+
+@app.command()
+def login(
+    url: str = typer.Option(..., "--url", help="로그인 화면(또는 시작) URL"),
+    out: Path = typer.Option(Path("sessions/session.json"), "--out",
+                             help="세션(storage_state) 저장 경로"),
+) -> None:
+    """브라우저를 열어 사람이 직접 로그인하면 그 상태를 저장한다.
+
+    스크립트로 로그인할 수 없는 화면(SSO·캡차·2단계 인증)을 테스트하는 길이다.
+    저장된 파일은 `prova run --session <경로>` 로 실어 쓴다.
+
+    저장물에는 로그인 토큰(쿠키·localStorage)이 들어 있다 — 비밀이다.
+    기본 경로 `sessions/` 는 gitignore 이고, 다른 곳에 저장하면 커밋되지
+    않는지 스스로 확인해야 한다.
+    """
+    from playwright.sync_api import sync_playwright
+
+    out.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto(url)
+        typer.secho("브라우저에서 로그인을 마친 뒤, 여기로 돌아와 Enter 를 누르세요.",
+                    bold=True)
+        typer.prompt("완료되면 Enter", default="", show_default=False)
+        context.storage_state(path=str(out))
+        browser.close()
+    typer.secho(f"세션 저장: {out}", fg=typer.colors.GREEN)
+    typer.echo("이 파일에는 로그인 토큰이 들어 있습니다 — 공유·커밋 금지. "
+               "만료되면 다시 만드세요.")
 
 
 @app.command()
