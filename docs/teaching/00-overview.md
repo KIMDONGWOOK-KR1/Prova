@@ -326,3 +326,4 @@ uv run python scripts/embed_media.py
 | [19-preconditions-self-consistency.md](19-preconditions-self-consistency.md) | **전제가 있는 화면** (상품등록·주문조회) — 로그인 전제·케이스 격리, 그리고 화면이 스스로 모순인지 보는 정렬·합계 판정 |
 | [20-date-filter.md](20-date-filter.md) | **조작한 뒤의 화면을 검증한다** — 날짜 필터(입력↔재조회), 기대값은 시드 표 + 자기일관성 병행 |
 | [21-figma-path.md](21-figma-path.md) | **디자인을 검증 계약으로 읽는다** — Figma 컴포넌트 기반 결정적 추출, LLM 없이 정합성 QA |
+| [22-figma-merge.md](22-figma-merge.md) | **병합** — 기획서 규칙 + 디자인 문구·흐름을 한 실행에서, 어긋나면 판정 대신 발견 |
