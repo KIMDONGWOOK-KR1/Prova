@@ -58,6 +58,7 @@ def build_report(
     backend: str = "",
     selection: CaseSelection | None = None,
     design_mismatches: list[str] | None = None,
+    session_file: str = "",
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -83,6 +84,9 @@ def build_report(
     # 구현을 고치기 전에 입력끼리의 모순부터 정리해야 하므로.
     if design_mismatches:
         summary["design_mismatches"] = list(design_mismatches)
+    # 세션 파일로 실행됐다는 사실 — 판정의 전제 조건이므로 리포트가 말해야 한다.
+    if session_file:
+        summary["session_file"] = session_file
 
     return TestReport(
         run_id=run_id,
@@ -499,6 +503,13 @@ def render_html(report: TestReport) -> str:
             "<div class='warn'><b>입력: Figma 디자인</b>"
             "<div>검증 규칙·성공 조건이 없어 정적 대조(라벨·안내 문구·선택 항목)만 "
             "수행했습니다. 규칙 검증은 기획서 입력이 필요합니다.</div></div>"
+        )
+    if s.get("session_file"):
+        mock_warn += (
+            f"<div class='warn'><b>세션 파일로 실행됨 — "
+            f"{_esc(s['session_file'])}</b>"
+            "<div>저장된 로그인 상태가 미리 실렸습니다. 비로그인 가드 검증은 "
+            "세션 없는 별도 컨텍스트에서 수행했습니다.</div></div>"
         )
     mismatches = s.get("design_mismatches") or []
     if mismatches:

@@ -40,6 +40,7 @@ from prova.s1_merge import merge_documents
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
+from prova.s2_case_generator.selector import case_kind
 from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s3_grounder.dom_locator import (
     CollectionCount,
@@ -84,6 +85,13 @@ class AgentState:
     # 기획↔디자인 불일치 (병합 모드). 경고가 아니라 발견이다 — 리포트에서
     # 별도 상자로 보인다 (s1_merge 모듈 설명).
     design_mismatches: list[str] = field(default_factory=list)
+    # 로그인 세션 재사용 (--session). 스크립트로 로그인할 수 없는 화면(SSO 등)의
+    # 길이다. 실려 있으면: 전제 불능 케이스도 실행하고(세션이 전제를 대신한다),
+    # 메인 컨텍스트의 케이스 간 쿠키 격리를 끄고(세션이 의도된 기준 상태다),
+    # 가드 케이스는 guard_page(세션 없는 컨텍스트)에서 돈다.
+    storage_state: Optional[str] = None
+    # 가드(비로그인 차단) 케이스 전용 페이지 — 세션 없는 깨끗한 컨텍스트.
+    guard_page: Optional[Page] = None
 
     # 산출물
     #
@@ -218,26 +226,43 @@ def run_cases(state: AgentState) -> AgentState:
         raise ValueError("run_cases 에는 page 와 doc 이 필요합니다")
 
     console_errors: list[str] = []
-    state.page.on("console", lambda msg: (
-        console_errors.append(msg.text) if msg.type == "error" else None
-    ))
+    for listened in (state.page, state.guard_page):
+        if listened is not None:
+            listened.on("console", lambda msg: (
+                console_errors.append(msg.text) if msg.type == "error" else None
+            ))
 
     for case in state.cases:
         console_errors.clear()
-        if case.precondition_unmet:
+        if case.precondition_unmet and state.storage_state is None:
             # 전제(로그인)를 세울 스텝 자체를 만들지 못한 케이스다
             # (TestCase.precondition_unmet 설명 참고). 브라우저로 실행하면
             # 로그인 없이 본 스텝이 돌아 element_not_found 등으로 오분류되므로,
             # 아예 실행하지 않고 여기서 곧바로 precondition_failed 로 판정한다.
+            # 세션(--session)이 실려 있으면 실행한다 — 세션이 전제를 대신하는
+            # 것이 그 기능의 존재 이유다(SSO 처럼 스크립트로 로그인할 수 없는 화면).
             state.verdicts.append(_precondition_unmet_verdict(state, case))
             continue
-        # 케이스 격리 — 앞 케이스가 남긴 세션이 다음 판정을 오염시키지 않게 한다.
-        # 가드 케이스(비로그인 전제)가 실행 순서와 무관하게 정직해지고, 전제가
-        # 있는 케이스는 어차피 setup 으로 매번 로그인한다 — storage_state 를
-        # 기본으로 채택하지 않은 스펙 §7 과 같은 판단이다.
-        state.page.context.clear_cookies()
+
+        # 가드(비로그인 차단) 케이스는 세션이 실린 페이지에서는 성립하지 않는다
+        # — 이미 로그인 상태라 리다이렉트가 일어나지 않아 오탐이 된다. 세션
+        # 없는 깨끗한 컨텍스트(guard_page)에서 돌린다.
+        page = state.page
+        if state.guard_page is not None and case_kind(case) == "precondition-guard":
+            page = state.guard_page
+
+        if state.storage_state is None:
+            # 케이스 격리 — 앞 케이스가 남긴 세션이 다음 판정을 오염시키지 않게
+            # 한다. 가드 케이스가 실행 순서와 무관하게 정직해지고, 전제가 있는
+            # 케이스는 어차피 setup 으로 매번 로그인한다 — storage_state 를
+            # 기본으로 채택하지 않은 스펙 §7 과 같은 판단이다.
+            state.page.context.clear_cookies()
+        elif page is state.guard_page:
+            # 세션 모드: 메인 컨텍스트는 지우지 않는다(세션이 곧 의도된 기준
+            # 상태 — 지우면 세션 자체가 사라진다). 가드 컨텍스트만 격리한다.
+            page.context.clear_cookies()
         ctx = ExecutionContext(
-            page=state.page,
+            page=page,
             base_url=state.base_url,
             specs=_specs_for(state, case),
             run_dir=state.run_dir,
@@ -250,7 +275,8 @@ def run_cases(state: AgentState) -> AgentState:
         )
         step_results = _run_case_steps(ctx, case)
         state.verdicts.append(
-            _verify_when_ready(state, case, step_results, console_errors))
+            _verify_when_ready(state, case, step_results, console_errors,
+                               page=page))
 
     return state
 
@@ -342,6 +368,7 @@ def _verify_when_ready(
     case: TestCase,
     step_results: list,
     console_errors: list[str],
+    page: Optional[Page] = None,
 ):
     """화면이 기대 상태에 도달할 때까지 기다렸다가 판정한다.
 
@@ -388,9 +415,14 @@ def _verify_when_ready(
     """
     interval_ms = 100
 
+    # 가드 케이스는 guard_page 에서 돌았으므로 판정도 그 페이지를 읽어야 한다.
+    # 컬렉션 읽기 헬퍼(_count_for 등)는 state.page 를 쓰지만 가드의 기대는
+    # redirect 뿐이라 그 헬퍼들이 모두 None 을 돌려준다 — 어긋날 자리가 없다.
+    target_page = page if page is not None else state.page
+
     def judge():
         page_state = capture_page_state(
-            state.page, console_errors,
+            target_page, console_errors,
             _count_for(state, case), _options_for(state, case),
             _placeholders_for(state, case), _findable_for(state, case),
             _texts_for(state, case),
@@ -553,5 +585,6 @@ def build_final_report(state: AgentState) -> AgentState:
         backend=getattr(state.llm, "name", "") if state.llm else "",
         selection=state.selection,
         design_mismatches=state.design_mismatches,
+        session_file=Path(state.storage_state).name if state.storage_state else "",
     )
     return state
