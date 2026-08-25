@@ -3064,8 +3064,10 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
               <td><span class="tag pass">닫힘 08-25</span> 조작한 뒤의 화면에 처음 판정이 걸렸다.
                   기대값은 시드 표 기반 + 자기일관성 병행 — good 14/14, bad 는 심은 결함
                   O1~O4 의 여섯 케이스만 FAIL (노트 20)</td></tr>
-          <tr><td>Figma 경로 재설계</td>
-              <td>PDF 경로와 같은 계약(ScreenSpec)으로 들어오도록 다시 설계한다</td></tr>
+          <tr><td>Figma 경로 재설계 (1단계)</td>
+              <td><span class="tag pass">닫힘 08-25</span> 컴포넌트 기반 결정적 추출, LLM 없이
+                  디자인↔구현 정합성 QA(라벨·안내 문구·선택 항목). 실물 API 응답까지 관통 —
+                  good 5/5, bad 는 심은 문구 결함 둘만 FAIL. 규칙 병합·흐름 케이스는 2단계 (노트 21)</td></tr>
           <tr><td><code>screen_name</code> 과 <code>&lt;title&gt;</code> 대조</td>
               <td>일부러 미룬다 — 오탐 위험이 높다</td></tr>
           <tr><td>화면 3개 이상을 지나는 흐름</td>
@@ -3093,8 +3095,8 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 891개 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 20개,
+    코드 <code>C:\dev\prova</code> · 테스트 931개 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 21개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 

@@ -76,9 +76,27 @@ bad 의 나머지 결함(비밀번호 복잡도 검증 없음 등)은 잡히지 
 Figma 앱에서 그려 실제 API 응답으로 같은 관통을 반복하고, 합성과 실물이
 어긋나면 **실물이 이깁니다.** 결과는 아래 추기에 남깁니다.
 
+## 추기 (2026-08-25) — 실물 응답 대조: 실물이 실제로 한 번 이겼다
+
+픽스처는 손으로 그리지 않았다 — 픽스처를 **생성하는 플러그인**을 만들어
+저장소에 넣었다(`scripts/figma_fixture_plugin/`). 누구든 빈 Figma 파일에서
+플러그인 한 번으로 같은 픽스처를 재현할 수 있다. 실제 API 응답을 받아
+(`scripts/fetch_figma.py`, 트림 후 13KB) 대조한 결과:
+
+- 화면 2 · 요소 10 · 함정 경고 1 — 라벨·안내 문구·선택 항목 전부 합성과 일치.
+  골든(`fixtures/figma/login_signup.golden.json`)으로 굳혔다.
+- **흐름은 0개가 나왔다.** 실물 API 는 prototype 연결을 문서의 legacy 표기
+  (`transitionNodeId`)가 아니라 **`interactions` 배열**로 준다. 합성 픽스처는
+  legacy 표기로 만들었으니 통과했고, 실물이 처음으로 그 가정을 깼다 —
+  "합성과 실물이 어긋나면 실물이 이긴다" 는 원칙이 바로 이 상황을 위한
+  것이었다. 파서가 양쪽 표기를 읽되 화면 이동(NODE+NAVIGATE)만 세게 고쳤고,
+  실물에서 `회원가입 → 로그인` 흐름이 via `가입하기` 와 함께 추출된다.
+- e2e 는 실물 픽스처로 승격했다 — good 5/5 PASS, bad 는 같은 둘만 FAIL.
+  결과는 합성과 동일하다(그래야 한다 — 같은 그림이니까).
+
 ## 남은 것
 
-- **실물 응답 대조** — fetch → 골든 → e2e 실물 승격 (진행 중)
+- ~~**실물 응답 대조**~~ — 2026-08-25 닫힘 (위 추기)
 - **2단계: 문서 병합** — Figma(화면·요소·문구) + 기획서(규칙)를 한 ScreenSpec
   으로. 두 입력의 불일치 처리가 새 문제다
 - **흐름 케이스** — 도착 판정 근거를 어디서 받을지 정한 뒤
@@ -92,6 +110,6 @@ Figma 앱에서 그려 실제 API 응답으로 같은 관통을 반복하고, �
 
     uv run pytest tests/test_figma_parser.py tests/test_figma_extractor.py \
                   tests/test_figma_cases.py tests/test_figma_e2e.py -q
-    uv run prova run --figma-json fixtures/figma/synthetic_login_signup.json \
+    uv run prova run --figma-json fixtures/figma/login_signup.json \
         --screen-url 로그인=/login --screen-url 회원가입=/signup \
         --url http://localhost:8100/good   # 먼저 별 터미널에서: uv run uvicorn sut.app:app --port 8100
