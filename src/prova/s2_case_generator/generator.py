@@ -803,6 +803,11 @@ def generate_flow_cases(doc: SpecDocument) -> list[TestCase]:
             # 없는 화면을 가리키는 흐름은 만들지 않는다. 그 사실은 S1 의
             # _document_warnings 가 이미 경고로 남겼다 — 조용히 빠지지는 않는다.
             continue
+        if any(s.source_kind != "document" for s in screens):
+            # figma 단독 화면(규칙·성공 조건 없음)을 지나는 흐름은 도착을 판정할
+            # 근거가 없다. 흐름 단위로만 거른다 — 문서 전체를 막으면 병합
+            # 문서에서 document 화면만 지나는 멀쩡한 흐름까지 죽는다.
+            continue
         cases.append(_flow_case(flow, screens))
     return cases
 

@@ -87,17 +87,15 @@ def run(
         help="VLM 서버가 서빙하는 모델 이름 (vLLM 의 --served-model-name 과 같게)"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
-    # Figma 경로 검증 — 억측하지 않는다: 입력이 둘이거나 없으면 바로 끝낸다.
-    if figma_json and pdf:
-        typer.secho("--figma-json 과 --pdf 는 함께 쓸 수 없습니다.", fg=typer.colors.RED)
-        raise typer.Exit(2)
+    # Figma 경로 검증. --pdf 와 함께 주면 병합 모드다(기획서 규칙 + 디자인
+    # 문구·요소·흐름, 어긋나면 발견) — 단독이면 정적 대조 모드.
     if not figma_json and not pdf:
         typer.secho("--pdf 또는 --figma-json 이 필요합니다.", fg=typer.colors.RED)
         raise typer.Exit(2)
-    if figma_json and request:
+    if figma_json and not pdf and request:
         typer.secho(
-            "--figma-json 은 --request 와 함께 쓸 수 없습니다 — 요청 해석은 LLM 이 "
-            "필요한데 figma 경로는 LLM 을 쓰지 않습니다 (1단계 미지원).",
+            "--figma-json 단독은 --request 와 함께 쓸 수 없습니다 — 요청 해석은 "
+            "LLM 이 필요한데 figma 단독 경로는 LLM 을 쓰지 않습니다.",
             fg=typer.colors.RED)
         raise typer.Exit(2)
     if figma_json and engine == "graph":
@@ -142,20 +140,24 @@ def run(
             raise typer.Exit(2)
 
     typer.secho(f"Prova 실행 {rid}", bold=True)
-    if figma_json:
+    if figma_json and pdf:
+        typer.echo(f"  설계 문서 : {pdf}")
+        typer.echo(f"  Figma 응답: {figma_json}")
+        typer.echo("  모드      : 병합 — 기획서 규칙 + 디자인 문구·요소·흐름, 어긋나면 발견")
+    elif figma_json:
         typer.echo(f"  Figma 응답: {figma_json} (LLM 미사용 — 정적 대조만)")
     else:
         typer.echo(f"  설계 문서 : {pdf}")
     typer.echo(f"  대상 URL  : {url}")
-    if not figma_json:
+    if pdf:
         typer.echo(f"  백엔드    : {backend}")
     typer.echo(f"  실행 엔진 : {engine}")
     if vlm:
         typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
     typer.echo("")
 
-    if figma_json:
-        llm = None  # figma 경로는 LLM 을 부르지 않는다 — 추출이 결정적이다
+    if figma_json and not pdf:
+        llm = None  # figma 단독 경로는 LLM 을 부르지 않는다 — 추출이 결정적이다
     else:
         try:
             llm = _make_llm(backend, cfg, pdf)

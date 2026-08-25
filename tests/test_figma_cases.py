@@ -62,3 +62,29 @@ class TestFigmaCases:
         spec = figma_login_spec()
         spec.source_kind = "document"
         assert any("-valid-" in c.case_id for c in generate_cases(spec))
+
+    def test_병합_문서에서는_document_화면만_지나는_흐름이_케이스가_된다(self):
+        """흐름 게이트는 '문서 전체' 가 아니라 '흐름이 밟는 화면' 기준이어야
+        한다 — 병합 문서에는 figma 단독 화면이 섞이는데, 그것 때문에 document
+        화면만 지나는 멀쩡한 흐름까지 죽으면 안 된다."""
+        def doc_screen(sid, name, path):
+            return ScreenSpec(
+                screen_id=sid, screen_name=name, url_path=path,
+                success_condition="`/next` 로 이동한다",
+                elements=[UIElement(element_id=f"{sid}_b", type="button",
+                                    label="다음")],
+            )
+        doc = SpecDocument(
+            source="x",
+            screens=[doc_screen("a", "에이", "/a"), doc_screen("b", "비", "/b"),
+                     figma_login_spec()],
+            flows=[
+                Flow(flow_id="ok", screen_ids=["a", "b"], via=[]),
+                Flow(flow_id="blocked", screen_ids=["a", "login"], via=[]),
+            ],
+        )
+        state = AgentState(pdf_path="", base_url="", run_id="t",
+                           run_dir=Path("."), doc=doc)
+        state = generate_test_cases(state)
+        flow_ids = {c.flow_id for c in state.cases if c.flow_id}
+        assert flow_ids == {"ok"}

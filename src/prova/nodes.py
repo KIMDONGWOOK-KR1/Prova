@@ -36,6 +36,7 @@ from prova.models import (
     Verdict,
 )
 from prova.s1_figma.extractor import extract_figma_document
+from prova.s1_merge import merge_documents
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
@@ -80,6 +81,9 @@ class AgentState:
     # screen_urls 는 {screen_id: url_path} — Figma 에는 경로가 없으므로 사용자가 준다.
     figma_json: Optional[str] = None
     screen_urls: dict[str, str] = field(default_factory=dict)
+    # 기획↔디자인 불일치 (병합 모드). 경고가 아니라 발견이다 — 리포트에서
+    # 별도 상자로 보인다 (s1_merge 모듈 설명).
+    design_mismatches: list[str] = field(default_factory=list)
 
     # 산출물
     #
@@ -130,6 +134,18 @@ def extract_spec(state: AgentState) -> AgentState:
     읽는 필드: pdf_path (또는 figma_json·screen_urls), llm
     쓰는 필드: doc
     """
+    if state.figma_json and state.pdf_path:
+        # 병합 모드 — 기획서(LLM 추출) + Figma(결정적 추출)를 이름으로 잇는다.
+        # 어긋나는 정보는 판정 대신 design_mismatches 발견으로 남는다.
+        if state.llm is None:
+            raise ValueError("병합 모드에는 LLM 백엔드가 필요합니다 (PDF 추출)")
+        pdf_doc = extract_document(state.pdf_path, state.llm)
+        figma_doc = extract_figma_document(state.figma_json, state.screen_urls)
+        state.doc, state.design_mismatches = merge_documents(pdf_doc, figma_doc)
+        for screen in state.doc.screens:
+            screen.warnings.extend(spec_defects(screen))
+        return state
+
     if state.figma_json:
         # Figma 경로 — LLM 을 부르지 않는다. 응답은 이미 구조화된 트리라서
         # 모델을 거치면 검증 가능한 사실이 검증 불가능한 추측이 된다.
@@ -166,11 +182,9 @@ def generate_test_cases(state: AgentState) -> AgentState:
     cases: list[TestCase] = []
     for screen in state.doc.screens:
         cases.extend(generate_cases(screen, llm=state.llm, doc=state.doc))
-    if all(s.source_kind == "document" for s in state.doc.screens):
-        cases.extend(generate_flow_cases(state.doc))
-    # figma 출처가 섞이면 흐름 케이스를 만들지 않는다 — 도착을 판정할
-    # 근거(문구·경로)가 figma 에 없다. 흐름 자체는 doc.flows 에 추출돼
-    # 리포트가 '추출했으나 검증하지 않음' 을 말할 수 있다.
+    # figma 단독 화면을 지나는 흐름은 generate_flow_cases 가 흐름 단위로
+    # 거른다 — 병합 문서에서 document 화면만 지나는 흐름은 살아야 한다.
+    cases.extend(generate_flow_cases(state.doc))
     state.cases = cases
 
     # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것을 여기서 센다.
@@ -533,8 +547,11 @@ def build_final_report(state: AgentState) -> AgentState:
         verdicts=state.verdicts,
         doc=state.doc,
         coverage=state.coverage_gaps,
-        spec_source=state.figma_json or state.pdf_path,
+        # 병합 모드면 merge_documents 가 "p.pdf + f.json" 을 만들어 둔다.
+        spec_source=(state.doc.source if state.doc and state.doc.source
+                     else (state.figma_json or state.pdf_path)),
         backend=getattr(state.llm, "name", "") if state.llm else "",
         selection=state.selection,
+        design_mismatches=state.design_mismatches,
     )
     return state
