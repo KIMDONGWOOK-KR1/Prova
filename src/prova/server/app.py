@@ -39,6 +39,7 @@ STATIC = Path(__file__).parent / "static"
 UPLOADS = Path("uploads")
 RUNS = Path("runs")
 SPEC_DIRS = [Path("fixtures/specs"), UPLOADS]
+FIGMA_DIRS = [Path("fixtures/figma"), UPLOADS]
 
 runner = JobRunner()
 app = FastAPI(title="Prova", docs_url=None, redoc_url=None)
@@ -65,6 +66,17 @@ def _safe_spec(raw: str) -> Path:
     return path
 
 
+def _safe_figma(raw: str) -> Path:
+    """Figma 응답 경로 확인 — _safe_spec 과 같은 안전장치, 디렉터리만 다르다."""
+    path = Path(raw).resolve()
+    allowed = [d.resolve() for d in FIGMA_DIRS if d.exists()]
+    if not any(path.is_relative_to(root) for root in allowed):
+        raise HTTPException(400, f"허용되지 않은 경로입니다: {raw}")
+    if not path.exists():
+        raise HTTPException(404, f"Figma 응답을 찾을 수 없습니다: {raw}")
+    return path
+
+
 def _config() -> dict:
     cfg_path = Path("configs/default.yaml")
     if not cfg_path.exists():
@@ -80,6 +92,9 @@ def _config() -> dict:
 class PlanRequest(BaseModel):
     pdf: str
     url: str
+    #: Figma 응답(JSON) 경로. 주면 병합 모드 — 기획서 규칙 + 디자인 문구·흐름,
+    #: 어긋나면 계획 화면에 '기획↔디자인 불일치' 로 실린다 (s1_merge).
+    figma: Optional[str] = None
     request: Optional[str] = None
     #: 기본값을 두지 않는다 — 요청이 빠뜨리면 조용히 mock 이 되는데, "mock 은
     #: 사용자가 직접 고를 때만" 이 이 도구의 규칙이다. 화면은 항상 보낸다.
@@ -118,18 +133,24 @@ def state() -> dict:
     for d in SPEC_DIRS:
         if d.exists():
             specs += sorted(str(p).replace("\\", "/") for p in d.glob("*.pdf"))
+    figmas: list[str] = []
+    for d in FIGMA_DIRS:
+        if d.exists():
+            figmas += sorted(str(p).replace("\\", "/") for p in d.glob("*.json")
+                             if not p.name.endswith(".golden.json"))
     cfg = _config()
     return {
         "busy": runner.busy,
         "specs": specs,
+        "figmas": figmas,
         "backend": cfg.get("llm", {}).get("backend", "mock"),
     }
 
 
 @app.post("/api/upload")
 async def upload(file: UploadFile) -> dict:
-    if not (file.filename or "").lower().endswith(".pdf"):
-        raise HTTPException(400, "PDF 파일만 올릴 수 있습니다.")
+    if not (file.filename or "").lower().endswith((".pdf", ".json")):
+        raise HTTPException(400, "PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.")
     UPLOADS.mkdir(parents=True, exist_ok=True)
     dest = UPLOADS / Path(file.filename).name
     with dest.open("wb") as out:
@@ -145,6 +166,7 @@ async def upload(file: UploadFile) -> dict:
 @app.post("/api/plan")
 def plan(body: PlanRequest) -> dict:
     pdf = _safe_spec(body.pdf)
+    figma = _safe_figma(body.figma) if body.figma else None
     cfg = _config()
 
     def work(report):
@@ -154,6 +176,7 @@ def plan(body: PlanRequest) -> dict:
             base_url=body.url,
             llm=llm,
             request=body.request,
+            figma_json=str(figma) if figma else None,
             on_progress=report,
         )
         sel = state.selection
@@ -183,6 +206,10 @@ def plan(body: PlanRequest) -> dict:
             "coverage": [c.model_dump() for c in sel.coverage],
             "screens": {s.screen_id: s.screen_name for s in state.doc.screens},
             "coverage_gaps": state.coverage_gaps,
+            # 기획↔디자인 불일치 — 사람이 케이스를 승인하는 자리(계획 화면)에서
+            # 실행 전에 봐야 한다. 구현을 검증하기 전에 입력끼리 모순이면 그게
+            # 먼저다.
+            "design_mismatches": state.design_mismatches,
         }
 
     return _submit("plan", work)
@@ -196,6 +223,7 @@ def plan(body: PlanRequest) -> dict:
 @app.post("/api/run")
 def run(body: RunRequest) -> dict:
     pdf = _safe_spec(body.pdf)
+    figma = _safe_figma(body.figma) if body.figma else None
     cfg = _config()
     if not body.case_ids:
         raise HTTPException(
@@ -213,6 +241,7 @@ def run(body: RunRequest) -> dict:
             pdf_path=str(pdf),
             base_url=body.url,
             llm=llm,
+            figma_json=str(figma) if figma else None,
             run_id=run_id,
             runs_root=RUNS,  # 목록·리포트 조회(RUNS)와 같은 뿌리여야 한다
             case_ids=body.case_ids,
