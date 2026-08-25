@@ -577,28 +577,30 @@ class ParsedDocument:
         표를 찾지 못하면 빈 목록을 돌려준다 — 기획서가 데이터를 제시하지 않으면
         정렬·합계 검증은 만들 수 없고, 그건 기획서의 한계다(스펙 §1-2).
         """
-        table = self._seed_rows_table()
-        if table is None:
+        tables = self._seed_rows_tables()
+        if not tables:
             return []
-        header = [normalize_ws(h) for h in table.header]
+        header = [normalize_ws(h) for h in tables[0].header]
         return [
             {header[i]: row[i].strip() for i in range(len(header)) if i < len(row)}
+            for table in tables
             for row in table.rows[1:]
         ]
 
     _SEED_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*테스트\s*주문\s*데이터\s*$")
 
-    def _seed_rows_table(self) -> Optional[ParsedTable]:
-        """declared_seed_rows 가 찾는 표 자체(행이 아니라 ParsedTable 객체).
+    def _seed_rows_tables(self) -> list[ParsedTable]:
+        """declared_seed_rows 가 읽는 표 조각들(행이 아니라 ParsedTable 객체).
 
         declared_scenarios 가 같은 표를 건너뛰는 데도 쓴다 — '테스트 주문
         데이터' 표의 열 제목(주문일·금액)이 UI 요소 라벨과 겹쳐서, 그 표가
         입력-결과 예시 표로 다시 해석되면 존재하지 않는 시나리오가 만들어진다
         (declared_scenarios 의 '표를 고르는 기준' 참고). 표 객체 자체(정체성)로
         비교해야 '표는 하나인데 두 declared_* 가 다른 이유로 같은 표를 다시
-        찾는' 상황에서 반드시 같은 표를 가리킨다.
+        찾는' 상황에서 반드시 같은 표를 가리킨다 — 그래서 병합본이 아니라
+        원본 조각 목록을 돌려준다(페이지 분할 조각도 예시 표로 오독되면 안 된다).
         """
-        return self._table_after_heading(
+        return self._tables_after_heading(
             self._SEED_HEADING_RE,
             lambda header, t: len(header) >= 2 and len(t.rows) >= 2,
         )
@@ -627,15 +629,37 @@ class ParsedDocument:
             if len(row) >= 2 and row[0].strip()
         }
 
-    def _table_after_heading(self, heading_re: re.Pattern, header_ok) -> Optional[ParsedTable]:
-        """heading_re 절 제목보다 아래(나중)에 나오는 첫 표 중 header_ok 를 만족하는 표.
+    def _tables_after_heading(self, heading_re: re.Pattern, header_ok) -> list[ParsedTable]:
+        """heading_re 절 제목 뒤 첫 표와, 페이지를 넘어간 그 연속 조각들.
 
-        declared_precondition_account·declared_seed_rows 가 공유하는 탐색
-        로직이다(두 함수의 '왜 라벨이 아니라 절 제목 위치로 찾는가' 참고).
+        declared_precondition_account·declared_seed_rows·declared_date_filter 가
+        공유하는 탐색 로직이다(각 함수의 '왜 라벨이 아니라 절 제목 위치로
+        찾는가' 참고). 원본 표 객체를 그대로 돌려준다 — declared_scenarios 가
+        '이미 다른 용도로 읽은 표' 를 **정체성으로** 건너뛰는데, 병합한 새
+        객체를 주면 조각들이 그 검사를 빠져나가 예시 표로 오독된다.
+
+        ## 왜 연속 조각을 잇는가 (2026-08-25 실제로 겪음)
+
+        표가 길어 다음 페이지로 넘어가면 PDF 생성기는 헤더를 다시 그리고,
+        pdfplumber 는 그것을 별개의 표 두 개로 읽는다. 첫 표만 쓰면 넘어간
+        행이 조용히 사라진다 — orders 기획서에 요소 3행을 더하자 시드 표의
+        마지막 행이 사라져 건수 케이스가 "5행 기대, 4행 추출" 로 잡아냈다.
+        요소 표(_element_table)는 같은 사고 뒤 병합 장치를 이미 갖고 있었다.
+
+        ## 연속 조각의 판별 — 헤더만 보면 안 된다
+
+        전제 계정 표와 테스트 계정 표는 헤더가 같다('이메일|비밀번호').
+        헤더만 보고 이으면 다른 절의 표를 삼켜 없는 행을 만들어낸다. 그래서
+        분할이 실제로 만들어내는 물리적 모양만 인정한다:
+
+            앵커가 자기 페이지의 마지막 표      (잘림은 페이지 끝에서만 일어난다)
+            조각은 다음 페이지의 첫 표          (그 사이에 다른 표가 없다)
+            조각의 헤더가 앵커와 동일           (생성기가 헤더를 반복해 그린다)
+            조각 위에 본문 줄이 없다            (새 절의 표는 절 제목이 위에 있다)
         """
         found = False
         min_top = -1.0  # 제한 없음 — 절 제목이 이전 페이지에 있었던 경우
-        for page in self.pages:
+        for page_idx, page in enumerate(self.pages):
             if not found:
                 top = page.heading_top(heading_re)
                 if top is not None:
@@ -643,13 +667,48 @@ class ParsedDocument:
                     min_top = top
             if not found:
                 continue
-            for table in page.tables:
+            for table_idx, table in enumerate(page.tables):
                 if table.top < min_top:
                     continue  # 절 제목보다 먼저 나오는, 같은 페이지의 다른 표
                 if header_ok(table.header, table):
-                    return table
+                    return [table] + self._continuations(table, page_idx, table_idx)
             min_top = -1.0  # 다음 페이지부터는 전부 절 제목보다 아래다
-        return None
+        return []
+
+    def _continuations(self, anchor: ParsedTable, page_idx: int, table_idx: int) -> list[ParsedTable]:
+        """anchor 의 페이지 분할 연속 조각들 (_tables_after_heading 의 판별 기준)."""
+        if table_idx != len(self.pages[page_idx].tables) - 1:
+            return []  # 앵커 뒤에 같은 페이지 표가 있다 — 여기서 잘리지 않았다
+        header = [normalize_ws(h) for h in anchor.header]
+        out: list[ParsedTable] = []
+        pi = page_idx + 1
+        while pi < len(self.pages):
+            page = self.pages[pi]
+            if not page.tables:
+                break
+            frag = page.tables[0]
+            if [normalize_ws(h) for h in frag.header] != header:
+                break
+            if any(line.strip() and top < frag.top for line, top in page.body_lines):
+                break  # 표 위에 본문(절 제목)이 있다 — 다른 절의 표다
+            out.append(frag)
+            if len(page.tables) > 1:
+                break  # 조각 뒤에 다른 표가 있으면 잘림은 여기서 끝났다
+            pi += 1
+        return out
+
+    def _table_after_heading(self, heading_re: re.Pattern, header_ok) -> Optional[ParsedTable]:
+        """_tables_after_heading 을 행이 합쳐진 표 하나로. 조각 정체성이 필요
+        없는 소비자(전제 계정·날짜 필터)용이다."""
+        tables = self._tables_after_heading(heading_re, header_ok)
+        if not tables:
+            return None
+        if len(tables) == 1:
+            return tables[0]
+        rows = [list(r) for r in tables[0].rows]
+        for frag in tables[1:]:
+            rows.extend(list(r) for r in frag.rows[1:])
+        return ParsedTable(rows=rows, top=tables[0].top)
 
     def declared_flows(self) -> list[dict]:
         """'화면 흐름' 표를 그대로 흐름으로 옮긴다. LLM 을 쓰지 않는다.
@@ -770,9 +829,11 @@ class ParsedDocument:
             return None
 
         element_table = self._element_table()
-        seed_table = self._seed_rows_table()
+        seed_tables = self._seed_rows_tables()
         for table in self.all_tables:
-            if table is element_table or table is seed_table or len(table.rows) < 2:
+            if (table is element_table
+                    or any(table is seed for seed in seed_tables)
+                    or len(table.rows) < 2):
                 continue
             header = [normalize_ws(h) for h in table.header]
             if len(header) < 2:

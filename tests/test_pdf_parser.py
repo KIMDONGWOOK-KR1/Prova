@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from prova.s1_spec_extractor.pdf_parser import ParsedTable, parse_pdf
+from prova.s1_spec_extractor.pdf_parser import ParsedPage, ParsedTable, parse_pdf
 from prova.text_utils import contains_loose
 
 SPEC_PDF = Path("fixtures/specs/login_spec.pdf")
@@ -479,3 +479,117 @@ class TestDeclaredRequiredMessage:
                      ["가입 경로를 선택하지 않음", '"가입 경로를 선택하세요." 노출'],
                      ["약관에 동의하지 않음", '"약관에 동의해야 합니다." 노출']]])
         assert doc.declared_required_message() == "필수 입력 항목입니다."
+
+
+class TestSplitTableMerge:
+    """페이지 경계에서 잘린 표 잇기 — 뒷조각이 조용히 사라지던 구멍 (2026-08-25).
+
+    날짜 필터 작업에서 실제로 겪었다: §2 에 행이 늘자 §5 시드 표가 페이지를
+    넘어갔고 declared_seed_rows 가 앞 조각(4행)만 읽었다. 요소 표는 같은 사고
+    후 병합 장치가 있었지만(_element_table), 절 제목 기반 탐색은 없었다.
+
+    연속 조각 판별은 엄격하다 — 다음 페이지의 첫 표 + 헤더 동일 + 그 위에
+    본문 줄 없음. 헤더만 보면 전제 계정 표와 테스트 계정 표(둘 다
+    '이메일|비밀번호')처럼 다른 절의 표를 삼킨다.
+    """
+
+    HEADER = ["주문번호", "주문일", "금액"]
+
+    def _page(self, no, body_lines, tables):
+        return ParsedPage(
+            page_no=no,
+            body_text=" ".join(t for t, _ in body_lines),
+            body_lines=body_lines,
+            tables=tables,
+        )
+
+    def _doc(self, pages):
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument
+        return ParsedDocument(source="x", pages=pages)
+
+    def _anchor_page(self, rows):
+        return self._page(1, [("5. 테스트 주문 데이터", 10.0)],
+                          [ParsedTable(rows=[self.HEADER] + rows, top=30.0)])
+
+    def test_다음_페이지로_넘어간_행을_이어_붙인다(self):
+        doc = self._doc([
+            self._anchor_page([["ORD-2", "2026-08-02", "200"]]),
+            self._page(2, [], [ParsedTable(
+                rows=[self.HEADER, ["ORD-1", "2026-08-01", "100"]], top=5.0)]),
+        ])
+        rows = doc.declared_seed_rows()
+        assert [r["주문번호"] for r in rows] == ["ORD-2", "ORD-1"]
+
+    def test_세_페이지_연쇄도_잇는다(self):
+        doc = self._doc([
+            self._anchor_page([["ORD-3", "2026-08-03", "300"]]),
+            self._page(2, [], [ParsedTable(
+                rows=[self.HEADER, ["ORD-2", "2026-08-02", "200"]], top=5.0)]),
+            self._page(3, [], [ParsedTable(
+                rows=[self.HEADER, ["ORD-1", "2026-08-01", "100"]], top=5.0)]),
+        ])
+        assert len(doc.declared_seed_rows()) == 3
+
+    def test_위에_본문이_있는_표는_다른_절의_표다(self):
+        """전제 계정/테스트 계정처럼 헤더가 같은 다른 절의 표를 삼키면 없는
+        행을 만들어낸다 — 절 제목이 위에 있으면 연속이 아니다."""
+        doc = self._doc([
+            self._anchor_page([["ORD-2", "2026-08-02", "200"]]),
+            self._page(2, [("6. 지난 주문 보관", 10.0)], [ParsedTable(
+                rows=[self.HEADER, ["OLD-1", "2025-01-01", "999"]], top=30.0)]),
+        ])
+        assert [r["주문번호"] for r in doc.declared_seed_rows()] == ["ORD-2"]
+
+    def test_헤더가_다르면_잇지_않는다(self):
+        doc = self._doc([
+            self._anchor_page([["ORD-2", "2026-08-02", "200"]]),
+            self._page(2, [], [ParsedTable(
+                rows=[["이메일", "비밀번호"], ["a@b.c", "pw"]], top=5.0)]),
+        ])
+        assert len(doc.declared_seed_rows()) == 1
+
+    def test_앵커가_페이지_마지막_표가_아니면_잇지_않는다(self):
+        """분할은 페이지 끝에서만 일어난다 — 앵커 뒤에 같은 페이지의 다른 표가
+        있으면 그 페이지에서 표가 잘리지 않았다는 뜻이다."""
+        doc = self._doc([
+            self._page(1, [("5. 테스트 주문 데이터", 10.0)], [
+                ParsedTable(rows=[self.HEADER, ["ORD-2", "2026-08-02", "200"]], top=30.0),
+                ParsedTable(rows=[["항목", "값"], ["비고", "-"]], top=90.0),
+            ]),
+            self._page(2, [], [ParsedTable(
+                rows=[self.HEADER, ["ORD-1", "2026-08-01", "100"]], top=5.0)]),
+        ])
+        assert len(doc.declared_seed_rows()) == 1
+
+    def test_날짜_필터_표도_잘리면_잇는다(self):
+        filter_header = ["항목", "값"]
+        doc = self._doc([
+            self._page(1, [("6. 날짜 필터", 10.0)], [ParsedTable(
+                rows=[filter_header, ["시작일 요소", "시작일"],
+                      ["종료일 요소", "종료일"], ["조회 버튼", "조회"],
+                      ["대상 목록", "주문 목록"]], top=30.0)]),
+            self._page(2, [], [ParsedTable(
+                rows=[filter_header, ["날짜 컬럼", "주문일"]], top=5.0)]),
+        ])
+        got = doc.declared_date_filter()
+        assert got is not None and got["날짜 컬럼"] == "주문일"
+
+    def test_잘린_조각이_예시_표로_오독되지_않는다(self):
+        """시드 표 열 제목(주문일·금액)은 요소 라벨과 겹친다 — 연속 조각이
+        정체성 검사를 빠져나가면 존재하지 않는 시나리오가 만들어진다."""
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument
+        element_table = ParsedTable(rows=[
+            ["요소 ID", "유형", "라벨"],
+            ["order_date", "텍스트", "주문일"],
+            ["order_amount", "텍스트", "금액"],
+        ], top=20.0)
+        doc = ParsedDocument(source="x", pages=[
+            self._page(1, [("2. UI 요소 정의", 10.0), ("5. 테스트 주문 데이터", 60.0)], [
+                element_table,
+                ParsedTable(rows=[self.HEADER, ["ORD-2", "2026-08-02", "200"]], top=80.0),
+            ]),
+            self._page(2, [], [ParsedTable(
+                rows=[self.HEADER, ["ORD-1", "2026-08-01", "100"]], top=5.0)]),
+        ])
+        assert len(doc.declared_seed_rows()) == 2
+        assert doc.declared_scenarios() == []
