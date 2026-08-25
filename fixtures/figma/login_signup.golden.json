@@ -1,0 +1,168 @@
+{
+  "source": "fixtures/figma/login_signup.json",
+  "screens": [
+    {
+      "screen_id": "로그인",
+      "screen_name": "로그인",
+      "url_path": "/login",
+      "elements": [
+        {
+          "element_id": "n2_77",
+          "type": "input",
+          "label": "이메일",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "이메일을 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_81",
+          "type": "input",
+          "label": "비밀번호",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "비밀번호를 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_85",
+          "type": "button",
+          "label": "로그인",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": null,
+          "options": [],
+          "sample_value": null
+        }
+      ],
+      "scenarios": [],
+      "success_condition": "",
+      "failure_conditions": [],
+      "required_message": null,
+      "warnings": [
+        "'가짜 입력란' 은 컴포넌트가 아니라 유형을 알 수 없어 요소로 줍지 않았습니다 — 디자인을 컴포넌트 인스턴스로 그려야 추출됩니다."
+      ],
+      "precondition": null,
+      "seed_rows": [],
+      "date_filter": null,
+      "source_kind": "figma"
+    },
+    {
+      "screen_id": "회원가입",
+      "screen_name": "회원가입",
+      "url_path": "/signup",
+      "elements": [
+        {
+          "element_id": "n2_92",
+          "type": "input",
+          "label": "이메일",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "이메일을 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_96",
+          "type": "input",
+          "label": "비밀번호",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "비밀번호를 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_100",
+          "type": "input",
+          "label": "비밀번호 확인",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "비밀번호를 다시 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_104",
+          "type": "input",
+          "label": "닉네임",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": "닉네임을 입력하세요",
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_108",
+          "type": "select",
+          "label": "가입 경로",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": null,
+          "options": [
+            "검색",
+            "지인 추천",
+            "광고"
+          ],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_114",
+          "type": "checkbox",
+          "label": "약관 동의",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": null,
+          "options": [],
+          "sample_value": null
+        },
+        {
+          "element_id": "n2_117",
+          "type": "button",
+          "label": "가입하기",
+          "required": false,
+          "constraints": {},
+          "error_message": null,
+          "placeholder": null,
+          "options": [],
+          "sample_value": null
+        }
+      ],
+      "scenarios": [],
+      "success_condition": "",
+      "failure_conditions": [],
+      "required_message": null,
+      "warnings": [],
+      "precondition": null,
+      "seed_rows": [],
+      "date_filter": null,
+      "source_kind": "figma"
+    }
+  ],
+  "flows": [
+    {
+      "flow_id": "회원가입_to_로그인",
+      "title": "회원가입 → 로그인",
+      "screen_ids": [
+        "회원가입",
+        "로그인"
+      ],
+      "via": [
+        "가입하기"
+      ],
+      "expect_text": ""
+    }
+  ],
+  "warnings": []
+}

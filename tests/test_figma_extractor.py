@@ -117,3 +117,40 @@ class TestFlows:
         doc = extract_figma_document(path, {"홈": "/"})
         assert doc.flows == []
         assert any("연결" in w for w in doc.warnings)
+
+
+class TestRealFixture:
+    """실물 Figma 응답 대조 — 합성과 실물이 어긋나면 실물이 이긴다.
+
+    실제로 한 번 이겼다: 실물은 prototype 연결을 legacy transitionNodeId 가
+    아니라 interactions 배열로 줬고, 첫 구현은 흐름 0개를 냈다
+    (figma_parser._transition_targets).
+    """
+
+    URLS = {"로그인": "/login", "회원가입": "/signup"}
+
+    def _doc(self):
+        import pytest
+        from pathlib import Path
+        fixture = Path("fixtures/figma/login_signup.json")
+        if not fixture.exists():
+            pytest.skip("실물 픽스처 없음 — scripts/fetch_figma.py 를 먼저 실행")
+        return extract_figma_document(fixture, dict(self.URLS))
+
+    def test_실물_응답이_골든과_같다(self):
+        import json
+        from pathlib import Path
+        doc = self._doc()
+        golden = json.loads(Path("fixtures/figma/login_signup.golden.json")
+                            .read_text(encoding="utf-8"))
+        assert json.loads(doc.model_dump_json()) == golden
+
+    def test_의도적_함정이_경고로_남았다(self):
+        doc = self._doc()
+        login = doc.screen_by_id("로그인")
+        assert any("컴포넌트가 아니" in w for w in login.warnings)
+
+    def test_실물_흐름이_via_와_함께_추출됐다(self):
+        doc = self._doc()
+        assert [(f.screen_ids, f.via) for f in doc.flows] == \
+            [(["회원가입", "로그인"], ["가입하기"])]

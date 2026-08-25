@@ -82,6 +82,9 @@ def parse_figma_file(raw: dict) -> tuple[list[FigmaFrame], list[str]]:
 def _parse_frame(node: dict, components: dict[str, str]) -> FigmaFrame:
     f = FigmaFrame(node_id=node["id"], name=normalize_ws(node.get("name", "")))
     _walk(node, f, components)
+    # 같은 연결이 legacy 표기(transitionNodeId)와 interactions 양쪽으로 오면
+    # 한 번만 센다 — 순서는 유지한다.
+    f.transitions = list(dict.fromkeys(f.transitions))
     return f
 
 
@@ -97,9 +100,28 @@ def _walk(node: dict, f: FigmaFrame, components: dict[str, str]) -> None:
                     "그려야 추출됩니다."
                 )
             _walk(child, f, components)
-        dst = child.get("transitionNodeId")
-        if dst:
+        for dst in _transition_targets(child):
             f.transitions.append((child["id"], dst))
+
+
+def _transition_targets(node: dict) -> list[str]:
+    """이 노드가 가리키는 prototype 이동 대상 프레임 id 들.
+
+    실물 API(2026-08-25 fetch)는 연결을 `interactions` 배열로 준다 — 문서의
+    legacy 표기(`transitionNodeId`)만 보던 첫 구현이 실물에서 흐름 0개를 냈다.
+    실물이 이기므로 양쪽을 다 읽되, 화면 이동(NODE + NAVIGATE)만 센다 —
+    URL 열기·오버레이 등은 화면 흐름이 아니다.
+    """
+    targets: list[str] = []
+    if node.get("transitionNodeId"):
+        targets.append(node["transitionNodeId"])
+    for interaction in node.get("interactions") or []:
+        for action in interaction.get("actions") or []:
+            if (action.get("type") == "NODE"
+                    and action.get("navigation") == "NAVIGATE"
+                    and action.get("destinationId")):
+                targets.append(action["destinationId"])
+    return targets
 
 
 def _looks_like_element(node: dict) -> bool:
@@ -158,6 +180,10 @@ def trim_figma_response(raw: dict) -> dict:
     """
     def trim_node(node: dict) -> dict:
         out = {k: node[k] for k in _NODE_KEEP if k in node}
+        # 실물 응답은 모든 노드에 interactions:[] 를 달고 온다 — 연결이 있는
+        # 것만 남긴다. 빈 배열까지 남기면 픽스처가 소음으로 부푼다.
+        if node.get("interactions"):
+            out["interactions"] = node["interactions"]
         if "children" in node:
             out["children"] = [trim_node(c) for c in node["children"]]
         return out

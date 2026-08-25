@@ -32,7 +32,9 @@ def extract_figma_document(
     raw = json.loads(Path(json_path).read_text(encoding="utf-8"))
     frames, doc_warnings = parse_figma_file(raw)
 
-    doc = SpecDocument(source=str(json_path), warnings=doc_warnings)
+    # source 는 POSIX 표기로 통일한다 — Windows 역슬래시가 섞이면 골든 대조가
+    # OS 표기 차이로 깨진다.
+    doc = SpecDocument(source=Path(json_path).as_posix(), warnings=doc_warnings)
     frame_id_to_screen: dict[str, str] = {}
     for f in frames:
         screen_id = _slug(f.name)
