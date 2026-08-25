@@ -110,5 +110,70 @@ def _merge_flows(
     merged: SpecDocument, pdf_doc: SpecDocument, figma_doc: SpecDocument,
     findings: list[str],
 ) -> None:
-    # Task 2 에서 채운다 — 흐름 채택 규칙 (스펙 '흐름 채택 규칙' 절).
+    """PDF 흐름은 그대로, Figma 흐름은 채택 규칙을 통과한 것만.
+
+    채택 규칙이 필요한 이유: 디자인의 prototype 연결이 기획서 성공 조건과
+    모순일 수 있다 — 실물 픽스처가 바로 그랬다(가입하기→로그인 vs 성공 조건
+    /welcome). 그대로 실행하면 구현이 옳아도 FAIL, 즉 오탐이다. 어긋남=발견
+    원칙을 흐름에도 적용한다:
+
+        같은 (화면 순서, via) 의 PDF 흐름이 있다  -> 이미 검증된다, 접는다
+        via 요소가 병합 화면에 없다               -> 발견 + 미채택
+        via 가 link 다                            -> 순수 이동이므로 채택
+        via 가 button 등 제출형이다               -> 출발 화면 성공 조건의
+            경로와 목적지 경로를 대조: 일치=채택 · 불일치=발견+미채택 ·
+            경로 없음=판정 불능이므로 발견+미채택 (억측으로 실행하지 않는다)
+    """
+    # 순환을 피해 함수 안에서 가져온다 — generator 는 models 만 보지만
+    # s1_merge 를 상단에서 물면 향후 generator→merge 참조가 생길 때 얽힌다.
+    from prova.s2_case_generator.generator import parse_success_expectation
+
     merged.flows.extend(f.model_copy(deep=True) for f in pdf_doc.flows)
+    name_to_id = {normalize_ws(s.screen_name): s.screen_id
+                  for s in merged.screens if s.source_kind == "document"}
+
+    for flow in figma_doc.flows:
+        ids = [name_to_id.get(normalize_ws(sid)) for sid in flow.screen_ids]
+        if any(i is None for i in ids):
+            missing = [sid for sid, i in zip(flow.screen_ids, ids) if i is None]
+            findings.append(
+                f"디자인 흐름 {flow.flow_id!r} 이 병합되지 않은 화면"
+                f"({', '.join(missing)})을 지나 실행하지 않습니다."
+            )
+            continue
+        via = list(flow.via)
+        if any(pf.screen_ids == ids and list(pf.via) == via
+               for pf in merged.flows):
+            continue  # 기획서가 이미 같은 흐름을 적었다
+
+        src = merged.screen_by_id(ids[0])
+        dst = merged.screen_by_id(ids[-1])
+        via_el = (next((e for e in src.elements if e.label == via[0]), None)
+                  if via else None)
+        if via and via_el is None:
+            findings.append(
+                f"디자인 흐름의 이동 요소 {via[0]!r} 가 병합 화면에 없어 "
+                "실행하지 않습니다."
+            )
+            continue
+        if via_el is not None and via_el.type != "link":
+            expected_path = parse_success_expectation(src).url_contains
+            if expected_path is None:
+                findings.append(
+                    f"디자인은 {via[0]!r} 로 {dst.screen_name!r} 이동을 그렸지만 "
+                    f"{src.screen_name!r} 성공 조건에 경로가 없어 맞는지 확인할 "
+                    "수 없습니다 — 실행하지 않습니다."
+                )
+                continue
+            if expected_path != dst.url_path:
+                findings.append(
+                    f"디자인은 {via[0]!r} 가 {dst.screen_name!r}"
+                    f"({dst.url_path})로 간다고 그렸지만 기획서 성공 조건은 "
+                    f"{expected_path} 로 갑니다 — 실행하지 않고 불일치로 "
+                    "보고합니다."
+                )
+                continue
+        merged.flows.append(Flow(
+            flow_id=f"{ids[0]}_to_{ids[-1]}_figma",
+            title=flow.title, screen_ids=ids, via=via,
+        ))
