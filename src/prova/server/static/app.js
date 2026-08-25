@@ -97,6 +97,7 @@ function saveSettings() {
   try {
     localStorage.setItem(LS, JSON.stringify({
       pdf: $("pdf").value, url: $("url").value, backend: $("backend").value,
+      figma: $("figma").value,
     }));
   } catch (e) { /* 저장 못 해도 기능은 그대로 돈다 */ }
 }
@@ -111,6 +112,7 @@ function form() {
     url: $("url").value.trim(),
     request: $("request").value.trim() || null,
     backend: $("backend").value,
+    figma: $("figma").value || null,
   };
 }
 
@@ -125,7 +127,8 @@ function renderChrome() {
   $("chips").innerHTML =
     `<span class="chip ${state.busy ? "busy" : "ok"}"><i class="dot"></i>` +
     `${state.busy ? "실행 중" : "준비됨"}</span>` +
-    `<span class="chip">${esc(f.backend)}</span>`;
+    `<span class="chip">${esc(f.backend)}</span>` +
+    (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
 }
 
 // ── 무대 (한 번에 한 상태만) ────────────────────────────────────────────────
@@ -243,6 +246,16 @@ function liveCoverage() {
 function planNotes() {
   const p = state.plan;
   const out = [];
+
+  // 기획↔디자인 불일치 — 케이스를 승인하기 전에 봐야 한다. 구현을 검증하기
+  // 전에 입력끼리 모순이면 그것부터 정리하는 것이 순서다 (s1_merge).
+  if ((p.design_mismatches || []).length) {
+    out.push(alertBox("warn",
+      `기획↔디자인 불일치 ${p.design_mismatches.length}건`,
+      "구현을 고치기 전에 두 입력 중 어느 쪽이 맞는지부터 정해야 합니다. " +
+      "어긋난 항목은 판정에서 빠집니다." +
+      p.design_mismatches.map((m) => `<div style="margin-top:6px">${esc(m)}</div>`).join("")));
+  }
 
   if (p.fallback) {
     out.push(alertBox("warn", "요청을 해석하지 못해 전체 케이스를 골랐습니다",
@@ -635,12 +648,14 @@ $("upload").addEventListener("change", async (e) => {
     const form = new FormData();
     form.append("file", file);
     const out = await api("/api/upload", { method: "POST", body: form });
-    if (![...$("pdf").options].some((o) => o.value === out.path)) {
+    // JSON 은 Figma 응답, PDF 는 기획서 — 올라간 쪽 셀렉트에 넣고 선택한다.
+    const target = out.path.toLowerCase().endsWith(".json") ? $("figma") : $("pdf");
+    if (![...target.options].some((o) => o.value === out.path)) {
       const opt = document.createElement("option");
       opt.value = out.path; opt.textContent = out.path;
-      $("pdf").appendChild(opt);
+      target.appendChild(opt);
     }
-    $("pdf").value = out.path;
+    target.value = out.path;
     saveSettings();
     renderChrome();
   } catch (err) {
@@ -670,7 +685,7 @@ function syncVariant() {
 $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
 
-["pdf", "url", "backend"].forEach((id) =>
+["pdf", "url", "backend", "figma"].forEach((id) =>
   $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); }));
 
 $("url").addEventListener("input", () => { syncVariant(); renderChrome(); });
@@ -691,11 +706,17 @@ async function boot() {
     state.serverBackend = st.backend;
     $("pdf").innerHTML = st.specs.map((p) =>
       `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+    $("figma").innerHTML = `<option value="">없음 — 기획서만</option>` +
+      (st.figmas || []).map((p) =>
+        `<option value="${esc(p)}">${esc(p)}</option>`).join("");
     $("backend").value = st.backend;
 
     const saved = loadSettings();
     if (saved.pdf && [...$("pdf").options].some((o) => o.value === saved.pdf)) {
       $("pdf").value = saved.pdf;
+    }
+    if (saved.figma && [...$("figma").options].some((o) => o.value === saved.figma)) {
+      $("figma").value = saved.figma;
     }
     if (saved.url) $("url").value = saved.url;
     if (saved.backend) $("backend").value = saved.backend;

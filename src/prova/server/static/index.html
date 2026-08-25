@@ -49,8 +49,15 @@
         </div>
 
         <div class="field">
-          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF 올리기</button>
-          <input type="file" id="upload" accept="application/pdf" class="sr">
+          <label for="figma">Figma 응답 (선택 — 병합 모드)</label>
+          <select id="figma">
+            <option value="">없음 — 기획서만</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF/JSON 올리기</button>
+          <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
         </div>
 
         <div class="field">

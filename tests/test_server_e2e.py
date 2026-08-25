@@ -335,3 +335,42 @@ class TestReportAssets:
         job = wait(client, res.json()["job_id"])
         run_id = job["result"]["run_id"]
         assert client.get(f"/api/report/{run_id}").status_code == 200
+
+
+class TestFigmaMerge:
+    """병합 모드 — 계획 화면이 실행 전에 기획↔디자인 모순을 보여준다."""
+
+    FIGMA = "fixtures/figma/synthetic_mismatch.json"
+
+    def _plan(self, client, sut_base, **extra):
+        job = wait(client, client.post("/api/plan", json={
+            "pdf": SPEC, "url": f"{sut_base}/good", "backend": "mock", **extra,
+        }).json()["job_id"])
+        assert job["status"] == "done", job.get("error")
+        return job["result"]
+
+    def test_figma_를_주면_계획에_불일치가_실린다(self, client, sut_base):
+        found = self._plan(client, sut_base, figma=self.FIGMA)["design_mismatches"]
+        assert any("아이디를 입력하세요" in f for f in found)
+        assert any("OTP" in f for f in found)
+
+    def test_figma_없으면_불일치_목록이_빈다(self, client, sut_base):
+        assert self._plan(client, sut_base)["design_mismatches"] == []
+
+    def test_허용되지_않은_figma_경로는_거부한다(self, client, sut_base):
+        r = client.post("/api/plan", json={
+            "pdf": SPEC, "url": f"{sut_base}/good", "backend": "mock",
+            "figma": "../../.env",
+        })
+        assert r.status_code == 400
+
+    def test_state_가_figma_목록을_준다(self, client):
+        figmas = client.get("/api/state").json()["figmas"]
+        assert any(p.endswith("login_signup.json") for p in figmas)
+
+    def test_json_업로드를_받는다(self, client, tmp_path, monkeypatch):
+        uploads = tmp_path / "up"
+        monkeypatch.setattr(server_app, "UPLOADS", uploads)
+        r = client.post("/api/upload", files={
+            "file": ("resp.json", b"{}", "application/json")})
+        assert r.status_code == 200 and r.json()["path"].endswith("resp.json")
