@@ -1013,7 +1013,16 @@ def _split_flow_cell(cell: str) -> list[str]:
     화면에 보이는 라벨이고('로그인하러 가기'), 공백이 라벨의 일부다. 지우면 S3 가
     요소를 못 찾는다.
     """
-    parts = re.split(_FLOW_SEP, normalize_ws(cell))
+    parts = [p.strip() for p in re.split(_FLOW_SEP, normalize_ws(cell))]
     # '-' 는 기획서에서 '해당 없음' 을 뜻하는 관례다. 라벨로 받으면 S3 가 화면에서
     # '-' 라는 요소를 찾다 실패해, 이동 방법을 안 적은 흐름이 전부 끊긴다.
-    return [p.strip() for p in parts if p.strip() and p.strip() not in ("-", "—")]
+    #
+    # 지우되 **자리는 남긴다.** 전이가 둘 이상이면 via[i] 가 i 번째 전이를
+    # 가리키므로, 앞의 '-' 를 자리째 지우면 뒤 전이의 라벨이 앞 전이에 붙는다 —
+    # 기획서가 적은 것과 다른 것이 조용히 돈다. 3화면 이상에서만 드러난다.
+    via = ["" if p in ("-", "—") else p for p in parts]
+    # 뒤쪽 빈 자리는 남길 필요가 없다. 생성기가 범위를 벗어난 전이를 주소 이동으로
+    # 처리하므로 결과가 같고, 잘라야 '-' 하나뿐인 흐름의 값이 예전 그대로다.
+    while via and not via[-1]:
+        via.pop()
+    return via

@@ -37,23 +37,29 @@ SPEC_DIR = Path("fixtures/specs")
 _SCRIPT = Path("scripts/make_multi_spec.py")
 
 
-def _assemble() -> str:
+def _assemble(name: str = "multi") -> str:
     """make_multi_spec.assemble() 을 그대로 불러 조립 결과를 얻는다."""
-    return load_script(str(_SCRIPT)).assemble()
+    return load_script(str(_SCRIPT)).assemble(name)
+
+
+#: 조립되는 문서 이름들. 스크립트가 아는 목록을 그대로 읽는다 — 여기에 손으로
+#: 적으면 문서를 추가하고 이 목록을 잊었을 때 새 문서만 조용히 안 지켜진다.
+ASSEMBLED = tuple(load_script(str(_SCRIPT)).DOCUMENTS)
 
 
 class TestMultiSpecUpToDate:
-    def test_통합_문서가_화면_기획서와_맞다(self):
+    @pytest.mark.parametrize("name", ASSEMBLED)
+    def test_통합_문서가_화면_기획서와_맞다(self, name):
         """화면 기획서를 고치고 통합 문서를 다시 조립하지 않으면 여기서 걸린다.
 
         고치는 방법: `uv run python scripts/make_multi_spec.py` 그다음
-        `uv run python scripts/make_spec_pdf.py fixtures/specs/multi_spec.md`
+        `uv run python scripts/make_spec_pdf.py fixtures/specs/<이름>_spec.md`
         """
-        on_disk = (SPEC_DIR / "multi_spec.md").read_text(encoding="utf-8")
-        assert on_disk == _assemble(), (
-            "통합 기획서가 화면별 기획서와 어긋났습니다.\n"
+        on_disk = (SPEC_DIR / f"{name}_spec.md").read_text(encoding="utf-8")
+        assert on_disk == _assemble(name), (
+            f"{name}_spec.md 가 화면별 기획서와 어긋났습니다.\n"
             "  uv run python scripts/make_multi_spec.py\n"
-            "  uv run python scripts/make_spec_pdf.py fixtures/specs/multi_spec.md"
+            f"  uv run python scripts/make_spec_pdf.py fixtures/specs/{name}_spec.md"
         )
 
     def test_조각_파일은_PDF가_없다(self):
@@ -106,11 +112,45 @@ class TestMultiSpecPdfMatchesMarkdown:
             "signup_link_to_login", "signup_then_login"}
 
 
+@pytest.fixture(scope="module")
+def onboarding_doc():
+    """가입→로그인→상품등록 문서 PDF."""
+    pdf = SPEC_DIR / "onboarding_spec.pdf"
+    if not pdf.exists():
+        pytest.skip("먼저 `uv run python scripts/make_spec_pdf.py` 를 실행하세요")
+    return parse_pdf(pdf)
+
+
+class TestOnboardingSpecPdfMatchesMarkdown:
+    """가입→로그인→상품등록 문서. 화면 셋을 지나는 흐름이 사는 유일한 픽스처다."""
+
+    def test_화면_수가_맞다(self, onboarding_doc):
+        """조각은 둘인데 화면은 셋이다 — product_spec 이 로그인까지 담기 때문이다.
+        페이지 구분이 딸려 오지 않으면 여기서 갈린다."""
+        screens, warnings = onboarding_doc.split_screens()
+        assert len(screens) == 3, f"화면 {len(screens)}개, 경고: {warnings}"
+
+    def test_흐름이_세_화면을_가리킨다(self, onboarding_doc):
+        flows = {f["flow_id"]: f["screen_ids"] for f in onboarding_doc.declared_flows()}
+        assert flows == {
+            "signup_link_to_product": ["signup", "login", "product"],
+            "signup_state_to_product": ["signup", "login", "product"],
+        }
+
+    def test_전이별_이동_방법이_보존된다(self, onboarding_doc):
+        """'로그인하러 가기 → -' 에서 앞의 라벨만 남고 뒤는 주소 이동이 된다.
+        자리가 밀리면 기획서가 적은 것과 다른 전이에 클릭이 붙는다."""
+        by_id = {f["flow_id"]: f["via"] for f in onboarding_doc.declared_flows()}
+        assert by_id["signup_link_to_product"] == ["로그인하러 가기"]
+        assert by_id["signup_state_to_product"] == []
+
+
 class TestScriptIsIdempotent:
-    def test_두_번_돌려도_바뀌지_않는다(self):
+    @pytest.mark.parametrize("name", ASSEMBLED)
+    def test_두_번_돌려도_바뀌지_않는다(self, name):
         """조립이 결정적이어야 위 대조가 의미를 갖는다. 실행마다 달라지면
         '낡았다' 와 '방금 만들었다' 를 구별할 수 없다."""
-        assert _assemble() == _assemble()
+        assert _assemble(name) == _assemble(name)
 
     def test_스크립트가_실행된다(self):
         """import 로만 시험하면 __main__ 경로가 깨진 것을 못 본다.

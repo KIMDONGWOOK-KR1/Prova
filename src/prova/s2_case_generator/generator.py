@@ -890,7 +890,12 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
     # 링크를 눌러, 하나는 주소로), 그때 제목이 같으면 리포트에서 어느 쪽이
     # 실패했는지 구분할 수 없다. 둘이 확인하는 것은 서로 다르다 —
     # 하나는 화면을 잇는 요소, 하나는 이어진 상태다.
-    how = (f"'{', '.join(flow.via)}' 를 눌러 이동" if flow.via else "주소로 이동")
+    # 전이마다 따로 적는다. 전이가 하나면 "'로그인하러 가기' 를 눌러 이동" 이나
+    # "주소로 이동" 중 하나로 참이지만, 셋 이상을 밟으면 전이마다 방법이 다를 수
+    # 있어서 어느 한쪽으로 적으면 절반이 거짓이 된다. 전이가 하나뿐인 흐름의
+    # 제목은 예전과 글자까지 같다.
+    moves = [flow.via[i] if i < len(flow.via) else "" for i in range(len(screens) - 1)]
+    how = " → ".join(f"'{m}' 를 눌러 이동" if m else "주소로 이동" for m in moves)
 
     return TestCase(
         case_id=f"flow-{_slug(flow.flow_id)}-001",

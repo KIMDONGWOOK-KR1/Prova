@@ -525,6 +525,100 @@ class TestFlowCases:
         assert generate_flow_cases(self.doc(flows=[])) == []
 
 
+class TestThreeScreenFlow:
+    """화면 셋을 지나는 흐름 — 전이가 둘이 되면서 처음 갈라지는 것들.
+
+    Flow 모델은 처음부터 N 화면이었고 생성기도 일반 순회였지만, 실제로 셋을
+    밟아 본 적이 없었다. 전이가 하나뿐일 때는 드러나지 않던 것들이 여기서
+    갈라진다 — 전이마다 이동 방법이 다를 수 있고, 도착 확인이 여러 번 생기고,
+    제목이 '어떻게 이동했는가' 를 하나의 문장으로 말할 수 없게 된다.
+    """
+
+    def doc(self, via=None):
+        from prova.models import Flow, SpecDocument
+
+        signup = ScreenSpec(
+            screen_id="signup", screen_name="회원가입", url_path="/signup",
+            elements=[
+                UIElement(element_id="email", type="input", label="이메일",
+                          required=True, constraints={"format": "email"},
+                          sample_value="newuser@test.com"),
+                UIElement(element_id="pw", type="input", label="비밀번호",
+                          required=True, constraints={"min_length": 8},
+                          sample_value="Signup1!"),
+                UIElement(element_id="btn", type="button", label="가입하기"),
+            ],
+            success_condition='/welcome 으로 이동하고 "가입이 완료되었습니다" 노출',
+        )
+        login = ScreenSpec(
+            screen_id="login", screen_name="로그인", url_path="/login",
+            elements=[
+                UIElement(element_id="email", type="input", label="이메일",
+                          required=True, constraints={"format": "email"},
+                          sample_value="user@test.com"),
+                UIElement(element_id="pw", type="input", label="비밀번호",
+                          required=True, constraints={"min_length": 8},
+                          sample_value="Abcd123!"),
+                UIElement(element_id="btn", type="button", label="로그인"),
+            ],
+            success_condition='/dashboard 로 이동하고 "환영합니다" 노출',
+        )
+        product = ScreenSpec(
+            screen_id="product", screen_name="상품 등록", url_path="/product",
+            elements=[
+                UIElement(element_id="name", type="input", label="상품명",
+                          required=True, sample_value="테스트상품"),
+                UIElement(element_id="btn", type="button", label="등록하기"),
+            ],
+            success_condition='"상품이 등록되었습니다" 노출',
+        )
+        return SpecDocument(
+            screens=[signup, login, product],
+            flows=[Flow(flow_id="onboarding",
+                        screen_ids=["signup", "login", "product"],
+                        via=via or [])],
+        )
+
+    def flow_case(self, via=None):
+        from prova.s2_case_generator.generator import generate_flow_cases
+
+        cases = generate_flow_cases(self.doc(via))
+        assert len(cases) == 1
+        return cases[0]
+
+    def test_세_화면을_순서대로_밟는다(self):
+        case = self.flow_case()
+        paths = [s.target for s in case.steps if s.action == "navigate"]
+        assert paths == ["/signup", "/login", "/product"]
+
+    def test_중간_화면_둘_다_도착을_확인한다(self):
+        """앞 화면에서 끊겼는데 마지막 화면이 지목되는 것을 막는 스텝이다.
+        화면이 셋이면 그 위험도 둘이므로 확인도 둘이어야 한다."""
+        case = self.flow_case()
+        targets = [s.target for s in case.steps
+                   if s.action == "assert" and s.target.endswith("성공")]
+        assert targets == ["signup 성공", "login 성공"]
+
+    def test_전이마다_이동_방법이_다를_수_있다(self):
+        """첫 전이는 주소로, 둘째 전이는 눌러서. 자리가 밀리면 엉뚱한 전이에
+        클릭이 붙는데, 그러면 기획서가 적은 것과 다른 것이 돈다."""
+        case = self.flow_case(via=["", "상품 등록하러 가기"])
+        moves = [(s.action, s.target) for s in case.steps
+                 if s.action == "navigate"
+                 or (s.action == "click" and s.target == "상품 등록하러 가기")]
+        assert moves == [
+            ("navigate", "/signup"),
+            ("navigate", "/login"),
+            ("click", "상품 등록하러 가기"),
+        ]
+
+    def test_제목이_섞인_이동을_거짓말하지_않는다(self):
+        """전이가 하나면 '눌러 이동' 이나 '주소로 이동' 중 하나로 참이지만,
+        섞이면 어느 쪽을 써도 절반은 거짓이다. 전이별로 적는다."""
+        case = self.flow_case(via=["로그인하러 가기", ""])
+        assert "'로그인하러 가기' 를 눌러 이동 → 주소로 이동" in case.title
+
+
 class TestOptionCases:
     """선택 목록이 화면에 다 있는가 — 기획서에 적혀 있는데 아무도 확인하지 않던 것.
 
