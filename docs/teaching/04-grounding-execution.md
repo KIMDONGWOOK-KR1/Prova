@@ -301,7 +301,7 @@ def _resolve_url(ctx, target: str) -> str:
 
 ```powershell
 # SUT 띄우고
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 다른 터미널에서 — 요소 탐지가 어느 전략으로 되는지
 uv run python -c "

@@ -81,7 +81,7 @@
 직접 확인:
 
     uv run pytest tests/test_merge_documents.py tests/test_figma_merge_e2e.py -q
-    uv run uvicorn sut.app:app --port 8100   # 별 터미널
+    uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미널
     uv run prova run --pdf fixtures/specs/multi_spec.pdf \
         --figma-json fixtures/figma/login_signup.json \
         --backend mock --url http://localhost:8100/good

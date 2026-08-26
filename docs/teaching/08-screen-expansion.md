@@ -296,7 +296,7 @@ EXPECTED_BAD_FAILURES = {
 
 ```powershell
 # 테스트 대상 웹앱
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 회원가입 검증 (GPU 없이 mock 으로)
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend mock

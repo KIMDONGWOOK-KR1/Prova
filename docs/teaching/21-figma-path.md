@@ -112,4 +112,4 @@ Figma 앱에서 그려 실제 API 응답으로 같은 관통을 반복하고, �
                   tests/test_figma_cases.py tests/test_figma_e2e.py -q
     uv run prova run --figma-json fixtures/figma/login_signup.json \
         --screen-url 로그인=/login --screen-url 회원가입=/signup \
-        --url http://localhost:8100/good   # 먼저 별 터미널에서: uv run uvicorn sut.app:app --port 8100
+        --url http://localhost:8100/good   # 먼저 별 터미널에서: uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut

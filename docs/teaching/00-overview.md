@@ -248,7 +248,7 @@ GPU가 필요한 부분과 브라우저가 필요한 부분을 나눠 놓았습�
 
 ```powershell
 # 테스트 대상 웹앱 (별 터미널)
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # bad 구현에 한 케이스만 천천히 실행 — 브라우저 창이 뜬다
 uv run prova run --pdf fixtures/specs/login_spec.pdf `

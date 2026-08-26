@@ -105,7 +105,7 @@ VL 을 한 실행에 넣는 것**이므로, 그것으로 재 봤습니다. 대�
 
     uv run pytest tests/test_plan_store.py tests/test_two_stage_e2e.py \
         tests/test_cli_two_stage.py -q
-    uv run uvicorn sut.app:app --port 8100   # 별 터미널
+    uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미널
     uv run prova run --pdf fixtures/specs/login_spec.pdf --backend mock \
         --url http://localhost:8100/good --run-id two-stage --plan-only
     uv run prova run --resume runs/two-stage

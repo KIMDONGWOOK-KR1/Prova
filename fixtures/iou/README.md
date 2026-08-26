@@ -32,7 +32,7 @@
 
 이미 굳은 PNG 로 채점하므로 **SUT 는 필요 없다.** 시험지를 다시 만들 때만 필요하다.
 
-    uv run uvicorn sut.app:app --port 8100
+    uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
     uv run python scripts/build_iou_dataset.py       # dataset_id 가 같아야 정상
 
 ### 2. VL 서버로 교체한다 ← 사람이 해야 한다

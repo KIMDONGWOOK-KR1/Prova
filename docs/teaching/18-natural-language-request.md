@@ -327,7 +327,7 @@ UI 안에 iframe 으로 뜨면 혼자 하얗게 빛났습니다. **같은 화면
 
 ```powershell
 # 테스트 대상 띄우기 (별 터미널)
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 1) 요청 없이 — 지금까지와 같다
 uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/bad --backend mock
