@@ -465,3 +465,20 @@ class TestApplyDeclaredDateFilter:
         _apply_declared_date_filter(spec, declared)
         assert spec.date_filter is not None
         assert spec.date_filter.empty_message is None
+
+    def test_기간_역전_문구를_읽는다(self):
+        """요소 간(시작일↔종료일) 규칙은 값 하나만 봐서는 판정할 수 없다.
+        기대 문구를 기획서가 정해 줘야 검증이 성립한다."""
+        spec = self._spec()
+        declared = dict(self.FULL)
+        declared["기간 역전 문구"] = "종료일은 시작일보다 빠를 수 없습니다."
+        _apply_declared_date_filter(spec, declared)
+        assert spec.date_filter.reversed_message == "종료일은 시작일보다 빠를 수 없습니다."
+
+    def test_기간_역전_문구는_선택이다(self):
+        """기획서가 그 규칙을 적지 않았으면 검증할 근거가 없다. 지어내면 오탐이
+        되므로 케이스 하나가 빠질 뿐 기간 조회 자체는 그대로 검증한다."""
+        spec = self._spec()
+        _apply_declared_date_filter(spec, dict(self.FULL))
+        assert spec.date_filter is not None
+        assert spec.date_filter.reversed_message is None

@@ -174,6 +174,14 @@ class DateFilter(BaseModel):
     empty_message: Optional[str] = Field(
         default=None, description="조회 결과가 없을 때 노출하기로 한 문구 (기획서가 정한 경우만)"
     )
+    # 시작일 > 종료일 일 때 노출하기로 한 문구. 요소 **간** 규칙이라 값 하나만
+    # 봐서는 판정할 수 없고(same_as 와 같은 종류다), 기대 문구도 기획서가 정해
+    # 줘야 한다. 없으면 그 케이스를 만들지 않는다 — 지어낸 문구로 대조하면
+    # 올바른 구현을 FAIL 로 보고하는 오탐이 된다.
+    reversed_message: Optional[str] = Field(
+        default=None,
+        description="시작일이 종료일보다 늦을 때 노출하기로 한 문구 (기획서가 정한 경우만)",
+    )
 
 
 class ScreenSpec(BaseModel):

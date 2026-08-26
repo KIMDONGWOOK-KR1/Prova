@@ -621,11 +621,12 @@ def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
     seq = start_seq
     cases: list[TestCase] = []
 
-    def add(title: str, steps: list[TestStep], expected: Expectation) -> None:
+    def add(title: str, steps: list[TestStep], expected: Expectation,
+            kind: str = "positive", violates: Optional[str] = None) -> None:
         nonlocal seq
         cases.append(TestCase(
             case_id=f"{spec.screen_id}-filter-{seq:03d}", screen_id=spec.screen_id,
-            title=title, type="positive", steps=steps, expected=expected,
+            title=title, type=kind, violates=violates, steps=steps, expected=expected,
         ))
         seq += 1
 
@@ -681,6 +682,22 @@ def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         _steps([]),
         Expectation(type="result_count", count=len(spec.seed_rows),
                     count_target=f.target_label))
+
+    # 기간 역전 — 이 파일에서 유일한 **요소 간** 규칙이다.
+    #
+    # 값 하나만 봐서는 위반인지 알 수 없다(시작일 2026-08-12 는 그 자체로는
+    # 멀쩡한 날짜다). 그래서 일반 위반 케이스 기계(violations_for_element)가
+    # 다루지 못하고, 두 날짜를 함께 보는 이 자리에 붙는다. 날짜 요소는
+    # _fillable_inputs 에도 들어 있지 않아 그 경로가 아예 닿지 않는다.
+    #
+    # 정상 기간의 양끝을 그대로 뒤집어 쓴다. 임의 날짜를 쓰면 화면이 '기간 밖'
+    # 으로 처리해도 결과가 같아 보여서, 무엇 때문에 문구가 떴는지 말할 수 없다.
+    if f.reversed_message:
+        add(f"시작일이 종료일보다 늦으면 '{f.reversed_message}' 가 노출되는지 확인",
+            _steps([(f.start_label, end.isoformat()),
+                    (f.end_label, start.isoformat())]),
+            Expectation(type="text_visible", value=f.reversed_message),
+            kind="negative", violates="period_reversed")
     return cases
 
 
