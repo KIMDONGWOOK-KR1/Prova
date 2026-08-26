@@ -187,12 +187,17 @@ uv run prova run --pdf 기획서.pdf --url http://... --run-id two-model --plan-
 uv run prova run --resume runs/two-model --vlm http://localhost:8001/v1 --vlm-model Qwen2.5-VL-3B-AWQ
 ```
 
+2026-08-26 에 실물 7B(추출) → 실물 VL(탐지)로 관통시켰다. `nolabel` 에서 2차
+경로 없이 재개하면 1 PASS / 9 FAIL, 실물 VL 로 재개하면 **9 PASS / 1 FAIL**
+(이미지로 찾아 진행 8건)이고, 남은 FAIL 1건은 심어 둔 라벨 결함 그대로다.
+리포트는 재개 실행에 LLM 이 없는데도 추출 백엔드를 7B 로 기록한다 (노트 23).
+
 실제 로컬 LLM으로 돌리려면 [docs/CHEETAH_SETUP.md](docs/CHEETAH_SETUP.md)를 따라
 CHEETAH에 vLLM을 올리고 `--backend` 없이 실행한다.
 
 ```powershell
 uv run prova check     # vLLM 연결 + 정형 출력 동작 확인
-uv run pytest          # 테스트 754개 (vLLM 없으면 정확도 측정 69개는 자동 skip)
+uv run pytest          # 전체 스위트 (vLLM 없으면 실모델 측정은 자동 skip)
 ```
 
 ---

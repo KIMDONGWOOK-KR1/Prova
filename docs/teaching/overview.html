@@ -3052,7 +3052,7 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
               <td><span class="tag pass">닫힘 08-26</span> <code>--plan-only</code>(7B 로 S1~S2 →
                   <code>plan.json</code>) → 서버 교체 → <code>--resume</code>(LLM 없이 S3~S6).
                   재개한 실행이 한 번에 돌린 실행과 같은 판정을 낸다는 것을 관통 테스트가
-                  지키고, 리포트가 "두 단계 실행" 상자로 추출 백엔드·시각을 말한다 (노트 23)</td></tr>
+                  지키고, 리포트가 "두 단계 실행" 상자로 추출 백엔드·시각을 말한다. 실물 7B → 실물 VL 로 관통해 <code>nolabel</code> 에서 1 PASS / 9 FAIL → <strong>9 PASS / 1 FAIL</strong>(이미지로 8건), 남은 FAIL 1건은 심어 둔 라벨 결함 그대로 (노트 23)</td></tr>
           <tr><td>시맨틱 <code>&lt;table&gt;</code> 마크업 탐지</td>
               <td><span class="tag pass">닫힘 08-22</span> 라벨 경로가 0개일 때만 <code>caption</code>/<code>th</code>
                   로 내려간다. 정확 일치·둘 이상이면 ambiguous. SUT <code>table</code>/<code>badtable</code>
@@ -3103,7 +3103,7 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 1014개 ·
+    코드 <code>C:\dev\prova</code> · 테스트 1016개 ·
     자세한 설명은 <code>docs/teaching/</code>의 노트 23개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
