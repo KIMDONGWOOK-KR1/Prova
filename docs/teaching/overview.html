@@ -3049,7 +3049,10 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
           <tr><td>표 헤더 후보 넓히기 (<code>항목</code> · <code>필드</code> · <code>구분</code>)</td>
               <td>실물을 본 뒤 결정한다. 미리 넓히면 다른 표를 요소 표로 잘못 읽는다</td></tr>
           <tr><td>두 실물 모델(LLM + VLM)의 한 실행 관통</td>
-              <td>각각은 측정했다. 서버를 바꾸는 사이에 추출 결과를 보관하는 경로가 없다</td></tr>
+              <td><span class="tag pass">닫힘 08-26</span> <code>--plan-only</code>(7B 로 S1~S2 →
+                  <code>plan.json</code>) → 서버 교체 → <code>--resume</code>(LLM 없이 S3~S6).
+                  재개한 실행이 한 번에 돌린 실행과 같은 판정을 낸다는 것을 관통 테스트가
+                  지키고, 리포트가 "두 단계 실행" 상자로 추출 백엔드·시각을 말한다 (노트 23)</td></tr>
           <tr><td>시맨틱 <code>&lt;table&gt;</code> 마크업 탐지</td>
               <td><span class="tag pass">닫힘 08-22</span> 라벨 경로가 0개일 때만 <code>caption</code>/<code>th</code>
                   로 내려간다. 정확 일치·둘 이상이면 ambiguous. SUT <code>table</code>/<code>badtable</code>
@@ -3100,8 +3103,8 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 973개 ·
-    자세한 설명은 <code>docs/teaching/</code>의 노트 22개,
+    코드 <code>C:\dev\prova</code> · 테스트 1014개 ·
+    자세한 설명은 <code>docs/teaching/</code>의 노트 23개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>
 

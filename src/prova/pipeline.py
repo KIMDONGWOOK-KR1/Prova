@@ -30,6 +30,7 @@ from prova.nodes import (
     generate_test_cases,
     run_cases,
 )
+from prova.plan_store import load_plan, plan_warnings, save_plan
 from prova.s2_case_generator.selector import select_by_ids, select_cases
 from prova.s6_report.report_builder import save_html, save_json
 
@@ -235,7 +236,45 @@ def run_pipeline(
         on_progress=on_progress,
     )
 
-    # --- S3~S5: 실행과 판정 (브라우저 필요) ---
+    return _execute(
+        state,
+        run_dir=run_dir,
+        n_all=n_all,
+        headless=headless,
+        viewport=viewport,
+        slow_mo=slow_mo,
+        record_video=record_video,
+        only=only,
+        hold_sec=hold_sec,
+        storage_state=storage_state,
+        on_progress=on_progress,
+    )
+
+
+def _execute(
+    state: AgentState,
+    *,
+    run_dir: Path,
+    n_all: int,
+    headless: bool = True,
+    viewport: Optional[dict] = None,
+    slow_mo: int = 0,
+    record_video: bool = False,
+    only: Optional[str] = None,
+    hold_sec: float = 0.0,
+    storage_state: Optional[str] = None,
+    on_progress=None,
+) -> tuple[TestReport, Path]:
+    """S3~S6 — 계획이 끝난 상태를 받아 브라우저 실행과 리포트를 수행한다.
+
+    run_pipeline(한 번에)과 resume_pipeline(저장된 계획 재개)이 공유한다.
+    두 경로가 같은 코드로 실행돼야 "재개한 실행이 한 번에 돌린 실행과 같다"
+    는 test_two_stage_e2e 의 계약이 코드 구조로 보장된다.
+    """
+    def progress(message: str) -> None:
+        if on_progress:
+            on_progress(message)
+
     progress("S3~S5 브라우저 실행 및 판정")
     video_path: Optional[Path] = None
     with sync_playwright() as p:
@@ -295,3 +334,123 @@ def run_pipeline(
     save_html(state.report, run_dir)
 
     return state.report, run_dir
+
+
+def plan_pipeline(
+    pdf_path: str,
+    base_url: str,
+    llm: LLMClient,
+    run_id: str,
+    runs_root: Path = Path("runs"),
+    only: Optional[str] = None,
+    request: Optional[str] = None,
+    figma_json: Optional[str] = None,
+    screen_urls: Optional[dict[str, str]] = None,
+    on_progress=None,
+) -> tuple[AgentState, Path]:
+    """S1~S2 만 수행하고 계획을 runs/<id>/plan.json 으로 저장한다 (--plan-only).
+
+    한 GPU 가 7B(추출)와 VL(탐지)을 동시에 싣지 못할 때의 앞 절반이다.
+    브라우저를 열지 않으며, 이어지는 절반은 resume_pipeline 이 맡는다.
+
+    Returns:
+        (계획이 끝난 상태, plan.json 경로)
+    """
+    run_dir = runs_root / run_id
+    state, n_all = build_plan(
+        pdf_path=pdf_path,
+        base_url=base_url,
+        llm=llm,
+        run_id=run_id,
+        run_dir=run_dir,
+        only=only,
+        request=request,
+        figma_json=figma_json,
+        screen_urls=screen_urls,
+        on_progress=on_progress,
+    )
+    plan_path = save_plan(state, n_all=n_all, only=only)
+    if on_progress:
+        on_progress(f"계획 저장: {plan_path}")
+    return state, plan_path
+
+
+def resume_pipeline(
+    run_dir: Path,
+    vlm: Optional[object] = None,
+    headless: bool = True,
+    viewport: Optional[dict] = None,
+    step_timeout_ms: int = 10000,
+    settle_timeout_ms: int = 2000,
+    screenshot_every_step: bool = True,
+    max_heal: int = 2,
+    min_confidence: float = 0.5,
+    slow_mo: int = 0,
+    record_video: bool = False,
+    hold_sec: float = 0.0,
+    storage_state: Optional[str] = None,
+    on_progress=None,
+) -> tuple[TestReport, Path]:
+    """저장된 계획(plan.json)으로 S3~S6 을 이어 실행한다 (--resume).
+
+    **LLM 을 받지 않는다** — S3~S6 은 LLM 을 쓰지 않는다는 사실이 이 함수의
+    존재 근거다. 7B 를 내리고 VL 을 올린 뒤에 돌아야 하므로, LLM 이 필요해지는
+    변경은 이 경계를 깨는 변경이다.
+
+    입력(pdf·URL·케이스 선택)은 전부 계획에서 온다. 실행 조건(vlm·타임아웃·
+    세션 등)만 지금 받는다 — 계획 시점의 실행 조건은 의미가 없다.
+    """
+    def progress(message: str) -> None:
+        if on_progress:
+            on_progress(message)
+
+    run_dir = Path(run_dir)
+    plan = load_plan(run_dir)
+    warnings = plan_warnings(plan)
+    for w in warnings:
+        progress(f"! {w}")
+
+    selected = set(plan.selected_case_ids)
+    state = AgentState(
+        pdf_path=plan.pdf_path,
+        base_url=plan.base_url,
+        run_id=run_dir.name,
+        run_dir=run_dir,
+        llm=None,
+        vlm=vlm,
+        figma_json=plan.figma_json,
+        screen_urls=dict(plan.screen_urls),
+        design_mismatches=list(plan.design_mismatches),
+        doc=plan.doc,
+        # 본문은 all_cases 가 단일 진실이다 — 선택 목록은 id 로만 저장된다.
+        cases=[c for c in plan.all_cases if c.case_id in selected],
+        all_cases=list(plan.all_cases),
+        coverage_gaps=list(plan.coverage_gaps),
+        selection=plan.selection,
+        plan_meta={
+            "backend": plan.backend,
+            "created_at": plan.created_at,
+            "warnings": warnings,
+        },
+        max_heal=max_heal,
+        min_confidence=min_confidence,
+        step_timeout_ms=step_timeout_ms,
+        settle_timeout_ms=settle_timeout_ms,
+        screenshot_every_step=screenshot_every_step,
+    )
+    progress(f"계획 복원: {run_dir / 'plan.json'} — 추출 {plan.backend or '?'} · "
+             f"케이스 {len(state.cases)}개")
+
+    return _execute(
+        state,
+        run_dir=run_dir,
+        n_all=plan.n_all,
+        headless=headless,
+        viewport=viewport,
+        slow_mo=slow_mo,
+        record_video=record_video,
+        only=plan.only,
+        hold_sec=hold_sec,
+        storage_state=storage_state,
+        on_progress=on_progress,
+    )
