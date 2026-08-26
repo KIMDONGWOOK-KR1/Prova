@@ -92,6 +92,10 @@ class AgentState:
     storage_state: Optional[str] = None
     # 가드(비로그인 차단) 케이스 전용 페이지 — 세션 없는 깨끗한 컨텍스트.
     guard_page: Optional[Page] = None
+    # 두 단계 실행(--plan-only → --resume)의 계획 기록. 재개 실행에서만 실린다.
+    # build_final_report 가 읽어 "추출을 누가 언제 했는가" 를 리포트에 남긴다 —
+    # 재개는 llm=None 으로 돌므로 이 기록이 없으면 백엔드가 리포트에서 사라진다.
+    plan_meta: Optional[dict] = None
 
     # 산출물
     #
@@ -582,9 +586,12 @@ def build_final_report(state: AgentState) -> AgentState:
         # 병합 모드면 merge_documents 가 "p.pdf + f.json" 을 만들어 둔다.
         spec_source=(state.doc.source if state.doc and state.doc.source
                      else (state.figma_json or state.pdf_path)),
-        backend=getattr(state.llm, "name", "") if state.llm else "",
+        # 재개 실행은 llm=None 이다 — 추출 백엔드는 계획 기록이 알고 있다.
+        backend=(getattr(state.llm, "name", "") if state.llm
+                 else (state.plan_meta or {}).get("backend", "")),
         selection=state.selection,
         design_mismatches=state.design_mismatches,
         session_file=Path(state.storage_state).name if state.storage_state else "",
+        plan=state.plan_meta,
     )
     return state

@@ -59,6 +59,7 @@ def build_report(
     selection: CaseSelection | None = None,
     design_mismatches: list[str] | None = None,
     session_file: str = "",
+    plan: dict | None = None,
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -87,6 +88,10 @@ def build_report(
     # 세션 파일로 실행됐다는 사실 — 판정의 전제 조건이므로 리포트가 말해야 한다.
     if session_file:
         summary["session_file"] = session_file
+    # 두 단계 실행(계획 저장 → 재개) 기록. 추출과 실행이 다른 시점·다른 서버에서
+    # 일어났다는 사실은 판정의 전제이므로 리포트가 말해야 한다.
+    if plan:
+        summary["plan"] = dict(plan)
 
     return TestReport(
         run_id=run_id,
@@ -510,6 +515,20 @@ def render_html(report: TestReport) -> str:
             f"{_esc(s['session_file'])}</b>"
             "<div>저장된 로그인 상태가 미리 실렸습니다. 비로그인 가드 검증은 "
             "세션 없는 별도 컨텍스트에서 수행했습니다.</div></div>"
+        )
+    plan_info = s.get("plan") or {}
+    if plan_info:
+        # 두 단계 실행 — 추출(계획)과 실행(재개)이 다른 시점·다른 서버에서
+        # 일어났다. 판정의 전제이므로 JSON 만이 아니라 HTML 도 말해야 한다.
+        plan_warns = "".join(
+            f"<li>{_esc(w)}</li>" for w in plan_info.get("warnings", []))
+        mock_warn += (
+            "<div class='warn'><b>두 단계 실행 — 저장된 계획을 재개했습니다</b>"
+            f"<div>추출(S1~S2): {_esc(plan_info.get('backend', '?'))} · "
+            f"{_esc(plan_info.get('created_at', '?'))} — 실행(S3~S6)은 이후 "
+            "별도로 수행됐습니다."
+            + (f"<ul>{plan_warns}</ul>" if plan_warns else "")
+            + "</div></div>"
         )
     mismatches = s.get("design_mismatches") or []
     if mismatches:

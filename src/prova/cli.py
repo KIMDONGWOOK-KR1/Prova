@@ -49,10 +49,31 @@ def _make_llm(backend: str, cfg: dict, pdf: Path):
     return client
 
 
+def _make_vlm(vlm_url: Optional[str], vlm_model: Optional[str]):
+    """2차 경로 클라이언트를 만들고 연결을 확인한다.
+
+    서버가 없으면 여기서 바로 실패시킨다 — 조용히 보정 없이 진행하면 '보정을
+    켰다' 고 믿는 실행이 실제로는 그냥 1차 경로다.
+    """
+    if not vlm_url:
+        return None
+    from prova.vlm.base import VLMError
+    from prova.vlm.qwen_vl import QwenVLClient
+
+    vlm = (QwenVLClient(base_url=vlm_url, model=vlm_model) if vlm_model
+           else QwenVLClient(base_url=vlm_url))
+    try:
+        vlm.health()
+    except VLMError as exc:
+        typer.secho(str(exc), fg=typer.colors.RED)
+        raise typer.Exit(2)
+    return vlm
+
+
 @app.command()
 def run(
     pdf: Optional[Path] = typer.Option(None, "--pdf", help="설계 문서 PDF 경로"),
-    url: str = typer.Option(..., "--url", help="테스트 대상 base URL"),
+    url: Optional[str] = typer.Option(None, "--url", help="테스트 대상 base URL"),
     figma_json: Optional[Path] = typer.Option(
         None, "--figma-json", metavar="경로",
         help="Figma API 응답(JSON)으로 실행한다 (scripts/fetch_figma.py 산출물). "
@@ -90,8 +111,106 @@ def run(
         help="prova login 으로 저장한 로그인 세션(storage_state). 스크립트로 "
              "로그인할 수 없는 화면(SSO 등)용 — 비로그인 가드 검증은 세션 없는 "
              "별도 컨텍스트에서 수행된다"),
+    plan_only: bool = typer.Option(
+        False, "--plan-only",
+        help="S1~S2 까지만 수행하고 계획을 runs/<id>/plan.json 으로 저장한다. "
+             "한 GPU 에서 추출 모델(7B)과 탐지 모델(VL)을 시간분할로 쓸 때의 "
+             "앞 절반 — 서버 교체 후 --resume 으로 잇는다"),
+    resume: Optional[Path] = typer.Option(
+        None, "--resume", metavar="RUN_DIR",
+        help="--plan-only 로 저장한 계획을 이어 실행한다 (S3~S6, LLM 불필요). "
+             "입력은 전부 계획에서 오고, 실행 조건(--vlm·--session 등)만 지금 받는다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
+    # --- 재개 경로. 입력(pdf·URL·케이스 선택)은 전부 plan.json 에서 온다 ---
+    if resume is not None:
+        # 계획 시점 인자를 다시 받으면 승인된 계획과 다른 것이 돌 수 있다.
+        # 조용히 무시하지 않고 에러로 막는다.
+        given = [name for name, value in [
+            ("--pdf", pdf), ("--figma-json", figma_json), ("--url", url),
+            ("--screen-url", screen_url), ("--request", request),
+            ("--only", only), ("--backend", backend), ("--run-id", run_id),
+            ("--plan-only", plan_only),
+        ] if value]
+        if given:
+            typer.secho(
+                f"--resume 은 저장된 계획의 값을 쓰므로 {', '.join(given)} 과 "
+                "함께 쓸 수 없습니다.", fg=typer.colors.RED)
+            raise typer.Exit(2)
+        if engine == "graph":
+            typer.secho("--resume 은 pipeline 엔진에서만 동작합니다.",
+                        fg=typer.colors.RED)
+            raise typer.Exit(2)
+        if session and not session.exists():
+            typer.secho(f"세션 파일을 찾을 수 없습니다: {session} — "
+                        "prova login 으로 먼저 만드세요.", fg=typer.colors.RED)
+            raise typer.Exit(2)
+
+        from prova.plan_store import PlanError, load_plan
+
+        try:
+            plan = load_plan(resume)
+        except PlanError as exc:
+            typer.secho(str(exc), fg=typer.colors.RED)
+            raise typer.Exit(2)
+
+        cfg = _load_config(config)
+        exec_cfg = cfg.get("execution", {})
+        vlm = _make_vlm(vlm_url, vlm_model)
+
+        typer.secho(f"Prova 재개 {resume.name}", bold=True)
+        typer.echo(f"  계획      : {resume / 'plan.json'} "
+                   f"(추출: {plan.backend or '?'} · {plan.created_at})")
+        typer.echo(f"  대상 URL  : {plan.base_url}")
+        if vlm:
+            typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
+        typer.echo("")
+
+        from prova.pipeline import resume_pipeline
+
+        report, run_dir = resume_pipeline(
+            resume,
+            vlm=vlm,
+            headless=not headed and exec_cfg.get("headless", True),
+            viewport=exec_cfg.get("viewport"),
+            step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
+            settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
+            screenshot_every_step=bool(exec_cfg.get("screenshot_every_step", True)),
+            max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
+            min_confidence=float(
+                cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
+            slow_mo=slow,
+            record_video=video,
+            hold_sec=hold,
+            storage_state=str(session) if session else None,
+            on_progress=lambda m: typer.echo(f"  {m}"),
+        )
+        _print_summary(report, run_dir)
+        raise typer.Exit(1 if report.summary.get("fail", 0) else 0)
+
+    if plan_only:
+        # 실행 단계 옵션은 --resume 시점에 준다 — 여기서 받으면 조용히 버려지는
+        # 값이 생기고, 사용자는 그 옵션이 적용됐다고 믿는다.
+        given = [name for name, value in [
+            ("--vlm", vlm_url), ("--vlm-model", vlm_model),
+            ("--session", session), ("--headed", headed), ("--slow", slow),
+            ("--video", video), ("--hold", hold),
+        ] if value]
+        if given:
+            typer.secho(
+                f"--plan-only 는 실행 단계 옵션 {', '.join(given)} 과 함께 쓸 수 "
+                "없습니다 — 실행 조건은 --resume 시점에 줍니다.",
+                fg=typer.colors.RED)
+            raise typer.Exit(2)
+        if engine == "graph":
+            typer.secho("--plan-only 는 pipeline 엔진에서만 동작합니다.",
+                        fg=typer.colors.RED)
+            raise typer.Exit(2)
+
+    if not url:
+        typer.secho("--url 이 필요합니다 (--resume 재개는 예외 — 계획에서 옵니다).",
+                    fg=typer.colors.RED)
+        raise typer.Exit(2)
     # Figma 경로 검증. --pdf 와 함께 주면 병합 모드다(기획서 규칙 + 디자인
     # 문구·요소·흐름, 어긋나면 발견) — 단독이면 정적 대조 모드.
     if not figma_json and not pdf:
@@ -136,20 +255,8 @@ def run(
     # 2차 경로는 명시적으로 켜야 한다.
     #
     # 기본으로 켜면 라벨 연결이 깨진 화면에서도 케이스가 통과해 그 사실이 리포트에서
-    # 사라진다. 그리고 서버가 없으면 여기서 바로 실패시킨다 — 조용히 보정 없이
-    # 진행하면 '보정을 켰다' 고 믿는 실행이 실제로는 그냥 1차 경로다.
-    vlm = None
-    if vlm_url:
-        from prova.vlm.qwen_vl import QwenVLClient
-        from prova.vlm.base import VLMError
-
-        vlm = (QwenVLClient(base_url=vlm_url, model=vlm_model) if vlm_model
-               else QwenVLClient(base_url=vlm_url))
-        try:
-            vlm.health()
-        except VLMError as exc:
-            typer.secho(str(exc), fg=typer.colors.RED)
-            raise typer.Exit(2)
+    # 사라진다 (_make_vlm 참고).
+    vlm = _make_vlm(vlm_url, vlm_model)
 
     typer.secho(f"Prova 실행 {rid}", bold=True)
     if figma_json and pdf:
@@ -180,6 +287,28 @@ def run(
                 fg=typer.colors.YELLOW,
             )
             raise typer.Exit(1)
+
+    if plan_only:
+        from prova.pipeline import plan_pipeline
+
+        state, plan_path = plan_pipeline(
+            pdf_path=str(pdf) if pdf else "",
+            base_url=url,
+            llm=llm,
+            run_id=rid,
+            runs_root=runs_root,
+            only=only,
+            request=request,
+            figma_json=str(figma_json) if figma_json else None,
+            screen_urls=screen_urls or None,
+            on_progress=lambda m: typer.echo(f"  {m}"),
+        )
+        typer.echo("")
+        typer.secho(f"  계획 저장: {plan_path}", bold=True)
+        typer.echo("  서버를 교체한 뒤 이어서 실행:")
+        typer.echo(f"    uv run prova run --resume {plan_path.parent} "
+                   "[--vlm URL --vlm-model 이름]")
+        raise typer.Exit(0)
 
     exec_cfg = cfg.get("execution", {})
     common = dict(
