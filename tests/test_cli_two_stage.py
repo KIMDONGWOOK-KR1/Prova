@@ -67,6 +67,9 @@ class TestResumeConflicts:
         ["--backend", "mock"],
         ["--run-id", "other"],
         ["--plan-only"],
+        # 재개는 run_dir 전체 경로를 받는다 — runs_root 는 쓰일 자리가 없다.
+        # 받고서 버리면 사용자는 적용됐다고 믿는다.
+        ["--runs-root", "다른곳"],
     ])
     def test_계획_시점_인자는_에러(self, tmp_path, extra):
         result = runner.invoke(app, ["run", "--resume", str(tmp_path)] + extra)
