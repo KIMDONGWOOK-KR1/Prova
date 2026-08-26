@@ -1732,6 +1732,29 @@ doc.declared_scenarios()      <span class="n"># 입력-결과 짝      -> 이 �
     </div>
 
     <div class="note">
+      <span class="label">화면 셋을 실제로 밟아 보니 (2026-08-26)</span>
+      <p>
+        <code>Flow</code> 는 처음부터 화면 목록(N개)이었고 생성기도 일반 순회였다. 그래서
+        "셋 이상도 된다" 고 적을 뻔했는데, <strong>픽스처에 3화면 흐름이 하나도
+        없었다.</strong> <span class="mark">읽어서 내린 결론과 밟아 본 사실은 다르다.</span>
+        가입→로그인→상품등록으로 밟았다 — 마지막 화면이 로그인 가드로 막혀 있어서,
+        거기 닿았다는 사실 자체가 앞의 둘이 이어졌다는 증거가 된다.
+      </p>
+      <p>
+        전이가 둘이 되자 두 가지가 드러났다. 파서가 이동 방법 칸의 <code>-</code> 를
+        <strong>자리째 지워서</strong> 뒤 전이의 라벨이 앞 전이에 붙었고(기획서가 적은 것과
+        다른 것이 조용히 돈다), 제목은 전이가 섞여도 "전부 눌러서 이동" 이라고 말했다.
+        둘 다 전이가 하나뿐인 동안은 드러날 수 없는 모양이다.
+      </p>
+      <p>
+        <code>bad</code> 에서 두 흐름은 <code>login 도착</code>·<code>login 성공</code> 에서
+        끊겼다 — <strong>마지막 화면인 상품 등록을 지목하지 않았다.</strong> 2화면에서는
+        '마지막 바로 앞' 이 곧 '첫 화면' 이라 이 구분이 느슨했는데, 셋에서 가운데가 생겨
+        처음으로 제대로 시험됐다.
+      </p>
+    </div>
+
+    <div class="note">
       <span class="label">수용 기준은 '기존 결과가 그대로인가'였다</span>
       <p>
         문서를 합친 것만으로 화면별 판정이 달라지면 그건 확장이 아니라 후퇴다. 실제로 한 번
@@ -3079,7 +3102,12 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
           <tr><td><code>screen_name</code> 과 <code>&lt;title&gt;</code> 대조</td>
               <td>일부러 미룬다 — 오탐 위험이 높다</td></tr>
           <tr><td>화면 3개 이상을 지나는 흐름</td>
-              <td>미지원</td></tr>
+              <td><span class="tag pass">닫힘 08-26</span> 모델은 처음부터 N 화면이었지만
+                  밟아 본 적이 없었다. 가입→로그인→상품등록(<code>onboarding_spec</code>)으로
+                  실제로 밟으니 이동 방법의 자리가 밀리고(<code>-</code> 를 자리째 지웠다)
+                  제목이 거짓말을 하고 있었다 — 둘 다 전이가 하나뿐인 동안은 드러날 수 없는
+                  모양이다. <code>bad</code> 에서 두 흐름이 각각 <code>login 도착</code>·
+                  <code>login 성공</code> 에서 끊겨 마지막 화면을 지목하지 않는다 (노트 11 추기)</td></tr>
         </tbody>
       </table>
     </div>
@@ -3103,7 +3131,7 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 1016개 ·
+    코드 <code>C:\dev\prova</code> · 테스트 1042개 ·
     자세한 설명은 <code>docs/teaching/</code>의 노트 23개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>

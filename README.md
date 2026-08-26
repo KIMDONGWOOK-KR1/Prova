@@ -38,6 +38,8 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 | 비밀번호 찾기 | `bad` | **7 PASS / 2 FAIL** — 계정 존재 여부 노출(실제 취약점)을 두 관점에서 지목, 오탐 0건 |
 | 통합 문서 (3화면+흐름 2) | `good` | **39/39 PASS** |
 | 통합 문서 (3화면+흐름 2) | `bad` | **23 PASS / 16 FAIL** — 화면별 결과가 단일 문서와 동일, 오탐 0건 |
+| 가입→로그인→상품등록 (3화면 흐름) | `good` | **39/39 PASS** — 세 화면을 이어 밟아 로그인 가드로 막힌 화면까지 닿는다 |
+| 가입→로그인→상품등록 (3화면 흐름) | `bad` | **25 PASS / 14 FAIL** — 두 흐름이 각각 `login 도착`·`login 성공` 에서 끊긴다. 마지막 화면을 지목하지 않는다 |
 | 검색 (`nolabel` — 아이콘 버튼) | 2차 경로 **끔** | **1 PASS / 9 FAIL** — 라벨이 없어 요소를 찾지 못한다 |
 | 검색 (`nolabel` — 아이콘 버튼) | 2차 경로 **켬** (실물 Qwen2.5-VL-3B-AWQ) | **9 PASS / 1 FAIL** — 이미지로 찾아 진행하고, 라벨 결함 1건은 남는다 |
 | 로그인 (`slow` — 결과가 400ms 뒤에 렌더) | 대기 **끔** | **3 PASS / 7 FAIL** — 못 기다린 것을 구현 결함으로 단정한다(오탐) |
@@ -240,13 +242,14 @@ src/prova/
 sut/                          테스트 대상 미니 웹앱 — 6화면(로그인·회원가입·검색·비밀번호 찾기·상품등록·주문조회) good / bad + 도구를 시험하는 변형 8종
 fixtures/specs/               화면기획서 md / pdf / 정답(golden) — 화면마다 한 벌
 ├── multi_spec.md               통합 문서 — 화면별 md 에서 조립한다 (직접 고치지 않는다)
-└── _multi_*.md                 조립용 조각 ('_' 로 시작하면 PDF 로 만들지 않는다)
+├── onboarding_spec.md          가입→로그인→상품등록 — 화면 셋을 지나는 흐름이 사는 문서 (조립)
+└── _multi_*.md · _onboarding_*.md  조립용 조각 ('_' 로 시작하면 PDF 로 만들지 않는다)
 fixtures/figma/               Figma API 응답 픽스처 (합성 + 실물, 다듬기는 fetch 스크립트가)
 scripts/                      기획서 PDF 생성 · 통합 문서 조립 · Figma fetch · 데모 자료 생성
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
 ├── reference/                계획서·주제개요서·멘토링보고서
-├── teaching/                 티칭 노트 22개 + overview.html (그림 자료)
+├── teaching/                 티칭 노트 23개 + overview.html (그림 자료)
 ├── CHEETAH_SETUP.md          GPU 서버 vLLM 세팅 절차
 └── README.md                 문서 안내
 ```
