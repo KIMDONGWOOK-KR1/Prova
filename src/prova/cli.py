@@ -86,7 +86,9 @@ def run(
     config: Path = typer.Option(DEFAULT_CONFIG, "--config"),
     run_id: Optional[str] = typer.Option(None, "--run-id"),
     headed: bool = typer.Option(False, "--headed", help="브라우저 창을 띄워서 실행"),
-    runs_root: Path = typer.Option(Path("runs"), "--runs-root"),
+    # 기본값을 None 으로 둔다 — "사용자가 줬는가" 를 알아야 --resume 과의 충돌을
+    # 조용히 넘기지 않고 막을 수 있다 (재개는 run_dir 전체 경로를 받는다).
+    runs_root: Optional[Path] = typer.Option(None, "--runs-root"),
     engine: str = typer.Option("pipeline", "--engine",
                                help="pipeline | graph (같은 노드를 LangGraph 로 실행)"),
     slow: int = typer.Option(0, "--slow", metavar="MS",
@@ -130,7 +132,7 @@ def run(
             ("--pdf", pdf), ("--figma-json", figma_json), ("--url", url),
             ("--screen-url", screen_url), ("--request", request),
             ("--only", only), ("--backend", backend), ("--run-id", run_id),
-            ("--plan-only", plan_only),
+            ("--plan-only", plan_only), ("--runs-root", runs_root),
         ] if value]
         if given:
             typer.secho(
@@ -211,6 +213,7 @@ def run(
         typer.secho("--url 이 필요합니다 (--resume 재개는 예외 — 계획에서 옵니다).",
                     fg=typer.colors.RED)
         raise typer.Exit(2)
+    runs_root = runs_root or Path("runs")
     # Figma 경로 검증. --pdf 와 함께 주면 병합 모드다(기획서 규칙 + 디자인
     # 문구·요소·흐름, 어긋나면 발견) — 단독이면 정적 대조 모드.
     if not figma_json and not pdf:

@@ -133,6 +133,19 @@ class TestStaleness:
 
         assert plan_warnings(load_plan(state.run_dir)) == []
 
+    def test_figma_응답이_바뀌어도_경고(self, planned_state):
+        """병합 모드도 두 단계로 돌 수 있다(추출에 7B 를 쓴다) — 재개는 Figma
+        응답도 다시 읽지 않으므로 pdf 와 같은 경고가 필요하다."""
+        state, n_all = planned_state
+        save_plan(state, n_all=n_all, only=None)
+
+        plan = load_plan(state.run_dir)
+        plan.figma_json = "fixtures/figma/login_signup.json"
+        plan.figma_sha256 = "0" * 64
+
+        warnings = plan_warnings(plan)
+        assert any("Figma" in w and "바뀌었" in w for w in warnings)
+
     def test_pdf_가_사라져도_경고만(self, planned_state):
         """파일 부재는 오류가 아니다 — 재개는 pdf 없이 성립한다."""
         state, n_all = planned_state

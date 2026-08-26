@@ -59,6 +59,7 @@ class SavedPlan(BaseModel):
     pdf_path: str = ""
     pdf_sha256: str = ""
     figma_json: Optional[str] = None
+    figma_sha256: str = ""
     screen_urls: dict[str, str] = Field(default_factory=dict)
     base_url: str = ""
     only: Optional[str] = None
@@ -80,12 +81,14 @@ def _sha256(path: Path) -> str:
 def save_plan(state, *, n_all: int, only: Optional[str]) -> Path:
     """build_plan 을 마친 상태를 run_dir/plan.json 으로 저장한다."""
     pdf = Path(state.pdf_path) if state.pdf_path else None
+    figma = Path(state.figma_json) if state.figma_json else None
     plan = SavedPlan(
         created_at=datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds"),
         backend=getattr(state.llm, "name", "") if state.llm else "",
         pdf_path=state.pdf_path,
         pdf_sha256=_sha256(pdf) if pdf and pdf.exists() else "",
         figma_json=state.figma_json,
+        figma_sha256=_sha256(figma) if figma and figma.exists() else "",
         screen_urls=dict(state.screen_urls),
         base_url=state.base_url,
         only=only,
@@ -134,16 +137,22 @@ def plan_warnings(plan: SavedPlan) -> list[str]:
     리포트까지 실어 보낸다.
     """
     warnings: list[str] = []
-    if plan.pdf_path and plan.pdf_sha256:
-        pdf = Path(plan.pdf_path)
-        if not pdf.exists():
+    # 조사가 라벨마다 다르므로(문서'가'·응답'이') 주격·목적격을 함께 적어 둔다.
+    for subject, obj, path_str, expected in (
+        ("설계 문서가", "설계 문서를", plan.pdf_path, plan.pdf_sha256),
+        ("Figma 응답이", "Figma 응답을", plan.figma_json, plan.figma_sha256),
+    ):
+        if not path_str or not expected:
+            continue
+        path = Path(path_str)
+        if not path.exists():
             warnings.append(
-                f"설계 문서를 찾을 수 없습니다: {plan.pdf_path} — "
-                "판정은 계획 시점 문서 기준입니다."
+                f"{obj} 찾을 수 없습니다: {path_str} — "
+                "판정은 계획 시점 입력 기준입니다."
             )
-        elif _sha256(pdf) != plan.pdf_sha256:
+        elif _sha256(path) != expected:
             warnings.append(
-                f"설계 문서가 계획 이후 바뀌었습니다: {plan.pdf_path} — "
-                "재개는 pdf 를 다시 읽지 않으므로 판정은 계획 시점 문서 기준입니다."
+                f"{subject} 계획 이후 바뀌었습니다: {path_str} — 재개는 입력을 "
+                "다시 읽지 않으므로 판정은 계획 시점 입력 기준입니다."
             )
     return warnings
