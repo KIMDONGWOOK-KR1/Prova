@@ -84,6 +84,7 @@
     "submit_label": "조회",
     "target_label": "주문 목록",
     "date_column": "주문일",
-    "empty_message": "기간 내 주문이 없습니다."
+    "empty_message": "기간 내 주문이 없습니다.",
+    "reversed_message": "종료일은 시작일보다 빠를 수 없습니다."
   }
 }

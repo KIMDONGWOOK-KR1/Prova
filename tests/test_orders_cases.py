@@ -243,6 +243,38 @@ class TestFilterCases:
         spec.date_filter.empty_message = None
         assert len(_filter_cases(spec, start_seq=10)) == 7
 
+    def test_기간_역전_케이스는_기획서가_문구를_정했을_때만(self):
+        """요소 간 규칙이라 값 하나만 봐서는 판정할 수 없고, 기대 문구도
+        기획서가 정해 줘야 한다. 지어낸 문구로 대조하면 올바른 구현을 FAIL 로
+        보고하는 오탐이 된다 — 문구가 없으면 만들지 않는다."""
+        spec = filter_spec()
+        base = len(_filter_cases(spec, start_seq=10))
+
+        spec.date_filter.reversed_message = "종료일은 시작일보다 빠를 수 없습니다."
+        cases = _filter_cases(spec, start_seq=10)
+        assert len(cases) == base + 1
+
+    def test_기간_역전_케이스는_시작일이_종료일보다_늦다(self):
+        """규칙을 어긴 값이어야 규칙이 검증된다. 시드의 실제 날짜를 뒤집어 쓴다 —
+        임의 날짜를 쓰면 '역전' 이 아니라 '기간 밖' 으로도 읽힌다."""
+        spec = filter_spec()
+        spec.date_filter.reversed_message = "종료일은 시작일보다 빠를 수 없습니다."
+        case = _filter_cases(spec, start_seq=10)[-1]
+
+        fills = [s.value for s in case.steps if s.action == "fill"]
+        assert fills == ["2026-08-12", "2026-08-03"], "정상 기간의 양끝을 뒤집는다"
+        assert [s.action for s in case.steps] == ["navigate", "fill", "fill", "click"]
+
+    def test_기간_역전_케이스는_negative_다(self):
+        """positive 로 두면 S5 의 판정이 뒤집혀 '문구가 안 떠야 PASS' 가 된다."""
+        spec = filter_spec()
+        spec.date_filter.reversed_message = "종료일은 시작일보다 빠를 수 없습니다."
+        case = _filter_cases(spec, start_seq=10)[-1]
+
+        assert case.type == "negative"
+        assert case.expected.type == "text_visible"
+        assert case.expected.value == "종료일은 시작일보다 빠를 수 없습니다."
+
     def test_빈_값_조회는_전체_건수다(self):
         full = _filter_cases(filter_spec(), start_seq=10)[-1]
         assert [s.action for s in full.steps] == ["navigate", "click"]

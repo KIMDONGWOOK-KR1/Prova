@@ -23,6 +23,8 @@
               align-items:center; }
     .filter input { margin-left:4px; }
     .empty { color:#888; font-size:14px; margin:12px 0 0; }
+    .error { margin:12px 0 0; padding:10px 12px; background:#fdeaea;
+             color:#b32020; border-radius:6px; font-size:14px; }
   </style>
 </head>
 <body>
@@ -75,6 +77,10 @@
       <span>합계</span>
       <div aria-label="합계">{{ total_text }}</div>
     </div>
+    {% endif %}
+
+    {% if error_message %}
+    <div class="error" role="alert">{{ error_message }}</div>
     {% endif %}
 
     {% if not orders and empty_message %}

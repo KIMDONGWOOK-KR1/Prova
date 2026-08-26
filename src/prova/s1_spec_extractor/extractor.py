@@ -629,6 +629,7 @@ _DATE_FILTER_KEYS = {
     "대상 목록": "target_label",
     "날짜 컬럼": "date_column",
     "빈 결과 문구": "empty_message",
+    "기간 역전 문구": "reversed_message",
 }
 
 
@@ -643,8 +644,8 @@ def _apply_declared_date_filter(spec: ScreenSpec, declared: Optional[dict[str, s
 
     표가 있는데 필수 항목이 빠졌으면 경고하고 만들지 않는다 — 반쪽 필터로
     케이스를 만들면 무엇을 확인한 것인지 말할 수 없다(판정 불능이면 만들지
-    않는다 원칙). '빈 결과 문구' 만 선택 항목이다 — 문구가 없으면 문구 케이스
-    하나가 빠질 뿐 기간 조회 자체는 검증할 수 있다.
+    않는다 원칙). 선택 항목은 문구 둘('빈 결과 문구'·'기간 역전 문구')뿐이다 —
+    문구가 없으면 그 케이스 하나가 빠질 뿐 기간 조회 자체는 검증할 수 있다.
     """
     if declared is None:
         spec.date_filter = None

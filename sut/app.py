@@ -229,6 +229,8 @@ MSG_PRODUCT_PRICE_NUMERIC = "가격은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_STOCK_NUMERIC = "재고수량은 숫자만 입력할 수 있습니다."
 MSG_PRODUCT_SUCCESS = "상품이 등록되었습니다."
 MSG_ORDERS_EMPTY = "기간 내 주문이 없습니다."
+# 기간 역전(시작일 > 종료일). 기획서 §6 이 "조회하지 않고 노출한다" 고 적었다.
+MSG_ORDERS_REVERSED = "종료일은 시작일보다 빠를 수 없습니다."
 
 # 주문조회 시드 데이터. 기획서 §1-2 '테스트 주문 데이터' 표 그대로 — 시드가
 # 표와 어긋나면 검증이 성립하지 않는다. 주문일 내림차순으로 적어 두었지만
@@ -409,6 +411,7 @@ def render_orders(
     markup: str = "list",
     start_date: str = "",
     end_date: str = "",
+    error: str | None = None,
 ) -> HTMLResponse:
     rows = [
         {"주문번호": o["주문번호"], "주문일": o["주문일"],
@@ -422,7 +425,13 @@ def render_orders(
                  "total_text": _format_amount(total), "markup": markup,
                  "start_date": start_date, "end_date": end_date,
                  # 빈 결과 문구는 good/bad 공통이다 — 결함은 O3·O4 뿐이어야 한다.
-                 "empty_message": MSG_ORDERS_EMPTY if not rows else None},
+                 #
+                 # 오류 문구가 있으면 빈 결과 문구는 내지 않는다. 둘 다 나오면
+                 # 화면이 '결과가 없다' 와 '조회하지 않았다' 를 동시에 말하게 되고,
+                 # 빈 결과 케이스가 엉뚱한 이유로 통과할 수 있다.
+                 "error_message": error,
+                 "empty_message": (MSG_ORDERS_EMPTY
+                                   if not rows and not error else None)},
     )
 
 
@@ -723,10 +732,25 @@ def _good_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
     return rows, sum(o["금액"] for o in rows)
 
 
+def _period_reversed(start: str, end: str) -> bool:
+    """시작일이 종료일보다 늦은가. 둘 다 있을 때만 판정한다.
+
+    한쪽이 비면 기획서가 '전체 기간' 으로 정의했으므로 역전이 아니다.
+    비교는 _filter_rows 와 같은 방식이다 — ISO 문자열은 사전순이 곧 시간순이라
+    파싱할 이유가 없고, 두 곳이 다른 방식을 쓰면 경계에서 어긋난다.
+    """
+    return bool(start and end and start > end)
+
+
 @app.get("/good/orders", response_class=HTMLResponse)
 def good_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_good" not in request.cookies:
         return RedirectResponse("/good/login", status_code=303)
+    if _period_reversed(start_date, end_date):
+        # 기획서 §6: 조회하지 않고 문구를 노출한다.
+        return render_orders(request, "good", [], 0,
+                             start_date=start_date, end_date=end_date,
+                             error=MSG_ORDERS_REVERSED)
     rows, total = _good_orders_data(start_date, end_date)
     return render_orders(request, "good", rows, total,
                          start_date=start_date, end_date=end_date)
@@ -737,6 +761,10 @@ def good_orders(request: Request, start_date: str = "", end_date: str = ""):
 def table_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_table" not in request.cookies:
         return RedirectResponse("/table/login", status_code=303)
+    if _period_reversed(start_date, end_date):
+        return render_orders(request, "table", [], 0, markup="table",
+                             start_date=start_date, end_date=end_date,
+                             error=MSG_ORDERS_REVERSED)
     rows, total = _good_orders_data(start_date, end_date)
     return render_orders(request, "table", rows, total, markup="table",
                          start_date=start_date, end_date=end_date)
@@ -837,6 +865,10 @@ def bad_orders(request: Request, start_date: str = "", end_date: str = ""):
     if "session_bad" not in request.cookies:
         return RedirectResponse("/bad/login", status_code=303)
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
+    # O5: 기간 역전(시작일 > 종료일)을 알리지 않는다. 기획서 §6 은 조회하지 않고
+    #     문구를 노출하라고 적었는데, 그냥 걸러서 빈 목록을 보여준다 — 사용자는
+    #     '그 기간에 주문이 없다' 고 읽는다. 실무에서 흔한 모양이라 심어 둔다.
+    #     bad 쪽은 코드를 더하지 않는 것이 곧 결함이다.
     rows, total = _bad_orders_data(start_date, end_date)
     return render_orders(request, "bad", rows, total,
                          start_date=start_date, end_date=end_date)

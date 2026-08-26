@@ -154,6 +154,39 @@ class TestDateFilter:
     def test_bad_도_빈_문구는_올바르다(self, client):
         assert "기간 내 주문이 없습니다." in self._get(client, "bad", self.EMPTY)
 
+    REVERSED = "?start_date=2026-08-12&end_date=2026-08-03"
+
+    def test_good_은_기간_역전을_알린다(self, client):
+        """기획서 §6: 조회하지 않고 문구를 노출한다. 목록이 남아 있으면
+        '조회하지 않았다' 가 거짓이 된다."""
+        html = self._get(client, "good", self.REVERSED)
+        assert "종료일은 시작일보다 빠를 수 없습니다." in html
+        assert "ORD-0" not in html
+
+    def test_good_은_역전에_빈_결과_문구를_함께_내지_않는다(self, client):
+        """둘 다 나오면 화면이 '결과가 없다' 와 '조회하지 않았다' 를 동시에
+        말한다. 그러면 빈 결과 케이스가 엉뚱한 이유로 통과할 수 있다."""
+        html = self._get(client, "good", self.REVERSED)
+        assert "기간 내 주문이 없습니다." not in html
+
+    def test_bad_는_O5_로_역전을_알리지_않는다(self, client):
+        """심은 결함 — 그냥 걸러서 빈 목록을 보여준다. 사용자는 '그 기간에
+        주문이 없다' 고 읽는다."""
+        html = self._get(client, "bad", self.REVERSED)
+        assert "종료일은 시작일보다 빠를 수 없습니다." not in html
+
+    def test_table_쌍둥이도_역전을_알린다(self, client):
+        """table 은 good 의 쌍둥이다 — 마크업만 다르고 결함은 없어야 한다."""
+        html = self._get(client, "table", self.REVERSED)
+        assert "종료일은 시작일보다 빠를 수 없습니다." in html
+
+    def test_한쪽만_비면_역전이_아니다(self, client):
+        """기획서가 빈 값을 '전체 기간' 으로 정의했다. 역전으로 처리하면
+        빈 값 조회가 막힌다."""
+        html = self._get(client, "good", "?start_date=2026-08-12&end_date=")
+        assert "종료일은 시작일보다 빠를 수 없습니다." not in html
+        assert "ORD-005" in html
+
     def test_table_쌍둥이도_같은_필터_결과다(self, client):
         html = self._get(client, "table", self.RANGE)
         assert "aria-label" not in html

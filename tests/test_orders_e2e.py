@@ -103,34 +103,34 @@ class TestGood:
         report, _ = good_run
         assert report.summary["total"] > 0
 
-    def test_전체_열네_건이다(self, good_run):
-        """valid + labels + sorted + sum + seedcount + filter 8종 + guard = 14건.
+    def test_전체_열다섯_건이다(self, good_run):
+        """valid + labels + sorted + sum + seedcount + filter 9종 + guard = 15건.
 
         labels 케이스는 날짜 필터 요소(시작일·종료일·조회)가 §2 에 생기면서
         처음 만들어졌다 — 그 라벨들이 화면에서 찾아지는지 본다.
         """
         report, _ = good_run
-        assert report.summary["total"] == 14, [c.case_id for c in report.cases]
+        assert report.summary["total"] == 15, [c.case_id for c in report.cases]
 
-    def test_필터_케이스_여덟_개가_만들어져_전부_통과했다(self, good_run):
+    def test_필터_케이스_아홉_개가_만들어져_전부_통과했다(self, good_run):
         """입력↔재조회(fill·fill·click 후 판정)가 실제 브라우저에서 도는지의
         증명이 이 테스트다 — input[type=date] 에 ISO 문자열 fill, 스텝 실행
         후 상태에 컬렉션 판정. 여기 걸리면 S4/S5 가정이 깨진 것이다."""
         report, _ = good_run
         cases = _filter_cases_of(report)
-        assert len(cases) == 8, [c.case_id for c in report.cases]
+        assert len(cases) == 9, [c.case_id for c in report.cases]
         fails = [c for c in cases if c.verdict != "PASS"]
         assert not fails, "\n".join(f"  {c.case_id}: {c.failure_detail}" for c in fails)
 
 
 class TestBad:
     def test_심은_결함만_지목한다(self, bad_run):
-        """O1·O2·O3·O4 의 케이스 여섯만 FAIL 이어야 한다 — 오탐 0건.
+        """O1~O5 의 케이스 일곱만 FAIL 이어야 한다 — 오탐 0건.
 
         무필터: 정렬(O1)·합계(O2). 필터: 건수·경계 포함(O3), 필터 후
-        합계(O4), 필터 후 정렬(O1 이 필터 화면에도 남는다). 기간 밖 배제·
-        빈 기간 0건·빈 문구·빈 값 전체는 bad 도 올바르게 구현했으므로
-        PASS 여야 한다 — 결함 하나당 그 규칙의 케이스가 잡는다.
+        합계(O4), 필터 후 정렬(O1 이 필터 화면에도 남는다), 기간 역전(O5).
+        기간 밖 배제·빈 기간 0건·빈 문구·빈 값 전체는 bad 도 올바르게
+        구현했으므로 PASS 여야 한다 — 결함 하나당 그 규칙의 케이스가 잡는다.
         """
         report, _ = bad_run
         fails = {v.case_id for v in report.cases if v.verdict == "FAIL"}
@@ -141,6 +141,7 @@ class TestBad:
             _filter_case(report, "경계 포함").case_id,         # O3 — 경계일
             _filter_case(report, "합계가 표시된").case_id,     # O4
             _filter_case(report, "최신순으로 정렬").case_id,   # O1 (필터 후)
+            _filter_case(report, "시작일이 종료일보다").case_id,  # O5 — 기간 역전
         }
         assert fails == expected, (
             f"오탐(심지 않은 결함): {fails - expected} / "
@@ -168,13 +169,13 @@ class TestBad:
         case = _case(report, "orders-seedcount-")
         assert case.verdict == "PASS", case.failure_detail
 
-    def test_전체_열네_건_중_여덟만_통과한다(self, bad_run):
+    def test_전체_열다섯_건_중_여덟만_통과한다(self, bad_run):
         """PASS 8건(valid·labels·seedcount·guard·필터 배제/빈 기간/빈 문구/
-        빈 값), FAIL 6건(O1 둘·O2·O3 둘·O4)."""
+        빈 값), FAIL 7건(O1 둘·O2·O3 둘·O4·O5)."""
         report, _ = bad_run
-        assert report.summary["total"] == 14, [c.case_id for c in report.cases]
+        assert report.summary["total"] == 15, [c.case_id for c in report.cases]
         assert report.summary["pass"] == 8
-        assert report.summary["fail"] == 6
+        assert report.summary["fail"] == 7
 
     def test_정렬_실패_사유가_깨진_날짜_쌍을_말한다(self, bad_run):
         report, _ = bad_run
@@ -224,10 +225,10 @@ class TestTableMarkup:
         report, _ = table_run
         failures = [v for v in report.cases if v.verdict == "FAIL"]
         assert not failures, "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
-        assert report.summary["total"] == 14
+        assert report.summary["total"] == 15
 
     def test_표_마크업에서도_심은_결함만_지목한다(self, badtable_run):
-        """bad 와 같은 여섯 케이스만 FAIL — 마크업이 판정에 새지 않는다."""
+        """bad 와 같은 일곱 케이스만 FAIL — 마크업이 판정에 새지 않는다."""
         report, _ = badtable_run
         fails = {v.case_id for v in report.cases if v.verdict == "FAIL"}
         expected = {
@@ -237,6 +238,7 @@ class TestTableMarkup:
             _filter_case(report, "경계 포함").case_id,
             _filter_case(report, "합계가 표시된").case_id,
             _filter_case(report, "최신순으로 정렬").case_id,
+            _filter_case(report, "시작일이 종료일보다").case_id,
         }
         assert fails == expected, (
             f"오탐: {fails - expected} / 미탐: {expected - fails}"
