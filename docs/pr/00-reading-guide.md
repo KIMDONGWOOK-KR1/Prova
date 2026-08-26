@@ -183,7 +183,7 @@ FAIL 은 눈에 띄지만 '확인하지 않음' 은 아무 흔적도 남기지 �
 ```powershell
 # 1. SUT 를 띄운다 (good·bad 와 한계 측정용 변형들이 한 프로세스에 있다)
 #    브라우저로 http://localhost:8100 을 열면 변형 목록이 나온다
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 2. LLM 없이 파이프라인만 확인 (mock 백엔드)
 uv run prova run --pdf fixtures/specs/login_spec.pdf `

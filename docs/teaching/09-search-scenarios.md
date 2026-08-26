@@ -223,7 +223,7 @@ if not golden.scenarios:
 
 ```powershell
 # 테스트 대상 웹앱
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 검색 검증 (GPU 없이 mock 으로)
 uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:8100/good --backend mock

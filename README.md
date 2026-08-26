@@ -154,7 +154,7 @@ uv run playwright install chromium
 uv run python scripts/make_spec_pdf.py
 
 # 3. 테스트 대상 웹앱 띄우기 (별 터미널)
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 4. 검증 — GPU 없이도 mock 백엔드로 파이프라인 전체가 돈다
 uv run prova run --pdf fixtures/specs/login_spec.pdf  --url http://localhost:8100/good --backend mock
@@ -167,6 +167,16 @@ uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:810
 # 5. 리포트 열기
 start runs/<run-id>/report.html
 ```
+
+SUT 는 `--reload` 로 띄운다. **`sut/` 를 고치고 재시작을 잊으면 옛 코드를 상대로
+재게 되고, 그 결과가 도구의 오탐처럼 보인다** — 실제로 겪었다(2026-08-26, 기간 역전을
+구현한 직후 `good` 에서 없는 FAIL 을 쫓았다). 감시 범위를 `sut` 으로 좁히는 이유는
+저장소 전체를 폴링하지 않기 위해서다(`runs/`·`.venv` 가 크다). `watchfiles` 가 없으면
+uvicorn 이 `StatReload` 로 떨어지므로 의존성은 늘지 않는다.
+
+한 가지 알아 둘 것: 가입한 계정(`REGISTERED`)은 **프로세스 상태**라 리로드되면
+지워진다. 실행 도중 `sut/` 를 고치면 '가입한 계정으로 로그인' 을 밟는 흐름 케이스가
+그 영향을 받을 수 있다. 판정을 재는 중이라면 고치지 말고, 고쳤으면 다시 돌린다.
 
 자연어로 무엇을 볼지 좁힐 수 있다. 무엇을 뺐는지는 리포트에 남는다.
 

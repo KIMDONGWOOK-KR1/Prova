@@ -180,7 +180,7 @@ uv run prova check
 uv run pytest tests/test_s1_golden.py -v
 
 # 전체 관통
-uv run uvicorn sut.app:app --port 8100        # 별 터미널
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut        # 별 터미널
 uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/good
 uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/bad
 ```

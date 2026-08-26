@@ -11,7 +11,7 @@
        (관문이 새 오탐을 만들면 안 된다)
 
 사용법:
-    uv run uvicorn sut.app:app --port 8100   # 별 터미널
+    uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미널
     uv run python scripts/eval_identity_guard.py http://localhost:8100
 
 원본 답안을 재생하므로 VL 서버가 필요 없다. 요약 표만 저장소에 남기고

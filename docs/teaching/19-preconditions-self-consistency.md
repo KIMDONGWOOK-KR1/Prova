@@ -295,7 +295,7 @@ total = sum(o["금액"] for o in rows) - rows[-1]["금액"]
 
 ```powershell
 # 테스트 대상 띄우기 (별 터미널)
-uv run uvicorn sut.app:app --port 8100
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
 # 1) 상품등록 bad — P1·P2 가 잡힌다 (전제 스텝이 '준비' 로 리포트에 남는다)
 uv run prova run --pdf fixtures/specs/product_spec.pdf `
