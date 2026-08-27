@@ -86,6 +86,22 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 확인하는 관문(`_require_actionable`)이 빈 공간은 막지만 **다른 입력란 위에 떨어진 오탐은
 통과**한다. 전체 표는 `docs/measurements/vlm-iou-qwen-vl-2026-08-22.md`, 해석은 노트 13.
 
+§9 는 두 경로의 **비교**도 요구한다. 같은 시험지 50개를 1차 경로로 재서 나란히 놓았다
+(2026-08-27, `scripts/eval_selector_speed.py`).
+
+| 지표 | selector (1차) | VLM (2차) |
+|---|---|---|
+| 탐지 성공률 | **38/40 = 95.0%** | 36/40 = 90.0% |
+| 오탐 (없는 것을 찾았다고) | **0/10 = 0.0%** | 7/10 = 70.0% |
+| 호출 시간 (평균) | **15.1ms** | 737ms (**49배**) |
+
+1차 경로가 놓친 2건은 둘 다 `nolabel` 의 아이콘 전용 '검색' 버튼이다 — 1차의 실패가
+**2차 경로를 만든 바로 그 모양에 몰려 있다.** selector-first 는 취향이 아니라 측정
+결과다: 더 정확하고, 없는 것을 지어내지 않고, 49배 빠르다. 2차는 1차가 닿지 못하는
+자리에서만 값을 한다. 전체 표는
+`docs/measurements/grounding-selector-vs-vlm-2026-08-27.md`.
+
+
 파이프라인 결과가 mock 과 **동일하다**(9 PASS / 1 FAIL, 보정 8건). 즉 이 화면에서는
 실물 모델의 정확도 손실이 없었다.
 
@@ -131,6 +147,7 @@ Claude API가 필요하지 않다.
 | `probe_request_selection.py` | 자연어 요청 해석 재현율 — 튜닝 세트 / `heldout` | 필요 |
 | `build_iou_dataset.py` | — 탐지 시험지를 굳힌다 (`fixtures/iou`) | 불필요 |
 | `eval_vlm_iou.py` | 화면 이미지에서 요소를 찾는 정확도 (IoU·적중·오탐·속도) | 필요 |
+| `eval_selector_speed.py` | 같은 시험지를 1차 경로로 — §9 의 selector vs VLM 비교 | 불필요 (SUT 만) |
 | `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
 | `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
 

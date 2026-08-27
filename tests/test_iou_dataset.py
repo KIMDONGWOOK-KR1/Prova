@@ -146,3 +146,107 @@ class TestScoring:
         s = evaluator.summarize(rows, 0.5)
         assert s["success_iou"] == 0
         assert s["gate_dropped"] == data["present"]
+
+
+@pytest.fixture(scope="module")
+def selector_eval():
+    return load_script("scripts/eval_selector_speed.py")
+
+
+class TestSelectorScoring:
+    """같은 시험지를 1차 경로(selector)로 채점한다 — 명세서 §9 의 비교 측정.
+
+    §9 는 'selector 방식 vs VLM 방식의 탐지 성공률·처리 속도를 별도 비교' 를
+    요구한다. VLM 쪽은 이미 쟀고(2026-08-22) 저장돼 있으므로, 같은 50개 항목을
+    같은 화면에서 1차 경로로 재면 사과 대 사과 비교가 된다.
+
+    브라우저를 여는 일과 채점을 나눈다 — 채점은 `locate` 를 받아서 부르기만
+    하므로, 여기서는 가짜 `locate` 로 집계만 확인할 수 있다. VLM 채점이
+    `evaluate(items, vlm)` 로 갈라 둔 것과 같은 모양이다.
+    """
+
+    def test_전부_찾으면_있음_항목이_전부_성공이다(self, data, selector_eval):
+        def 항상찾는다(item):
+            return True, "label"
+
+        rows = selector_eval.evaluate_selector(_items(data), 항상찾는다)
+        s = selector_eval.summarize_selector(rows)
+        assert s["found"] == s["present"] == data["present"]
+
+    def test_없는_요소를_찾았다고_하면_오탐이_올라간다(self, data, selector_eval):
+        """이 테스트가 가장 중요하다. 집계가 고장 나면 보고서는 늘 '오탐 0' 을
+        내고, 그 0 은 측정한 0 처럼 보인다 — 1차 경로가 유리해 보이는 방향으로
+        조용히 틀린다."""
+        def 항상찾는다(item):
+            return True, "label"
+
+        rows = selector_eval.evaluate_selector(_items(data), 항상찾는다)
+        s = selector_eval.summarize_selector(rows)
+        assert s["false_positive"] == s["absent"] == data["absent"]
+
+    def test_아무것도_못_찾으면_성공도_오탐도_0이다(self, data, selector_eval):
+        """없는 요소를 못 찾는 것은 오탐이 아니라 정답이다."""
+        def 못찾는다(item):
+            return False, None
+
+        rows = selector_eval.evaluate_selector(_items(data), 못찾는다)
+        s = selector_eval.summarize_selector(rows)
+        assert s["found"] == 0
+        assert s["false_positive"] == 0
+
+    def test_탐지_실패와_오류를_섞지_않는다(self, data, selector_eval):
+        """'못 찾았다' 와 '재는 중에 터졌다' 는 다르다. 섞으면 도구가 고장 난
+        것을 탐지 실패로 보고하게 된다 — 이 프로젝트가 반복해서 경계해 온 모양."""
+        def 터진다(item):
+            raise RuntimeError("브라우저가 죽었다")
+
+        rows = selector_eval.evaluate_selector(_items(data), 터진다)
+        s = selector_eval.summarize_selector(rows)
+        assert s["call_failed"] == len(data["items"])
+        assert s["found"] == 0
+        assert s["false_positive"] == 0
+
+    def test_시간이_기록된다(self, data, selector_eval):
+        def 항상찾는다(item):
+            return True, "label"
+
+        rows = selector_eval.evaluate_selector(_items(data), 항상찾는다)
+        assert all("elapsed_ms" in r for r in rows)
+        s = selector_eval.summarize_selector(rows)
+        assert s["mean_ms"] >= 0 and s["max_ms"] >= 0
+
+
+class TestPopulationGuard:
+    """두 경로의 숫자를 나란히 놓기 전에 **같은 항목인지** 확인한다.
+
+    실제로 어긋난 적이 있다(2026-08-27). 1차 경로를 재면서 select·list 를
+    뺐는데, 그 제외는 정체 대조 재생(08-25)의 범위였고 IoU 채점(08-22)은 50개
+    전부였다. 그대로 표를 만들었으면 43개로 잰 숫자와 50개로 잰 숫자를 나란히
+    놓고 '비교' 라고 불렀을 것이다.
+
+    모집단이 다른 두 수치는 비교가 아니라 착시다. 그리고 그 어긋남은 표에서
+    보이지 않는다 — 그래서 코드가 막는다.
+    """
+
+    def test_같은_항목이_아니면_비교하지_않는다(self, selector_eval):
+        with pytest.raises(ValueError, match="모집단"):
+            selector_eval.check_same_population(
+                [{"id": 1}, {"id": 2}], [{"id": 1}, {"id": 3}])
+
+    def test_같은_항목이면_통과한다(self, selector_eval):
+        selector_eval.check_same_population(
+            [{"id": 2}, {"id": 1}], [{"id": 1}, {"id": 2}])
+
+    def test_VLM_행을_같은_항목으로_좁혀_요약한다(self, selector_eval):
+        """비교 대상이 부분집합이면 VLM 쪽도 그 부분집합으로 다시 세야 한다.
+        저장된 문서의 숫자를 그대로 옮겨 적으면 모집단이 조용히 갈라진다."""
+        rows = [
+            {"id": 0, "present": True, "hit": True, "gate": True, "elapsed_ms": 100.0},
+            {"id": 1, "present": True, "hit": False, "gate": True, "elapsed_ms": 300.0},
+            {"id": 2, "present": False, "hit": False, "gate": True, "elapsed_ms": 200.0},
+        ]
+        s = selector_eval.summarize_vlm(rows, keep_ids={0, 2})
+        assert s["present"] == 1 and s["absent"] == 1
+        assert s["found"] == 1          # id 0 만 남는다
+        assert s["false_positive"] == 1  # id 2 는 없는 것을 찾았다고 했다
+        assert s["mean_ms"] == 150.0     # 100 과 200 의 평균 — 300 은 빠진다
