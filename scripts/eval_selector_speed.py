@@ -122,6 +122,28 @@ def check_same_population(rows_a: list[dict], rows_b: list[dict]) -> None:
         )
 
 
+def check_same_dataset(dataset_id: str, meta: dict) -> None:
+    """저장된 채점 결과가 **같은 시험지**의 것인지 확인한다.
+
+    항목 id 는 열거 순서로 매겨지므로, 시험지가 바뀌어도 같은 id 가 존재할 수
+    있다. 그때 id 집합 비교(check_same_population)는 통과하면서 실제로는 다른
+    항목을 나란히 놓게 된다 — 집합이 같다는 것과 같은 시험지라는 것은 다르다.
+
+    표시가 없으면 통과시키지 않는다. '모르는 것' 을 '같은 것' 으로 두면 그
+    관대함이 정확히 틀린 표를 만든다.
+    """
+    saved = meta.get("dataset_id")
+    if not saved:
+        raise ValueError(
+            "저장된 채점 결과에 시험지 표시(dataset_id)가 없어 비교할 수 없습니다."
+        )
+    if saved != dataset_id:
+        raise ValueError(
+            f"다른 시험지의 점수입니다 — 지금 {dataset_id}, 저장된 결과 {saved}. "
+            "시험지를 넓혔다면 2차 경로도 새 시험지로 다시 채점해야 합니다."
+        )
+
+
 def summarize_vlm(rows: list[dict], keep_ids: set | None = None) -> dict:
     """저장된 VLM 채점 행을 1차 경로와 같은 칸으로 다시 센다.
 
@@ -163,10 +185,26 @@ def make_page_locator(page, sut: str):
 
     current = {"path": None}
 
+    def sign_in(path: str) -> None:
+        """로그인 뒤 화면은 세션부터 만든다.
+
+        안 하면 화면이 통째로 로그인으로 리다이렉트되고, 거기 있는 '비밀번호' 를
+        '없는 요소를 찾았다'(오탐)로 집계한다 — **도구 결함이 탐지 실패로
+        둔갑한다.** 실제로 겪었다(2026-08-27, 시험지를 넓힌 직후).
+        """
+        variant = path.strip("/").split("/")[0]
+        page.goto(f"{sut}/{variant}/login", wait_until="load")
+        page.fill("input[name=email]", "seller@test.com")
+        page.fill("input[name=password]", "Seller1!")
+        page.click("button[type=submit]")
+        page.wait_for_load_state("load")
+
     def locate(item: dict) -> tuple[bool, Optional[str]]:
         # 같은 화면의 항목이 이어지면 다시 열지 않는다 — 로드 시간을 탐지
         # 시간에 섞지 않기 위해서다.
         if current["path"] != item["path"]:
+            if item.get("login"):
+                sign_in(item["path"])
             page.goto(f"{sut}{item['path']}", wait_until="load")
             current["path"] = item["path"]
         hint = UIElement(element_id=f"probe-{item['id']}", type=item["kind"],
@@ -229,11 +267,21 @@ def main() -> int:
         print(f"\n  2차 경로 결과가 없어 비교표를 만들지 않았습니다: {vlm_path}")
         return 0
 
-    vlm_rows = json.loads(vlm_path.read_text(encoding="utf-8"))["rows"]
+    saved = json.loads(vlm_path.read_text(encoding="utf-8"))
     keep = {r["id"] for r in rows}
-    # 모집단이 어긋나면 여기서 멈춘다 — 조용히 넘어가면 보고서에 실린다.
-    check_same_population(rows, [r for r in vlm_rows if r["id"] in keep])
-    v = summarize_vlm(vlm_rows, keep_ids=keep)
+    try:
+        # 같은 시험지의 점수인지 먼저 본다 — id 집합이 같아도 시험지가 다르면
+        # 같은 id 가 다른 항목을 가리킨다.
+        check_same_dataset(data["dataset_id"], saved.get("meta", {}))
+        # 모집단이 어긋나도 멈춘다 — 조용히 넘어가면 보고서에 실린다.
+        check_same_population(rows, [r for r in saved["rows"] if r["id"] in keep])
+    except ValueError as exc:
+        # 표를 못 만드는 것이 이 가드의 목적이다. 1차 경로 측정 자체는 끝났으므로
+        # 실패가 아니라 '비교는 못 한다' 로 알린다.
+        print()
+        print(f"  비교표를 만들지 않았습니다 — {exc}")
+        return 0
+    v = summarize_vlm(saved["rows"], keep_ids=keep)
 
     print()
     print("| 지표 | selector (1차) | VLM (2차) |")

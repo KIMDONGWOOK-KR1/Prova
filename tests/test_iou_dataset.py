@@ -250,3 +250,99 @@ class TestPopulationGuard:
         assert s["found"] == 1          # id 0 만 남는다
         assert s["false_positive"] == 1  # id 2 는 없는 것을 찾았다고 했다
         assert s["mean_ms"] == 150.0     # 100 과 200 의 평균 — 300 은 빠진다
+
+
+class TestDatasetIdGuard:
+    """점수는 어느 시험지의 것인지까지 맞아야 비교가 된다.
+
+    항목 id 는 열거 순서로 매겨진다. 시험지가 바뀌어도 **같은 id 가 존재할 수
+    있고**, 그때 id 집합 비교는 통과하면서 실제로는 다른 항목을 나란히 놓게
+    된다. 저장된 채점 결과가 `meta.dataset_id` 를 들고 다니는 이유가 이것이다.
+
+    2026-08-27 에 실제로 이 구멍을 만들 뻔했다 — 모집단 가드를 만들면서 id
+    집합만 봤고, 바로 다음 작업이 시험지를 넓히는 것이었다.
+    """
+
+    def test_시험지가_다르면_비교하지_않는다(self, selector_eval):
+        with pytest.raises(ValueError, match="시험지"):
+            selector_eval.check_same_dataset("536392d2154b", {"dataset_id": "다른값"})
+
+    def test_같은_시험지면_통과한다(self, selector_eval):
+        selector_eval.check_same_dataset("536392d2154b", {"dataset_id": "536392d2154b"})
+
+    def test_옛_결과에_시험지_표시가_없으면_멈춘다(self, selector_eval):
+        """표시가 없다고 통과시키면 '모르는 것' 이 '같은 것' 으로 둔갑한다."""
+        with pytest.raises(ValueError, match="시험지"):
+            selector_eval.check_same_dataset("536392d2154b", {})
+
+
+class TestGatedScreens:
+    """로그인 뒤 화면을 시험지가 어떻게 데리고 다니는가.
+
+    2026-08-27 에 시험지를 상품등록·주문조회까지 넓히면서 겪었다. 채점 스크립트가
+    경로만 열었더니 세션이 없어 **전부 로그인 화면으로 리다이렉트**됐고, 그 화면에
+    있는 '비밀번호' 를 '없는 요소를 찾았다'(오탐)로 집계했다. 1차 경로의 오탐이
+    0 에서 3 으로 올라간 것처럼 보였는데 원인은 도구였다.
+
+    **도구 결함이 탐지 실패로 둔갑하는 모양**이라 시험지가 스스로 막아야 한다 —
+    화면에 닿는 방법을 시험지가 들고 다니고, 채점하는 쪽이 그것을 쓴다.
+    """
+
+    def test_로그인_뒤_화면은_항목에_표시가_있다(self, data):
+        gated = [i for i in data["items"]
+                 if i["path"].endswith(("/product", "/orders"))
+                 or "/orders?" in i["path"]]
+        assert gated, "상품등록·주문조회 항목이 시험지에 없습니다"
+        assert all(i.get("login") for i in gated), [
+            i["state_id"] for i in gated if not i.get("login")]
+
+    def test_로그인_없이_닿는_화면은_표시가_없다(self, data):
+        """표시를 남발하면 채점이 매번 로그인해 느려지고, 로그인 자체가 화면을
+        바꾸는 경우(가입 완료 등)를 가릴 수 있다."""
+        open_items = [i for i in data["items"] if i["path"].startswith("/good/login")]
+        assert open_items
+        assert not any(i.get("login") for i in open_items)
+
+
+class TestGatedLocator:
+    """채점 쪽이 그 표시를 실제로 쓰는가 — 브라우저 없이 확인한다."""
+
+    class FakePage:
+        def __init__(self):
+            self.actions: list[tuple] = []
+
+        def goto(self, url, **kw):
+            self.actions.append(("goto", url))
+
+        def fill(self, selector, value):
+            self.actions.append(("fill", selector))
+
+        def click(self, selector):
+            self.actions.append(("click", selector))
+
+        def wait_for_load_state(self, *a, **kw):
+            pass
+
+    def test_로그인_항목은_먼저_로그인한다(self, selector_eval):
+        page = self.FakePage()
+        locate = selector_eval.make_page_locator(page, "http://sut")
+        item = {"id": 1, "path": "/good/orders", "target": "시작일",
+                "kind": "date", "login": True}
+        try:
+            locate(item)
+        except Exception:
+            pass  # ground() 는 가짜 페이지에서 터진다 — 여기서 보는 것은 이동 경로다
+        urls = [a[1] for a in page.actions if a[0] == "goto"]
+        assert "http://sut/good/login" in urls, page.actions
+        assert urls.index("http://sut/good/login") < urls.index("http://sut/good/orders")
+
+    def test_표시가_없으면_로그인하지_않는다(self, selector_eval):
+        page = self.FakePage()
+        locate = selector_eval.make_page_locator(page, "http://sut")
+        item = {"id": 2, "path": "/good/login", "target": "이메일",
+                "kind": "input", "login": False}
+        try:
+            locate(item)
+        except Exception:
+            pass
+        assert [a for a in page.actions if a[0] == "click"] == []

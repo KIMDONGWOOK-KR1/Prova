@@ -109,6 +109,14 @@ class State:
     targets: tuple[Target, ...]
     fill: tuple[tuple[str, str], ...] = ()
     click: str | None = None
+    #: 이 화면이 로그인 뒤에 있는가. 상품등록·주문조회는 세션 쿠키가 없으면
+    #: 로그인 화면으로 되돌아간다.
+    #:
+    #: 페이지 하나를 모든 상태가 재사용하므로 "앞 상태에서 로그인했으면 쿠키가
+    #: 남는다" 로도 되지만, 그러면 시험지가 **STATES 의 순서에 조용히 의존**한다.
+    #: 한 줄을 옮겼을 뿐인데 화면이 로그인으로 바뀌고, 그 사실은 채점 점수에서만
+    #: 드러난다. 필요한 화면이 스스로 로그인한다.
+    login: bool = False
     warnings: list[str] = field(default_factory=list, compare=False)
 
 
@@ -162,9 +170,36 @@ NO_PASSWORD = (Target("비밀번호", "input", "input[name=password]", present=F
 NO_QUERY = (Target("검색어", "input", "input[name=query]", present=False),)
 NO_AGREE = (Target("약관 동의", "checkbox", "input#agree_terms", present=False),)
 
-# 범위: login·signup·search·find_account 의 4화면이다. product·orders(2026-08-20
-# 추가)는 시험지를 굳힌 08-18 이후에 생겨 없다 — 다시 채점할 때 더한다. 더하면
-# dataset_id 가 바뀌므로 이전 점수와 비교하지 않는다(README 참고).
+PRODUCT_FORM = (
+    Target("상품명", "input", "input#name"),
+    Target("가격", "input", "input#price"),
+    Target("재고수량", "input", "input#stock"),
+    Target("등록하기", "button", "button[type=submit]"),
+)
+
+ORDERS_FORM = (
+    Target("시작일", "date", "input[name=start_date]"),
+    Target("종료일", "date", "input[name=end_date]"),
+    Target("조회", "button", "button[type=submit]"),
+)
+
+ORDERS_LIST = (
+    Target("주문 목록", "list", "ul[aria-label='주문 목록']"),
+    Target("합계", "text", "div[aria-label=합계]"),
+)
+
+#: table 변형의 목록. aria-label 이 없고 caption 으로만 이름이 붙는다 —
+#: 그림이 실제로 다르므로(순수 표) 시험지에 넣을 값이 있다.
+TABLE_LIST = (Target("주문 목록", "list", "table"),)
+
+# 기간 0건 화면에서 '주문 목록' 을 '없음' 으로 묻지 않는다. 목록 껍데기(<ul>)는
+# 그대로 렌더되므로 없다고 답하는 것이 오히려 틀리고, 빈 <ul> 은 높이가 0이라
+# 정답 상자로도 쓸 수 없다. 이 화면은 '필터 뒤 0건' 이라는 그림으로 값을 한다.
+
+# 범위: 2026-08-27 에 상품등록·주문조회를 더했다(시험지를 굳힌 08-18 이후에 생긴
+# 화면이라 빠져 있었다). dataset_id 가 바뀌므로 이전 점수와 비교하지 않는다 —
+# 채점 결과에 dataset_id 가 함께 적히고, eval_selector_speed 는 시험지가 다르면
+# 비교를 거부한다.
 STATES: tuple[State, ...] = (
     State("login-empty", "/good/login", "로그인 · 첫 진입",
           LOGIN + NO_QUERY + NO_AGREE),
@@ -199,6 +234,17 @@ STATES: tuple[State, ...] = (
           FIND_ACCOUNT,
           fill=(("input#email", "user@test.com"),),
           click="button[type=submit]"),
+    State("product-empty", "/good/product", "상품 등록 · 첫 진입",
+          PRODUCT_FORM + NO_PASSWORD + NO_QUERY, login=True),
+    State("product-error", "/good/product", "상품 등록 · 필수 입력 에러로 아래가 밀린 상태",
+          PRODUCT_FORM, click="button[type=submit]", login=True),
+    State("orders-list", "/good/orders", "주문 조회 · 목록 5건 + 날짜 필터",
+          ORDERS_FORM + ORDERS_LIST + NO_PASSWORD, login=True),
+    State("orders-empty", "/good/orders?start_date=2026-09-01&end_date=2026-09-02",
+          "주문 조회 · 기간 0건 안내",
+          ORDERS_FORM + NO_PASSWORD, login=True),
+    State("table-orders", "/table/orders", "주문 조회 · aria-label 없는 순수 표",
+          ORDERS_FORM + TABLE_LIST, login=True),
 )
 
 
@@ -209,12 +255,34 @@ def normalize(box: dict, size: dict) -> tuple[float, float, float, float]:
             (box["x"] + box["width"]) / w, (box["y"] + box["height"]) / h)
 
 
+#: 로그인 뒤 화면을 열 때 쓰는 계정 (sut.app.REGISTERED 와 같아야 한다).
+LOGIN_ACCOUNT = ("seller@test.com", "Seller1!")
+
+
+def sign_in(page, sut: str, path: str) -> None:
+    """이 화면이 속한 변형으로 로그인한다.
+
+    변형은 경로 첫 조각에서 읽는다(`/good/orders` -> good). 변형마다 세션 쿠키
+    이름이 다르므로(`session_{variant}`) good 으로 로그인하고 table 화면을 열면
+    가드에 막힌다.
+    """
+    variant = path.strip("/").split("/")[0]
+    email, password = LOGIN_ACCOUNT
+    page.goto(f"{sut}/{variant}/login")
+    page.fill("input[name=email]", email)
+    page.fill("input[name=password]", password)
+    page.click("button[type=submit]")
+    page.wait_for_load_state("networkidle")
+
+
 def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
     """한 화면을 만들고 정답 상자를 재서 항목들을 돌려준다.
 
     정답을 못 재면 예외를 던진다. 조용히 건너뛰면 데이터셋이 작아진 사실이 보이지
     않고, 어려운 항목만 빠진 시험지가 만들어진다.
     """
+    if state.login:
+        sign_in(page, sut, state.path)
     page.goto(f"{sut}{state.path}")
     page.wait_for_load_state("networkidle")
     for selector, value in state.fill:
@@ -236,7 +304,8 @@ def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
                     f"[{state.state_id}] '{t.name}' 은 없어야 하는데 {count}개 있습니다 "
                     f"({t.selector}). 정답표가 구현과 맞지 않습니다.")
             rows.append({"state_id": state.state_id, "note": state.note,
-                         "path": state.path, "image": image.name,
+                         "path": state.path, "login": state.login,
+                         "image": image.name,
                          "target": t.name, "kind": t.kind,
                          "hint": VLM_HINTS.get(t.kind, ""),
                          "present": False, "truth": None, "selector": t.selector})
@@ -252,7 +321,8 @@ def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
                 f"[{state.state_id}] '{t.name}' 의 상자를 잴 수 없습니다 "
                 f"({t.selector}) — 화면에 보이지 않는 요소입니다.")
         rows.append({"state_id": state.state_id, "note": state.note,
-                     "path": state.path, "image": image.name,
+                     "path": state.path, "login": state.login,
+                         "image": image.name,
                      "target": t.name, "kind": t.kind,
                      "hint": VLM_HINTS.get(t.kind, ""),
                      "present": True,
