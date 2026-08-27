@@ -50,6 +50,7 @@
       "precondition": null,
       "seed_rows": [],
       "date_filter": null,
+      "status_filter": null,
       "source_kind": "figma"
     },
     {
@@ -147,6 +148,7 @@
       "precondition": null,
       "seed_rows": [],
       "date_filter": null,
+      "status_filter": null,
       "source_kind": "figma"
     }
   ],

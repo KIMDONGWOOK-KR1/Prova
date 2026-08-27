@@ -629,6 +629,32 @@ class ParsedDocument:
             if len(row) >= 2 and row[0].strip()
         }
 
+    _STATUS_FILTER_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*상태\s*필터\s*$")
+
+    def declared_status_filter(self) -> Optional[dict[str, str]]:
+        """'상태 필터' 절 아래 항목|값 표를 {항목: 값} 으로 읽는다.
+
+        날짜 필터와 절을 나눈 이유는 두 필터가 서로 다른 것을 근거로 삼기
+        때문이다 — 날짜는 '기간 안인가', 상태는 '열 값이 같은가'. 한 표에
+        섞으면 어느 항목이 어느 필터의 것인지 이름으로만 구분해야 하고, 그
+        구분은 기획서를 쓰는 사람 눈에 보이지 않는다.
+
+        두 절의 헤더('항목|값')가 같으므로 declared_date_filter 와 마찬가지로
+        절 제목 위치로 찾는다.
+        """
+        table = self._table_after_heading(
+            self._STATUS_FILTER_HEADING_RE,
+            lambda header, t: [normalize_ws(h) for h in header]
+            in (["항목", "값"], ["항목", "내용"]),
+        )
+        if table is None:
+            return None
+        return {
+            normalize_ws(row[0]): row[1].strip()
+            for row in table.rows[1:]
+            if len(row) >= 2 and row[0].strip()
+        }
+
     def _tables_after_heading(self, heading_re: re.Pattern, header_ok) -> list[ParsedTable]:
         """heading_re 절 제목 뒤 첫 표와, 페이지를 넘어간 그 연속 조각들.
 
@@ -787,6 +813,41 @@ class ParsedDocument:
         """
         return {r["label"]: r["type"]
                 for r in self.declared_element_rows() if r["type"]}
+
+    #: '선택 목록: A, B, C' 에서 목록 부분을 떼어 내는 패턴. 콜론 앞뒤 공백과
+    #: 기획서마다 다른 구분자(쉼표·가운뎃점)를 견딘다.
+    _OPTIONS_RE = re.compile(r"선택\s*목록\s*[:：]\s*(.+)")
+
+    def declared_options(self) -> dict[str, list[str]]:
+        """요소 표의 '선택 목록: A, B, C' 를 라벨 -> 항목 목록으로 읽는다.
+
+        ## 왜 이것도 코드가 읽는가
+
+        declared_element_types 와 같은 이유이고, 같은 대가를 치르고 얻었다.
+        2026-08-27 에 주문조회에 상태 선택 요소를 더했더니 실물 7B 가 options 를
+        **빈 배열로** 냈다. 회원가입이 통과하고 있던 것은 그 기획서의 §2-1 산문이
+        선택지를 한 번 더 적어 준 덕이었다 — 표만 있으면 놓쳤고, 산문을 더해 봐도
+        놓쳤다.
+
+        options 가 비면 선택 항목 케이스가 아예 만들어지지 않는다. 기획서에 적힌
+        항목이 화면에서 빠져도 아무 일도 일어나지 않는다 — 조용한 미탐이다.
+
+        여기에 추론할 여지는 없다. 표에 'A, B, C' 라고 적혀 있으면 그게 목록이다.
+
+        ## 적히지 않은 요소는 담지 않는다
+
+        빈 목록을 넣으면 '기획서가 항목을 안 적었다' 와 '코드가 못 읽었다' 가
+        구별되지 않는다. 읽은 것만 돌려주고, 나머지는 LLM 의 판단을 남겨 둔다.
+        """
+        out: dict[str, list[str]] = {}
+        for row in self.declared_element_rows():
+            m = self._OPTIONS_RE.search(row.get("rules") or "")
+            if not m:
+                continue
+            items = [p.strip() for p in re.split(r"[,·、]", m.group(1)) if p.strip()]
+            if items:
+                out[row["label"]] = items
+        return out
 
     def declared_scenarios(self) -> Optional[list[dict]]:
         """입력-결과 예시 표를 그대로 시나리오로 옮긴다. LLM 을 쓰지 않는다.

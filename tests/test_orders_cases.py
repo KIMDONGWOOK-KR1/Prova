@@ -304,3 +304,85 @@ class TestFilterCases:
     def test_generate_cases_에_통합된다(self):
         cases = generate_cases(filter_spec())
         assert len([c for c in cases if "-filter-" in c.case_id]) == 8
+
+
+def status_spec(**overrides):
+    """상태 필터가 선언된 orders 스펙 (2026-08-27)."""
+    from prova.models import StatusFilter, UIElement
+
+    spec = filter_spec(**overrides)
+    spec.elements.append(UIElement(
+        element_id="status", type="select", label="상태",
+        options=["전체", "배송중", "배송완료", "취소"]))
+    spec.status_filter = StatusFilter(
+        status_label="상태", status_column="상태",
+        submit_label="조회", target_label="주문 목록")
+    return spec
+
+
+class TestStatusFilterCases:
+    """상태 조회 케이스 — 시드 표의 열 값으로 기대를 센다 (2026-08-27).
+
+    날짜 필터와 근거가 다르다. 날짜는 '주문일이 기간 안인가' 를 계산하고 상태는
+    '그 열 값이 같은가' 를 센다. 시드 표의 상태 분포는 배송중 1 · 배송완료 3 ·
+    취소 1 이다.
+    """
+
+    def _cases(self, spec=None):
+        from prova.s2_case_generator.generator import _status_cases
+
+        return _status_cases(spec or status_spec(), start_seq=30)
+
+    def test_필터가_없으면_케이스도_없다(self):
+        """필터 없는 화면이 정상이다 — 억측으로 만들지 않는다."""
+        spec = status_spec()
+        spec.status_filter = None
+        assert self._cases(spec) == []
+
+    def test_상태값마다_건수_케이스를_만든다(self):
+        """'전체' 는 거르지 않는 선택지라 상태 열에 없다 — 시드에서 센 상태만
+        묻는다. 없는 상태를 물으면 기대 건수를 셀 근거가 없다."""
+        cases = self._cases()
+        counts = [c for c in cases if c.expected.type == "result_count"]
+        got = {c.steps[1].value: c.expected.count for c in counts}
+        assert got == {"배송중": 1, "배송완료": 3, "취소": 1}
+
+    def test_스텝은_고르고_누르는_것이다(self):
+        cases = self._cases()
+        assert [s.action for s in cases[0].steps] == ["navigate", "select", "click"]
+        assert cases[0].steps[2].target == "조회"
+
+    def test_다른_상태가_안_보이는지도_확인한다(self):
+        """건수만 보면 '전부 보여주는데 우연히 수가 맞는' 경우를 못 잡는다.
+        기간 밖 배제 케이스와 같은 이유다."""
+        cases = self._cases()
+        absent = [c for c in cases if c.expected.type == "text_absent"]
+        assert absent, [c.title for c in cases]
+        # '취소' 를 고르면 다른 상태 행의 고유값(주문번호)이 안 보여야 한다
+        cancel = next(c for c in absent if c.steps[1].value == "취소")
+        assert cancel.expected.value in {"ORD-005", "ORD-004", "ORD-003", "ORD-001"}
+
+    def test_상태_열이_시드에_없으면_경고하고_만들지_않는다(self):
+        spec = status_spec()
+        spec.status_filter.status_column = "없는열"
+        assert self._cases(spec) == []
+        assert any("없는열" in w for w in spec.warnings)
+
+
+def test_generate_cases_가_상태_케이스를_포함한다():
+    """만들어 두고 부르지 않으면 검증이 조용히 없는 것과 같다.
+
+    case_id 문자열로 찾지 않는다 — 선택 항목 케이스의 id 가
+    'orders-options-status-…' 라서 '-status-' 는 우연히도 맞는다. 상태 케이스만
+    갖는 **동작**(상태를 고르고 조회를 누른다)으로 찾는다.
+    """
+    from prova.s2_case_generator.generator import generate_cases
+
+    cases = generate_cases(status_spec())
+    # 접두어로 찾는다. '-status-' 를 부분 문자열로 찾으면 선택 항목 케이스
+    # (orders-options-status-…)가 걸리고, 스텝 모양으로 찾으면 정상 케이스가
+    # 걸린다 — 이 화면은 채울 입력이 상태 하나뿐이라 그것도 navigate·select·click 이다.
+    picked = [c for c in cases if c.case_id.startswith("orders-status-")]
+    assert picked, [c.case_id for c in cases]
+    assert {c.steps[1].value for c in picked} == {"배송중", "배송완료", "취소"}
+

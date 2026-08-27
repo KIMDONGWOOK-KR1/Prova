@@ -16,6 +16,8 @@ from __future__ import annotations
 from prova.models import DateFilter, Precondition, ScreenSpec, UIElement
 from prova.s1_spec_extractor.extractor import (
     _apply_declared_date_filter,
+    _apply_declared_status_filter,
+    _apply_declared_options,
     _apply_declared_precondition,
     _apply_declared_required_message,
     _apply_declared_scenarios,
@@ -482,3 +484,73 @@ class TestApplyDeclaredDateFilter:
         _apply_declared_date_filter(spec, dict(self.FULL))
         assert spec.date_filter is not None
         assert spec.date_filter.reversed_message is None
+
+
+
+class TestApplyDeclaredStatusFilter:
+    """'상태 필터' 표가 진실이다 — 날짜 필터와 같은 원칙.
+
+    필터는 '무엇을 골라 무엇을 눌러 무엇을 다시 세는가' 라는 실행 지시라서,
+    틀리면 엉뚱한 요소를 조작한 결과를 검증 결과라고 말하게 된다.
+    """
+
+    FULL = {"상태 요소": "상태", "상태 열": "상태",
+            "조회 버튼": "조회", "대상 목록": "주문 목록"}
+
+    def _spec(self) -> ScreenSpec:
+        return ScreenSpec(screen_id="orders", screen_name="주문 조회", url_path="/orders")
+
+    def test_표가_있으면_status_filter_를_채운다(self):
+        spec = self._spec()
+        _apply_declared_status_filter(spec, dict(self.FULL))
+        f = spec.status_filter
+        assert (f.status_label, f.status_column) == ("상태", "상태")
+        assert (f.submit_label, f.target_label) == ("조회", "주문 목록")
+
+    def test_표가_없으면_LLM_이_지어낸_필터를_지운다(self):
+        from prova.models import StatusFilter
+
+        spec = self._spec()
+        spec.status_filter = StatusFilter(
+            status_label="a", status_column="b", submit_label="c", target_label="d")
+        _apply_declared_status_filter(spec, None)
+        assert spec.status_filter is None
+
+    def test_필수_키가_빠지면_경고하고_채우지_않는다(self):
+        """반쪽 필터로 케이스를 만들면 무엇을 확인한 것인지 말할 수 없다."""
+        spec = self._spec()
+        _apply_declared_status_filter(spec, {"상태 요소": "상태"})
+        assert spec.status_filter is None
+        assert any("상태 필터" in w for w in spec.warnings)
+
+
+class TestApplyDeclaredOptions:
+    """표에 적힌 선택 항목이 LLM 결과를 덮는다.
+
+    2026-08-27 실측: 실물 7B 가 주문조회 '상태' 의 options 를 빈 배열로 냈다.
+    비면 선택 항목 케이스가 아예 만들어지지 않아 검증이 조용히 사라진다.
+    """
+
+    def _spec(self, options):
+        return ScreenSpec(
+            screen_id="orders", screen_name="주문 조회", url_path="/orders",
+            elements=[UIElement(element_id="status", type="select",
+                                label="상태", options=options)])
+
+    def test_모델이_비워도_표에서_채운다(self):
+        spec = self._spec([])
+        _apply_declared_options(spec, {"상태": ["전체", "배송중"]})
+        assert spec.element_by_id("status").options == ["전체", "배송중"]
+
+    def test_모델이_다르게_내면_표가_이긴다(self):
+        """표가 진실이다 — declared_element_types 와 같은 원칙."""
+        spec = self._spec(["배송중"])
+        _apply_declared_options(spec, {"상태": ["전체", "배송중", "취소"]})
+        assert spec.element_by_id("status").options == ["전체", "배송중", "취소"]
+
+    def test_표에_없는_요소는_건드리지_않는다(self):
+        """읽지 못한 것을 빈 목록으로 덮으면 LLM 이 옳게 읽은 것까지 지운다."""
+        spec = self._spec(["검색", "광고"])
+        _apply_declared_options(spec, {})
+        assert spec.element_by_id("status").options == ["검색", "광고"]
+

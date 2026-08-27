@@ -65,6 +65,16 @@ def _filter_case(report, title_needle: str):
     return next(v for v in _filter_cases_of(report) if title_needle in v.title)
 
 
+def _status_cases_of(report):
+    """접두어로 고른다 — '-status-' 부분 문자열은 선택 항목 케이스
+    (orders-options-status-…)에도 걸린다."""
+    return [v for v in report.cases if v.case_id.startswith("orders-status-")]
+
+
+def _status_case(report, title_needle: str):
+    return next(v for v in _status_cases_of(report) if title_needle in v.title)
+
+
 class TestGood:
     def test_전부_통과한다(self, good_run):
         report, _ = good_run
@@ -103,14 +113,24 @@ class TestGood:
         report, _ = good_run
         assert report.summary["total"] > 0
 
-    def test_전체_열다섯_건이다(self, good_run):
-        """valid + labels + sorted + sum + seedcount + filter 9종 + guard = 15건.
+    def test_전체_스물두_건이다(self, good_run):
+        """valid + options + labels + sorted + sum + seedcount + filter 9종
+        + status 6종 + guard = 22건.
 
         labels 케이스는 날짜 필터 요소(시작일·종료일·조회)가 §2 에 생기면서
         처음 만들어졌다 — 그 라벨들이 화면에서 찾아지는지 본다.
         """
         report, _ = good_run
-        assert report.summary["total"] == 15, [c.case_id for c in report.cases]
+        assert report.summary["total"] == 22, [c.case_id for c in report.cases]
+
+    def test_상태_케이스_여섯_개가_만들어져_전부_통과했다(self, good_run):
+        """상태값 3종 × (건수 · 다른 상태 배제) = 6건. 0건 통과를 100% 통과로
+        착각하지 않기 위해 생성 여부까지 본다."""
+        report, _ = good_run
+        cases = _status_cases_of(report)
+        assert len(cases) == 6, [c.case_id for c in report.cases]
+        fails = [c for c in cases if c.verdict != "PASS"]
+        assert not fails, "\n".join(f"  {c.case_id}: {c.failure_detail}" for c in fails)
 
     def test_필터_케이스_아홉_개가_만들어져_전부_통과했다(self, good_run):
         """입력↔재조회(fill·fill·click 후 판정)가 실제 브라우저에서 도는지의
@@ -125,10 +145,11 @@ class TestGood:
 
 class TestBad:
     def test_심은_결함만_지목한다(self, bad_run):
-        """O1~O5 의 케이스 일곱만 FAIL 이어야 한다 — 오탐 0건.
+        """O1~O6 의 케이스 아홉만 FAIL 이어야 한다 — 오탐 0건.
 
         무필터: 정렬(O1)·합계(O2). 필터: 건수·경계 포함(O3), 필터 후
         합계(O4), 필터 후 정렬(O1 이 필터 화면에도 남는다), 기간 역전(O5).
+        상태: 배송완료·배송중 건수(O6).
         기간 밖 배제·빈 기간 0건·빈 문구·빈 값 전체는 bad 도 올바르게
         구현했으므로 PASS 여야 한다 — 결함 하나당 그 규칙의 케이스가 잡는다.
         """
@@ -142,6 +163,12 @@ class TestBad:
             _filter_case(report, "합계가 표시된").case_id,     # O4
             _filter_case(report, "최신순으로 정렬").case_id,   # O1 (필터 후)
             _filter_case(report, "시작일이 종료일보다").case_id,  # O5 — 기간 역전
+            # O6 — 취소 주문이 늘 섞여 나오므로 다른 상태의 건수가 하나씩 는다.
+            # '취소' 조회는 건수가 맞아 통과하고(섞이는 것이 자기 자신이다),
+            # 배제 케이스는 하필 그 취소 행을 보지 않으면 통과한다 — 아래
+            # test_상태_배제_케이스의_한계 참고.
+            _status_case(report, "'배송완료' 로 조회하면 3건").case_id,
+            _status_case(report, "'배송중' 로 조회하면 1건").case_id,
         }
         assert fails == expected, (
             f"오탐(심지 않은 결함): {fails - expected} / "
@@ -169,13 +196,12 @@ class TestBad:
         case = _case(report, "orders-seedcount-")
         assert case.verdict == "PASS", case.failure_detail
 
-    def test_전체_열다섯_건_중_여덟만_통과한다(self, bad_run):
-        """PASS 8건(valid·labels·seedcount·guard·필터 배제/빈 기간/빈 문구/
-        빈 값), FAIL 7건(O1 둘·O2·O3 둘·O4·O5)."""
+    def test_bad_는_심은_결함_수만큼만_실패한다(self, bad_run):
+        """FAIL 9건(O1 둘·O2·O3 둘·O4·O5·O6 둘) — 나머지는 전부 PASS."""
         report, _ = bad_run
-        assert report.summary["total"] == 15, [c.case_id for c in report.cases]
-        assert report.summary["pass"] == 8
-        assert report.summary["fail"] == 7
+        assert report.summary["total"] == 22, [c.case_id for c in report.cases]
+        assert report.summary["fail"] == 9
+        assert report.summary["pass"] == report.summary["total"] - 9
 
     def test_정렬_실패_사유가_깨진_날짜_쌍을_말한다(self, bad_run):
         report, _ = bad_run
@@ -225,10 +251,10 @@ class TestTableMarkup:
         report, _ = table_run
         failures = [v for v in report.cases if v.verdict == "FAIL"]
         assert not failures, "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
-        assert report.summary["total"] == 15
+        assert report.summary["total"] == 22
 
     def test_표_마크업에서도_심은_결함만_지목한다(self, badtable_run):
-        """bad 와 같은 일곱 케이스만 FAIL — 마크업이 판정에 새지 않는다."""
+        """bad 와 같은 아홉 케이스만 FAIL — 마크업이 판정에 새지 않는다."""
         report, _ = badtable_run
         fails = {v.case_id for v in report.cases if v.verdict == "FAIL"}
         expected = {
@@ -239,6 +265,8 @@ class TestTableMarkup:
             _filter_case(report, "합계가 표시된").case_id,
             _filter_case(report, "최신순으로 정렬").case_id,
             _filter_case(report, "시작일이 종료일보다").case_id,
+            _status_case(report, "'배송완료' 로 조회하면 3건").case_id,
+            _status_case(report, "'배송중' 로 조회하면 1건").case_id,
         }
         assert fails == expected, (
             f"오탐: {fails - expected} / 미탐: {expected - fails}"

@@ -191,3 +191,28 @@ class TestDateFilter:
         html = self._get(client, "table", self.RANGE)
         assert "aria-label" not in html
         assert html.count("ORD-0") == 3 and "ORD-002" in html
+
+
+class TestTwinFilters:
+    """table/badtable 은 good/bad 의 쌍둥이다 — 마크업만 다르고 필터는 같아야 한다.
+
+    2026-08-27 에 어긋났다. 상태 필터를 더하면서 `badtable_orders` 만 status 를
+    넘기지 않아, 그 변형에서는 상태 필터가 통째로 동작하지 않았다. 그러면 그
+    변형이 재려던 것(마크업이 판정에 새는가)이 **두 변수**가 되어 무엇을 잰
+    것인지 말할 수 없다.
+    """
+
+    CANCEL = "?status=취소"
+
+    def _rows(self, client, variant: str) -> list[str]:
+        import re
+        _login(client, variant)
+        r = client.get(f"/{variant}/orders{self.CANCEL}")
+        assert r.status_code == 200
+        return re.findall(r"ORD-\d+", r.text)
+
+    def test_table_은_good_과_같은_상태_필터_결과다(self, client):
+        assert self._rows(client, "table") == self._rows(client, "good")
+
+    def test_badtable_은_bad_와_같은_상태_필터_결과다(self, client):
+        assert self._rows(client, "badtable") == self._rows(client, "bad")
