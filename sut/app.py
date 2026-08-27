@@ -411,6 +411,7 @@ def render_orders(
     markup: str = "list",
     start_date: str = "",
     end_date: str = "",
+    status: str = "",
     error: str | None = None,
 ) -> HTMLResponse:
     rows = [
@@ -424,6 +425,7 @@ def render_orders(
         context={"variant": variant, "orders": rows,
                  "total_text": _format_amount(total), "markup": markup,
                  "start_date": start_date, "end_date": end_date,
+                 "status": status, "status_options": STATUS_OPTIONS,
                  # 빈 결과 문구는 good/bad 공통이다 — 결함은 O3·O4 뿐이어야 한다.
                  #
                  # 오류 문구가 있으면 빈 결과 문구는 내지 않는다. 둘 다 나오면
@@ -726,8 +728,24 @@ def _filter_rows(
     return [o for o in rows if keep(o)]
 
 
-def _good_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
-    rows = sorted(_filter_rows(SEED_ORDERS, start, end),
+#: 거르지 않는 선택지. 기획서 §7 이 '전체' 를 그렇게 정의했다.
+STATUS_ALL = "전체"
+
+#: 상태 선택지. 기획서 §2 요소 표의 '선택 목록' 과 같아야 한다 — 화면에 없는
+#: 항목이 있으면 선택 항목 케이스가 잡는다.
+STATUS_OPTIONS = (STATUS_ALL, "배송중", "배송완료", "취소")
+
+
+def _by_status(rows: list[dict], status: str) -> list[dict]:
+    """상태로 거른다. 빈 값과 '전체' 는 거르지 않는다."""
+    if not status or status == STATUS_ALL:
+        return list(rows)
+    return [o for o in rows if o["상태"] == status]
+
+
+def _good_orders_data(start: str = "", end: str = "",
+                      status: str = "") -> tuple[list[dict], int]:
+    rows = sorted(_by_status(_filter_rows(SEED_ORDERS, start, end), status),
                   key=lambda o: o["주문일"], reverse=True)
     return rows, sum(o["금액"] for o in rows)
 
@@ -743,31 +761,33 @@ def _period_reversed(start: str, end: str) -> bool:
 
 
 @app.get("/good/orders", response_class=HTMLResponse)
-def good_orders(request: Request, start_date: str = "", end_date: str = ""):
+def good_orders(request: Request, start_date: str = "", end_date: str = "",
+                status: str = ""):
     if "session_good" not in request.cookies:
         return RedirectResponse("/good/login", status_code=303)
     if _period_reversed(start_date, end_date):
         # 기획서 §6: 조회하지 않고 문구를 노출한다.
         return render_orders(request, "good", [], 0,
                              start_date=start_date, end_date=end_date,
-                             error=MSG_ORDERS_REVERSED)
-    rows, total = _good_orders_data(start_date, end_date)
+                             status=status, error=MSG_ORDERS_REVERSED)
+    rows, total = _good_orders_data(start_date, end_date, status)
     return render_orders(request, "good", rows, total,
-                         start_date=start_date, end_date=end_date)
+                         start_date=start_date, end_date=end_date, status=status)
 
 
 # table — good 과 데이터가 같고 마크업만 aria-label 없는 순수 <table> 이다.
 @app.get("/table/orders", response_class=HTMLResponse)
-def table_orders(request: Request, start_date: str = "", end_date: str = ""):
+def table_orders(request: Request, start_date: str = "", end_date: str = "",
+                 status: str = ""):
     if "session_table" not in request.cookies:
         return RedirectResponse("/table/login", status_code=303)
     if _period_reversed(start_date, end_date):
         return render_orders(request, "table", [], 0, markup="table",
                              start_date=start_date, end_date=end_date,
-                             error=MSG_ORDERS_REVERSED)
-    rows, total = _good_orders_data(start_date, end_date)
+                             status=status, error=MSG_ORDERS_REVERSED)
+    rows, total = _good_orders_data(start_date, end_date, status)
     return render_orders(request, "table", rows, total, markup="table",
-                         start_date=start_date, end_date=end_date)
+                         start_date=start_date, end_date=end_date, status=status)
 
 
 # ---------------------------------------------------------------------------
@@ -861,7 +881,8 @@ def bad_product_submit(
 
 
 @app.get("/bad/orders", response_class=HTMLResponse)
-def bad_orders(request: Request, start_date: str = "", end_date: str = ""):
+def bad_orders(request: Request, start_date: str = "", end_date: str = "",
+               status: str = ""):
     if "session_bad" not in request.cookies:
         return RedirectResponse("/bad/login", status_code=303)
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
@@ -869,12 +890,13 @@ def bad_orders(request: Request, start_date: str = "", end_date: str = ""):
     #     문구를 노출하라고 적었는데, 그냥 걸러서 빈 목록을 보여준다 — 사용자는
     #     '그 기간에 주문이 없다' 고 읽는다. 실무에서 흔한 모양이라 심어 둔다.
     #     bad 쪽은 코드를 더하지 않는 것이 곧 결함이다.
-    rows, total = _bad_orders_data(start_date, end_date)
+    rows, total = _bad_orders_data(start_date, end_date, status)
     return render_orders(request, "bad", rows, total,
-                         start_date=start_date, end_date=end_date)
+                         start_date=start_date, end_date=end_date, status=status)
 
 
-def _bad_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
+def _bad_orders_data(start: str = "", end: str = "",
+                     status: str = "") -> tuple[list[dict], int]:
     # O1: 오름차순(과거 → 최근)으로 정렬한다. 기획서는 내림차순을 요구한다.
     all_rows = sorted(SEED_ORDERS, key=lambda o: o["주문일"])
     # O2: 합계에서 화면에 마지막으로 "표시된" 행의 금액을 뺀다. O1 때문에
@@ -886,17 +908,24 @@ def _bad_orders_data(start: str = "", end: str = "") -> tuple[list[dict], int]:
     # O3: 시작일 비교에서 등호가 빠졌다 — 시작일 당일 주문이 결과에서 사라진다.
     # O4: 필터를 걸어도 합계를 다시 계산하지 않는다 — 필터 전 값(total) 그대로.
     rows = _filter_rows(all_rows, start, end, include_start=False)
+    # O6: 상태로 거를 때 '취소' 주문을 늘 함께 보여준다. 기획서 §7 은 고른 상태의
+    #     주문만 표시하라고 적었는데, 취소 건이 어느 상태 조회에도 섞여 나온다 —
+    #     "취소된 주문도 보여 달라" 는 요구를 필터 안쪽에 넣어 버린 모양이다.
+    #     건수 케이스와 '다른 상태 배제' 케이스가 각각 잡는다.
+    if status and status != STATUS_ALL:
+        rows = [o for o in rows if o["상태"] in (status, "취소")]
     return rows, total
 
 
 # badtable — bad 와 결함(O1·O2·O3·O4)이 같고 마크업만 순수 <table> 이다.
 @app.get("/badtable/orders", response_class=HTMLResponse)
-def badtable_orders(request: Request, start_date: str = "", end_date: str = ""):
+def badtable_orders(request: Request, start_date: str = "", end_date: str = "",
+                    status: str = ""):
     if "session_badtable" not in request.cookies:
         return RedirectResponse("/badtable/login", status_code=303)
-    rows, total = _bad_orders_data(start_date, end_date)
+    rows, total = _bad_orders_data(start_date, end_date, status)
     return render_orders(request, "badtable", rows, total, markup="table",
-                         start_date=start_date, end_date=end_date)
+                         start_date=start_date, end_date=end_date, status=status)
 
 
 # ---------------------------------------------------------------------------

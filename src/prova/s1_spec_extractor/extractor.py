@@ -26,7 +26,7 @@ from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError
 from prova.models import (DateFilter, Flow, Precondition, Scenario, ScreenSpec,
-                          SpecDocument, UIElement)
+                          SpecDocument, StatusFilter, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
     ParsedDocument,
     normalize_ws,
@@ -325,6 +325,8 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_precondition(spec, doc.declared_precondition_account())
     _apply_declared_seed_rows(spec, doc.declared_seed_rows())
     _apply_declared_date_filter(spec, doc.declared_date_filter())
+    _apply_declared_status_filter(spec, doc.declared_status_filter())
+    _apply_declared_options(spec, doc.declared_options())
     _drop_invented_strings(spec, doc)
 
     spec.warnings.extend(structural_warnings(spec, doc))
@@ -661,6 +663,56 @@ def _apply_declared_date_filter(spec: ScreenSpec, declared: Optional[dict[str, s
         )
         return
     spec.date_filter = DateFilter(**kwargs)
+
+
+def _apply_declared_options(spec: ScreenSpec, declared: dict[str, list[str]]) -> None:
+    """요소 표의 선택 항목이 LLM 결과를 덮는다.
+
+    declared_element_types 와 같은 원칙이다 — 표에 그대로 적힌 사실은 코드가
+    읽는다. 실측에서 7B 가 주문조회 '상태' 의 options 를 빈 배열로 냈고,
+    options 가 비면 선택 항목 케이스가 아예 만들어지지 않아 **기획서에 적힌
+    항목이 화면에서 빠져도 아무 일도 일어나지 않는다.**
+
+    읽지 못한 요소는 건드리지 않는다. 빈 목록으로 덮으면 LLM 이 옳게 읽은 것까지
+    지운다 — 모르는 것을 아는 것처럼 다루지 않는다.
+    """
+    for element in spec.elements:
+        items = declared.get(element.label)
+        if items:
+            element.options = list(items)
+
+
+_STATUS_FILTER_KEYS = {
+    "상태 요소": "status_label",
+    "상태 열": "status_column",
+    "조회 버튼": "submit_label",
+    "대상 목록": "target_label",
+}
+
+
+def _apply_declared_status_filter(spec: ScreenSpec, declared: Optional[dict[str, str]]) -> None:
+    """'상태 필터' 표가 진실이다 — _apply_declared_date_filter 와 같은 원칙.
+
+    표가 없으면 LLM 이 지어낸 필터도 지운다. 필터는 '무엇을 골라 무엇을 눌러
+    무엇을 다시 세는가' 라는 실행 지시라서, 틀리면 엉뚱한 요소를 조작한 결과를
+    검증 결과라고 말하게 된다.
+
+    상태 필터에는 선택 항목이 필수다. 여기 네 항목이 다 있어야 케이스를 만든다 —
+    반쪽 필터로 만들면 무엇을 확인한 것인지 말할 수 없다.
+    """
+    if declared is None:
+        spec.status_filter = None
+        return
+    kwargs = {v: declared[k] for k, v in _STATUS_FILTER_KEYS.items() if declared.get(k)}
+    missing = set(_STATUS_FILTER_KEYS.values()) - kwargs.keys()
+    if missing:
+        spec.status_filter = None
+        spec.warnings.append(
+            "상태 필터 표에 필수 항목이 빠져 있어 상태 조회 케이스를 만들지 "
+            f"않았습니다 (빠진 항목 {len(missing)}개)."
+        )
+        return
+    spec.status_filter = StatusFilter(**kwargs)
 
 
 def _drop_invented_strings(spec: ScreenSpec, doc: ParsedDocument) -> None:

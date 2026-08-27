@@ -52,6 +52,15 @@
       "error_message": null
     },
     {
+      "element_id": "status",
+      "type": "select",
+      "label": "상태",
+      "required": false,
+      "constraints": {},
+      "options": ["전체", "배송중", "배송완료", "취소"],
+      "error_message": null
+    },
+    {
       "element_id": "filter_btn",
       "type": "button",
       "label": "조회",
@@ -86,5 +95,11 @@
     "date_column": "주문일",
     "empty_message": "기간 내 주문이 없습니다.",
     "reversed_message": "종료일은 시작일보다 빠를 수 없습니다."
+  },
+  "status_filter": {
+    "status_label": "상태",
+    "status_column": "상태",
+    "submit_label": "조회",
+    "target_label": "주문 목록"
   }
 }

@@ -184,6 +184,24 @@ class DateFilter(BaseModel):
     )
 
 
+class StatusFilter(BaseModel):
+    """상태로 거르고 다시 조회하는 화면의 조작 지시 (2026-08-27).
+
+    날짜 필터와 형제이지만 **기대값의 근거가 다르다.** 날짜는 '주문일이 기간
+    안인가' 를 계산하고, 상태는 '시드 표의 그 열 값이 같은가' 를 센다. 근거가
+    다르면 계산도 케이스도 갈리므로 한 타입에 합치지 않는다.
+
+    선택지 목록을 여기 담지 않는 이유: 그건 이미 요소 표의 `options` 에 있고,
+    같은 사실을 두 곳에 적으면 언젠가 어긋난다. 여기는 '어느 요소를 골라 무엇을
+    눌러 무엇을 다시 세는가' 만 담는다.
+    """
+
+    status_label: str = Field(description="상태를 고르는 선택 요소의 라벨")
+    status_column: str = Field(description="시드 데이터 표에서 상태 판정에 쓰는 열 이름")
+    submit_label: str = Field(description="조회(재조회) 버튼의 라벨")
+    target_label: str = Field(description="필터가 적용되는 반복 목록 요소의 라벨")
+
+
 class ScreenSpec(BaseModel):
     """설계 문서에서 추출한 화면 단위 명세. S1의 출력.
 
@@ -197,6 +215,8 @@ class ScreenSpec(BaseModel):
     elements: list[UIElement] = Field(default_factory=list)
     # 기획서가 제시한 입력-결과 예시. 규칙으로 표현할 수 없는 검증이 여기 담긴다.
     scenarios: list[Scenario] = Field(default_factory=list)
+    # 상태로 거르는 화면의 조작 지시. 없으면 그 케이스를 만들지 않는다.
+    status_filter: Optional[StatusFilter] = None
     success_condition: str = ""
     failure_conditions: list[str] = Field(default_factory=list)
     # 필수 입력 누락 시 노출하는 화면 공통 문구.

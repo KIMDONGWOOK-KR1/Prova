@@ -613,3 +613,85 @@ class TestSplitTableMerge:
         ])
         assert len(doc.declared_seed_rows()) == 2
         assert doc.declared_scenarios() == []
+
+
+def _doc_with_heading(heading: str, rows: list[list[str]]):
+    """절 제목 한 줄과 그 아래 표 하나. 제목 위치로 표를 고르는 경로를 탄다."""
+    from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+    return ParsedDocument(source="x", pages=[ParsedPage(
+        page_no=1,
+        body_text=heading,
+        body_lines=[(heading, 10.0)],
+        tables=[ParsedTable(rows=rows, top=20.0)],
+    )])
+
+
+class TestDeclaredStatusFilter:
+    """'상태 필터' 절 아래 항목|값 표.
+
+    날짜 필터와 절을 나눈 이유: 두 필터는 조작하는 요소도 기대값을 세는 근거도
+    다르다(날짜는 기간 안, 상태는 열 값 일치). 한 표에 섞으면 어느 항목이 어느
+    필터의 것인지 이름으로만 구분해야 하고, 그 구분은 기획서를 쓰는 사람에게
+    보이지 않는다.
+    """
+
+    ROWS = [["항목", "값"],
+            ["상태 요소", "상태"],
+            ["상태 열", "상태"],
+            ["조회 버튼", "조회"],
+            ["대상 목록", "주문 목록"]]
+
+    def test_상태_필터_표를_읽는다(self):
+        doc = _doc_with_heading("7. 상태 필터", self.ROWS)
+        assert doc.declared_status_filter() == {
+            "상태 요소": "상태", "상태 열": "상태",
+            "조회 버튼": "조회", "대상 목록": "주문 목록"}
+
+    def test_절이_없으면_None(self, doc):
+        """기획서가 상태 필터를 정의하지 않은 화면에서 억측으로 케이스를 만들지
+        않기 위한 근거다."""
+        assert doc.declared_status_filter() is None
+
+    def test_날짜_필터_절의_표를_상태_필터로_읽지_않는다(self):
+        """두 절의 헤더가 '항목|값' 으로 같다. 제목으로 갈라야 한다."""
+        doc = _doc_with_heading("6. 날짜 필터", self.ROWS)
+        assert doc.declared_status_filter() is None
+
+
+class TestDeclaredOptions:
+    """요소 표의 '선택 목록: A, B, C' 를 코드가 읽는다.
+
+    2026-08-27 에 겪었다. 주문조회에 상태 선택 요소를 더했더니 실물 7B 가
+    options 를 **빈 배열로** 냈다. 회원가입은 통과하고 있었는데, 그 기획서는
+    §2-1 산문이 선택지를 한 번 더 적어 준 덕이었다 — 표만 있으면 놓친다.
+    산문을 더해 봤지만 그래도 놓쳤다.
+
+    options 가 비면 선택 항목 케이스(_option_cases)가 아예 만들어지지 않는다.
+    기획서에 적힌 항목이 화면에서 빠져도 아무 일도 일어나지 않는 것이고, 그건
+    노트 12 가 '기획서에 적혀 있는데 아무도 확인하지 않는 것' 이라 부른 구멍이다.
+
+    **프롬프트는 보장이 아니라 부탁이다**(노트 11). 표에 적힌 사실은 코드가 읽는다.
+    """
+
+    def _doc(self, rule: str):
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
+
+        return ParsedDocument(source="x", pages=[ParsedPage(page_no=1, tables=[
+            ParsedTable(rows=[
+                ["요소 ID", "유형", "라벨", "필수", "입력 검증 규칙"],
+                ["status", "선택", "상태", "-", rule],
+            ])])])
+
+    def test_선택_목록을_읽는다(self):
+        got = self._doc("선택 목록: 전체, 배송중, 배송완료, 취소").declared_options()
+        assert got == {"상태": ["전체", "배송중", "배송완료", "취소"]}
+
+    def test_선택_목록이_없는_행은_담지_않는다(self):
+        """빈 목록을 넣으면 '기획서가 항목을 안 적었다' 와 '코드가 못 읽었다' 가
+        구별되지 않는다."""
+        assert self._doc("8자 이상").declared_options() == {}
+
+    def test_가운뎃점과_중간_공백을_견딘다(self):
+        got = self._doc("선택 목록 : 검색 · 지인 추천 · 광고").declared_options()
+        assert got == {"상태": ["검색", "지인 추천", "광고"]}

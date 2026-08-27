@@ -279,6 +279,7 @@ def generate_cases(
     cases.extend(_scenario_cases(spec, inputs, start_seq=seq))
     cases.extend(_seed_row_cases(spec, start_seq=seq))
     cases.extend(_filter_cases(spec, start_seq=seq))
+    cases.extend(_status_cases(spec, start_seq=seq))
 
     if llm is not None:
         _polish_titles(cases, spec, llm)
@@ -698,6 +699,87 @@ def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
                     (f.end_label, start.isoformat())]),
             Expectation(type="text_visible", value=f.reversed_message),
             kind="negative", violates="period_reversed")
+    return cases
+
+
+def _status_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
+    """상태 조회 케이스 — 시드 표의 열 값으로 기대를 센다 (2026-08-27).
+
+    날짜 필터와 형제이지만 근거가 다르다. 날짜는 '주문일이 기간 안인가' 를
+    계산하고, 상태는 '그 열 값이 같은가' 를 센다. 계산이 다르므로 함수도 나눈다 —
+    한 함수에 두 근거를 넣으면 어느 쪽이 만든 케이스인지 읽기 어려워진다.
+
+    ## 시드에 실제로 있는 상태만 묻는다
+
+    기획서의 선택지에는 '전체' 처럼 거르지 않는 항목이 있고, 시드에 한 건도 없는
+    상태가 적혀 있을 수도 있다. 그런 값을 물으면 기대 건수를 셀 근거가 없다 —
+    0 건을 기대한다고 적으면 '필터가 아무것도 안 하는 구현' 과 구별되지 않는다.
+
+    ## 건수만으로는 부족하다
+
+    전부 보여주는 구현에서도 건수가 우연히 맞을 수 있다. 그래서 그 상태가 아닌
+    행의 고유값이 화면에서 사라졌는지 함께 본다 — 기간 밖 배제 케이스와 같은
+    이유이고, 같은 _unique_cell 을 쓴다.
+    """
+    f = spec.status_filter
+    if f is None:
+        return []
+    if not spec.seed_rows:
+        spec.warnings.append(
+            "상태 필터 절은 있지만 테스트 데이터 표가 없어 상태 조회 케이스를 "
+            "만들지 않았습니다."
+        )
+        return []
+    if any(f.status_column not in row for row in spec.seed_rows):
+        spec.warnings.append(
+            f"시드 표에 '{f.status_column}' 열이 없어 상태 조회 케이스를 "
+            "만들지 않았습니다."
+        )
+        return []
+
+    by_status: dict[str, list[dict[str, str]]] = {}
+    for row in spec.seed_rows:
+        by_status.setdefault(row[f.status_column].strip(), []).append(row)
+
+    seq = start_seq
+    cases: list[TestCase] = []
+
+    def steps(value: str) -> list[TestStep]:
+        return [
+            TestStep(seq=1, action="navigate", target=spec.url_path),
+            TestStep(seq=2, action="select", target=f.status_label, value=value),
+            TestStep(seq=3, action="click", target=f.submit_label),
+        ]
+
+    def add(title: str, value: str, expected: Expectation) -> None:
+        nonlocal seq
+        cases.append(TestCase(
+            case_id=f"{spec.screen_id}-status-{seq:03d}", screen_id=spec.screen_id,
+            title=title, type="positive", steps=steps(value), expected=expected,
+        ))
+        seq += 1
+
+    for status in sorted(by_status):
+        add(f"'{status}' 로 조회하면 {len(by_status[status])}건이 표시되는지 확인",
+            status,
+            Expectation(type="result_count", count=len(by_status[status]),
+                        count_target=f.target_label))
+
+    for status in sorted(by_status):
+        other = next((r for s, rows in by_status.items() if s != status
+                      for r in rows), None)
+        if other is None:
+            continue
+        text = _unique_cell(other, spec.seed_rows, f.status_column)
+        if text is None:
+            spec.warnings.append(
+                f"시드 표에서 '{status}' 가 아닌 행을 유일하게 가리키는 값을 찾지 "
+                "못해 상태 배제 케이스를 만들지 않았습니다."
+            )
+            continue
+        add(f"'{status}' 로 조회하면 다른 상태 주문이 나오지 않는지 확인",
+            status, Expectation(type="text_absent", value=text))
+
     return cases
 
 
