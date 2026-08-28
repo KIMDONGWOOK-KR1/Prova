@@ -3105,9 +3105,9 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
                   관문까지만 잰 숫자였고, 실행 관문까지 오면 잔존 오탐이 0 이다. 신뢰도로는
                   못 거른다는 것도 그대로 확인됐다 — 오탐이 전부 0.8~0.9 로 왔다.
                   <em>한계</em>: 고정 답안 재생이고, 이름 없는 엉뚱한 요소 위에 떨어지는
-                  모양(정체 대조도 못 막는)은 이 시험지에 없었다. <strong>08-22 답안 7건의
-                  숫자다</strong> — 08-28 에 넓힌 시험지에서 나온 오탐 2건은 아직 재생하지
-                  않았다(재생 스크립트가 새 화면의 골든·로그인을 모른다)
+                  모양(정체 대조도 못 막는)은 이 시험지에 없었다. <strong>08-28 에 74항목
+                  답안으로 다시 재생했다 — 오탐 8/8 차단, 잔존 0</strong>. 새 화면(상품등록)
+                  에서 나온 2건도 둘 다 <em>정체 대조</em>가 막았다(빈곳 관문이 아니라)
                   (<code>docs/measurements/identity-guard-replay-2026-08-25.md</code>)</td></tr>
           <tr><td>요청 해석 재현율</td>
               <td><span class="tag pass">08-22</span> 선택 넓히기(묶음·흐름·종류 낱말)로 A 모양의 빠뜨림은 코드가 막는다.
@@ -3126,6 +3126,16 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
                   bad 는 O1~O6 의 9건만 FAIL. 실물 7B 가 선택 목록을 빈 배열로 내는 바람에
                   <strong>표를 코드가 읽게</strong> 했다(<code>declared_options</code>) — 목록이
                   비면 선택 항목 케이스가 아예 만들어지지 않아 검증이 조용히 사라진다 (노트 20)</td></tr>
+          <tr><td>시험지가 앱보다 낡는 것</td>
+              <td><span class="tag">열림</span> <code>dataset_id</code> 는 '두 점수가 같은
+                  시험지인가' 를 지키지만 <strong>'그 시험지가 아직 이 앱의 화면인가' 는
+                  아무도 안 지킨다.</strong> 08-27 20:31 에 굳힌 시험지 뒤로 21:49 에 상태
+                  select 가 붙어 <code>조회</code> 버튼이 밀렸고, 관문 재생에서 오차단 3건으로
+                  나타났다 — 관문은 제 일을 했고 좌표가 낡았다. 아침에 넣은 빌드 도장의
+                  <em>반대 방향</em> 문제다(그때는 앱이 낡았다). 고칠 자리도 같다: 시험지를
+                  굳힐 때 그때의 SUT 도장을 함께 적고 채점하는 쪽이 대조한다.
+                  재빌드는 재채점과 <strong>같은 GPU 창</strong>에서 해야 한다
+                  (<code>docs/measurements/identity-guard-replay-2026-08-28.md</code>)</td></tr>
           <tr><td>낡은 대상을 상대로 재지 않기</td>
               <td><span class="tag pass">닫힘 08-28</span> <code>--reload</code> 는 프로세스를
                   둘로 만든다 — 감시자(부모)가 죽어도 일꾼(자식)은 소켓을 물고 남아,

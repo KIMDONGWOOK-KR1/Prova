@@ -27,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from build_iou_dataset import STATES, VIEWPORT  # noqa: E402
+from build_iou_dataset import STATES, VIEWPORT, open_state  # noqa: E402
 from prova.models import ScreenSpec, TestStep  # noqa: E402
 from prova.s3_grounder.dom_locator import ElementLocation, GroundingError  # noqa: E402
 from prova.s4_executor.playwright_driver import (  # noqa: E402
@@ -35,7 +35,9 @@ from prova.s4_executor.playwright_driver import (  # noqa: E402
     _require_actionable,
 )
 
-MEASUREMENT = Path("docs/measurements/vlm-iou-qwen-vl-2026-08-22.json")
+# 재생할 답안. **지금 시험지로 채점된 것**이어야 한다 — 옛 답안을 지금 화면에
+# 재생하면 좌표가 어긋난 이유가 "관문이 막았다" 로 보인다.
+MEASUREMENT = Path("docs/measurements/vlm-iou-qwen-vl-2026-08-28.json")
 
 #: 시험지 화면 -> 그 화면의 골든 스펙. 정체 대조가 아는 라벨은 파이프라인과
 #: 같게 '그 케이스의 화면' 것만 쓴다.
@@ -45,6 +47,11 @@ GOLDEN_BY_PREFIX = {
     "search": "fixtures/specs/search_spec.golden.json",
     "nolabel": "fixtures/specs/search_spec.golden.json",
     "find": "fixtures/specs/find_account_spec.golden.json",
+    # 08-28 에 시험지가 넓어지며 추가. 없으면 KeyError 로 터지는 게 아니라
+    # 그 화면의 오탐이 재생되지 않는다 — 관문 측정의 범위가 조용히 좁아진다.
+    "product": "fixtures/specs/product_spec.golden.json",
+    "orders": "fixtures/specs/orders_spec.golden.json",
+    "table": "fixtures/specs/orders_spec.golden.json",
 }
 
 #: 항목 종류 -> 그 요소를 조작할 때의 액션 (_ACTIONABLE 의 키와 맞춘다).
@@ -70,13 +77,10 @@ def replay(page, sut: str, tmp_dir: Path, rows: list[dict]) -> list[dict]:
     out = []
     for row in rows:
         state = states[row["state_id"]]
-        page.goto(f"{sut}{state.path}")
-        page.wait_for_load_state("networkidle")
-        for selector, value in state.fill:
-            page.fill(selector, value)
-        if state.click:
-            page.click(state.click)
-            page.wait_for_load_state("networkidle")
+        # 시험지를 만든 절차 그대로 화면을 재현한다(로그인 포함). 여기 따로
+        # 적으면 시험지의 화면과 재생하는 화면이 갈라진다 — 08-28 에 로그인이
+        # 빠져 있어 새 화면이 통째로 로그인 화면으로 리다이렉트됐다.
+        open_state(page, sut, state)
 
         x1, y1, x2, y2 = row["bbox"]
         x = (x1 + x2) / 2 * VIEWPORT["width"]

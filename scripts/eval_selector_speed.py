@@ -37,9 +37,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 import time
 from pathlib import Path
 from typing import Callable, Optional
+
+# 로그인 절차를 `build_iou_dataset` 에서 가져온다 — 파일 위치로 불려도 찾도록.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 DATASET = Path("fixtures/iou/dataset.json")
 
@@ -180,6 +184,7 @@ def make_page_locator(page, sut: str):
     파이프라인이 쓰는 `ground()` 를 그대로 부른다 — 이 측정이 재려는 것은
     '측정용으로 다시 짠 탐지' 가 아니라 실제로 도는 그 경로다.
     """
+    import build_iou_dataset as builder
     from prova.models import UIElement
     from prova.s3_grounder.dom_locator import GroundingError, ground
 
@@ -191,13 +196,12 @@ def make_page_locator(page, sut: str):
         안 하면 화면이 통째로 로그인으로 리다이렉트되고, 거기 있는 '비밀번호' 를
         '없는 요소를 찾았다'(오탐)로 집계한다 — **도구 결함이 탐지 실패로
         둔갑한다.** 실제로 겪었다(2026-08-27, 시험지를 넓힌 직후).
+
+        절차와 계정은 `build_iou_dataset` 가 갖는다 — 여기 다시 적으면 시험지를
+        만든 화면과 채점하는 화면이 갈라진다. `wait="load"` 로 부르는 이유는 그쪽
+        docstring 에 있다(이 구간이 아직 타이머 안이다).
         """
-        variant = path.strip("/").split("/")[0]
-        page.goto(f"{sut}/{variant}/login", wait_until="load")
-        page.fill("input[name=email]", "seller@test.com")
-        page.fill("input[name=password]", "Seller1!")
-        page.click("button[type=submit]")
-        page.wait_for_load_state("load")
+        builder.sign_in(page, sut, path, wait="load")
 
     def locate(item: dict) -> tuple[bool, Optional[str]]:
         # 같은 화면의 항목이 이어지면 다시 열지 않는다 — 로드 시간을 탐지
