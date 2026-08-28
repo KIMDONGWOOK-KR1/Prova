@@ -45,6 +45,8 @@ from typing import Callable, Optional
 # 로그인 절차를 `build_iou_dataset` 에서 가져온다 — 파일 위치로 불려도 찾도록.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import build_iou_dataset as builder  # noqa: E402 — 위 sys.path 뒤여야 한다
+
 DATASET = Path("fixtures/iou/dataset.json")
 
 #: 2차 경로가 좌표로 **조작하는** 종류. 정체 대조 재생(2026-08-25)이 쓴 범위다.
@@ -184,7 +186,6 @@ def make_page_locator(page, sut: str):
     파이프라인이 쓰는 `ground()` 를 그대로 부른다 — 이 측정이 재려는 것은
     '측정용으로 다시 짠 탐지' 가 아니라 실제로 도는 그 경로다.
     """
-    import build_iou_dataset as builder
     from prova.models import UIElement
     from prova.s3_grounder.dom_locator import GroundingError, ground
 
@@ -243,6 +244,14 @@ def main() -> int:
     if not items:
         print("잴 항목이 없습니다.")
         return 1
+
+    # 시험지가 지금 이 앱의 화면인지 먼저 본다. 브라우저를 연 뒤에 멈추면
+    # 기다린 시간이 버려지고, 무엇보다 '연 김에 그냥 재자' 는 유혹이 생긴다.
+    try:
+        builder.require_matching_sut(data, lambda: builder.sut_stamp(args.sut))
+    except ValueError as exc:
+        print(f"\n{exc}")
+        return 2
 
     from playwright.sync_api import sync_playwright
 

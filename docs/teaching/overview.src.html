@@ -3127,14 +3127,20 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
                   <strong>표를 코드가 읽게</strong> 했다(<code>declared_options</code>) — 목록이
                   비면 선택 항목 케이스가 아예 만들어지지 않아 검증이 조용히 사라진다 (노트 20)</td></tr>
           <tr><td>시험지가 앱보다 낡는 것</td>
-              <td><span class="tag">열림</span> <code>dataset_id</code> 는 '두 점수가 같은
+              <td><span class="tag pass">닫힘 08-28</span> <code>dataset_id</code> 는 '두 점수가 같은
                   시험지인가' 를 지키지만 <strong>'그 시험지가 아직 이 앱의 화면인가' 는
                   아무도 안 지킨다.</strong> 08-27 20:31 에 굳힌 시험지 뒤로 21:49 에 상태
                   select 가 붙어 <code>조회</code> 버튼이 밀렸고, 관문 재생에서 오차단 3건으로
                   나타났다 — 관문은 제 일을 했고 좌표가 낡았다. 아침에 넣은 빌드 도장의
                   <em>반대 방향</em> 문제다(그때는 앱이 낡았다). 고칠 자리도 같다: 시험지를
                   굳힐 때 그때의 SUT 도장을 함께 적고 채점하는 쪽이 대조한다.
-                  재빌드는 재채점과 <strong>같은 GPU 창</strong>에서 해야 한다
+                  <strong>고쳤다</strong>: 시험지가 굳을 때의 앱 도장(<code>sut_build</code>)을
+                  함께 싣고, <em>라이브 화면을 만지는</em> 채점만 지금 도장과 대조해
+                  어긋나거나 표시가 없으면 멈춘다. 저장된 그림만 보는 VLM 채점은 대조하지
+                  않는다 — 앱 상태와 무관하고, 거기서 막으면 GPU 서버만 있으면 도는 성질이
+                  깨진다. 굳히는 쪽도 낡은 앱이면 시험지를 만들지 않는다.
+                  남은 것은 시험지 재빌드인데, 재채점과 <strong>같은 GPU 창</strong>에서
+                  해야 한다
                   (<code>docs/measurements/identity-guard-replay-2026-08-28.md</code>)</td></tr>
           <tr><td>낡은 대상을 상대로 재지 않기</td>
               <td><span class="tag pass">닫힘 08-28</span> <code>--reload</code> 는 프로세스를

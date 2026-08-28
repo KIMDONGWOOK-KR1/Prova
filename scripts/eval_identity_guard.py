@@ -27,7 +27,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from build_iou_dataset import STATES, VIEWPORT, open_state  # noqa: E402
+from build_iou_dataset import (  # noqa: E402
+    STATES, VIEWPORT, open_state, require_matching_sut, sut_stamp,
+)
 from prova.models import ScreenSpec, TestStep  # noqa: E402
 from prova.s3_grounder.dom_locator import ElementLocation, GroundingError  # noqa: E402
 from prova.s4_executor.playwright_driver import (  # noqa: E402
@@ -103,10 +105,20 @@ def replay(page, sut: str, tmp_dir: Path, rows: list[dict]) -> list[dict]:
     return out
 
 
-def main() -> None:
+def main() -> int:
     sut = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8100"
     data = json.loads(MEASUREMENT.read_text(encoding="utf-8"))
     rows = data["rows"]
+
+    # 저장된 좌표를 **라이브 화면**에 재생하므로, 그 화면이 시험지를 굳힐 때와
+    # 같은 앱인지 먼저 본다. 2026-08-28 에 이걸 안 봐서 오차단 3건이 났고,
+    # 원인을 관문에서 찾을 뻔했다 — 밀린 것은 버튼이었다.
+    dataset = json.loads(Path("fixtures/iou/dataset.json").read_text(encoding="utf-8"))
+    try:
+        require_matching_sut(dataset, lambda: sut_stamp(sut))
+    except ValueError as exc:
+        print(f"\n{exc}")
+        return 2
 
     replayable = [r for r in rows if r["kind"] in ACTION_BY_KIND]
     skipped = [r for r in rows if r["kind"] not in ACTION_BY_KIND]
@@ -148,7 +160,8 @@ def main() -> None:
         for r in ok:
             if r["blocked"]:
                 print(f"- {r['state_id']} {r['target']}: {r['block_reason']}")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
