@@ -362,6 +362,77 @@ def dataset_id(rows: list[dict]) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:12]
 
 
+def sut_stamp(sut: str) -> str:
+    """지금 그 앱의 빌드 도장. 없거나 닿지 않으면 빈 문자열.
+
+    낡은 앱을 상대로 정답을 굳히면 그 정답이 **처음부터 틀린다.** 그래서
+    어긋남(stale)이면 여기서 멈춘다 — `prova run` 이 실행 전에 하는 것과 같은
+    규칙이다(`prova.sut_build`).
+    """
+    from prova.sut_build import check_sut_build
+
+    check = check_sut_build(sut)
+    if check.blocks:
+        raise SystemExit(
+            f"{check.message}\n\n  낡은 화면으로 시험지를 굳히면 정답 좌표가"
+            " 처음부터 틀립니다.")
+    return check.stamp
+
+
+def build_payload(rows: list[dict], sut_build: str) -> dict:
+    """저장할 시험지 한 벌.
+
+    `sut_build` 는 **이 정답이 어느 앱의 화면에서 나왔는가** 다. `dataset_id` 가
+    지키는 것과 다른 질문이다 — 그쪽은 '두 점수가 같은 시험지인가' 이고, 이쪽은
+    '그 시험지가 아직 이 앱의 화면인가' 다.
+
+    2026-08-28 에 그 구멍에 걸렸다. 시험지를 굳힌 한 시간 뒤 주문조회에 상태
+    select 가 붙어 `조회` 버튼이 밀렸고, 저장된 좌표를 라이브 화면에 재생한
+    관문 측정이 오차단 3건을 냈다 — 관문은 제 일을 했는데 시험지가 낡았다.
+
+    도장은 `dataset_id` 해시에 넣지 않는다. 앱을 고쳐도 정답 좌표가 그대로면
+    같은 시험지이고, 도장을 해시에 섞으면 무관한 변경마다 시험지 id 가 바뀌어
+    옛 점수와의 연결이 끊긴다.
+    """
+    return {"dataset_id": dataset_id(rows), "viewport": VIEWPORT,
+            "sut_build": sut_build,
+            "count": len(rows),
+            "present": sum(1 for r in rows if r["present"]),
+            "absent": sum(1 for r in rows if not r["present"]),
+            "items": rows}
+
+
+def require_matching_sut(dataset: dict, stamp_now) -> None:
+    """시험지가 지금 이 앱의 화면인지 확인한다. 어긋나면 멈춘다.
+
+    **라이브 화면을 만지는 채점만 부른다.** 저장된 그림만 보는 채점
+    (`eval_vlm_iou`)은 앱 상태와 무관하므로 부르지 않는다 — 거기서 막으면
+    GPU 서버만 있으면 도는 그 스크립트의 성질을 깨뜨린다.
+
+    표시가 없으면 통과시키지 않는다 — `check_same_dataset` 과 같은 이유다.
+    '모르는 것' 을 '같은 것' 으로 두면 그 관대함이 정확히 틀린 표를 만든다.
+    """
+    saved = dataset.get("sut_build")
+    if not saved:
+        raise ValueError(
+            "시험지에 앱 도장(sut_build)이 없어 지금 화면과 맞는지 확인할 수 "
+            "없습니다. 시험지를 다시 굳히세요 — "
+            "`uv run python scripts/build_iou_dataset.py`."
+        )
+    now = stamp_now()
+    if not now:
+        raise ValueError(
+            "대상 앱이 빌드 도장을 내지 않아 시험지와 맞는지 확인할 수 없습니다 "
+            "(GET /__build__). 시험지를 굳힌 그 앱을 상대로 채점하세요."
+        )
+    if saved != now:
+        raise ValueError(
+            f"시험지가 지금 화면과 다른 앱의 것입니다 — 굳힐 때 {saved[:12]}, "
+            f"지금 {now[:12]}. 저장된 좌표를 재생하면 엉뚱한 자리를 가리킵니다. "
+            "시험지를 다시 굳히고 2차 경로도 다시 채점해야 합니다."
+        )
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--sut", default="http://localhost:8100")
@@ -370,6 +441,9 @@ def main() -> int:
 
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
+
+    # 캡처를 시작하기 전에 확인한다. 절반 굳힌 뒤에 멈추면 반쪽 시험지가 남는다.
+    stamp = sut_stamp(args.sut)
 
     from playwright.sync_api import sync_playwright
 
@@ -390,11 +464,7 @@ def main() -> int:
     for i, r in enumerate(rows):
         r["id"] = i
 
-    payload = {"dataset_id": dataset_id(rows), "viewport": VIEWPORT,
-               "count": len(rows),
-               "present": sum(1 for r in rows if r["present"]),
-               "absent": sum(1 for r in rows if not r["present"]),
-               "items": rows}
+    payload = build_payload(rows, stamp)
     path = out_dir / "dataset.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2),
                     encoding="utf-8")
@@ -403,6 +473,7 @@ def main() -> int:
     print(f"화면 {len(STATES)}장 · 항목 {payload['count']}개 "
           f"(있음 {payload['present']} · 없음 {payload['absent']})")
     print(f"dataset_id={payload['dataset_id']}  ->  {path}")
+    print(f"앱 도장 sut_build={payload['sut_build'][:12] or '(없음)'}")
     return 0
 
 

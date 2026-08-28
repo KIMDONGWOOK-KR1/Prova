@@ -482,3 +482,95 @@ class TestGuardAnswerSheet:
     def test_답안이_지금_시험지로_채점된_것이다(self, guard_eval, data):
         answer = json.loads(guard_eval.MEASUREMENT.read_text(encoding="utf-8"))
         assert answer["meta"]["dataset_id"] == data["dataset_id"]
+
+
+class TestDatasetCarriesSutStamp:
+    """시험지가 '어느 앱의 화면인가' 를 스스로 들고 다니는가.
+
+    `dataset_id` 는 **두 점수가 같은 시험지인가**를 지킨다. 그런데 **그 시험지가
+    아직 이 앱의 화면인가**는 아무도 지키지 않았다.
+
+    2026-08-28 에 걸렸다. 시험지를 08-27 20:31 에 굳혔는데 21:49 에 주문조회 화면에
+    상태 select 가 붙어 `조회` 버튼이 밀렸다. 저장된 좌표를 라이브 화면에 재생하니
+    그 자리가 빈 곳이어서, 관문 재생이 **오차단 3건**을 냈다 — 관문은 제 일을 했고
+    시험지가 낡은 것이었는데, 결과만 보면 관문이 과한 것으로 읽힌다.
+
+    같은 날 아침 SUT 에 넣은 빌드 도장의 **반대 방향** 문제다(그때는 떠 있는 앱이
+    소스보다 낡았다). 고치는 자리도 같다 — 굳힐 때의 도장을 적고, 채점하는 쪽이
+    지금 도장과 대조한다.
+    """
+
+    def test_굳힌_결과에_도장이_실린다(self, builder):
+        payload = builder.build_payload([], sut_build="abc123")
+        assert payload["sut_build"] == "abc123"
+
+    def test_도장을_못_받았으면_비운다(self, builder):
+        """실물 앱에는 `/__build__` 가 없는 것이 정상이다. 없는 것을 지어내지
+        않는다 — 칸은 있고 값이 비어 있어야 '물어봤는데 없더라' 가 남는다."""
+        payload = builder.build_payload([], sut_build="")
+        assert payload["sut_build"] == ""
+
+    def test_도장이_시험지_해시에는_안_들어간다(self, builder):
+        """앱을 고쳐도 정답 좌표가 그대로면 같은 시험지다. 도장을 해시에 넣으면
+        무관한 변경마다 dataset_id 가 바뀌어 옛 점수와의 연결이 끊긴다."""
+        rows = [{"state_id": "s", "target": "t", "present": True, "truth": [0, 0, 1, 1]}]
+        assert (builder.build_payload(rows, sut_build="A")["dataset_id"]
+                == builder.build_payload(rows, sut_build="B")["dataset_id"])
+
+
+class TestScoringChecksSutStamp:
+    """라이브 화면을 만지는 채점은 시험지와 앱이 같은 것인지 먼저 본다."""
+
+    def test_도장이_같으면_통과한다(self, builder):
+        builder.require_matching_sut({"sut_build": "same"}, lambda: "same")
+
+    def test_도장이_다르면_멈춘다(self, builder):
+        with pytest.raises(ValueError) as exc:
+            builder.require_matching_sut({"sut_build": "old"}, lambda: "new")
+        assert "old" in str(exc.value) and "new" in str(exc.value)
+
+    def test_시험지에_도장이_없으면_멈춘다(self, builder):
+        """`check_same_dataset` 과 같은 규칙 — 표시가 없으면 통과시키지 않는다.
+        '모르는 것' 을 '같은 것' 으로 두면 그 관대함이 정확히 틀린 표를 만든다."""
+        with pytest.raises(ValueError) as exc:
+            builder.require_matching_sut({}, lambda: "new")
+        assert "다시 굳" in str(exc.value)
+
+    def test_앱에_도장이_없으면_멈춘다(self, builder):
+        with pytest.raises(ValueError):
+            builder.require_matching_sut({"sut_build": "old"}, lambda: "")
+
+
+class TestScorersUseTheStampCheck:
+    """라이브 화면을 만지는 채점만 대조한다 — 행동으로 확인한다.
+
+    구분이 핵심이다. 오차단이 난 자리는 '저장 좌표를 라이브 화면에 재생' 하는
+    쪽이었고, 저장된 그림만 보는 채점(`eval_vlm_iou`)은 앱 상태와 무관하다.
+    거기서까지 막으면 **GPU 서버만 있으면 도는** 그 스크립트의 성질이 깨진다.
+
+    지금 커밋된 시험지에는 도장이 없다(08-27 에 굳었다). 그래서 '도장 없음' 을
+    일부러 만들 필요 없이, 서버 없이도 두 스크립트가 재기 전에 멈추는지 볼 수 있다.
+    """
+
+    def test_셀렉터_채점은_도장_없는_시험지로_재지_않는다(self, selector_eval,
+                                                     monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["eval_selector_speed.py",
+                                         "--sut", "http://127.0.0.1:1"])
+        assert selector_eval.main() == 2
+        assert "다시 굳" in capsys.readouterr().out
+
+    def test_관문_재생은_도장_없는_시험지로_재생하지_않는다(self, guard_eval,
+                                                       monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["eval_identity_guard.py",
+                                         "http://127.0.0.1:1"])
+        assert guard_eval.main() == 2
+        assert "다시 굳" in capsys.readouterr().out
+
+    def test_VLM_채점은_도장을_묻지_않는다(self, evaluator, data, tmp_path,
+                                        monkeypatch, capsys):
+        """앱이 없어도(--backend oracle) 채점이 끝까지 돌아야 한다."""
+        monkeypatch.setattr("sys.argv", [
+            "eval_vlm_iou.py", "--backend", "oracle",
+            "--out", str(tmp_path / "check")])
+        assert evaluator.main() == 0
+        assert (tmp_path / "check.json").exists()
