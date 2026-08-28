@@ -259,12 +259,21 @@ def normalize(box: dict, size: dict) -> tuple[float, float, float, float]:
 LOGIN_ACCOUNT = ("seller@test.com", "Seller1!")
 
 
-def sign_in(page, sut: str, path: str) -> None:
+def sign_in(page, sut: str, path: str, *, wait: str = "networkidle") -> None:
     """이 화면이 속한 변형으로 로그인한다.
+
+    **이 절차는 여기 하나만 있어야 한다.** 시험지를 만드는 쪽과 채점하는 쪽이
+    각자 로그인을 적으면 한쪽만 고쳐지는 날이 온다 — 2026-08-27 에
+    `eval_selector_speed` 가 세션 없이 화면을 열어 오탐 3건을 만들었고, 08-28 에는
+    `eval_identity_guard` 가 로그인을 몰라 새 화면에서 아예 돌지 못했다.
 
     변형은 경로 첫 조각에서 읽는다(`/good/orders` -> good). 변형마다 세션 쿠키
     이름이 다르므로(`session_{variant}`) good 으로 로그인하고 table 화면을 열면
     가드에 막힌다.
+
+    `wait` 를 열어 둔 이유: 속도 측정(`eval_selector_speed`)은 이 구간이 아직
+    타이머 안에 있어서, 대기 전략을 바꾸면 **발표한 숫자가 조용히 움직인다.**
+    타이머 경계는 따로 다룬다 — 그때까지는 부르는 쪽이 자기 대기를 지킨다.
     """
     variant = path.strip("/").split("/")[0]
     email, password = LOGIN_ACCOUNT
@@ -272,14 +281,15 @@ def sign_in(page, sut: str, path: str) -> None:
     page.fill("input[name=email]", email)
     page.fill("input[name=password]", password)
     page.click("button[type=submit]")
-    page.wait_for_load_state("networkidle")
+    page.wait_for_load_state(wait)
 
 
-def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
-    """한 화면을 만들고 정답 상자를 재서 항목들을 돌려준다.
+def open_state(page, sut: str, state: "State") -> None:
+    """시험지 화면 하나를 그대로 재현한다 (로그인 -> 이동 -> 입력 -> 클릭).
 
-    정답을 못 재면 예외를 던진다. 조용히 건너뛰면 데이터셋이 작아진 사실이 보이지
-    않고, 어려운 항목만 빠진 시험지가 만들어진다.
+    시험지를 만들 때와 채점할 때가 **같은 화면**을 봐야 한다. 절차가 두 벌이면
+    한쪽만 로그인하거나 한쪽만 입력을 채우고, 그 차이는 결과에서 '모델이 틀렸다'
+    로만 보인다.
     """
     if state.login:
         sign_in(page, sut, state.path)
@@ -290,6 +300,15 @@ def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
     if state.click:
         page.click(state.click)
         page.wait_for_load_state("networkidle")
+
+
+def capture(page, state: State, sut: str, out_dir: Path) -> list[dict]:
+    """한 화면을 만들고 정답 상자를 재서 항목들을 돌려준다.
+
+    정답을 못 재면 예외를 던진다. 조용히 건너뛰면 데이터셋이 작아진 사실이 보이지
+    않고, 어려운 항목만 빠진 시험지가 만들어진다.
+    """
+    open_state(page, sut, state)
 
     image = out_dir / f"{state.state_id}.png"
     image.write_bytes(page.screenshot())

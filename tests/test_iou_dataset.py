@@ -346,3 +346,139 @@ class TestGatedLocator:
         except Exception:
             pass
         assert [a for a in page.actions if a[0] == "click"] == []
+
+
+class RecordingPage:
+    """이동·입력을 기록만 하는 가짜 페이지. 값까지 남긴다 —
+    '누가 로그인 계정을 아는가' 를 확인하려면 채운 값을 봐야 한다."""
+
+    def __init__(self):
+        self.actions: list[tuple] = []
+
+    def goto(self, url, **kw):
+        self.actions.append(("goto", url))
+
+    def fill(self, selector, value):
+        self.actions.append(("fill", selector, value))
+
+    def click(self, selector):
+        self.actions.append(("click", selector))
+
+    def wait_for_load_state(self, *a, **kw):
+        pass
+
+    def screenshot(self, *a, **kw):
+        return b""
+
+    def gotos(self) -> list[str]:
+        return [a[1] for a in self.actions if a[0] == "goto"]
+
+    def filled(self) -> list[str]:
+        return [a[2] for a in self.actions if a[0] == "fill"]
+
+
+@pytest.fixture
+def builder():
+    """`build_iou_dataset` — **채점 스크립트가 실제로 쓰는 그 모듈 객체**로 잡는다.
+
+    `load_script` 는 `_script_<이름>` 으로 따로 등록하므로 그것을 패치해도 스크립트
+    쪽에는 닿지 않는다. 계정 상수를 바꿔 '한 곳에서 온다' 를 확인하려면 같은
+    인스턴스여야 한다.
+    """
+    import sys
+    scripts = str(Path("scripts").resolve())
+    if scripts not in sys.path:
+        sys.path.insert(0, scripts)
+    import build_iou_dataset
+    return build_iou_dataset
+
+
+@pytest.fixture
+def guard_eval():
+    return load_script("scripts/eval_identity_guard.py")
+
+
+class TestOneLoginProcedure:
+    """SUT 로그인 절차는 한 곳에만 있어야 한다.
+
+    2026-08-27 에 `eval_selector_speed` 가 세션 없이 화면을 열어 오탐 3건을
+    만들었고, 고치면서 노트에 이렇게 적었다 — "채점 스크립트마다 로그인 절차를
+    따로 적으면 한쪽만 고쳐지는 날이 온다". 08-28 에 그 날이 왔다:
+    `eval_identity_guard` 에는 로그인이 아예 없어 새 화면에서 돌지 못했다.
+
+    그래서 계정도 절차도 `build_iou_dataset` 하나가 갖는다. 이 테스트는 그것을
+    **행동으로** 고정한다 — 계정 상수를 바꾸면 모든 채점 경로가 따라와야 한다.
+    """
+
+    ACCOUNT = ("probe@example.com", "Probe1!")
+
+    def test_셀렉터_채점이_같은_계정을_쓴다(self, builder, selector_eval, monkeypatch):
+        monkeypatch.setattr(builder, "LOGIN_ACCOUNT", self.ACCOUNT)
+        page = RecordingPage()
+        locate = selector_eval.make_page_locator(page, "http://sut")
+        try:
+            locate({"id": 1, "path": "/good/orders", "target": "시작일",
+                    "kind": "date", "login": True})
+        except Exception:
+            pass  # ground() 는 가짜 페이지에서 터진다 — 여기서 보는 것은 로그인이다
+        assert self.ACCOUNT[0] in page.filled(), page.actions
+
+    def test_관문_재생이_같은_계정을_쓴다(self, builder, guard_eval, monkeypatch, tmp_path):
+        monkeypatch.setattr(builder, "LOGIN_ACCOUNT", self.ACCOUNT)
+        page = RecordingPage()
+        row = {"state_id": "orders-list", "target": "비밀번호", "kind": "input",
+               "bbox": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9, "present": False}
+        try:
+            guard_eval.replay(page, "http://sut", tmp_path, [row])
+        except Exception:
+            pass  # _require_actionable 은 가짜 페이지에서 터진다
+        assert self.ACCOUNT[0] in page.filled(), page.actions
+
+
+class TestGuardReachesNewScreens:
+    """관문 재생이 넓힌 시험지의 화면에 실제로 닿는가."""
+
+    def test_모든_시험지_화면에_골든이_있다(self, data, guard_eval):
+        """골든이 없으면 KeyError 로 터진다 — 그 화면의 오탐은 재생되지 않는다."""
+        missing = sorted({
+            i["state_id"] for i in data["items"]
+            if i["state_id"].split("-")[0] not in guard_eval.GOLDEN_BY_PREFIX
+        })
+        assert not missing, missing
+
+    def test_로그인_뒤_화면은_로그인부터_한다(self, guard_eval, tmp_path):
+        page = RecordingPage()
+        row = {"state_id": "orders-list", "target": "비밀번호", "kind": "input",
+               "bbox": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9, "present": False}
+        try:
+            guard_eval.replay(page, "http://sut", tmp_path, [row])
+        except Exception:
+            pass
+        urls = page.gotos()
+        assert "http://sut/good/login" in urls, page.actions
+        assert urls.index("http://sut/good/login") < urls.index("http://sut/good/orders")
+
+    def test_열린_화면은_로그인하지_않는다(self, guard_eval, tmp_path):
+        page = RecordingPage()
+        row = {"state_id": "login-empty", "target": "검색어", "kind": "input",
+               "bbox": [0.1, 0.1, 0.2, 0.2], "confidence": 0.9, "present": False}
+        try:
+            guard_eval.replay(page, "http://sut", tmp_path, [row])
+        except Exception:
+            pass
+        assert [a for a in page.actions if a[0] == "click"] == [], page.actions
+
+
+class TestGuardAnswerSheet:
+    """재생하는 답안이 **지금 시험지**의 것인가.
+
+    옛 답안을 지금 화면에 재생하면 좌표가 어긋난 이유가 '관문이 막았다' 로
+    보인다 — 재는 대상과 답안이 다른데 표에서는 보이지 않는다.
+    """
+
+    def test_기본_답안_파일이_있다(self, guard_eval):
+        assert guard_eval.MEASUREMENT.exists(), guard_eval.MEASUREMENT
+
+    def test_답안이_지금_시험지로_채점된_것이다(self, guard_eval, data):
+        answer = json.loads(guard_eval.MEASUREMENT.read_text(encoding="utf-8"))
+        assert answer["meta"]["dataset_id"] == data["dataset_id"]
