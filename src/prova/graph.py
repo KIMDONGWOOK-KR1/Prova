@@ -83,6 +83,7 @@ def run_graph(
     screenshot_every_step: bool = True,
     max_heal: int = 2,
     min_confidence: float = 0.5,
+    sut_build: str = "",
 ) -> tuple[TestReport, Path]:
     """그래프로 파이프라인을 실행한다. run_pipeline 과 같은 결과를 내야 한다.
 
@@ -103,6 +104,7 @@ def run_graph(
         screenshot_every_step=screenshot_every_step,
         max_heal=max_heal,
         min_confidence=min_confidence,
+        sut_build=sut_build,
     )
 
     app = build_graph()

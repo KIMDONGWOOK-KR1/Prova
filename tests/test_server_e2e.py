@@ -374,3 +374,40 @@ class TestFigmaMerge:
         r = client.post("/api/upload", files={
             "file": ("resp.json", b"{}", "application/json")})
         assert r.status_code == 200 and r.json()["path"].endswith("resp.json")
+
+
+class TestStaleTarget:
+    """웹 UI 도 낡은 대상을 상대로 시작하지 않는다.
+
+    9월에 팀원들이 쓰는 입구는 CLI 가 아니라 이 화면이다. 가드가 한쪽에만
+    있으면, 정작 함정에 빠질 사람들에게는 없는 것과 같다.
+    """
+
+    def test_어긋나면_실행을_시작하지_않는다(self, client, sut_base, monkeypatch):
+        from prova.sut_build import BuildCheck
+        monkeypatch.setattr(
+            server_app, "check_sut_build",
+            lambda url, **kw: BuildCheck("stale", "낡았습니다 — 재시작하세요."))
+        res = client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "case_ids": ["login-valid-001"],
+        })
+        assert res.status_code == 409, res.text
+        assert "재시작" in res.text
+
+    def test_계획_단계는_묻지_않는다(self, client, sut_base, monkeypatch):
+        """계획은 브라우저를 열지 않는다 — 대상이 아직 없어도 만들어져야 한다."""
+        calls = []
+        monkeypatch.setattr(server_app, "check_sut_build",
+                            lambda url, **kw: calls.append(url))
+        make_plan(client, sut_base)
+        assert calls == []
+
+    def test_확인_결과가_리포트에_남는다(self, client, sut_base):
+        make_plan(client, sut_base)
+        res = client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "case_ids": ["login-valid-001"],
+        })
+        job = wait(client, res.json()["job_id"])
+        assert job["result"]["summary"]["sut_build"] == "match"
