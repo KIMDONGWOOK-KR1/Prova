@@ -222,7 +222,10 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--sut", default="http://localhost:8100")
     ap.add_argument("--dataset", default=str(DATASET))
-    ap.add_argument("--vlm-result", default="docs/measurements/vlm-iou-qwen-vl-2026-08-22.json",
+    # 기본값은 **지금 시험지의** 채점 결과여야 한다. 옛 결과를 가리켜 두면
+    # dataset_id 가드가 매번 비교를 거절하고, 거절이 일상이 되면 그 가드가
+    # 실제로 어긋남을 잡은 날에도 읽히지 않는다 (2026-08-28 에 옮겼다).
+    ap.add_argument("--vlm-result", default="docs/measurements/vlm-iou-qwen-vl-2026-08-28.json",
                     help="저장된 2차 경로 채점 결과 — 같은 항목으로 다시 세어 나란히 놓는다")
     ap.add_argument("--actionable-only", action="store_true",
                     help="좌표로 조작하는 종류(input·button·link·checkbox)만 — "
