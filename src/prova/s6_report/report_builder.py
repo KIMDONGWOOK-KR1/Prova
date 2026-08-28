@@ -60,6 +60,7 @@ def build_report(
     design_mismatches: list[str] | None = None,
     session_file: str = "",
     plan: dict | None = None,
+    sut_build: str = "",
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -92,6 +93,12 @@ def build_report(
     # 일어났다는 사실은 판정의 전제이므로 리포트가 말해야 한다.
     if plan:
         summary["plan"] = dict(plan)
+    # 무엇을 상대로 쟀는가. 어긋남은 실행 자체를 막으므로 여기 남는 값은 '일치'
+    # 아니면 '확인 불가' 인데, 그 둘의 구별이 나중에 "이 FAIL 이 구현 결함인가
+    # 낡은 대상인가" 를 되물을 때의 답이다. 확인을 안 한 실행은 칸을 만들지
+    # 않는다 — '확인했더니 도장이 없더라' 와 다른 사실이다.
+    if sut_build:
+        summary["sut_build"] = sut_build
 
     return TestReport(
         run_id=run_id,
@@ -494,6 +501,14 @@ def render_html(report: TestReport) -> str:
             f"{rows}</div>"
         )
 
+    # 대상 빌드 확인. 경고 상자가 아니라 머리말 한 줄이다 — 실물 대상에는 도장이
+    # 없는 것이 정상이라 상자로 만들면 매번 뜨고, 매번 뜨는 경고는 읽히지 않는다.
+    build_state = s.get("sut_build", "")
+    build_meta = ""
+    if build_state:
+        label = "일치" if build_state == "match" else "확인 불가"
+        build_meta = f" · 대상 빌드 <code>{_esc(label)}</code>"
+
     backend = s.get("llm_backend", "")
     mock_warn = ""
     if backend.startswith("mock"):
@@ -556,7 +571,7 @@ def render_html(report: TestReport) -> str:
   대상 <code>{_esc(report.target_url)}</code> ·
   설계 문서 <code>{_esc(report.spec_source)}</code> ·
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
-  {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}
+  {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
 </div>
 {mock_warn}{filter_warn}{sel_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">

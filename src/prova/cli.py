@@ -21,10 +21,26 @@ import typer
 import yaml
 
 from prova.llm.base import LLMError
+from prova.sut_build import check_sut_build
 
 app = typer.Typer(add_completion=False, help="설계 문서 기반 웹 GUI QA 에이전트")
 
 DEFAULT_CONFIG = Path("configs/default.yaml")
+
+
+def _verify_sut_build(url: str) -> str:
+    """대상이 자기 소스보다 낡았으면 실행을 시작하지 않는다.
+
+    끝난 뒤에 알려 주면 이미 사람이 그 FAIL 을 쫓기 시작한 뒤다. 확인 결과는
+    리포트에도 남긴다 — 며칠 뒤에 "이 FAIL 이 구현 결함인가 낡은 대상인가" 를
+    되물을 수 있어야 한다 (prova.sut_build 모듈 설명).
+    """
+    check = check_sut_build(url)
+    if check.blocks:
+        typer.echo("")
+        typer.secho(check.message, fg=typer.colors.RED)
+        raise typer.Exit(2)
+    return check.state
 
 
 def _load_config(path: Path) -> dict:
@@ -170,9 +186,14 @@ def run(
 
         from prova.pipeline import resume_pipeline
 
+        # 재개는 '서버를 교체한 뒤' 도는 실행이다 — 교체한 그 서버가 낡았을
+        # 자리가 오히려 여기다.
+        build_state = _verify_sut_build(plan.base_url)
+
         report, run_dir = resume_pipeline(
             resume,
             vlm=vlm,
+            sut_build=build_state,
             headless=not headed and exec_cfg.get("headless", True),
             viewport=exec_cfg.get("viewport"),
             step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
@@ -313,10 +334,14 @@ def run(
                    "[--vlm URL --vlm-model 이름]")
         raise typer.Exit(0)
 
+    # 여기부터는 실제로 대상을 상대로 실행한다 (--plan-only 는 위에서 끝났다).
+    build_state = _verify_sut_build(url)
+
     exec_cfg = cfg.get("execution", {})
     common = dict(
         pdf_path=str(pdf) if pdf else "",
         base_url=url,
+        sut_build=build_state,
         llm=llm,
         run_id=rid,
         runs_root=runs_root,

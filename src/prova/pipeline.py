@@ -184,6 +184,7 @@ def run_pipeline(
     figma_json: Optional[str] = None,
     screen_urls: Optional[dict[str, str]] = None,
     storage_state: Optional[str] = None,
+    sut_build: str = "",
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
@@ -233,6 +234,7 @@ def run_pipeline(
         screenshot_every_step=screenshot_every_step,
         max_heal=max_heal,
         min_confidence=min_confidence,
+        sut_build=sut_build,
         on_progress=on_progress,
     )
 
@@ -389,6 +391,7 @@ def resume_pipeline(
     record_video: bool = False,
     hold_sec: float = 0.0,
     storage_state: Optional[str] = None,
+    sut_build: str = "",
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """저장된 계획(plan.json)으로 S3~S6 을 이어 실행한다 (--resume).
@@ -421,6 +424,7 @@ def resume_pipeline(
         figma_json=plan.figma_json,
         screen_urls=dict(plan.screen_urls),
         design_mismatches=list(plan.design_mismatches),
+        sut_build=sut_build,
         doc=plan.doc,
         # 본문은 all_cases 가 단일 진실이다 — 선택 목록은 id 로만 저장된다.
         cases=[c for c in plan.all_cases if c.case_id in selected],

@@ -32,6 +32,7 @@ from pydantic import BaseModel
 
 from prova.llm.factory import BackendError, make_llm
 from prova.pipeline import build_plan, run_pipeline
+from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
 from prova.theme import TOKENS_CSS
 
@@ -230,6 +231,15 @@ def run(body: RunRequest) -> dict:
             400, "실행할 케이스가 없습니다. 0건 실행은 '통과율 100%' 리포트가 됩니다."
         )
 
+    # 낡은 대상을 상대로 시작하지 않는다. 여기서 막는 이유는 CLI 와 같고
+    # (prova.sut_build 모듈 설명), 이 화면이 9월에 팀원들이 쓰는 입구라
+    # 가드가 CLI 에만 있으면 정작 필요한 곳에 없는 것과 같다.
+    # 작업을 띄운 뒤가 아니라 요청 처리 중에 확인한다 — 진행 로그에 묻히지 않고
+    # 화면이 곧바로 이유를 보여줘야 한다.
+    build = check_sut_build(body.url)
+    if build.blocks:
+        raise HTTPException(409, build.message)
+
     exec_cfg = cfg.get("execution", {})
     ground_cfg = cfg.get("grounding", {})
     agent_cfg = cfg.get("agent", {})
@@ -254,6 +264,7 @@ def run(body: RunRequest) -> dict:
             screenshot_every_step=exec_cfg.get("screenshot_every_step", True),
             max_heal=int(agent_cfg.get("max_heal", 2)),
             min_confidence=float(ground_cfg.get("vlm_confidence_threshold", 0.5)),
+            sut_build=build.state,
             on_progress=report,
         )
         return {

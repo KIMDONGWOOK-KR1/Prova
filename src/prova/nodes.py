@@ -96,6 +96,10 @@ class AgentState:
     # build_final_report 가 읽어 "추출을 누가 언제 했는가" 를 리포트에 남긴다 —
     # 재개는 llm=None 으로 돌므로 이 기록이 없으면 백엔드가 리포트에서 사라진다.
     plan_meta: Optional[dict] = None
+    # 실행 전 대상 빌드 확인 결과 — "" (확인 안 함) / match / absent / unreachable.
+    # 어긋남(stale)은 여기까지 오지 않는다. CLI 가 실행 자체를 막는다.
+    # build_final_report 가 읽어 리포트에 남긴다.
+    sut_build: str = ""
 
     # 산출물
     #
@@ -593,5 +597,6 @@ def build_final_report(state: AgentState) -> AgentState:
         design_mismatches=state.design_mismatches,
         session_file=Path(state.storage_state).name if state.storage_state else "",
         plan=state.plan_meta,
+        sut_build=state.sut_build,
     )
     return state

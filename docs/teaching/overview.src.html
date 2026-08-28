@@ -3110,6 +3110,22 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
                   더했다</strong> — 값 하나만 봐서는 위반인지 알 수 없는 <em>요소 간</em> 규칙이라
                   일반 위반 케이스 기계가 닿지 않는다. 새 기계를 만드는 대신 두 날짜를 함께 보는
                   유일한 자리에 얹었고, 기대 문구는 기획서가 정할 때만 만든다 (노트 20)</td></tr>
+          <tr><td>상태 필터 (셀렉트형 조회)</td>
+              <td><span class="tag pass">닫힘 08-27</span> 날짜와 근거가 달라(계산 vs 열 값 비교)
+                  케이스 기계를 따로 뒀다. 시드에 실제로 있는 상태만 묻는다 — 0건 기대는
+                  '필터가 아무것도 안 하는 구현' 과 구별되지 않는다. good 22/22,
+                  bad 는 O1~O6 의 9건만 FAIL. 실물 7B 가 선택 목록을 빈 배열로 내는 바람에
+                  <strong>표를 코드가 읽게</strong> 했다(<code>declared_options</code>) — 목록이
+                  비면 선택 항목 케이스가 아예 만들어지지 않아 검증이 조용히 사라진다 (노트 20)</td></tr>
+          <tr><td>낡은 대상을 상대로 재지 않기</td>
+              <td><span class="tag pass">닫힘 08-28</span> <code>--reload</code> 는 프로세스를
+                  둘로 만든다 — 감시자(부모)가 죽어도 일꾼(자식)은 소켓을 물고 남아,
+                  <strong>포트는 열려 있는데 아무도 파일을 보지 않는</strong> 상태가 된다.
+                  이틀에 걸쳐 세 번 속았고, 그중 한 번은 "<code>--reload</code> 가 고장났다" 는
+                  <em>틀린 진단</em>까지 냈다. 문서에 명령을 적는 것은 부탁이므로,
+                  SUT 가 <code>/__build__</code> 로 자기 소스보다 낡았는지 스스로 답하고
+                  <code>prova run</code> 이 실행 전에 물어 어긋나면 시작하지 않는다.
+                  도장이 없는 대상에는 아무 말도 하지 않는다 (노트 20 추기)</td></tr>
           <tr><td>Figma 경로 재설계 (1단계 — 정적 대조)</td>
               <td><span class="tag pass">닫힘 08-25</span> 컴포넌트 기반 결정적 추출, LLM 없이
                   디자인↔구현 정합성 QA(라벨·안내 문구·선택 항목). 실물 API 응답까지 관통 —
@@ -3147,11 +3163,17 @@ password  placeholder='비밀번호 입력'      <span class="f">← 없다</spa
         <strong>없는 결함을 보고하는 것이 결함을 놓치는 것보다 나쁠 수 있다.</strong> 두 번
         그랬다 — 좌표가 어긋나서, 그리고 모델이 요구사항을 발명해서.
       </p>
+      <p>
+        <strong>도구를 의심하기 전에, 재고 있는 대상이 내가 생각하는 그것이 맞는지부터
+        확인한다.</strong> 세 번 같은 자리에 빠졌다 — 떠 있던 SUT 가 옛 코드였고, 시험지의
+        모집단이 서로 달랐고, 셀렉터 평가가 로그인을 하지 않았다. 셋 다 도구가 아니라
+        <em>계측기</em>가 틀린 것이었고, 셋 다 리포트만 봐서는 구별되지 않았다.
+      </p>
     </div>
   </section>
 
   <footer class="col">
-    코드 <code>C:\dev\prova</code> · 테스트 1091개 ·
+    코드 <code>C:\dev\prova</code> · 테스트 1123개 ·
     자세한 설명은 <code>docs/teaching/</code>의 노트 23개,
     GPU 서버 절차는 <code>docs/CHEETAH_SETUP.md</code>
   </footer>

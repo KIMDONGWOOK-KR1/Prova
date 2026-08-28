@@ -29,6 +29,8 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
                 O2    합계가 마지막 표시 행을 뺀 값 (O1 과 겹쳐 569,000)
                 O3    날짜 필터가 시작일 당일을 뺀다 (경계 비교 등호 누락)
                 O4    날짜 필터 후 합계를 재계산하지 않는다 (필터 전 값 유지)
+                O5    기간 역전(시작일 > 종료일)을 알리지 않고 빈 목록만 보여준다
+                O6    상태로 걸러도 '취소' 주문이 늘 섞여 나온다
 
 `/slow`·`/spa`·`/hashed`·`/native`·`/nolabel`·`/slowleak` 은 검증 로직이 good 과
 같고 **도구를 시험하는 변수 하나**만 다른 변형이다(아래 등록기 참고). 이 변형들은
@@ -144,10 +146,14 @@ REGISTERED 를 good/bad 가 공유하면 good 이 가입시킨 계정을 bad 의
 찾아내고, **E1 이 good 을 한 번 돌린 뒤에는 사라진다.** 실행 순서에 따라 결과가
 달라지는 테스트는 결과를 신뢰할 수 없다.
 
-## bad 주문조회에 심은 의도적 불일치 2종
+## bad 주문조회에 심은 의도적 불일치 6종
 
-로그인 가드는 상품등록과 동일하게 양쪽 변형에 다 있다 — 여기서 재는 변수는
-정렬·합계 두 가지뿐이라, 가드까지 갈리면 세 번째 변수가 섞인다.
+로그인 가드는 상품등록과 동일하게 양쪽 변형에 다 있다 — 가드까지 갈리면 재려는
+변수에 하나가 더 섞인다.
+
+처음 심은 것은 O1·O2 둘이었고(정렬·합계), 화면이 필터를 갖게 되면서 O3~O6 이
+붙었다. 아래 두 항목만 길게 적는 이유는 그 둘이 '왜 이 화면을 만들었는가' 를
+설명하기 때문이다. O3~O6 의 내용과 근거는 위 표와 각 결함 자리의 주석에 있다.
 
     O1  주문일 오름차순(과거 → 최근)으로 정렬한다 (기획서는 내림차순을 요구)
         → 목록 자체는 다섯 건이 다 나온다. '값이 틀렸다' 가 아니라 '순서가
@@ -162,6 +168,7 @@ REGISTERED 를 good/bad 가 공유하면 good 이 가입시킨 계정을 bad 의
 
 from __future__ import annotations
 
+import hashlib
 import re
 from pathlib import Path
 
@@ -173,6 +180,59 @@ BASE_DIR = Path(__file__).parent
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app = FastAPI(title="Prova SUT — 미니 로그인·회원가입·검색 앱")
+
+
+# --- 빌드 도장 -------------------------------------------------------------
+#
+# 떠 있는 이 프로세스가 자기 소스보다 낡았는지를 스스로 답한다.
+#
+# `--reload` 는 프로세스를 둘로 만든다. 부모(감시자)가 파일을 보고 자식(일꾼)이
+# 응답하는데, 부모가 죽어도 자식은 소켓을 물고 계속 산다. 그러면 포트는 열려
+# 있고 응답도 정상인데 **아무도 파일을 보지 않는다.** 2026-08-27 에 그렇게 두 번
+# 속았다 — 그때 서빙되던 것은 폼은 새것이고 배선은 옛것인 반쯤 새 스냅샷이라
+# 화면만 보고는 최신으로 읽혔다.
+#
+# 비교를 이쪽에서 하는 이유: prova 는 대상의 URL 만 안다. 소스가 어느 경로에
+# 있는지, 같은 기계에 있기는 한지 모른다. '내 소스가 나보다 새것인가' 는 이
+# 프로세스만 답할 수 있다.
+
+
+def _tree_hash(root: Path) -> tuple[str, int]:
+    """디렉터리 내용의 해시와 센 파일 수.
+
+    이름도 넣는다 — 내용만 이으면 파일 이름 변경이 보이지 않는다.
+    `__pycache__` 는 뺀다. .pyc 는 실행할 때마다 바뀌므로 세면 늘 '낡았다' 가
+    되고, 늘 낡았다는 경고는 아무도 읽지 않는다.
+    """
+    h = hashlib.sha256()
+    files = sorted(
+        p for p in root.rglob("*")
+        if p.is_file() and "__pycache__" not in p.parts
+    )
+    for path in files:
+        h.update(str(path.relative_to(root)).replace("\\", "/").encode())
+        h.update(path.read_bytes())
+    return h.hexdigest(), len(files)
+
+
+_BUILD_STAMP, _BUILD_FILES = _tree_hash(BASE_DIR)
+
+
+@app.get("/__build__")
+def build_stamp() -> dict:
+    """임포트 시점의 도장과 지금 디스크의 해시를 함께 낸다.
+
+    판단(`stale`)만 내지 않고 양쪽 해시를 다 내는 이유는, 읽는 쪽이 '무엇을
+    비교해서 그렇게 말했는지' 를 볼 수 있어야 하기 때문이다.
+    """
+    current, files = _tree_hash(BASE_DIR)
+    return {
+        "stamp": _BUILD_STAMP,
+        "current": current,
+        "stale": current != _BUILD_STAMP,
+        "files": files,
+        "loaded_files": _BUILD_FILES,
+    }
 
 # 기획서 §5 테스트 계정.
 #
@@ -911,13 +971,16 @@ def _bad_orders_data(start: str = "", end: str = "",
     # O6: 상태로 거를 때 '취소' 주문을 늘 함께 보여준다. 기획서 §7 은 고른 상태의
     #     주문만 표시하라고 적었는데, 취소 건이 어느 상태 조회에도 섞여 나온다 —
     #     "취소된 주문도 보여 달라" 는 요구를 필터 안쪽에 넣어 버린 모양이다.
-    #     건수 케이스와 '다른 상태 배제' 케이스가 각각 잡는다.
+    #     실측으로 잡히는 것은 배송완료·배송중의 **건수** 케이스 둘이다.
+    #     '다른 상태 배제' 케이스는 다른 상태 행 **하나**만 보므로, 그 하나가
+    #     취소 행이 아니면 지나간다 (2026-08-27 실측). 그래도 배제 케이스는
+    #     남긴다 — 건수가 맞으면서 내용이 틀린 구현은 배제로만 잡힌다.
     if status and status != STATUS_ALL:
         rows = [o for o in rows if o["상태"] in (status, "취소")]
     return rows, total
 
 
-# badtable — bad 와 결함(O1·O2·O3·O4)이 같고 마크업만 순수 <table> 이다.
+# badtable — bad 와 결함(O1~O6)이 같고 마크업만 순수 <table> 이다.
 @app.get("/badtable/orders", response_class=HTMLResponse)
 def badtable_orders(request: Request, start_date: str = "", end_date: str = "",
                     status: str = ""):
