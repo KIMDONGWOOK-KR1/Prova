@@ -548,23 +548,31 @@ class TestScorersUseTheStampCheck:
     쪽이었고, 저장된 그림만 보는 채점(`eval_vlm_iou`)은 앱 상태와 무관하다.
     거기서까지 막으면 **GPU 서버만 있으면 도는** 그 스크립트의 성질이 깨진다.
 
-    지금 커밋된 시험지에는 도장이 없다(08-27 에 굳었다). 그래서 '도장 없음' 을
-    일부러 만들 필요 없이, 서버 없이도 두 스크립트가 재기 전에 멈추는지 볼 수 있다.
+    닫힌 포트를 대상으로 부른다 — 도장을 확인할 수 없는 상태다. 지키는 것은
+    **재기 전에 멈춘다**는 것이므로, 거절 사유(도장 없음·닿지 않음·어긋남)를
+    문구로 고정하지 않는다. 사유별 문구는 `TestScoringChecksSutStamp` 가 본다.
+    문구를 여기서 고정하면 시험지를 다시 굳힐 때마다 이 테스트가 깨진다 —
+    실제로 2026-08-28 재빌드에서 그랬다.
     """
 
-    def test_셀렉터_채점은_도장_없는_시험지로_재지_않는다(self, selector_eval,
-                                                     monkeypatch, capsys):
-        monkeypatch.setattr("sys.argv", ["eval_selector_speed.py",
-                                         "--sut", "http://127.0.0.1:1"])
-        assert selector_eval.main() == 2
-        assert "다시 굳" in capsys.readouterr().out
+    DEAD = "http://127.0.0.1:1"
 
-    def test_관문_재생은_도장_없는_시험지로_재생하지_않는다(self, guard_eval,
+    def test_셀렉터_채점은_확인_못_한_시험지로_재지_않는다(self, selector_eval,
                                                        monkeypatch, capsys):
-        monkeypatch.setattr("sys.argv", ["eval_identity_guard.py",
-                                         "http://127.0.0.1:1"])
+        monkeypatch.setattr("sys.argv", ["eval_selector_speed.py",
+                                         "--sut", self.DEAD])
+        assert selector_eval.main() == 2
+        out = capsys.readouterr().out
+        assert "시험지" in out
+        assert "탐지 성공률" not in out, "재지 않고 멈춰야 한다"
+
+    def test_관문_재생은_확인_못_한_시험지로_재생하지_않는다(self, guard_eval,
+                                                        monkeypatch, capsys):
+        monkeypatch.setattr("sys.argv", ["eval_identity_guard.py", self.DEAD])
         assert guard_eval.main() == 2
-        assert "다시 굳" in capsys.readouterr().out
+        out = capsys.readouterr().out
+        assert "시험지" in out
+        assert "차단" not in out, "재생하지 않고 멈춰야 한다"
 
     def test_VLM_채점은_도장을_묻지_않는다(self, evaluator, data, tmp_path,
                                         monkeypatch, capsys):
@@ -574,3 +582,68 @@ class TestScorersUseTheStampCheck:
             "--out", str(tmp_path / "check")])
         assert evaluator.main() == 0
         assert (tmp_path / "check.json").exists()
+
+
+class TestOrdersStatusTarget:
+    """주문조회의 상태 select 도 시험지가 다룬다.
+
+    2026-08-27 에 화면에 붙었는데 시험지에는 없었다. 회원가입의 '가입 경로'
+    select 는 이미 목표인데 여기만 빠져 있으면, 시험지가 화면의 한 요소를
+    계속 안 보는 것이다 — 노트 12 가 '기획서에 적혀 있는데 아무도 확인하지
+    않는 것' 이라 부른 그 자리와 같은 모양이다.
+
+    좌표로 조작하지 않는 종류라 관문 재생에서는 빠지지만, IoU 채점에는 들어간다.
+    """
+
+    def test_필터가_있는_주문_화면마다_상태_목표가_있다(self, data):
+        filtered = {"orders-list", "orders-empty", "table-orders"}
+        for state_id in sorted(filtered):
+            targets = {i["target"] for i in data["items"]
+                       if i["state_id"] == state_id}
+            assert "상태" in targets, (state_id, sorted(targets))
+
+    def test_상태는_select_로_적힌다(self, data):
+        kinds = {i["kind"] for i in data["items"] if i["target"] == "상태"}
+        assert kinds == {"select"}
+
+
+class TestGuardChecksItsAnswerSheet:
+    """관문 재생이 **그 시험지의 답안**인지 확인하는가.
+
+    2026-08-31 에 걸렸다. 시험지를 다시 굳힌 뒤 재생을 돌렸는데 스크립트가 옛
+    답안(08-28)을 그대로 읽었다. 시험지-앱 대조(`require_matching_sut`)는
+    통과했다 — 시험지와 앱은 맞았으니까. **어긋난 것은 답안이었다.**
+
+    옛 좌표를 새 화면에 재생하면 엉뚱한 자리를 찍고, 그 결과는 '관문이 과하다'
+    로 읽힌다. 실제로 오차단 3건이 나왔고 하마터면 관문을 고칠 뻔했다.
+
+    `eval_selector_speed` 는 같은 상황을 `check_same_dataset` 으로 이미 막는다.
+    관문 재생에만 없었다 — 한쪽만 고쳐진 자리가 또 있었다.
+    """
+
+    def test_다른_시험지의_답안이면_재생하지_않는다(self, guard_eval, data, tmp_path,
+                                               monkeypatch, capsys):
+        stale = tmp_path / "stale.json"
+        stale.write_text(json.dumps({
+            "meta": {"dataset_id": "옛시험지000"}, "rows": [],
+        }, ensure_ascii=False), encoding="utf-8")
+        monkeypatch.setattr(guard_eval, "MEASUREMENT", stale)
+        monkeypatch.setattr("sys.argv", ["eval_identity_guard.py", "http://127.0.0.1:1"])
+        assert guard_eval.main() == 2
+        out = capsys.readouterr().out
+        assert "옛시험지000" in out and data["dataset_id"] in out
+        assert "차단" not in out, "재생하지 않고 멈춰야 한다"
+
+    def test_답안에_시험지_표시가_없으면_멈춘다(self, guard_eval, tmp_path,
+                                            monkeypatch, capsys):
+        blind = tmp_path / "blind.json"
+        blind.write_text(json.dumps({"meta": {}, "rows": []}), encoding="utf-8")
+        monkeypatch.setattr(guard_eval, "MEASUREMENT", blind)
+        monkeypatch.setattr("sys.argv", ["eval_identity_guard.py", "http://127.0.0.1:1"])
+        assert guard_eval.main() == 2
+
+    def test_기본_답안이_지금_시험지의_것이다(self, guard_eval, data):
+        """기본값이 옛 답안을 가리키면 아무도 인자를 주지 않는 평소 실행이
+        조용히 틀린다 — 08-31 에 그렇게 돌았다."""
+        answer = json.loads(guard_eval.MEASUREMENT.read_text(encoding="utf-8"))
+        assert answer["meta"]["dataset_id"] == data["dataset_id"]

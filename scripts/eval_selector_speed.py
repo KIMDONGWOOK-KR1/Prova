@@ -46,6 +46,7 @@ from typing import Callable, Optional
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import build_iou_dataset as builder  # noqa: E402 — 위 sys.path 뒤여야 한다
+from build_iou_dataset import check_same_dataset  # noqa: E402,F401
 
 DATASET = Path("fixtures/iou/dataset.json")
 
@@ -125,28 +126,6 @@ def check_same_population(rows_a: list[dict], rows_b: list[dict]) -> None:
         raise ValueError(
             f"두 측정의 모집단이 다릅니다 — 한쪽에만 있는 항목 "
             f"{sorted(a ^ b)} (1차 {len(a)}개 · 2차 {len(b)}개)"
-        )
-
-
-def check_same_dataset(dataset_id: str, meta: dict) -> None:
-    """저장된 채점 결과가 **같은 시험지**의 것인지 확인한다.
-
-    항목 id 는 열거 순서로 매겨지므로, 시험지가 바뀌어도 같은 id 가 존재할 수
-    있다. 그때 id 집합 비교(check_same_population)는 통과하면서 실제로는 다른
-    항목을 나란히 놓게 된다 — 집합이 같다는 것과 같은 시험지라는 것은 다르다.
-
-    표시가 없으면 통과시키지 않는다. '모르는 것' 을 '같은 것' 으로 두면 그
-    관대함이 정확히 틀린 표를 만든다.
-    """
-    saved = meta.get("dataset_id")
-    if not saved:
-        raise ValueError(
-            "저장된 채점 결과에 시험지 표시(dataset_id)가 없어 비교할 수 없습니다."
-        )
-    if saved != dataset_id:
-        raise ValueError(
-            f"다른 시험지의 점수입니다 — 지금 {dataset_id}, 저장된 결과 {saved}. "
-            "시험지를 넓혔다면 2차 경로도 새 시험지로 다시 채점해야 합니다."
         )
 
 
@@ -230,7 +209,7 @@ def main() -> int:
     # 기본값은 **지금 시험지의** 채점 결과여야 한다. 옛 결과를 가리켜 두면
     # dataset_id 가드가 매번 비교를 거절하고, 거절이 일상이 되면 그 가드가
     # 실제로 어긋남을 잡은 날에도 읽히지 않는다 (2026-08-28 에 옮겼다).
-    ap.add_argument("--vlm-result", default="docs/measurements/vlm-iou-qwen-vl-2026-08-28.json",
+    ap.add_argument("--vlm-result", default="docs/measurements/vlm-iou-qwen-vl-2026-08-31.json",
                     help="저장된 2차 경로 채점 결과 — 같은 항목으로 다시 세어 나란히 놓는다")
     ap.add_argument("--actionable-only", action="store_true",
                     help="좌표로 조작하는 종류(input·button·link·checkbox)만 — "

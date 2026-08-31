@@ -28,7 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from build_iou_dataset import (  # noqa: E402
-    STATES, VIEWPORT, open_state, require_matching_sut, sut_stamp,
+    STATES, VIEWPORT, check_same_dataset, open_state, require_matching_sut,
+    sut_stamp,
 )
 from prova.models import ScreenSpec, TestStep  # noqa: E402
 from prova.s3_grounder.dom_locator import ElementLocation, GroundingError  # noqa: E402
@@ -39,7 +40,7 @@ from prova.s4_executor.playwright_driver import (  # noqa: E402
 
 # 재생할 답안. **지금 시험지로 채점된 것**이어야 한다 — 옛 답안을 지금 화면에
 # 재생하면 좌표가 어긋난 이유가 "관문이 막았다" 로 보인다.
-MEASUREMENT = Path("docs/measurements/vlm-iou-qwen-vl-2026-08-28.json")
+MEASUREMENT = Path("docs/measurements/vlm-iou-qwen-vl-2026-08-31.json")
 
 #: 시험지 화면 -> 그 화면의 골든 스펙. 정체 대조가 아는 라벨은 파이프라인과
 #: 같게 '그 케이스의 화면' 것만 쓴다.
@@ -115,6 +116,13 @@ def main() -> int:
     # 원인을 관문에서 찾을 뻔했다 — 밀린 것은 버튼이었다.
     dataset = json.loads(Path("fixtures/iou/dataset.json").read_text(encoding="utf-8"))
     try:
+        # 답안 검사가 먼저다. 망(網)을 안 타므로 싸고, 무엇보다 앱이 안 떠 있을
+        # 때 '앱에 못 닿는다' 로 먼저 멈추면 답안이 어긋났다는 사실이 가려진다.
+        #
+        # 2026-08-31 에 이게 없어서 옛 답안(08-28)을 새 화면에 재생했다. 시험지-앱
+        # 대조는 통과했다 — 어긋난 것은 답안이었다. 결과는 오차단 3건이었고
+        # 하마터면 관문을 고칠 뻔했다.
+        check_same_dataset(dataset["dataset_id"], data.get("meta", {}))
         require_matching_sut(dataset, lambda: sut_stamp(sut))
     except ValueError as exc:
         print(f"\n{exc}")
