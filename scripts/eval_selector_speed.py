@@ -62,17 +62,40 @@ ACTIONABLE_KINDS = ("input", "button", "link", "checkbox")
 def evaluate_selector(
     items: list[dict],
     locate: Callable[[dict], tuple[bool, Optional[str]]],
+    prepare: Optional[Callable[[dict], None]] = None,
 ) -> list[dict]:
     """항목마다 `locate` 를 시간을 재며 부른다.
 
     `locate` 는 (찾았는가, 전략이름) 을 돌려준다. 예외는 삼키지 않고 행에
     남긴다 — '못 찾았다' 와 '재는 중에 터졌다' 를 섞으면 도구가 고장 난 것을
     탐지 실패로 보고하게 된다.
+
+    `prepare` 는 **타이머 밖**에서 화면을 준비한다(이동·로그인). 재려는 것은
+    탐지이고, 비교 상대인 2차 경로는 저장된 그림을 채점하므로 페이지 로드가
+    아예 없다. 로드를 1차에만 얹으면 그 표는 1차에 불리하게 기운다.
+
+    2026-08-31 까지 그렇게 기울어 있었다. 게이트 화면의 첫 항목이 ~100ms,
+    같은 화면의 나머지가 2~7ms 였던 것이 그 흔적이다.
     """
     rows: list[dict] = []
     for item in items:
-        started = time.perf_counter()
         found, strategy, error = False, None, ""
+        try:
+            if prepare is not None:
+                prepare(item)
+        except Exception as exc:  # noqa: BLE001
+            # 화면을 못 연 것은 '못 찾았다' 가 아니다. 오류로 남기고 탐지는
+            # 시도하지 않는다 — 열리지 않은 화면에서 잰 시간은 아무 뜻이 없다.
+            rows.append({
+                "id": item.get("id"), "state_id": item.get("state_id"),
+                "target": item.get("target"), "kind": item.get("kind"),
+                "present": bool(item.get("present")), "found": False,
+                "strategy": None, "error": f"{type(exc).__name__}: {exc}",
+                "elapsed_ms": 0.0,
+            })
+            continue
+
+        started = time.perf_counter()
         try:
             found, strategy = locate(item)
         except Exception as exc:  # noqa: BLE001 — 무엇이 터졌든 행에 남긴다
@@ -159,11 +182,14 @@ def summarize_vlm(rows: list[dict], keep_ids: set | None = None) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def make_page_locator(page, sut: str):
-    """1차 경로를 그대로 부르는 locate 를 만든다.
+def make_page_probe(page, sut: str):
+    """`(prepare, locate)` 를 만든다 — 화면 준비와 탐지를 나눠서.
 
     파이프라인이 쓰는 `ground()` 를 그대로 부른다 — 이 측정이 재려는 것은
     '측정용으로 다시 짠 탐지' 가 아니라 실제로 도는 그 경로다.
+
+    둘로 나눈 이유는 `evaluate_selector` 의 설명에 있다: 이동·로그인은 탐지가
+    아니므로 타이머 밖이어야 한다.
     """
     from prova.models import UIElement
     from prova.s3_grounder.dom_locator import GroundingError, ground
@@ -183,14 +209,16 @@ def make_page_locator(page, sut: str):
         """
         builder.sign_in(page, sut, path, wait="load")
 
-    def locate(item: dict) -> tuple[bool, Optional[str]]:
-        # 같은 화면의 항목이 이어지면 다시 열지 않는다 — 로드 시간을 탐지
-        # 시간에 섞지 않기 위해서다.
+    def prepare(item: dict) -> None:
+        # 같은 화면의 항목이 이어지면 다시 열지 않는다. 타이머 밖이라 시간
+        # 때문은 아니고, 다시 열면 화면 상태(채운 값·에러 문구)가 초기화된다.
         if current["path"] != item["path"]:
             if item.get("login"):
                 sign_in(item["path"])
             page.goto(f"{sut}{item['path']}", wait_until="load")
             current["path"] = item["path"]
+
+    def locate(item: dict) -> tuple[bool, Optional[str]]:
         hint = UIElement(element_id=f"probe-{item['id']}", type=item["kind"],
                          label=item["target"])
         try:
@@ -199,7 +227,7 @@ def make_page_locator(page, sut: str):
             return False, None
         return True, location.strategy
 
-    return locate
+    return prepare, locate
 
 
 def main() -> int:
@@ -237,7 +265,8 @@ def main() -> int:
     with sync_playwright() as p:
         browser = p.chromium.launch()
         page = browser.new_page(viewport=data["viewport"])
-        rows = evaluate_selector(items, make_page_locator(page, args.sut))
+        prepare, locate = make_page_probe(page, args.sut)
+        rows = evaluate_selector(items, locate, prepare=prepare)
         browser.close()
 
     for r in rows:
