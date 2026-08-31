@@ -325,26 +325,18 @@ class TestGatedLocator:
 
     def test_로그인_항목은_먼저_로그인한다(self, selector_eval):
         page = self.FakePage()
-        locate = selector_eval.make_page_locator(page, "http://sut")
-        item = {"id": 1, "path": "/good/orders", "target": "시작일",
-                "kind": "date", "login": True}
-        try:
-            locate(item)
-        except Exception:
-            pass  # ground() 는 가짜 페이지에서 터진다 — 여기서 보는 것은 이동 경로다
+        prepare, _ = selector_eval.make_page_probe(page, "http://sut")
+        prepare({"id": 1, "path": "/good/orders", "target": "시작일",
+                 "kind": "date", "login": True})
         urls = [a[1] for a in page.actions if a[0] == "goto"]
         assert "http://sut/good/login" in urls, page.actions
         assert urls.index("http://sut/good/login") < urls.index("http://sut/good/orders")
 
     def test_표시가_없으면_로그인하지_않는다(self, selector_eval):
         page = self.FakePage()
-        locate = selector_eval.make_page_locator(page, "http://sut")
-        item = {"id": 2, "path": "/good/login", "target": "이메일",
-                "kind": "input", "login": False}
-        try:
-            locate(item)
-        except Exception:
-            pass
+        prepare, _ = selector_eval.make_page_probe(page, "http://sut")
+        prepare({"id": 2, "path": "/good/login", "target": "이메일",
+                 "kind": "input", "login": False})
         assert [a for a in page.actions if a[0] == "click"] == []
 
 
@@ -415,12 +407,9 @@ class TestOneLoginProcedure:
     def test_셀렉터_채점이_같은_계정을_쓴다(self, builder, selector_eval, monkeypatch):
         monkeypatch.setattr(builder, "LOGIN_ACCOUNT", self.ACCOUNT)
         page = RecordingPage()
-        locate = selector_eval.make_page_locator(page, "http://sut")
-        try:
-            locate({"id": 1, "path": "/good/orders", "target": "시작일",
-                    "kind": "date", "login": True})
-        except Exception:
-            pass  # ground() 는 가짜 페이지에서 터진다 — 여기서 보는 것은 로그인이다
+        prepare, _ = selector_eval.make_page_probe(page, "http://sut")
+        prepare({"id": 1, "path": "/good/orders", "target": "시작일",
+                 "kind": "date", "login": True})
         assert self.ACCOUNT[0] in page.filled(), page.actions
 
     def test_관문_재생이_같은_계정을_쓴다(self, builder, guard_eval, monkeypatch, tmp_path):
@@ -647,3 +636,91 @@ class TestGuardChecksItsAnswerSheet:
         조용히 틀린다 — 08-31 에 그렇게 돌았다."""
         answer = json.loads(guard_eval.MEASUREMENT.read_text(encoding="utf-8"))
         assert answer["meta"]["dataset_id"] == data["dataset_id"]
+
+
+class TestTimerMeasuresDetectionOnly:
+    """탐지 시간에 **화면 여는 시간**을 섞지 않는다.
+
+    2026-08-31 까지 `evaluate_selector` 의 타이머가 `locate` 전체를 감쌌고, 그
+    안에 `page.goto` 와 로그인이 들어 있었다. 증거는 값에 그대로 남아 있었다 —
+    게이트 화면의 첫 항목이 ~100ms, 같은 화면의 나머지가 2~7ms.
+
+    비교 상대인 2차 경로는 **모델 호출만** 잰다(저장된 그림을 채점하므로 페이지
+    로드가 아예 없다). 그러니 지금 표는 1차에 불리하게 기울어 있었다. 고치면
+    1차 숫자가 더 좋아지는데, **그래서 더 조심해서 고친다** — 유리한 쪽으로
+    지표를 움직이는 것과 구별되는 유일한 근거는 '두 경로가 같은 것을 재는가'
+    하나뿐이다.
+
+    화면을 여는 일은 `prepare` 로 나가고, 타이머는 `locate` 만 감싼다.
+    """
+
+    def test_준비_시간은_안_센다(self, selector_eval):
+        import time
+
+        def prepare(item):
+            time.sleep(0.05)
+
+        rows = selector_eval.evaluate_selector(
+            [{"id": 1, "present": True}], lambda item: (True, "label"),
+            prepare=prepare)
+        assert rows[0]["elapsed_ms"] < 20, rows[0]["elapsed_ms"]
+
+    def test_탐지_시간은_잰다(self, selector_eval):
+        import time
+
+        def locate(item):
+            time.sleep(0.05)
+            return True, "label"
+
+        rows = selector_eval.evaluate_selector([{"id": 1, "present": True}], locate)
+        assert rows[0]["elapsed_ms"] >= 40, rows[0]["elapsed_ms"]
+
+    def test_준비가_터지면_탐지_실패로_적지_않는다(self, selector_eval):
+        """화면을 못 연 것은 '못 찾았다' 가 아니다. 섞으면 도구 결함이 탐지
+        실패로 둔갑한다 — 이 파일이 반복해서 지키는 그 구분이다."""
+        def prepare(item):
+            raise RuntimeError("서버가 죽었다")
+
+        rows = selector_eval.evaluate_selector(
+            [{"id": 1, "present": True}], lambda item: (True, "label"),
+            prepare=prepare)
+        assert rows[0]["error"] and not rows[0]["found"]
+        assert "서버가 죽었다" in rows[0]["error"]
+
+    def test_준비_없이도_돈다(self, data, selector_eval):
+        """가짜 locate 로 집계만 보는 기존 사용법이 그대로 살아 있어야 한다."""
+        rows = selector_eval.evaluate_selector(_items(data), lambda i: (True, "label"))
+        assert len(rows) == len(data["items"])
+
+
+class TestPageProbeSplitsNavigation:
+    """브라우저 쪽도 같은 경계를 갖는가 — 이동은 prepare, 탐지는 locate."""
+
+    def test_이동과_로그인은_prepare_가_한다(self, selector_eval):
+        page = RecordingPage()
+        prepare, locate = selector_eval.make_page_probe(page, "http://sut")
+        prepare({"id": 1, "path": "/good/orders", "login": True})
+        urls = page.gotos()
+        assert "http://sut/good/login" in urls
+        assert urls.index("http://sut/good/login") < urls.index("http://sut/good/orders")
+
+    def test_locate_는_이동하지_않는다(self, selector_eval):
+        page = RecordingPage()
+        prepare, locate = selector_eval.make_page_probe(page, "http://sut")
+        prepare({"id": 1, "path": "/good/orders", "login": True})
+        page.actions.clear()
+        try:
+            locate({"id": 1, "path": "/good/orders", "target": "시작일", "kind": "date"})
+        except Exception:
+            pass  # ground() 는 가짜 페이지에서 터진다 — 여기서 보는 것은 이동 여부다
+        assert page.gotos() == [], page.actions
+
+    def test_같은_화면이_이어지면_다시_열지_않는다(self, selector_eval):
+        """로드를 타이머 밖으로 뺐어도 다시 여는 것은 낭비이고, 무엇보다
+        화면 상태(입력값)가 초기화된다."""
+        page = RecordingPage()
+        prepare, _ = selector_eval.make_page_probe(page, "http://sut")
+        item = {"id": 1, "path": "/good/login", "login": False}
+        prepare(item)
+        prepare({**item, "id": 2})
+        assert page.gotos() == ["http://sut/good/login"]
