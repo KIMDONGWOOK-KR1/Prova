@@ -180,6 +180,11 @@ PRODUCT_FORM = (
 ORDERS_FORM = (
     Target("시작일", "date", "input[name=start_date]"),
     Target("종료일", "date", "input[name=end_date]"),
+    # 08-27 에 화면에 붙었는데 시험지에는 없었다(08-28 에 채움). 회원가입의
+    # '가입 경로' 는 이미 목표인데 여기만 빠지면 시험지가 화면의 한 요소를
+    # 계속 안 보게 된다. 좌표로 조작하지 않는 종류라 관문 재생에서는 빠지고
+    # IoU 채점에는 들어간다.
+    Target("상태", "select", "select[name=status]"),
     Target("조회", "button", "button[type=submit]"),
 )
 
@@ -400,6 +405,28 @@ def build_payload(rows: list[dict], sut_build: str) -> dict:
             "present": sum(1 for r in rows if r["present"]),
             "absent": sum(1 for r in rows if not r["present"]),
             "items": rows}
+
+
+def check_same_dataset(dataset_id: str, meta: dict) -> None:
+    """저장된 채점 결과가 **같은 시험지**의 것인지 확인한다.
+
+    항목 id 는 열거 순서로 매겨지므로, 시험지가 바뀌어도 같은 id 가 존재할 수
+    있다. 그때 id 집합 비교(check_same_population)는 통과하면서 실제로는 다른
+    항목을 나란히 놓게 된다 — 집합이 같다는 것과 같은 시험지라는 것은 다르다.
+
+    표시가 없으면 통과시키지 않는다. '모르는 것' 을 '같은 것' 으로 두면 그
+    관대함이 정확히 틀린 표를 만든다.
+    """
+    saved = meta.get("dataset_id")
+    if not saved:
+        raise ValueError(
+            "저장된 채점 결과에 시험지 표시(dataset_id)가 없어 비교할 수 없습니다."
+        )
+    if saved != dataset_id:
+        raise ValueError(
+            f"다른 시험지의 점수입니다 — 지금 {dataset_id}, 저장된 결과 {saved}. "
+            "시험지를 넓혔다면 2차 경로도 새 시험지로 다시 채점해야 합니다."
+        )
 
 
 def require_matching_sut(dataset: dict, stamp_now) -> None:
