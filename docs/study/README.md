@@ -107,6 +107,9 @@ uv sync --extra dev
 
 ## 1회차 — 우리가 만든 것, AI 가 있는 두 지점 (9/22)
 
+> **자료 완성됨** — 진행 대본 [`week-01.md`](week-01.md) ·
+> 학생용 ELI5 설명 <https://claude.ai/code/artifact/d55a971b-8e72-4433-96e2-130e26a4ee98>
+
 **목표** 프로젝트가 무엇인지 말할 수 있고, AI 가 어디에 있는지 지도에서 짚을 수 있다.
 
 ### 프로젝트를 5분에 (설명)
@@ -132,8 +135,13 @@ uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100
 uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/bad  --backend mock
 ```
 
-`good` 10/10 PASS · `bad` 3 PASS / 7 FAIL. `--headed --slow 500 --only require_uppercase`
-로 브라우저가 스스로 입력하는 것도 한 번 보여준다.
+**`good` 10/10 PASS · `bad` 4 PASS / 6 FAIL** (2026-09-14 실측).
+`--headed --slow 500 --only require_uppercase` 로 브라우저가 스스로 입력하는 것도
+한 번 보여준다.
+
+`bad` 에 심어 둔 결함은 **4개**인데 FAIL 은 **6건**이다 — 비밀번호 복잡도 검증
+하나가 빠지면 최소길이·대문자·특수문자 **세 규칙**이 함께 무너지기 때문이다.
+4회차 '규칙 하나당 케이스 하나' 의 예고편으로 여기서 한 번 짚는다.
 
 ### 지도를 함께 그린다 (20분)
 

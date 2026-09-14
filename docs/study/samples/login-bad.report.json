@@ -1,0 +1,950 @@
+{
+  "run_id": "sample-login-bad",
+  "target_url": "http://localhost:8100/bad",
+  "spec_source": "fixtures/specs/login_spec.pdf",
+  "summary": {
+    "total": 10,
+    "pass": 4,
+    "fail": 6,
+    "healed": 0,
+    "settled": 0,
+    "pass_rate": 40.0,
+    "by_screen": {
+      "login": {
+        "total": 10,
+        "pass": 4,
+        "fail": 6
+      }
+    },
+    "by_flow": {},
+    "llm_backend": "mock",
+    "spec_warnings": [
+      "케이스 제목 다듬기를 건너뛰었습니다: mock 백엔드에 'CaseTitles' 응답이 등록되지 않았습니다. 등록된 것: ['ScreenSpec']"
+    ],
+    "screen_names": {
+      "login": "로그인"
+    },
+    "sut_build": "match"
+  },
+  "cases": [
+    {
+      "case_id": "login-valid-001",
+      "title": "정상 로그인 (모든 입력 규칙 충족)",
+      "type": "positive",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "PASS",
+      "violates": null,
+      "target_element": null,
+      "evidence": {
+        "expected": "type=toast_or_redirect 문구='환영합니다' 경로='/dashboard'",
+        "actual": "경로 '/dashboard' 이동 확인; 문구 '환영합니다' 노출 확인",
+        "url": "http://localhost:8110/bad/dashboard",
+        "screenshot": "login-valid-001/step4.png",
+        "error_texts": []
+      },
+      "failure_category": null,
+      "failure_detail": null,
+      "healed": false,
+      "elapsed_ms": 418,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 343,
+          "screenshot": "login-valid-001/step1.png",
+          "dom_snapshot": "login-valid-001/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 15,
+          "screenshot": "login-valid-001/step2.png",
+          "dom_snapshot": "login-valid-001/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-valid-001/step3.png",
+          "dom_snapshot": "login-valid-001/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 46,
+          "screenshot": "login-valid-001/step4.png",
+          "dom_snapshot": "login-valid-001/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-email-required-002",
+      "title": "이메일 미입력 — 필수 입력 검증 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "PASS",
+      "violates": "required",
+      "target_element": "email",
+      "evidence": {
+        "expected": "type=error_message 문구='필수 입력 항목입니다.'",
+        "actual": "에러 영역에서 기대 문구를 확인",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-email-required-002/step4.png",
+        "error_texts": [
+          "필수 입력 항목입니다."
+        ]
+      },
+      "failure_category": null,
+      "failure_detail": null,
+      "healed": false,
+      "elapsed_ms": 91,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-email-required-002/step1.png",
+          "dom_snapshot": "login-email-required-002/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 15,
+          "screenshot": "login-email-required-002/step2.png",
+          "dom_snapshot": "login-email-required-002/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-email-required-002/step3.png",
+          "dom_snapshot": "login-email-required-002/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 46,
+          "screenshot": "login-email-required-002/step4.png",
+          "dom_snapshot": "login-email-required-002/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-email-format-003",
+      "title": "이메일 형식 규칙 위반 (입력값 'not-an-email') — 규칙 강제 여부 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": "format",
+      "target_element": "email",
+      "evidence": {
+        "expected": "type=error_message 문구='올바른 이메일 형식을 입력하세요.'",
+        "actual": "다른 문구가 노출됨: '로그인 정보를 확인해주세요.'",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-email-format-003/step4.png",
+        "error_texts": [
+          "로그인 정보를 확인해주세요."
+        ]
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "기획서에 적힌 'email' 의 'format' 검증 규칙이 구현에서 확인되지 않았습니다. (다른 문구가 노출됨: '로그인 정보를 확인해주세요.')",
+      "healed": false,
+      "elapsed_ms": 92,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-email-format-003/step1.png",
+          "dom_snapshot": "login-email-format-003/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 30,
+          "screenshot": "login-email-format-003/step2.png",
+          "dom_snapshot": "login-email-format-003/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 0,
+          "screenshot": "login-email-format-003/step3.png",
+          "dom_snapshot": "login-email-format-003/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 46,
+          "screenshot": "login-email-format-003/step4.png",
+          "dom_snapshot": "login-email-format-003/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-password-required-004",
+      "title": "비밀번호 미입력 — 필수 입력 검증 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "PASS",
+      "violates": "required",
+      "target_element": "password",
+      "evidence": {
+        "expected": "type=error_message 문구='필수 입력 항목입니다.'",
+        "actual": "에러 영역에서 기대 문구를 확인",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-password-required-004/step4.png",
+        "error_texts": [
+          "필수 입력 항목입니다."
+        ]
+      },
+      "failure_category": null,
+      "failure_detail": null,
+      "healed": false,
+      "elapsed_ms": 77,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-password-required-004/step1.png",
+          "dom_snapshot": "login-password-required-004/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-required-004/step2.png",
+          "dom_snapshot": "login-password-required-004/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-required-004/step3.png",
+          "dom_snapshot": "login-password-required-004/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 31,
+          "screenshot": "login-password-required-004/step4.png",
+          "dom_snapshot": "login-password-required-004/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-password-min_length-005",
+      "title": "비밀번호 최소 길이 규칙 위반 (입력값 'Aa1!aaa') — 규칙 강제 여부 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": "min_length",
+      "target_element": "password",
+      "evidence": {
+        "expected": "type=error_message 문구='비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.'",
+        "actual": "다른 문구가 노출됨: '로그인 정보를 확인해주세요.'",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-password-min_length-005/step4.png",
+        "error_texts": [
+          "로그인 정보를 확인해주세요."
+        ]
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "기획서에 적힌 'password' 의 'min_length' 검증 규칙이 구현에서 확인되지 않았습니다. (다른 문구가 노출됨: '로그인 정보를 확인해주세요.')",
+      "healed": false,
+      "elapsed_ms": 94,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-min_length-005/step1.png",
+          "dom_snapshot": "login-password-min_length-005/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-min_length-005/step2.png",
+          "dom_snapshot": "login-password-min_length-005/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 15,
+          "screenshot": "login-password-min_length-005/step3.png",
+          "dom_snapshot": "login-password-min_length-005/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 47,
+          "screenshot": "login-password-min_length-005/step4.png",
+          "dom_snapshot": "login-password-min_length-005/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-password-require_uppercase-006",
+      "title": "비밀번호 대문자 포함 규칙 위반 (입력값 'a1!aaaaa') — 규칙 강제 여부 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": "require_uppercase",
+      "target_element": "password",
+      "evidence": {
+        "expected": "type=error_message 문구='비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.'",
+        "actual": "다른 문구가 노출됨: '로그인 정보를 확인해주세요.'",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-password-require_uppercase-006/step4.png",
+        "error_texts": [
+          "로그인 정보를 확인해주세요."
+        ]
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "기획서에 적힌 'password' 의 'require_uppercase' 검증 규칙이 구현에서 확인되지 않았습니다. (다른 문구가 노출됨: '로그인 정보를 확인해주세요.')",
+      "healed": false,
+      "elapsed_ms": 94,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-require_uppercase-006/step1.png",
+          "dom_snapshot": "login-password-require_uppercase-006/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-require_uppercase-006/step2.png",
+          "dom_snapshot": "login-password-require_uppercase-006/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 0,
+          "screenshot": "login-password-require_uppercase-006/step3.png",
+          "dom_snapshot": "login-password-require_uppercase-006/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 62,
+          "screenshot": "login-password-require_uppercase-006/step4.png",
+          "dom_snapshot": "login-password-require_uppercase-006/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-password-require_special-007",
+      "title": "비밀번호 특수문자 포함 규칙 위반 (입력값 'Aa1aaaaa') — 규칙 강제 여부 확인",
+      "type": "negative",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": "require_special",
+      "target_element": "password",
+      "evidence": {
+        "expected": "type=error_message 문구='비밀번호는 8자 이상이며 대문자·특수문자를 각 1자 이상 포함해야 합니다.'",
+        "actual": "다른 문구가 노출됨: '로그인 정보를 확인해주세요.'",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-password-require_special-007/step4.png",
+        "error_texts": [
+          "로그인 정보를 확인해주세요."
+        ]
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "기획서에 적힌 'password' 의 'require_special' 검증 규칙이 구현에서 확인되지 않았습니다. (다른 문구가 노출됨: '로그인 정보를 확인해주세요.')",
+      "healed": false,
+      "elapsed_ms": 92,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-password-require_special-007/step1.png",
+          "dom_snapshot": "login-password-require_special-007/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 15,
+          "screenshot": "login-password-require_special-007/step2.png",
+          "dom_snapshot": "login-password-require_special-007/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 0,
+          "screenshot": "login-password-require_special-007/step3.png",
+          "dom_snapshot": "login-password-require_special-007/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 61,
+          "screenshot": "login-password-require_special-007/step4.png",
+          "dom_snapshot": "login-password-require_special-007/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-placeholders-001",
+      "title": "입력 안내 문구가 기획서와 같은지 확인",
+      "type": "positive",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": null,
+      "target_element": null,
+      "evidence": {
+        "expected": "type=placeholders_match 안내 문구 2건",
+        "actual": "문구가 다름 — '이메일': 기대 '이메일을 입력하세요', 화면 '아이디를 입력하세요'",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-placeholders-001/step1.png",
+        "error_texts": [],
+        "screen_placeholders": {
+          "이메일": "아이디를 입력하세요",
+          "비밀번호": "비밀번호를 입력하세요"
+        }
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "문구가 다름 — '이메일': 기대 '이메일을 입력하세요', 화면 '아이디를 입력하세요'",
+      "healed": false,
+      "elapsed_ms": 16,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 16,
+          "screenshot": "login-placeholders-001/step1.png",
+          "dom_snapshot": "login-placeholders-001/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-labels-001",
+      "title": "기획서의 라벨로 요소를 찾을 수 있는지 확인",
+      "type": "positive",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "PASS",
+      "violates": null,
+      "target_element": null,
+      "evidence": {
+        "expected": "type=labels_findable 라벨 3개 탐지 가능",
+        "actual": "라벨 3개 모두 접근성 속성으로 찾을 수 있음",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-labels-001/step1.png",
+        "error_texts": [],
+        "findable": {
+          "이메일": "",
+          "비밀번호": "",
+          "로그인": ""
+        }
+      },
+      "failure_category": null,
+      "failure_detail": null,
+      "healed": false,
+      "elapsed_ms": 14,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-labels-001/step1.png",
+          "dom_snapshot": "login-labels-001/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        }
+      ]
+    },
+    {
+      "case_id": "login-scenario-008",
+      "title": "기획서 예시: email='nobody@test.com', password='Abcd123!' → '이메일 또는 비밀번호가 올바르지 않습니다.' 노출 확인",
+      "type": "positive",
+      "screen_id": "login",
+      "flow_id": null,
+      "verdict": "FAIL",
+      "violates": null,
+      "target_element": null,
+      "evidence": {
+        "expected": "type=text_visible 문구='이메일 또는 비밀번호가 올바르지 않습니다.'",
+        "actual": "문구 '이메일 또는 비밀번호가 올바르지 않습니다.' 미노출",
+        "url": "http://localhost:8110/bad/login",
+        "screenshot": "login-scenario-008/step4.png",
+        "error_texts": [
+          "로그인 정보를 확인해주세요."
+        ]
+      },
+      "failure_category": "assertion_mismatch",
+      "failure_detail": "문구 '이메일 또는 비밀번호가 올바르지 않습니다.' 미노출",
+      "healed": false,
+      "elapsed_ms": 104,
+      "step_results": [
+        {
+          "seq": 1,
+          "action": "navigate",
+          "target": "/login",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-scenario-008/step1.png",
+          "dom_snapshot": "login-scenario-008/step1.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": null,
+          "phase": "test"
+        },
+        {
+          "seq": 2,
+          "action": "fill",
+          "target": "이메일",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-scenario-008/step2.png",
+          "dom_snapshot": "login-scenario-008/step2.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "이메일",
+            "method": "selector",
+            "selector": "label='이메일'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 3,
+          "action": "fill",
+          "target": "비밀번호",
+          "status": "ok",
+          "elapsed_ms": 14,
+          "screenshot": "login-scenario-008/step3.png",
+          "dom_snapshot": "login-scenario-008/step3.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "비밀번호",
+            "method": "selector",
+            "selector": "label='비밀번호'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "label"
+          },
+          "phase": "test"
+        },
+        {
+          "seq": 4,
+          "action": "click",
+          "target": "로그인",
+          "status": "ok",
+          "elapsed_ms": 62,
+          "screenshot": "login-scenario-008/step4.png",
+          "dom_snapshot": "login-scenario-008/step4.html",
+          "error_code": null,
+          "error_detail": null,
+          "location": {
+            "target": "로그인",
+            "method": "selector",
+            "selector": "role='로그인'",
+            "bbox": null,
+            "confidence": 1.0,
+            "healed": false,
+            "strategy": "role"
+          },
+          "phase": "test"
+        }
+      ]
+    }
+  ],
+  "created_at": "2026-09-14T22:00:02+09:00",
+  "selection": {
+    "request": "",
+    "selected": [
+      "login-valid-001",
+      "login-email-required-002",
+      "login-email-format-003",
+      "login-password-required-004",
+      "login-password-min_length-005",
+      "login-password-require_uppercase-006",
+      "login-password-require_special-007",
+      "login-placeholders-001",
+      "login-labels-001",
+      "login-scenario-008"
+    ],
+    "excluded": [],
+    "reason": "",
+    "fallback": false,
+    "approved": false,
+    "warnings": [],
+    "widened": [],
+    "coverage": [
+      {
+        "kind": "screen",
+        "key": "login",
+        "name": "로그인",
+        "selected": 10,
+        "total": 10,
+        "named": false
+      }
+    ]
+  }
+}
