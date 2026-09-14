@@ -1,6 +1,6 @@
 # 07. CHEETAH GPU 서버 — 실제로 막힌 세 지점
 
-> 관련 문서: `docs/CHEETAH_SETUP.md` (실행 절차), `src/prova/llm/vllm_backend.py`
+> 관련 문서: `docs/cheetah-setup.md` (실행 절차), `src/prova/llm/vllm_backend.py`
 
 ---
 
@@ -329,7 +329,7 @@ if set(result) != {"ok", "note_text"}:
 
 ```powershell
 # 터널 (이 창은 열어둔다)
-ssh -N -L 8000:localhost:8000 -i private.pem -p <port> <user>@<cheetah-host>
+ssh -N -L 8000:localhost:8000 -i ~/.ssh/prova-cheetah.pem -p <port> <user>@<cheetah-host>
 
 # 연결 + 정형 출력 확인
 uv run prova check
@@ -341,7 +341,7 @@ uv run pytest tests/test_s1_golden.py -v
 서버 상태를 보려면:
 
 ```bash
-ssh <user>@<cheetah-host> -p <port> -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i ~/.ssh/prova-cheetah.pem
 tmux attach -t vllm          # 로그 보기 (Ctrl+B, D 로 나오기)
 nvidia-smi                    # GPU 사용량
 ```

@@ -115,7 +115,7 @@ uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미�
 uv run python scripts/eval_selector_speed.py --md
 ```
 
-2차 경로까지 다시 재려면 VL 을 올려야 한다(7B 를 내린다 — `docs/CHEETAH_SETUP.md`).
+2차 경로까지 다시 재려면 VL 을 올려야 한다(7B 를 내린다 — `docs/cheetah-setup.md`).
 
 ```powershell
 uv run python scripts/eval_vlm_iou.py --vlm http://localhost:8001/v1 --vlm-model qwen-vl `

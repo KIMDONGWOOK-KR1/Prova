@@ -241,7 +241,7 @@ def build_plan(...) -> tuple[AgentState, int]:
 로컬 러너는 어차피 있어야 하고, 그러면 확장이 하는 일은 "현재 탭 URL 을 넘기기" 로
 줄어듭니다. 대안이 아니라 **트리거**입니다.
 
-호스팅 웹사이트가 아닌 이유는 배포 구조가 답합니다(`docs/CHEETAH_SETUP.md`).
+호스팅 웹사이트가 아닌 이유는 배포 구조가 답합니다(`docs/cheetah-setup.md`).
 
 ```
 [CHEETAH A100 MIG]                    [로컬 Windows]

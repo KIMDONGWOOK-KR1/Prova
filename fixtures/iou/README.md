@@ -92,7 +92,7 @@ MIG 파티션 9.50 GiB 에서 7B 가 8.30 GiB 를 쓴다. **VL 3.17 GiB 와 동�
     curl -s -o /dev/null -w "%{http_code}\n" http://localhost:8001/v1/models   # 200
 
 `/tmp` 가 비어 있으면(pod 재시작) 가중치와 venv 가 사라진 것이다 —
-`docs/CHEETAH_SETUP.md` 의 복구 절차를 먼저 밟는다. `huggingface_hub` 는 이 노드에서
+`docs/cheetah-setup.md` 의 복구 절차를 먼저 밟는다. `huggingface_hub` 는 이 노드에서
 큰 파일을 조용히 못 받으므로 `curl -C -` 로 받는다.
 
 ### 3. 형식부터 확인한다 (6개)
