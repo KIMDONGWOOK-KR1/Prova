@@ -11,9 +11,9 @@ PDF/HWPX에서 로그인·회원가입·검색 관련 내용을 찾아 JSON으�
 - 선택 사항: 로컬 Ollama 모델로 더 정확하게 구조화
 
 예시:
-python extract_auth_search_json.py sample.pdf -o result.json
-python extract_auth_search_json.py sample.hwpx -o result.json --ocr always
-python extract_auth_search_json.py sample.pdf -o result.json --ollama-model MODEL_NAME
+python scripts/legacy/extract_auth_search_json.py sample.pdf -o result.json
+python scripts/legacy/extract_auth_search_json.py sample.hwpx -o result.json --ocr always
+python scripts/legacy/extract_auth_search_json.py sample.pdf -o result.json --ollama-model MODEL_NAME
 """
 
 from __future__ import annotations
@@ -77,7 +77,7 @@ class OCR:
             import numpy as np
         except ImportError as exc:
             raise RuntimeError(
-                "OCR 라이브러리가 없습니다. pip install -r requirements.txt 를 실행하세요."
+                "OCR 라이브러리가 없습니다. pip install -r scripts/legacy/requirements.txt 를 실행하세요."
             ) from exc
 
         if self.reader is None:
@@ -100,7 +100,7 @@ def extract_pdf(path: Path, ocr_mode: str, ocr: OCR | None, dpi: int,
         from PIL import Image
     except ImportError as exc:
         raise RuntimeError(
-            "PDF 라이브러리가 없습니다. pip install -r requirements.txt 를 실행하세요."
+            "PDF 라이브러리가 없습니다. pip install -r scripts/legacy/requirements.txt 를 실행하세요."
         ) from exc
 
     result = []
