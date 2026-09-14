@@ -6,15 +6,23 @@
 ## 접속 정보
 
 ```
-ssh <user>@<cheetah-host> -p <port> -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i ~/.ssh/prova-cheetah.pem
 ```
 
 **실제 주소·포트·계정은 이 저장소에 두지 않는다.** 저장소가 public 이라 학교 인프라 주소를
 공개하면 불필요한 공격 표면이 된다. `.env.example` 을 `.env` 로 복사해 채워 쓰고, 실제 값은
 팀 채널에서 공유한다.
 
-PEM 키(`private.pem`)도 `.gitignore` 로 제외돼 있다.
-**이 키가 저장소에 함께 올라가면 GPU 서버 접근권이 그대로 유출된다.**
+PEM 키는 **저장소 밖**(`~/.ssh/prova-cheetah.pem`)에 둔다. 예전에는 저장소 루트에 있었고
+`.gitignore` 로만 막고 있었는데, 커밋은 막아도 폴더째 압축해 넘기는 것은 막지 못한다.
+**이 키가 새어 나가면 GPU 서버 접근권이 그대로 넘어간다.** `*.pem` 무시 규칙은 실수로
+다시 들여놓는 경우를 대비해 그대로 둔다.
+
+Windows OpenSSH 는 키 파일 권한을 검사한다. 접속이 권한 오류로 막히면:
+
+```powershell
+icacls "$env:USERPROFILE\.ssh\prova-cheetah.pem" /inheritance:r /grant:r "${env:USERNAME}:(R,W)"
+```
 
 ## 구조
 
@@ -33,7 +41,7 @@ GPU 서버에는 브라우저를 설치하지 않는다. 코드 입장에서 GPU
 
 ```powershell
 # 1. 터널 (이 창은 열어둔다)
-ssh -N -L 8000:localhost:8000 -i private.pem -p <port> <user>@<cheetah-host>
+ssh -N -L 8000:localhost:8000 -i ~/.ssh/prova-cheetah.pem -p <port> <user>@<cheetah-host>
 
 # 2. 서버가 살아 있는지
 uv run prova check
@@ -123,7 +131,7 @@ vLLM 0.24에서 `guided_json`이 사라졌다. 문제는 **에러가 나지 않�
 pod이 재시작되면 `/tmp`가 비어 venv가 사라진다. 모델은 홈에 남아 있으므로 재다운로드하지 않는다.
 
 ```bash
-ssh <user>@<cheetah-host> -p <port> -i private.pem
+ssh <user>@<cheetah-host> -p <port> -i ~/.ssh/prova-cheetah.pem
 
 # 1) 환경 구축 (약 2분. 모델이 이미 있으면 재다운로드 없음)
 tmux new -d -s setup 'bash ~/setup_vllm.sh > /tmp/setup.log 2>&1'
