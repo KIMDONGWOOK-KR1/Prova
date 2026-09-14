@@ -1,0 +1,10 @@
+# scripts/legacy/extract_auth_search_json.py 전용 의존성.
+#
+# 현 파이프라인(S1~S6)은 이것들을 쓰지 않는다. pyproject 의 extra 로 올리지 않은
+# 이유는 easyocr 가 torch 를 끌고 와서, 선언만 해도 uv.lock 에 CUDA 계열 43개가
+# 잠기기 때문이다 — 아무도 설치하지 않는 것을 저장소가 계속 들고 다니게 된다.
+#
+#   python -m pip install -r scripts/legacy/requirements.txt
+PyMuPDF>=1.24
+Pillow>=10.0
+easyocr>=1.7
