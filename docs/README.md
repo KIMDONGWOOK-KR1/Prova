@@ -76,7 +76,7 @@ README 가 1100줄을 넘어가 목적별로 나눴다. 결과 표와 실행 절
 
 | 파일 | 내용 |
 |---|---|
-| [`design-decisions.md`](design-decisions.md) | 명세서와 다르게 구현한 **14군데**와 각각의 이유 |
+| [`design-decisions.md`](design-decisions.md) | 명세서와 다르게 구현한 **18군데**와 각각의 이유 |
 | [`lessons.md`](lessons.md) | 문서로 예측하지 못했고 코드를 돌려서 알게 된 것들 |
 | [`roadmap.md`](roadmap.md) | 아직 안 한 것 + 실측으로 확정된 GPU 제약 |
 
