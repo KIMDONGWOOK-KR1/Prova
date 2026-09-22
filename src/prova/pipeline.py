@@ -18,6 +18,7 @@ from __future__ import annotations
 import time
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlsplit, urlunsplit
 
 from playwright.sync_api import sync_playwright
 
@@ -33,6 +34,32 @@ from prova.nodes import (
 from prova.plan_store import load_plan, plan_warnings, save_plan
 from prova.s2_case_generator.selector import select_by_ids, select_cases
 from prova.s6_report.report_builder import save_html, save_json
+
+
+def strip_screen_path(base_url: str, doc) -> tuple[str, Optional[str]]:
+    """대상 URL 끝에 기획서의 화면 경로가 붙어 있으면 떼어 낸다.
+
+    도구는 기획서의 화면 경로(`/login`)를 대상 URL 뒤에 붙인다. 브라우저 주소창의
+    `http://.../bad/login` 을 그대로 넣으면 `/bad/login/login` 을 열어 404 가
+    나고 케이스가 전부 첫 스텝에서 멈춘다(2026-09-23 실제로 20건).
+
+    떼는 것은 **경로 단위로 정확히 끝이 같을 때**뿐이다 — `/mylogin` 은 `/login`
+    이 아니다. 화면 경로가 여럿이면 긴 것부터 본다(`/orders/list` 가 `/list` 보다
+    먼저). 무엇을 뗐는지 돌려주고, 부르는 쪽이 그 사실을 남긴다.
+
+    Returns:
+        (고친 URL, 뗀 경로 또는 None)
+    """
+    parts = urlsplit(base_url)
+    path = parts.path.rstrip("/")
+    candidates = sorted({(s.url_path or "").rstrip("/") for s in doc.screens},
+                        key=len, reverse=True)
+    for screen_path in candidates:
+        if screen_path.startswith("/") and path.endswith(screen_path):
+            fixed = urlunsplit((parts.scheme, parts.netloc,
+                                path[: -len(screen_path)], parts.query, ""))
+            return fixed, screen_path
+    return base_url, None
 
 
 def _quiet(_message: str) -> None:
@@ -133,6 +160,15 @@ def build_plan(
         progress(f"     화면 '{screen.screen_name}' · 요소 {len(screen.elements)}개")
     if state.doc.flows:
         progress(f"     흐름 {len(state.doc.flows)}개")
+
+    # 대상 URL 에 화면 경로까지 넣은 흔한 실수를 고친다. 조용히 바꾸지 않는다 —
+    # 대상 URL 은 판정의 전제라, 바뀐 사실이 리포트에 남아야 한다.
+    fixed, removed = strip_screen_path(state.base_url, state.doc)
+    if removed:
+        state.url_note = (f"대상 URL 끝의 화면 경로 '{removed}' 를 뗐습니다: "
+                          f"{state.base_url} → {fixed} (화면 경로는 기획서에서 붙입니다)")
+        state.base_url = fixed
+        progress(f"     ! {state.url_note}")
 
     # --- S2: ScreenSpec -> TestCase[] ---
     progress("S2 테스트 케이스 생성")

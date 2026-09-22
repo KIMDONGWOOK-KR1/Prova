@@ -69,6 +69,7 @@ def build_report(
     session_file: str = "",
     plan: dict | None = None,
     sut_build: str = "",
+    url_note: str = "",
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -107,6 +108,8 @@ def build_report(
     # 않는다 — '확인했더니 도장이 없더라' 와 다른 사실이다.
     if sut_build:
         summary["sut_build"] = sut_build
+    if url_note:
+        summary["url_note"] = url_note
 
     return TestReport(
         run_id=run_id,
@@ -603,6 +606,7 @@ def render_html(report: TestReport) -> str:
   설계 문서 <code>{_esc(report.spec_source)}</code> ·
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
+  {f"<br><b>{_esc(s['url_note'])}</b>" if s.get("url_note") else ""}
   <br>스크린샷은 이 파일 옆 폴더를 참조합니다 — 공유할 때는 결과 폴더째 보내세요.
 </div>
 {mock_warn}{filter_warn}{sel_html}{heal_html}{settle_html}{gap_html}{warn_html}

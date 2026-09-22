@@ -100,6 +100,8 @@ class AgentState:
     # 어긋남(stale)은 여기까지 오지 않는다. CLI 가 실행 자체를 막는다.
     # build_final_report 가 읽어 리포트에 남긴다.
     sut_build: str = ""
+    #: 대상 URL 을 고쳤다면 그 사실 (pipeline.strip_screen_path). 리포트 머리말에 남는다.
+    url_note: str = ""
 
     # 산출물
     #
@@ -605,5 +607,6 @@ def build_final_report(state: AgentState) -> AgentState:
         session_file=Path(state.storage_state).name if state.storage_state else "",
         plan=state.plan_meta,
         sut_build=state.sut_build,
+        url_note=state.url_note,
     )
     return state

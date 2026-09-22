@@ -267,6 +267,9 @@ function planNotes() {
   const p = state.plan;
   const out = [];
 
+  // 대상 URL 을 도구가 고쳤다면 먼저 보인다 — 판정의 전제가 바뀐 것이다.
+  if (p.url_note) out.push(alertBox("info", "대상 URL 을 고쳤습니다", esc(p.url_note)));
+
   // 기획↔디자인 불일치 — 케이스를 승인하기 전에 봐야 한다. 구현을 검증하기
   // 전에 입력끼리 모순이면 그것부터 정리하는 것이 순서다 (s1_merge).
   if ((p.design_mismatches || []).length) {
