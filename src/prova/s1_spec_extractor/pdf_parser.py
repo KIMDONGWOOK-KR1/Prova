@@ -80,6 +80,21 @@ _FORBIDDEN_HEADER_RE = re.compile(
     r"안\s*되는|안\s*됨|안돼|금지|노출되지|없어야|보이지\s*않"
 )
 
+# 입력-결과 예시 표의 기대 결과 열을 알아보는 헤더 패턴 (unread_example_tables).
+_EXPECT_HEADER_RE = re.compile(r"문구|메시지")
+
+
+def _same_table(table, element_table) -> bool:
+    """요소 표(또는 그 페이지 조각)인가. _element_table() 이 이어 붙인 사본을 돌려주므로
+    `is` 로는 원래 조각을 못 알아본다 — 헤더로 비교한다."""
+    return element_table is not None and table.header == element_table.header
+
+
+def _header_key(text: str) -> str:
+    """열 제목을 비교할 때의 모양 — 공백을 모두 걷고 대소문자를 무시한다."""
+    return "".join(normalize_ws(text).split()).casefold()
+
+
 # 기획서 '유형' 열의 한국어 표현 -> models.ElementType.
 # 여기 없는 표현은 매핑하지 않는다 (declared_element_types 설명 참고).
 ELEMENT_TYPE_WORDS = {
@@ -338,17 +353,17 @@ class ParsedDocument:
         sample_value 추출이 두 번 깨졌다. 예시값이 빠지면 정상 케이스가 등록되지
         않은 값을 쓰게 되어 **구현 결함 없이 실패한다**(오탐).
         """
-        labels = set(self.declared_labels())
-        if not labels:
+        to_label = self.header_to_label()
+        if not to_label:
             return {}
 
         element_table = self._element_table()
         found: dict[str, str] = {}
         for table in self.all_tables:
-            if table is element_table or len(table.rows) < 2:
+            if _same_table(table, element_table) or len(table.rows) < 2:
                 continue
-            header = [normalize_ws(h) for h in table.header]
-            if not header or not all(h in labels for h in header):
+            header = [to_label.get(_header_key(h)) for h in table.header]
+            if not header or not all(header):
                 continue
             for i, label in enumerate(header):
                 value = table.rows[1][i].strip() if i < len(table.rows[1]) else ""
@@ -359,6 +374,46 @@ class ParsedDocument:
     def declared_label_to_id(self) -> dict[str, str]:
         """UI 요소 표에서 '라벨 -> 요소 ID'. 행 단위로 짝지어 어긋나지 않게 한다."""
         return {r["label"]: r["element_id"] for r in self.declared_element_rows()}
+
+    def header_to_label(self) -> dict[str, str]:
+        """다른 표의 열 제목을 요소 라벨로 잇는 조회표 (정규화한 열 제목 -> 라벨).
+
+        테스트 계정·예시 동작 표를 고를 때 쓴다. 예전에는 열 제목이 라벨과 **글자까지**
+        같아야 했다. 'user name' 과 'Username', 'username'(요소 ID)이 달라서 표가 조용히
+        빠졌고, 정상 케이스가 지어낸 값을 넣어 오탐이 났다(2026-09-23).
+
+        넓히는 것은 대소문자·공백과 요소 ID 까지다. '사용자 이름' 과 'Username' 처럼
+        말이 다른 것은 잇지 않는다 — 그걸 추측하면 다른 표를 요소 표로 잘못 읽는다.
+        """
+        table: dict[str, str] = {}
+        for row in self.declared_element_rows():
+            table.setdefault(_header_key(row["label"]), row["label"])
+            table.setdefault(_header_key(row["element_id"]), row["label"])
+        return table
+
+    def unread_example_tables(self) -> list[str]:
+        """입력-결과 예시 표로 보이는데 요소와 맞는 열이 하나도 없어 쓰지 않은 표.
+
+        열 제목에 '문구'·'메시지' 가 있으면 기대 결과 열을 가진 예시 표로 본다. 그런데
+        나머지 열이 어느 요소와도 이어지지 않으면 declared_scenarios 가 그 표를 건너뛰고,
+        시나리오가 한 건도 만들어지지 않는다 — 조용히. 그 사실을 경고로 알린다.
+        돌려주는 것은 사람이 알아볼 수 있게 열 제목을 ' | ' 로 이은 문자열이다.
+        """
+        to_label = self.header_to_label()
+        if not to_label:
+            return []
+        element_table = self._element_table()
+        unread: list[str] = []
+        for table in self.all_tables:
+            if _same_table(table, element_table) or len(table.rows) < 2:
+                continue
+            header = [normalize_ws(h) for h in table.header]
+            if not any(_EXPECT_HEADER_RE.search(h) for h in header):
+                continue
+            if any(_header_key(h) in to_label for h in header):
+                continue
+            unread.append(" | ".join(header))
+        return unread
 
     def declared_placeholders(self) -> dict[str, str]:
         """UI 요소 표의 '안내 문구' 열. 라벨 -> placeholder 다.
@@ -888,19 +943,22 @@ class ParsedDocument:
         label_to_id = self.declared_label_to_id()
         if not label_to_id:
             return None
+        to_label = self.header_to_label()
 
         element_table = self._element_table()
         seed_tables = self._seed_rows_tables()
         for table in self.all_tables:
-            if (table is element_table
+            if (_same_table(table, element_table)
                     or any(table is seed for seed in seed_tables)
                     or len(table.rows) < 2):
                 continue
             header = [normalize_ws(h) for h in table.header]
             if len(header) < 2:
                 continue
-            input_cols = [i for i, h in enumerate(header) if h in label_to_id]
-            other_cols = [i for i, h in enumerate(header) if h not in label_to_id]
+            # 열 제목 -> 라벨 (대소문자·공백·요소 ID 까지 허용, header_to_label 참고)
+            col_label = {i: to_label.get(_header_key(h)) for i, h in enumerate(header)}
+            input_cols = [i for i in col_label if col_label[i] in label_to_id]
+            other_cols = [i for i in col_label if col_label[i] not in label_to_id]
             if not input_cols or not other_cols:
                 continue
 
@@ -933,7 +991,7 @@ class ParsedDocument:
                 if len(row) <= expect_col:
                     continue
                 given = {
-                    label_to_id[header[i]]: row[i].strip()
+                    label_to_id[col_label[i]]: row[i].strip()
                     for i in input_cols
                     if i < len(row) and row[i].strip()
                 }
