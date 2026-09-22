@@ -157,14 +157,25 @@ function showBlank() {
     </div>`;
 }
 
+// 경과 시간. 몇 분 걸리는 실행에서 멈춘 것과 도는 것을 구별하게 한다.
+let elapsedTimer = null;
+
 function showProgress(title, lines) {
   $("stageChips").innerHTML = `<span class="chip busy"><i class="dot"></i>실행 중</span>`;
   $("stage").innerHTML = `
-    <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span></div>
+    <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span>
+      <span class="elapsed" id="pElapsed">0초</span></div>
     <div class="steps" id="pSteps"></div>
     <details class="raw"><summary>진행 로그 전체</summary>
       <pre class="log" id="pLog" role="log" aria-live="polite"></pre></details>`;
   pushProgress(lines || []);
+  clearInterval(elapsedTimer);
+  const t0 = Date.now();
+  elapsedTimer = setInterval(() => {
+    const el = $("pElapsed");
+    if (!el) { clearInterval(elapsedTimer); return; }  // 화면이 결과로 바뀌면 멈춘다
+    el.textContent = `${Math.round((Date.now() - t0) / 1000)}초`;
+  }, 1000);
 }
 
 /**
@@ -714,8 +725,11 @@ async function boot() {
   try {
     const st = await api("/api/state");
     state.serverBackend = st.backend;
+    // 값은 경로, 보이는 것은 파일 이름 — fixtures/specs/ 가 매 줄 반복되면 이름이 안 보인다.
+    const base = (p) => p.split(/[\\/]/).pop();
     $("pdf").innerHTML = st.specs.map((p) =>
-      `<option value="${esc(p)}">${esc(p)}</option>`).join("");
+      `<option value="${esc(p)}">${esc(base(p))}</option>`).join("")
+      || `<option value="" disabled selected>기획서 PDF 를 먼저 올려 주세요</option>`;
     $("figma").innerHTML = `<option value="">없음 — 기획서만</option>` +
       (st.figmas || []).map((p) =>
         `<option value="${esc(p)}">${esc(p)}</option>`).join("");

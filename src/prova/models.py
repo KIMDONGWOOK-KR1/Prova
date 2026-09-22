@@ -531,6 +531,9 @@ class CaseSelection(BaseModel):
     #: 생성됐지만 이번에 실행하지 않은 case_id. 리포트에서 coverage_gaps 와
     #: 나란히 보인다 — 둘 다 "판정이 아니라 검증 범위에 대한 사실" 이다.
     excluded: list[str] = Field(default_factory=list)
+    #: 제외한 케이스의 제목 (case_id -> 제목). 제외된 케이스는 리포트의 cases 에
+    #: 없으므로 제목을 여기서 실어 간다 — id 만으로는 무엇을 뺐는지 읽을 수 없다.
+    excluded_titles: dict[str, str] = Field(default_factory=dict)
     #: 모델이 밝힌 선택 근거
     reason: str = ""
     #: 요청을 해석하지 못해 전체를 실행했는가.

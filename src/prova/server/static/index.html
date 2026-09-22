@@ -68,13 +68,14 @@
             <button type="button" id="segGood" aria-pressed="false">/good</button>
             <button type="button" id="segBad" aria-pressed="true">/bad</button>
           </div>
+          <div class="hint">good = 기획서대로 만든 앱 · bad = 결함을 심어 둔 앱</div>
         </div>
 
         <div class="field">
           <label for="backend">LLM 백엔드</label>
           <select id="backend">
-            <option value="mock">mock — 모델 없이 파이프라인만</option>
-            <option value="vllm">vllm — 로컬 7B</option>
+            <option value="mock">연습용 — 저장된 정답 사용 (GPU 불필요)</option>
+            <option value="vllm">실제 모델 — GPU 서버의 7B</option>
           </select>
         </div>
       </section>
