@@ -117,6 +117,27 @@ def _describe(locator, strategy: str, target: str) -> str:
     return f"{strategy}={target!r}"
 
 
+# 아이콘 폰트(Font Awesome 등)가 ::before 로 넣는 글자는 유니코드 사설 영역
+# (U+E000–U+F8FF)에 있고, 브라우저는 그것을 접근성 이름에 포함한다. 그래서
+# `<button><i class="fa"> Login</i></button>` 의 이름은 "\uf090 Login" 이 된다
+# (the-internet, 2026-09-23). 정확 일치로 찾으면 0 개가 되어 '유형 불일치' 로
+# 오판했다. 그 글자와 앞뒤 공백만 무시한다 — 부분 일치로 넓히지 않는다.
+_ICON_OR_SPACE = r"[\s\uE000-\uF8FF]*"
+
+
+def _role_name(target: str) -> "re.Pattern[str]":
+    """role 조회에 쓸 이름. 아이콘 글자·앞뒤 공백만 빼고 target 과 정확히 같아야 한다."""
+    return re.compile(f"^{_ICON_OR_SPACE}{re.escape(target)}{_ICON_OR_SPACE}$")
+
+
+# 버튼·링크에는 <label> 도 placeholder 도 없다. 그런데 label 전략을 먼저 돌리면
+# 같은 이름의 **다른 것**을 잡는다 — saucedemo 의 `<form aria-label="Login">` 이
+# 그랬다. 폼을 눌러도 제출은 안 되므로 필수·시나리오 케이스가 전부 '구현이
+# 규칙을 강제하지 않는다' 로 FAIL 했다(2026-09-23). 버튼·링크는 role 로 먼저 찾고,
+# 그다음 텍스트다.
+_CLICKABLE_TYPES = ("button", "link")
+
+
 def _try_strategies(page, target: str, hint: UIElement | None):
     """전략을 순서대로 시도하고 (locator, strategy, attempts) 를 돌려준다.
 
@@ -127,7 +148,7 @@ def _try_strategies(page, target: str, hint: UIElement | None):
     candidates = [
         ("label", lambda: page.get_by_label(target, exact=True)),
         ("placeholder", lambda: page.get_by_placeholder(target, exact=True)),
-        ("role", lambda: page.get_by_role(_role_for(hint), name=target, exact=True)),
+        ("role", lambda: page.get_by_role(_role_for(hint), name=_role_name(target))),
         ("text", lambda: page.get_by_text(target, exact=True)),
     ]
 
@@ -142,6 +163,9 @@ def _try_strategies(page, target: str, hint: UIElement | None):
             2, ("placeholder_hint",
                 lambda: page.get_by_placeholder(hint.placeholder, exact=True))
         )
+
+    if hint and hint.type in _CLICKABLE_TYPES:
+        candidates = [c for c in candidates if c[0] in ("role", "text")]
 
     for strategy, build in candidates:
         try:
@@ -250,7 +274,7 @@ def _check_declared_role(page, target: str, hint: UIElement | None) -> None:
         return
     role = _role_for(hint)
     try:
-        found = page.get_by_role(role, name=target, exact=True).count()
+        found = page.get_by_role(role, name=_role_name(target)).count()
     except Exception:
         return
     if found == 0:
@@ -307,7 +331,7 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
             raise GroundingError(target, [Attempt(strategy=strategy, count=0)])
         return page.get_by_placeholder(hint.placeholder, exact=True)
     if strategy == "role":
-        return page.get_by_role(_role_for(hint), name=target, exact=True)
+        return page.get_by_role(_role_for(hint), name=_role_name(target))
     if strategy == "text":
         return page.get_by_text(target, exact=True)
     raise GroundingError(target, [Attempt(strategy=str(strategy), count=0)])
@@ -386,7 +410,7 @@ def _locate_collection(page, target: str, hint: UIElement | None):
     item_role = ITEM_ROLES.get(container_role, "listitem")
 
     try:
-        container = page.get_by_role(container_role, name=target, exact=True)
+        container = page.get_by_role(container_role, name=_role_name(target))
         found = container.count()
     except Exception as exc:  # role 조회 자체가 실패한 경우 — 도구 실패다
         return "error", None, item_role, 0, f"목록 조회 실패: {exc}"
@@ -683,7 +707,7 @@ def read_options(page, target: str, hint: UIElement | None = None) -> list[str] 
         locator = page.get_by_label(target, exact=True)
         if locator.count() != 1:
             role = _role_for(hint) if hint else "combobox"
-            locator = page.get_by_role(role, name=target, exact=True)
+            locator = page.get_by_role(role, name=_role_name(target))
             if locator.count() != 1:
                 return None
         # <option> 은 네이티브 <select> 에만 있다. div 기반 커스텀 combobox 에서
