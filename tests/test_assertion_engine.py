@@ -59,7 +59,10 @@ class TestNegativeErrorMessage:
         assert v.verdict == "FAIL"
         assert v.failure_category == "assertion_mismatch"
         assert "require_uppercase" in v.failure_detail
-        assert "강제하지 않는다" in v.evidence["actual"]
+        # 사유는 본 것(에러 문구가 없었다)만 말하고, 결론(구현이 강제하지
+        # 않는다)은 쓰지 않는다 — 노트 15 의 원칙. 기본 분기에만 남아 있었다.
+        assert "에러가 전혀 노출되지 않음" in v.evidence["actual"]
+        assert "강제하지 않" not in v.evidence["actual"]
 
     def test_다른_문구가_뜨면_FAIL하고_실제_문구를_남긴다(self):
         """구현이 기획서와 다른 메시지를 쓰는 경우. 개발자가 무엇을 고쳐야

@@ -315,6 +315,9 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     )
     spec = ScreenSpec.model_validate(raw)
     spec.source_kind = "document"  # LLM 이 무엇을 냈든 이 경로의 출처는 문서다
+    # 이 시점의 warnings 는 전부 모델이 쓴 것이다. 아래에서 코드가 붙이는 경고와
+    # 섞이기 전에 출처를 단다.
+    _label_model_warnings(spec, doc_text)
 
     _normalize_element_ids(spec)
     _backfill_declared_elements(spec, doc)
@@ -331,6 +334,31 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
 
     spec.warnings.extend(structural_warnings(spec, doc))
     return spec
+
+
+def _label_model_warnings(spec: ScreenSpec, doc_text: str) -> None:
+    """모델이 낸 경고에 출처를 달고, 기획서 본문을 베낀 문장은 뺀다.
+
+    프롬프트가 "판단할 수 없는 내용은 warnings 에" 라고 하자 7B 가 상품등록
+    기획서의 전제 문장을 그대로 옮겼고, 그게 '설계 문서 경고' 로 떴다
+    (2026-09-22). 읽는 사람은 도구가 기획서에서 문제를 찾았다고 읽는다 —
+    코드가 낸 구조 경고와 같은 칸에 같은 모양으로 섞여 있어서다.
+
+    본문에 그대로 있는 문장은 정보가 0 이라 뺀다. 공백을 전부 걷고 비교하는
+    이유: PDF 는 문장 중간에서 줄을 바꾸고, 한글은 그 자리에 공백이 생기기도
+    안 생기기도 한다. 나머지는 버리지 않는다 — 모델이 판단을 못 했다고 말하는
+    통로는 필요하다. 다만 '모델 메모' 로 출처를 밝힌다.
+    """
+    def squash(s: str) -> str:
+        return "".join(s.split())
+
+    body = squash(doc_text)
+    kept = []
+    for w in spec.warnings:
+        if not w.strip() or squash(w) in body:
+            continue
+        kept.append(f"모델 메모: {w.strip()}")
+    spec.warnings = kept
 
 
 def _normalize_element_ids(spec: ScreenSpec) -> None:

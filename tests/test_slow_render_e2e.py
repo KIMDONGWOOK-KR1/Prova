@@ -98,7 +98,7 @@ class TestNoFalsePositives:
         """실패 사유가 '구현이 이 규칙을 강제하지 않는다' 였다. 그건 단정이고
         틀린 단정이었다 — 구현은 강제한다."""
         wrong = [v for v in slow_login.cases
-                 if v.verdict == "FAIL" and "강제하지 않는다" in v.failure_detail]
+                 if v.verdict == "FAIL" and "에러가 전혀 노출되지 않음" in v.failure_detail]
         assert not wrong, [v.case_id for v in wrong]
 
 
