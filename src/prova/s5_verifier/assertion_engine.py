@@ -77,6 +77,12 @@ class PageState:
     # 방법이 기획서와 다를 뿐이다.
     blocked_by_browser: bool = False
 
+    # 조작 전 기준선 — 본 스텝의 첫 이동 직후, 아무것도 입력·클릭하기 전의 화면
+    # (nodes._run_case_steps). 같은 화면에 원래 있던 문구로 통과시키지 않으려고 둔다
+    # (_rests_on_baseline). None 이면 기준선을 못 잡은 것이고 예전처럼 판정한다.
+    baseline_url: str | None = None
+    baseline_text: str | None = None
+
 
 def capture_page_state(
     page,
@@ -701,6 +707,16 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
             for label, col in state.column_texts.items()
         }
 
+    if passed and _rests_on_baseline(case.expected, state):
+        return Verdict(
+            **base, verdict="FAIL", failure_category="unverifiable",
+            failure_detail=(
+                f"기대 문구 {case.expected.value!r} 가 조작 전부터 같은 화면에 있었습니다 "
+                "— 이 문구로는 결과를 확인할 수 없습니다 (숨은 요소나 안내문에 같은 "
+                "글자가 있는지 확인하세요)"),
+            evidence={**evidence, "baseline_url": state.baseline_url},
+        )
+
     if passed:
         return Verdict(**base, verdict="PASS", evidence=evidence)
 
@@ -710,6 +726,29 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         failure_detail=_failure_detail(case, reason),
         evidence=evidence,
     )
+
+
+# 기대 문구가 '나타났는가' 로 통과를 정하는 유형. 기준선을 대조할 대상이다.
+_TEXT_EVIDENCE_TYPES = ("error_message", "text_visible", "toast_or_redirect")
+
+
+def _rests_on_baseline(expected: Expectation, state: PageState) -> bool:
+    """이 통과가 조작 전부터 같은 화면에 있던 문구에만 기대고 있는가.
+
+    practicetestautomation 의 로그인 화면은 누르기 전부터 본문에 숨은 오류 칸의
+    "Your username is invalid!" 와 안내문의 "Congratulations" 를 담고 있었다.
+    문구 판정은 조작 뒤 화면 전체에서 찾으므로, 로그인이 망가져 있어도 통과했다.
+
+    좁게 본다. 화면이 바뀌었으면(이동) 기준선은 다른 화면의 것이라 무관하다 —
+    경로 이동이 이미 독립된 근거이기도 하다. 기준선을 못 잡았으면 예전처럼 둔다.
+    """
+    if expected.type not in _TEXT_EVIDENCE_TYPES or not expected.value:
+        return False
+    if state.baseline_text is None or state.baseline_url is None:
+        return False
+    if state.url.rstrip("/") != state.baseline_url.rstrip("/"):
+        return False
+    return contains_loose(state.baseline_text, expected.value)
 
 
 def _expected_summary(expected: Expectation) -> str:

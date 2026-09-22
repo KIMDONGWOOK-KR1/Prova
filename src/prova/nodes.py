@@ -54,6 +54,7 @@ from prova.s3_grounder.dom_locator import (
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
+from prova.text_utils import normalize_ws
 
 
 @dataclass
@@ -290,10 +291,10 @@ def run_cases(state: AgentState) -> AgentState:
             max_heal=state.max_heal,
             min_confidence=state.min_confidence,
         )
-        step_results = _run_case_steps(ctx, case)
+        step_results, baseline = _run_case_steps(ctx, case)
         state.verdicts.append(
             _verify_when_ready(state, case, step_results, console_errors,
-                               page=page))
+                               page=page, baseline=baseline))
 
     return state
 
@@ -336,7 +337,35 @@ def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
     )
 
 
-def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> list[StepResult]:
+def _read_baseline(page) -> Optional[tuple[str, str]]:
+    """조작 전 화면의 (URL, 보이는 텍스트). 읽지 못하면 None — 판정은 예전처럼 한다."""
+    try:
+        return page.url, normalize_ws(page.inner_text("body"))
+    except Exception:
+        return None
+
+
+def _steps_with_baseline(ctx: ExecutionContext, steps: list) -> tuple[list, Optional[tuple]]:
+    """앞쪽의 이동 스텝을 먼저 돌리고, 입력·클릭 전에 화면을 한 번 읽어 둔다.
+
+    같은 화면에 **원래 있던** 문구로 통과시키지 않으려는 기준선이다
+    (assertion_engine._rests_on_baseline). practicetestautomation 의 로그인 화면은
+    누르기 전부터 숨은 오류 칸의 문구를 본문에 담고 있어 빈 통과가 났다.
+    이동 스텝이 없거나 이동뿐이면 기준선을 잡지 않는다.
+    """
+    lead = 0
+    while lead < len(steps) and steps[lead].action == "navigate":
+        lead += 1
+    if lead == 0 or lead == len(steps):
+        return execute_case_steps(ctx, steps), None
+    first = execute_case_steps(ctx, steps[:lead])
+    if any(r.status == "error" for r in first):
+        return first, None
+    baseline = _read_baseline(ctx.page)
+    return first + execute_case_steps(ctx, steps[lead:]), baseline
+
+
+def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> tuple[list[StepResult], Optional[tuple]]:
     """전제(setup_steps)를 먼저 세운 뒤 본 스텝(steps)을 실행한다 (명세서 §3-6).
 
     같은 ExecutionContext 를 그대로 이어 쓴다 — 로그인 같은 전제는 브라우저의
@@ -362,7 +391,7 @@ def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> list[StepResult]:
     그대로 유지) '같은 컨텍스트로 이어 실행한다' 는 설계와 어긋나지 않는다.
     """
     if not case.setup_steps:
-        return execute_case_steps(ctx, case.steps)
+        return _steps_with_baseline(ctx, case.steps)
 
     original_case_id = ctx.case_id
     ctx.case_id = f"{original_case_id}__setup"
@@ -374,10 +403,10 @@ def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> list[StepResult]:
         r.phase = "setup"
 
     if any(r.status == "error" for r in setup_results):
-        return setup_results
+        return setup_results, None
 
-    test_results = execute_case_steps(ctx, case.steps)
-    return setup_results + test_results
+    test_results, baseline = _steps_with_baseline(ctx, case.steps)
+    return setup_results + test_results, baseline
 
 
 def _verify_when_ready(
@@ -386,6 +415,7 @@ def _verify_when_ready(
     step_results: list,
     console_errors: list[str],
     page: Optional[Page] = None,
+    baseline: Optional[tuple] = None,
 ):
     """화면이 기대 상태에 도달할 때까지 기다렸다가 판정한다.
 
@@ -444,6 +474,8 @@ def _verify_when_ready(
             _placeholders_for(state, case), _findable_for(state, case),
             _texts_for(state, case),
         )
+        if baseline:
+            page_state.baseline_url, page_state.baseline_text = baseline
         return verify(case, step_results, page_state)
 
     verdict = judge()

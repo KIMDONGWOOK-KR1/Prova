@@ -618,6 +618,9 @@ FailureCategory = Literal[
     # 다른 분류와 구분해 둬야 화면별 집계에서 결함 수에 합치지 않을 수 있다
     # (명세서 §3-6·§3-7).
     "precondition_failed",
+    # 기대 문구가 조작 전부터 같은 화면에 있어 그 문구로는 결과를 확인할 수 없다
+    # (assertion_engine._rests_on_baseline). 결함도 통과도 아니다 — 확인하지 못했다.
+    "unverifiable",
 ]
 
 
