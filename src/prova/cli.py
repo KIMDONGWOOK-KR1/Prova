@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import NoReturn, Optional
 
 import typer
 import yaml
@@ -43,8 +43,36 @@ def _verify_sut_build(url: str) -> str:
     return check.state
 
 
+def _fail(message: str, code: int = 2) -> NoReturn:
+    """사용자가 고칠 수 있는 문제를 빨간 글씨 한 덩어리로 알리고 끝낸다.
+
+    종료 코드 2 는 '실행하지 못했다' 다. 1 은 '실행했고 FAIL 이 있다' 로 남긴다.
+    """
+    typer.echo("")
+    typer.secho(message, fg=typer.colors.RED)
+    raise typer.Exit(code)
+
+
+def _s1_failed(exc: Exception, llm) -> NoReturn:
+    """설계 문서 추출(S1)이 LLM 오류로 멈췄다. traceback 대신 원인만 보인다."""
+    from prova.llm.mock_backend import MockLLM
+
+    hint = ""
+    if isinstance(llm, MockLLM):
+        hint = ("\n\nmock 백엔드는 fixtures/specs/ 의 기획서에만 정답(골든)이 있습니다. "
+                "다른 기획서는 실제 모델로 돌려야 합니다.")
+    _fail(f"설계 문서를 읽지 못했습니다:\n{exc}{hint}")
+
+
 def _load_config(path: Path) -> dict:
     if not path.exists():
+        # 사용자가 직접 준 경로가 없으면 멈춘다 — 기본값으로 조용히 대신하면
+        # 자기 설정이 적용됐다고 믿는다. 기본 경로가 없는 것(저장소 밖에서
+        # 실행)은 알리고 넘어간다.
+        if path != DEFAULT_CONFIG:
+            _fail(f"설정 파일을 찾을 수 없습니다: {path}")
+        typer.secho(f"  ! 설정 파일이 없어 기본값으로 실행합니다 ({path}) — "
+                    "저장소 폴더에서 실행했는지 확인하세요.", fg=typer.colors.YELLOW)
         return {}
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
@@ -59,7 +87,10 @@ def _make_llm(backend: str, cfg: dict, pdf: Path):
     try:
         client, warnings = make_llm(backend, cfg, pdf)
     except BackendError as exc:
-        raise typer.BadParameter(str(exc))
+        # BadParameter 로 올리면 typer 가 "Usage ... Invalid value" 상자를 띄워
+        # 옵션을 잘못 친 것처럼 보인다. 서버가 꺼진 건 옵션 문제가 아니다.
+        _fail(f"LLM 백엔드를 준비할 수 없습니다:\n{exc}\n\n"
+              "GPU 없이 파이프라인을 확인하려면 명령 끝에 --backend mock 을 붙이세요.")
     for w in warnings:
         typer.secho(f"  {w}", fg=typer.colors.YELLOW)
     return client
@@ -98,13 +129,19 @@ def run(
         [], "--screen-url", metavar="화면=/경로",
         help="화면↔경로 매핑 (예: 로그인=/login). Figma 에는 경로가 없으므로 "
              "사용자가 준다. 반복 지정."),
-    backend: Optional[str] = typer.Option(None, "--backend", help="vllm | mock"),
-    config: Path = typer.Option(DEFAULT_CONFIG, "--config"),
-    run_id: Optional[str] = typer.Option(None, "--run-id"),
+    backend: Optional[str] = typer.Option(
+        None, "--backend",
+        help="vllm | mock. 생략하면 설정 파일 값(기본 vllm — GPU 서버 필요). "
+             "mock 은 GPU 없이 도는 연습용이고 fixtures/specs/ 의 기획서에서만 동작한다"),
+    config: Path = typer.Option(DEFAULT_CONFIG, "--config", help="설정 파일 경로"),
+    run_id: Optional[str] = typer.Option(
+        None, "--run-id", help="결과 폴더 이름 (생략하면 시각으로 만든다). "
+                               "같은 이름을 주면 덮어쓴다"),
     headed: bool = typer.Option(False, "--headed", help="브라우저 창을 띄워서 실행"),
     # 기본값을 None 으로 둔다 — "사용자가 줬는가" 를 알아야 --resume 과의 충돌을
     # 조용히 넘기지 않고 막을 수 있다 (재개는 run_dir 전체 경로를 받는다).
-    runs_root: Optional[Path] = typer.Option(None, "--runs-root"),
+    runs_root: Optional[Path] = typer.Option(None, "--runs-root",
+                                             help="결과 폴더를 둘 곳 (기본 runs/)"),
     engine: str = typer.Option("pipeline", "--engine",
                                help="pipeline | graph (같은 노드를 LangGraph 로 실행)"),
     slow: int = typer.Option(0, "--slow", metavar="MS",
@@ -140,6 +177,11 @@ def run(
              "입력은 전부 계획에서 오고, 실행 조건(--vlm·--session 등)만 지금 받는다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
+    # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
+    if backend not in (None, "vllm", "mock"):
+        _fail(f"--backend {backend} 은 없는 백엔드입니다 (vllm | mock)")
+    if engine not in ("pipeline", "graph"):
+        _fail(f"--engine {engine} 은 없는 엔진입니다 (pipeline | graph)")
     # --- 재개 경로. 입력(pdf·URL·케이스 선택)은 전부 plan.json 에서 온다 ---
     if resume is not None:
         # 계획 시점 인자를 다시 받으면 승인된 계획과 다른 것이 돌 수 있다.
@@ -302,31 +344,26 @@ def run(
     if figma_json and not pdf:
         llm = None  # figma 단독 경로는 LLM 을 부르지 않는다 — 추출이 결정적이다
     else:
-        try:
-            llm = _make_llm(backend, cfg, pdf)
-        except LLMError as exc:
-            typer.secho(f"\nLLM 백엔드를 준비할 수 없습니다:\n{exc}", fg=typer.colors.RED)
-            typer.secho(
-                "\nLLM 없이 파이프라인만 확인하려면 --backend mock 을 쓰세요.",
-                fg=typer.colors.YELLOW,
-            )
-            raise typer.Exit(1)
+        llm = _make_llm(backend, cfg, pdf)
 
     if plan_only:
         from prova.pipeline import plan_pipeline
 
-        state, plan_path = plan_pipeline(
-            pdf_path=str(pdf) if pdf else "",
-            base_url=url,
-            llm=llm,
-            run_id=rid,
-            runs_root=runs_root,
-            only=only,
-            request=request,
-            figma_json=str(figma_json) if figma_json else None,
-            screen_urls=screen_urls or None,
-            on_progress=lambda m: typer.echo(f"  {m}"),
-        )
+        try:
+            state, plan_path = plan_pipeline(
+                pdf_path=str(pdf) if pdf else "",
+                base_url=url,
+                llm=llm,
+                run_id=rid,
+                runs_root=runs_root,
+                only=only,
+                request=request,
+                figma_json=str(figma_json) if figma_json else None,
+                screen_urls=screen_urls or None,
+                on_progress=lambda m: typer.echo(f"  {m}"),
+            )
+        except LLMError as exc:
+            _s1_failed(exc, llm)
         typer.echo("")
         typer.secho(f"  계획 저장: {plan_path}", bold=True)
         typer.echo("  서버를 교체한 뒤 이어서 실행:")
@@ -375,7 +412,10 @@ def run(
     if engine == "graph":
         from prova.graph import run_graph
 
-        report, run_dir = run_graph(**common)
+        try:
+            report, run_dir = run_graph(**common)
+        except LLMError as exc:
+            _s1_failed(exc, llm)
     elif engine == "pipeline":
         from prova.pipeline import run_pipeline
 
@@ -393,12 +433,12 @@ def run(
                 storage_state=str(session) if session else None,
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
+        except LLMError as exc:
+            _s1_failed(exc, llm)
         except ValueError as exc:
             # 케이스 필터가 아무것도 고르지 못한 경우가 대표적이다. 사용자 입력 실수에
             # 파이썬 스택을 보여줄 이유가 없으므로 메시지만 전달한다.
-            typer.echo("")
-            typer.secho(str(exc), fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail(str(exc))
     else:
         raise typer.BadParameter(f"지원하지 않는 엔진: {engine} (pipeline | graph)")
 
@@ -427,13 +467,30 @@ def _print_summary(report, run_dir: Path) -> None:
     for warning in s.get("spec_warnings", []):
         typer.secho(f"  ! 설계 문서 경고: {warning}", fg=typer.colors.YELLOW)
 
+    # 구현 결함(assertion_mismatch)과 도구·환경 실패를 섞어 찍지 않는다. 분류는
+    # 판정에 이미 있는데, 모두 같은 모양으로 찍으면 화면에서는 그 구분이 사라진다.
+    from prova.s6_report.report_builder import CATEGORY_LABELS
+
     fails = [v for v in report.cases if v.verdict == "FAIL"]
-    if fails:
+    defects = [v for v in fails if v.failure_category == "assertion_mismatch"]
+    problems = [v for v in fails if v.failure_category != "assertion_mismatch"]
+
+    if defects:
         typer.echo("")
-        typer.secho("  실패 케이스", fg=typer.colors.RED, bold=True)
-        for v in fails:
+        typer.secho(f"  기획서와 다름 {len(defects)}건", fg=typer.colors.RED, bold=True)
+        for v in defects:
             rule = f"[{v.violates}] " if v.violates else ""
             typer.secho(f"    FAIL {rule}{v.title}", fg=typer.colors.RED)
+            typer.echo(f"         {v.failure_detail}")
+    if problems:
+        typer.echo("")
+        typer.secho(f"  실행 문제 {len(problems)}건 — 구현 결함이 아닐 수 있습니다. "
+                    "도구·환경(대상·로그인·요소 탐지)을 먼저 확인하세요",
+                    fg=typer.colors.YELLOW, bold=True)
+        for v in problems:
+            label = CATEGORY_LABELS.get(v.failure_category or "unknown",
+                                        CATEGORY_LABELS["unknown"])[0]
+            typer.secho(f"    FAIL [{label}] {v.title}", fg=typer.colors.YELLOW)
             typer.echo(f"         {v.failure_detail}")
 
     typer.echo("")
@@ -455,14 +512,25 @@ def login(
     기본 경로 `sessions/` 는 gitignore 이고, 다른 곳에 저장하면 커밋되지
     않는지 스스로 확인해야 한다.
     """
+    from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import sync_playwright
+
+    # 대상이 안 떠 있으면 브라우저를 열기 전에 알린다 (run 과 같은 판단).
+    if check_sut_build(url).state == "refused":
+        _fail(f"로그인 화면에 연결할 수 없습니다: {url}\n"
+              "  테스트 대상 웹앱을 먼저 띄웠나요?")
 
     out.parent.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
         context = browser.new_context()
         page = context.new_page()
-        page.goto(url)
+        try:
+            page.goto(url)
+        except PlaywrightError as exc:
+            browser.close()
+            _fail(f"로그인 화면에 연결할 수 없습니다: {url}\n"
+                  f"  ({exc.message.splitlines()[0]})")
         typer.secho("브라우저에서 로그인을 마친 뒤, 여기로 돌아와 Enter 를 누르세요.",
                     bold=True)
         typer.prompt("완료되면 Enter", default="", show_default=False)

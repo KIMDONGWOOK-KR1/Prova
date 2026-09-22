@@ -33,8 +33,9 @@ _TIMEOUT = 3.0
 class BuildCheck:
     """확인 결과.
 
-    `state` 는 넷 중 하나다 — match(일치) / stale(어긋남) / absent(도장 없음) /
-    unreachable(닿지 않음). `blocks` 는 어긋남에서만 참이다.
+    `state` 는 다섯 중 하나다 — match(일치) / stale(어긋남) / absent(도장 없음) /
+    refused(연결 거부 — 앱이 안 떠 있다) / unreachable(그 밖의 이유로 닿지 않음).
+    `blocks` 는 어긋남과 연결 거부에서 참이다.
     """
 
     state: str
@@ -44,7 +45,7 @@ class BuildCheck:
 
     @property
     def blocks(self) -> bool:
-        return self.state == "stale"
+        return self.state in ("stale", "refused")
 
 
 def build_url(base_url: str) -> str:
@@ -73,8 +74,18 @@ def check_sut_build(base_url: str, *, fetch: Fetch = _http_get) -> BuildCheck:
     try:
         status, body = fetch(url)
     except OSError as exc:
-        # 대상이 죽었으면 파이프라인이 제 이름으로 실패한다. 여기서 가로채면
-        # 원인이 '빌드 확인 실패' 로 잘못 적힌다.
+        # 연결 거부는 확실하다 — 앱이 안 떠 있다. 막지 않았더니 케이스마다
+        # '전제를 세우지 못했습니다' 로 FAIL 해서 원인 하나가 결함 수십 건처럼
+        # 보였다(2026-09-22). 그래서 여기서 멈추되, 문구는 '빌드 확인' 이 아니라
+        # 사람이 할 일을 말한다.
+        # 그 밖의 실패(시간 초과·인증서·프록시)는 브라우저로는 열릴 수도 있다.
+        # 확실하지 않으면 막지 않는다 — 실행이 제 이름으로 실패하게 둔다.
+        if isinstance(getattr(exc, "reason", exc), ConnectionRefusedError):
+            return BuildCheck(
+                "refused",
+                f"대상 URL 에 연결할 수 없습니다: {base_url}\n"
+                "  테스트 대상 웹앱을 먼저 띄웠나요? (README '빨리 돌려보기' 3단계, "
+                "시연이라면 데모준비.ps1)")
         return BuildCheck("unreachable", f"SUT 빌드 확인: 닿지 않음 ({exc})")
 
     if status != 200 or not isinstance(body, dict) or "stale" not in body:
