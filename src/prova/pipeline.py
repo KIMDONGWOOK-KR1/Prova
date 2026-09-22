@@ -35,6 +35,28 @@ from prova.s2_case_generator.selector import select_by_ids, select_cases
 from prova.s6_report.report_builder import save_html, save_json
 
 
+def _quiet(_message: str) -> None:
+    """진행 보고를 받을 곳이 없을 때 쓴다."""
+
+
+def execution_options(cfg: dict, *, headed: bool = False) -> dict:
+    """설정 파일에서 실행 조건(S3~S5)을 읽는다. CLI 와 웹 UI 가 함께 쓴다.
+
+    한때 세 곳에 복사돼 있었고 이미 어긋나 있었다(웹 UI 만 bool 변환이 빠짐).
+    값의 형을 여기서 맞춘다 — YAML 은 사람이 쓰는 파일이라 "5000" 도 온다.
+    """
+    exec_cfg = cfg.get("execution", {})
+    return dict(
+        headless=not headed and bool(exec_cfg.get("headless", True)),
+        viewport=exec_cfg.get("viewport"),
+        step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
+        settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
+        screenshot_every_step=bool(exec_cfg.get("screenshot_every_step", True)),
+        max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
+        min_confidence=float(cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
+    )
+
+
 def filter_cases(cases: list, pattern: Optional[str]) -> list:
     """case_id 에 pattern 이 든 케이스만 남긴다.
 
@@ -91,9 +113,7 @@ def build_plan(
     Returns:
         (선택까지 끝난 상태, 선택 전 전체 케이스 수)
     """
-    def progress(message: str) -> None:
-        if on_progress:
-            on_progress(message)
+    progress = on_progress or _quiet
 
     state = AgentState(
         pdf_path=pdf_path,
@@ -212,9 +232,7 @@ def run_pipeline(
     run_dir = runs_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    def progress(message: str) -> None:
-        if on_progress:
-            on_progress(message)
+    progress = on_progress or _quiet
 
     state, n_all = build_plan(
         pdf_path=pdf_path,
@@ -273,9 +291,7 @@ def _execute(
     두 경로가 같은 코드로 실행돼야 "재개한 실행이 한 번에 돌린 실행과 같다"
     는 test_two_stage_e2e 의 계약이 코드 구조로 보장된다.
     """
-    def progress(message: str) -> None:
-        if on_progress:
-            on_progress(message)
+    progress = on_progress or _quiet
 
     progress("S3~S5 브라우저 실행 및 판정")
     video_path: Optional[Path] = None
@@ -403,9 +419,7 @@ def resume_pipeline(
     입력(pdf·URL·케이스 선택)은 전부 계획에서 온다. 실행 조건(vlm·타임아웃·
     세션 등)만 지금 받는다 — 계획 시점의 실행 조건은 의미가 없다.
     """
-    def progress(message: str) -> None:
-        if on_progress:
-            on_progress(message)
+    progress = on_progress or _quiet
 
     run_dir = Path(run_dir)
     plan = load_plan(run_dir)
