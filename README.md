@@ -56,6 +56,9 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 | 주문조회 (날짜+상태 필터 — **입력↔재조회**, `--only orders`) | mock (2026-08-27) | `good` **22/22 PASS** · `bad` 는 O1(무필터·필터 후)·O2·O3(경계일 제외)·O4(필터 후 합계 미재계산)·O5(기간 역전을 알리지 않음)·O6(취소 주문이 어느 상태 조회에도 섞임)의 **9건만 FAIL** — 조작한 뒤의 화면에 처음 판정이 걸렸다(설계 판단 15). `table`/`badtable` 쌍둥이도 같은 판정 |
 | 로그인+회원가입 (**Figma 디자인** 입력 — 실물 API 응답, 2026-08-25) | LLM **미사용** (결정적 추출) | `good` **5/5 PASS** · `bad` 는 정적 대조가 잡을 수 있는 **둘만 FAIL**(로그인 placeholder 불일치 · C4 선택 항목 누락) — 디자인↔구현 정합성 QA. 규칙 검증은 이 입력의 범위 밖이고 리포트가 그 사실을 상자로 말한다(설계 판단 16). 흐름(가입→로그인)은 via 라벨과 함께 추출만 |
 | 통합 문서 + 실물 Figma (**병합 모드**, 2026-08-25) | mock + 결정적 병합 | `good` **전부 PASS** (규칙 케이스·PDF 흐름 포함, 오탐 0) · 발견 목록 정확히 둘 — 검색 화면이 디자인에 없음, **디자인의 가입하기→로그인 흐름이 기획서 성공 조건(/welcome)과 모순** — 구현 코드를 보기 전에 잡은 기획↔디자인 모순이다(설계 판단 17) |
+| **우리가 안 만든 웹앱** — practicetestautomation 로그인 (실물 7B, 2026-09-23) | 공개 연습 사이트 | 2 PASS · 2 **확인 불가** — 페이지가 기대 문구를 화면에 늘 보여 줘 그 문구로는 결과를 확인할 수 없다. 고치기 전에는 그중 하나가 **빈 통과**였다 |
+| **우리가 안 만든 웹앱** — the-internet 로그인 | 공개 연습 사이트 | **4/4 PASS** — 고치기 전 1P/3F(아이콘 글리프가 붙은 버튼을 '유형 불일치' 로 오판) |
+| **우리가 안 만든 웹앱** — saucedemo 로그인 (React SPA, `<label>` 없음) | 공개 연습 사이트 | **7/7 PASS** — 고치기 전 2P/5F(같은 이름의 폼을 버튼 대신 클릭). 첫 실패는 세 사이트 모두 '기획서와 다름' 으로 떴고 전부 오탐이었다 — `docs/measurements/external-sites-2026-09-23.md` |
 
 위 네 행은 **CHEETAH 실물 7B 관통 실측**(2026-08-20)이다. 2026-08-19 의 mock
 백엔드 E2E(`tests/test_product_e2e.py`·`tests/test_orders_e2e.py`)로 배관과 판정
@@ -314,7 +317,7 @@ docs/
 ├── pr/                       PR 읽기 안내
 ├── superpowers/              지난 설계·구현 계획서 (도구가 남긴 것)
 ├── cheetah-setup.md          GPU 서버 vLLM 세팅 절차
-├── design-decisions.md       명세서와 다르게 한 18군데
+├── design-decisions.md       명세서와 다르게 한 21군데
 ├── lessons.md                코드를 돌려서 알게 된 것들
 ├── roadmap.md                아직 안 한 것
 └── README.md                 문서 안내
@@ -326,7 +329,7 @@ docs/
 
 | 문서 | 무엇이 있나 |
 |---|---|
-| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **18군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
+| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **21군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
 | [docs/lessons.md](docs/lessons.md) | 문서로 예측하지 못했고 코드를 돌려서 알게 된 것들. 각각 대응이 코드에 남아 있다 |
 | [docs/roadmap.md](docs/roadmap.md) | 아직 안 한 것과 실측으로 확정된 GPU 제약 |
 | [docs/README.md](docs/README.md) | 명세서·티칭 노트·측정 결과·배경 문서 전체 안내 |
