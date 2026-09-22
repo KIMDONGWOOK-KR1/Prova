@@ -46,7 +46,12 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str) -> tuple[object, list[str
         # 문서(상품등록·주문조회처럼 전제 화면을 같이 담는 것)도 열릴 수 있다.
         # 화면 ID 정확 매칭이 있으므로(for_spec 참고) 골든 전부를 등록해도
         # 오염되지 않는다.
-        return MockLLM.for_spec(pdf), [
+        mock = MockLLM.for_spec(pdf)
+        # 제목 다듬기는 비워 돌려준다 — 규칙 기반 제목이 그대로 쓰인다. 등록하지
+        # 않으면 매 실행 끝에 '설계 문서 경고' 가 떠서, 문제없는 기획서를 의심하게
+        # 만든다. (테스트가 쓰는 맨 MockLLM 은 그대로 오류를 낸다 — 그 경로를 잰다.)
+        mock.register("CaseTitles", {"titles": []})
+        return mock, [
             "mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다."
         ]
 

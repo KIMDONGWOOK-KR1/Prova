@@ -39,7 +39,7 @@ from prova.s3_grounder.dom_locator import strategy_label
 CATEGORY_LABELS = {
     "element_not_found": ("요소 미탐지", "화면에서 조작할 요소를 찾지 못했습니다."),
     "input_error": ("입력 불가", "요소를 찾았으나 조작할 수 없었습니다 (가림·비활성)."),
-    "assertion_mismatch": ("기대 불일치", "실행은 됐으나 기획서의 기대와 다릅니다."),
+    "assertion_mismatch": ("기획서와 다름", "실행은 됐으나 기획서의 기대와 다릅니다."),
     "timeout": ("시간 초과", "대기 시간을 초과했습니다."),
     "page_error": ("페이지 오류", "HTTP 오류 또는 JS 콘솔 예외가 있습니다."),
     "unknown": ("원인 미분류", "규칙으로 분류되지 않았습니다."),

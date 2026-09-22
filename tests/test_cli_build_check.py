@@ -64,6 +64,16 @@ class TestStale:
         assert spy.calls == ["http://localhost:8100/good"]
 
 
+class TestRefused:
+    def test_대상이_꺼져_있으면_한_줄로_멈춘다(self, tmp_path, spy):
+        spy.box["result"] = BuildCheck(
+            "refused", "대상 URL 에 연결할 수 없습니다 — 웹앱을 먼저 띄웠나요?")
+        result = _run(tmp_path)
+        assert result.exit_code == 2
+        assert "띄웠나요" in result.output
+        assert not (tmp_path / "cli-build").exists()
+
+
 class TestPlanOnly:
     def test_계획만_만들_때는_묻지_않는다(self, tmp_path, spy):
         """대상이 아직 없어도 계획은 만들어져야 한다."""

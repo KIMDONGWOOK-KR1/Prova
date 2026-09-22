@@ -377,7 +377,10 @@ def sut_stamp(sut: str) -> str:
     from prova.sut_build import check_sut_build
 
     check = check_sut_build(sut)
-    if check.blocks:
+    # `blocks` 가 아니라 stale 만 본다. blocks 는 연결 거부도 막게 넓어졌지만
+    # (2026-09-22), 여기서 닿지 않음은 빈 도장으로 돌려주고 판단은 호출부
+    # (require_matching_sut)가 '시험지를 확인할 수 없다' 로 한다.
+    if check.state == "stale":
         raise SystemExit(
             f"{check.message}\n\n  낡은 화면으로 시험지를 굳히면 정답 좌표가"
             " 처음부터 틀립니다.")

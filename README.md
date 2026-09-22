@@ -195,7 +195,8 @@ uv run python scripts/make_spec_pdf.py
 # 3. 테스트 대상 웹앱 띄우기 (별 터미널)
 uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut
 
-# 4. 검증 — GPU 없이도 mock 백엔드로 파이프라인 전체가 돈다
+# 4. 검증 — GPU 가 없으면 --backend mock (픽스처 기획서 전용 연습 모드).
+#    GPU 서버가 있으면 --backend 를 빼고, 먼저 `uv run prova check` 로 연결을 확인한다
 uv run prova run --pdf fixtures/specs/login_spec.pdf  --url http://localhost:8100/good --backend mock
 uv run prova run --pdf fixtures/specs/login_spec.pdf  --url http://localhost:8100/bad  --backend mock
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend mock

@@ -88,10 +88,30 @@ class TestBlocking:
         check = check_sut_build("http://x/good", fetch=_fetch(status, body))
         assert check.blocks is blocks
 
-    def test_닿지_않아도_막지_않는다(self):
-        """대상이 죽었으면 파이프라인이 제대로 된 말로 실패한다. 여기서
-        가로채면 원인이 '빌드 확인' 으로 잘못 적힌다."""
+    def test_시간초과_같은_모호한_실패는_막지_않는다(self):
+        """인증서·프록시·느린 응답은 브라우저로는 열릴 수도 있다. 확실하지
+        않으면 막지 않는다 — 실행이 제 이름으로 실패하게 둔다."""
         def fetch(url: str):
-            raise OSError("refused")
+            raise TimeoutError("timed out")
 
-        assert check_sut_build("http://x/good", fetch=fetch).blocks is False
+        check = check_sut_build("http://x/good", fetch=fetch)
+        assert check.state == "unreachable"
+        assert check.blocks is False
+
+    @pytest.mark.parametrize("exc", [
+        ConnectionRefusedError("refused"),
+        # urllib 은 거부를 URLError(reason=ConnectionRefusedError) 로 감싼다
+        __import__("urllib.error").error.URLError(ConnectionRefusedError("refused")),
+    ])
+    def test_연결_거부는_막는다(self, exc):
+        """앱을 안 띄운 것이다. 2026-09-22 에 이걸 막지 않아서 케이스 20건이
+        전부 '전제(로그인)를 세우지 못했습니다' 로 FAIL 했다 — 원인은 하나인데
+        결함 20건처럼 보인다. 한 줄로, 무엇을 하면 되는지 말하고 멈춘다."""
+        def fetch(url: str):
+            raise exc
+
+        check = check_sut_build("http://localhost:8100/good", fetch=fetch)
+        assert check.state == "refused"
+        assert check.blocks is True
+        assert "http://localhost:8100/good" in check.message
+        assert "띄웠" in check.message

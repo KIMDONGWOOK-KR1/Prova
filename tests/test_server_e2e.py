@@ -395,6 +395,18 @@ class TestStaleTarget:
         assert res.status_code == 409, res.text
         assert "재시작" in res.text
 
+    def test_대상이_꺼져_있으면_409_로_이유를_말한다(self, client, sut_base, monkeypatch):
+        from prova.sut_build import BuildCheck
+        monkeypatch.setattr(
+            server_app, "check_sut_build",
+            lambda url, **kw: BuildCheck("refused", "대상 URL 에 연결할 수 없습니다 — 웹앱을 먼저 띄웠나요?"))
+        res = client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "case_ids": ["login-valid-001"],
+        })
+        assert res.status_code == 409, res.text
+        assert "띄웠나요" in res.text
+
     def test_계획_단계는_묻지_않는다(self, client, sut_base, monkeypatch):
         """계획은 브라우저를 열지 않는다 — 대상이 아직 없어도 만들어져야 한다."""
         calls = []
