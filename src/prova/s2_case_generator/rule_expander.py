@@ -554,6 +554,18 @@ def spec_defects(spec: ScreenSpec) -> list[str]:
                 f"위반 케이스가 생성되지 않아 이 규칙은 검증에서 빠집니다."
             )
 
+        if (element.type == "input" and not element.constraints
+                and not element.sample_value):
+            # 규칙도 예시값도 없으면 valid_value_for 가 모양만 맞춘 값('a1')을 지어낸다.
+            # 로그인처럼 등록된 값이 필요한 화면에서는 정상 케이스가 결함 없이 FAIL
+            # 하고 '기획서와 다름' 으로 보고된다(외부 사이트 실측, 2026-09-23 — 테스트
+            # 계정 표의 열 제목이 라벨과 달라 예시값이 빠졌다). 조용히 두지 않는다.
+            defects.append(
+                f"정상 케이스에 넣을 '{element.label}' 값이 기획서에 없어 임의 값을 씁니다. "
+                f"등록된 값이 필요한 화면(로그인 등)이면 정상 케이스가 결함 없이 실패합니다 — "
+                f"테스트 계정 표의 열 제목을 요소 라벨('{element.label}')과 같게 적어 주세요."
+            )
+
         if "pattern" in element.constraints and not element.sample_value:
             # valid_value_for 가 정규식을 역생성하지 못해 빈 값을 돌려준다. 그
             # 빈 값이 required 위반으로 먼저 걸려 정상 케이스가 구현 결함 없이

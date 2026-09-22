@@ -896,6 +896,15 @@ def structural_warnings(spec: ScreenSpec, doc: ParsedDocument) -> list[str]:
             f"{declared_meta['screen_id']!r}, 추출 {spec.screen_id!r}. "
             f"case_id 와 스크린샷 경로가 기획서와 어긋납니다."
         )
+
+    # 입력-결과 예시 표처럼 보이는데 요소와 맞는 열이 없어 시나리오가 한 건도 안
+    # 만들어진 표 (pdf_parser.unread_example_tables). 조용히 빠지면 기획서가 적어 둔
+    # 검증이 사라진다 — 외부 사이트 실측에서 공개 테스트 케이스 두 건이 그랬다.
+    for header in doc.unread_example_tables():
+        warnings.append(
+            f"예시 표({header})의 열 제목이 요소 라벨과 맞지 않아 시나리오를 만들지 "
+            f"않았습니다 — 입력 열의 제목을 요소 라벨과 같게 적어 주세요."
+        )
     return warnings
 
 
