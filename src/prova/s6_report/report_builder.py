@@ -155,6 +155,9 @@ h2 { font-size:17px; margin:28px 0 12px; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
 .tag.rule { background:var(--accent-bg); color:var(--accent-fg); font-weight:600; }
+.tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
+.tag.cat.infra { background:var(--warn-bg); color:var(--warn-fg); }
+.breakdown { color:var(--muted); font-size:13px; margin:-8px 0 16px; }
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; }
 .body { border-top:1px solid var(--line); padding:14px 16px; background:var(--bg-canvas); }
@@ -263,6 +266,14 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
                   if verdict.target_element else verdict.violates)
     rule_tag = (f"<span class='tag rule'>{_esc(rule_label)}</span>"
                 if verdict.violates else "")
+    # 분류를 요약 줄에 올린다. 펼친 카드 안쪽 표에만 있으면 목록만 훑는 사람에게
+    # 구현 결함과 도구·환경 실패가 똑같이 'FAIL' 로 보인다.
+    cat_tag = ""
+    if verdict.verdict == "FAIL" and verdict.failure_category:
+        kind = "defect" if verdict.failure_category == "assertion_mismatch" else "infra"
+        name = CATEGORY_LABELS.get(verdict.failure_category,
+                                   CATEGORY_LABELS["unknown"])[0]
+        cat_tag = f"<span class='tag cat {kind}'>{_esc(name)}</span>"
 
     reason = ""
     if verdict.verdict == "FAIL" and verdict.failure_detail:
@@ -283,7 +294,7 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     return (
         f"<details class='case'{' open' if open_by_default else ''}>"
         f"<summary><span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
-        f"{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
+        f"{cat_tag}{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>{reason}"
         f"<table class='kv'>{kv}</table>"
@@ -561,6 +572,11 @@ def render_html(report: TestReport) -> str:
     fail_section = _grouped_html(fails, names, open_by_default=True) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
     pass_section = _grouped_html(passes, names, open_by_default=False) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
 
+    defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
+    breakdown = (f"<div class='breakdown'>실패 {len(fails)} = 기획서와 다름 {defects}"
+                 f" · 실행 문제 {len(fails) - defects} (도구·환경을 먼저 확인)</div>"
+                 if fails else "")
+
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <title>Prova 리포트 — {_esc(report.run_id)}</title>
@@ -572,6 +588,7 @@ def render_html(report: TestReport) -> str:
   설계 문서 <code>{_esc(report.spec_source)}</code> ·
   실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
+  <br>스크린샷은 이 파일 옆 폴더를 참조합니다 — 공유할 때는 결과 폴더째 보내세요.
 </div>
 {mock_warn}{filter_warn}{sel_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">
@@ -581,6 +598,7 @@ def render_html(report: TestReport) -> str:
   <div class="card"><div class="n">{rate}%</div><div class="k">통과율</div></div>
 </div>
 <div class="bar"><i style="width:{rate}%"></i></div>
+{breakdown}
 {screens_html}
 
 <h2>실패 케이스 ({len(fails)})</h2>

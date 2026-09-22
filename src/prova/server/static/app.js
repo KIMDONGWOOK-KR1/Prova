@@ -43,8 +43,17 @@ async function api(path, opts) {
     throw new ApiError("서버에 연결하지 못했습니다. prova serve 가 살아 있는지 확인하세요.", 0);
   }
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(body.detail || `${res.status} ${res.statusText}`, res.status);
+  if (!res.ok) throw new ApiError(detailText(body.detail) || `${res.status} ${res.statusText}`, res.status);
   return body;
+}
+
+// FastAPI 의 422 는 detail 이 배열이다. 그대로 쓰면 화면에 [object Object] 가 뜬다.
+function detailText(detail) {
+  if (Array.isArray(detail)) {
+    return detail.map((d) => d.msg || JSON.stringify(d)).join(" / ")
+      || "요청 형식이 올바르지 않습니다";
+  }
+  return detail;
 }
 
 /**
@@ -433,13 +442,14 @@ function groupCount(row) {
   return `${on}/${rows.length}`;
 }
 
+// 사람이 읽는 제목을 먼저, 내부 id 는 작게 뒤로. 스크린 리더도 제목을 읽는다.
 function caseRow(c) {
   return `<div class="case ${c.selected ? "" : "off"}" data-id="${esc(c.case_id)}">
     <input type="checkbox" ${c.selected ? "checked" : ""}
-           aria-label="${esc(c.case_id)} 실행">
+           aria-label="${esc(c.title)} 실행">
     <div>
-      <div class="id">${esc(c.case_id)}</div>
       <div class="desc">${esc(c.title)}</div>
+      <div class="id">${esc(c.case_id)}</div>
     </div>
     <div class="marks">
       ${c.violates ? `<span class="tag rule">${esc(c.violates)}</span>` : ""}
@@ -719,7 +729,13 @@ async function boot() {
       $("figma").value = saved.figma;
     }
     if (saved.url) $("url").value = saved.url;
-    if (saved.backend) $("backend").value = saved.backend;
+    // 지난번 선택이 서버 기본값을 덮을 때는 그 사실을 보인다 — 한 번 mock 을
+    // 고른 사람이 모르는 채 계속 mock 으로 돌지 않게.
+    if (saved.backend && saved.backend !== st.backend) {
+      $("backend").value = saved.backend;
+      $("backend").insertAdjacentHTML("afterend",
+        `<div class="hint">지난번 선택입니다 — 서버 기본값은 ${esc(st.backend)}</div>`);
+    }
   } catch (err) {
     // 여기서 조용히 실패하면 화면이 죽은 채로 남는다.
     document.body.insertAdjacentHTML("afterbegin",

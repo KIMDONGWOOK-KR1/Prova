@@ -388,7 +388,7 @@ select {
 .alert svg { margin-top: 2px; }
 /* 제목만 블록이다. 본문 속 <b> 까지 블록으로 만들면 문장 한가운데서 줄이 끊긴다. */
 .alert > div > b:first-child { display: block; font-weight: 620; margin-bottom: 2px; }
-.alert .why { color: var(--fg-muted); }
+.alert .why { color: var(--fg-muted); white-space: pre-line; }
 .alert code { font-family: var(--font-mono); font-size: var(--tx-sm);
               background: var(--bg-inset); padding: 1px 5px; border-radius: var(--r-sm); }
 
@@ -472,14 +472,17 @@ select {
   cursor: pointer;
 }
 
+.case .desc { font-size: var(--tx-md); color: var(--fg-default); }
+
 .case .id {
   font-family: var(--font-mono);
   font-size: var(--tx-sm);
-  color: var(--fg-default);
+  color: var(--fg-muted);
   word-break: break-all;
+  margin-top: 1px;
 }
 
-.case .desc { font-size: var(--tx-md); color: var(--fg-muted); margin-top: 1px; }
+.field .hint { font-size: var(--tx-sm); color: var(--fg-muted); margin-top: 4px; }
 
 .case .marks { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
 
