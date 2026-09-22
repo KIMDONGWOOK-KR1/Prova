@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 from playwright.sync_api import Page
 
@@ -143,6 +143,10 @@ class AgentState:
     # 0 으로 두면 기다리지 않는다(예전 동작).
     settle_timeout_ms: int = 2000
 
+    #: 케이스 단위 진행 보고 (run_cases 가 읽는다). 없으면 조용히 돈다.
+    #: S3~S5 는 몇 분이 걸려서, 이게 없으면 멈춘 것과 도는 것이 구별되지 않는다.
+    on_progress: Optional[Callable[[str], None]] = None
+
 
 def extract_spec(state: AgentState) -> AgentState:
     """S1 — PDF 에서 SpecDocument 를 추출한다 (화면 하나 이상).
@@ -240,7 +244,10 @@ def run_cases(state: AgentState) -> AgentState:
                 console_errors.append(msg.text) if msg.type == "error" else None
             ))
 
-    for case in state.cases:
+    total = len(state.cases)
+    for i, case in enumerate(state.cases, 1):
+        if state.on_progress:
+            state.on_progress(f"     케이스 {i}/{total} · {case.title}")
         console_errors.clear()
         if case.precondition_unmet and state.storage_state is None:
             # 전제(로그인)를 세울 스텝 자체를 만들지 못한 케이스다

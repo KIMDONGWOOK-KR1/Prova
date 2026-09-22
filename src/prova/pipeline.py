@@ -316,6 +316,7 @@ def _execute(
                 viewport=viewport or {"width": 1280, "height": 800})
             state.guard_page = guard_context.new_page()
             state.storage_state = storage_state
+        state.on_progress = progress
         try:
             state = run_cases(state)
             if hold_sec > 0:

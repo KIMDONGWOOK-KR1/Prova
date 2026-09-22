@@ -33,7 +33,15 @@ from prova.theme import TOKENS_CSS
 # 전략 이름 -> 사람이 읽는 설명. 표를 dom_locator 에 두는 이유는 전략 이름을
 # 만드는 곳과 같은 파일이라야 새 전략을 추가할 때 눈에 들어오기 때문이다 —
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
+from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
+
+# 스텝 표의 동작·상태. 코드 이름(fill·ok)은 코드를 아는 사람만 읽는다.
+ACTION_LABELS = {
+    "navigate": "이동", "fill": "입력", "click": "클릭", "select": "선택",
+    "check": "체크", "uncheck": "체크 해제", "wait": "대기", "assert": "확인",
+}
+STATUS_LABELS = {"ok": "성공", "error": "오류"}
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
 CATEGORY_LABELS = {
@@ -230,8 +238,8 @@ def _steps_html(verdict: Verdict) -> str:
         phase_label = "준비" if r.phase == "setup" else "실행"
         rows.append(
             f"<tr><td>{_esc(phase_label)}</td><td>{r.seq}</td>"
-            f"<td>{_esc(r.action)}</td><td>{_esc(r.target)}</td>"
-            f"<td>{_esc(strategy)}</td><td{cls}>{_esc(r.status)}</td>"
+            f"<td>{_esc(ACTION_LABELS.get(r.action, r.action))}</td><td>{_esc(r.target)}</td>"
+            f"<td>{_esc(strategy)}</td><td{cls}>{_esc(STATUS_LABELS.get(r.status, r.status))}</td>"
             f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
             f"<td>{evidence}</td></tr>"
         )
@@ -262,8 +270,9 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     ev = verdict.evidence or {}
     # 요소와 규칙을 함께 보여준다. 화면에 같은 규칙을 가진 요소가 여럿이면
     # (회원가입의 required 6개) 규칙 이름만으로는 어디를 고쳐야 할지 모른다.
-    rule_label = (f"{verdict.target_element}.{verdict.violates}"
-                  if verdict.target_element else verdict.violates)
+    rule_name = RULE_LABELS.get(verdict.violates, verdict.violates) if verdict.violates else ""
+    rule_label = (f"{verdict.target_element} · {rule_name}"
+                  if verdict.target_element else rule_name)
     rule_tag = (f"<span class='tag rule'>{_esc(rule_label)}</span>"
                 if verdict.violates else "")
     # 분류를 요약 줄에 올린다. 펼친 카드 안쪽 표에만 있으면 목록만 훑는 사람에게
@@ -450,7 +459,13 @@ def render_html(report: TestReport) -> str:
                 f"<div class='why'><b>이번 실행에서 제외한 케이스 ({len(sel.excluded)}건)</b> — "
                 "아래는 <b>통과한 것이 아니라 실행하지 않은 것</b>입니다.</div>"
             )
-            rows += [f"<div>· {_esc(cid)}</div>" for cid in sel.excluded]
+            rows += [
+                f"<div>· {_esc(sel.excluded_titles.get(cid, cid))}"
+                + (f" <span class='ms'>{_esc(cid)}</span>"
+                   if cid in sel.excluded_titles else "")
+                + "</div>"
+                for cid in sel.excluded
+            ]
         who = "요청을 확인한 뒤 사람이 승인한 실행" if sel.approved else "자연어 요청으로 고른 실행"
         sel_html = (
             f"<div class='gap'><b>{who} "
