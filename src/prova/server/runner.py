@@ -48,6 +48,20 @@ class Job:
         }
 
 
+def _user_message(exc: Exception) -> str:
+    """작업 실패를 화면에 보일 문장으로 바꾼다.
+
+    우리가 쓴 안내문(한국어)은 그대로 보인다 — 무엇을 하면 되는지 이미 말한다.
+    그 밖의 예외는 `'screen_id'` 한 단어처럼 뜻이 안 통하므로 '내부 오류' 로
+    감싸고, 원문은 지우지 않는다(개발자가 그걸로 찾는다).
+    """
+    text = str(exc)
+    if any("가" <= ch <= "힣" for ch in text):
+        return text
+    return (f"내부 오류 ({exc.__class__.__name__}): {text or '-'} — "
+            "진행 로그를 개발자에게 전달하세요.")
+
+
 class JobRunner:
     """한 번에 하나만 도는 작업 실행기."""
 
@@ -98,9 +112,9 @@ class JobRunner:
             try:
                 job.result = work(report)
                 job.status = "done"
-            except Exception as exc:  # noqa: BLE001 - 화면에 그대로 전달한다
+            except Exception as exc:  # noqa: BLE001 - 화면에 전달한다
                 job.status = "error"
-                job.error = str(exc) or exc.__class__.__name__
+                job.error = _user_message(exc)
                 job.messages.append(f"실패: {job.error}")
                 traceback.print_exc()
             finally:
