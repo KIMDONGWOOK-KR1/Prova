@@ -124,9 +124,6 @@ selector-first 는 취향이 아니라 측정 결과다: 더 정확하고, 없�
 `docs/measurements/grounding-selector-vs-vlm-2026-08-27.md`.
 
 
-파이프라인 결과가 mock 과 **동일하다**(9 PASS / 1 FAIL, 보정 8건). 즉 이 화면에서는
-실물 모델의 정확도 손실이 없었다.
-
 `bad`에서도 구현돼 있는 검증은 PASS로 나온다. 한 리포트 안에
 "구현된 규칙은 PASS, 누락된 규칙은 FAIL"이 함께 나오는 것이 판정을 신뢰할 근거다.
 
@@ -316,7 +313,7 @@ docs/
 ├── pr/                       PR 읽기 안내
 ├── superpowers/              지난 설계·구현 계획서 (도구가 남긴 것)
 ├── cheetah-setup.md          GPU 서버 vLLM 세팅 절차
-├── design-decisions.md       명세서와 다르게 한 14군데
+├── design-decisions.md       명세서와 다르게 한 18군데
 ├── lessons.md                코드를 돌려서 알게 된 것들
 ├── roadmap.md                아직 안 한 것
 └── README.md                 문서 안내
@@ -328,7 +325,7 @@ docs/
 
 | 문서 | 무엇이 있나 |
 |---|---|
-| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **14군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
+| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **18군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
 | [docs/lessons.md](docs/lessons.md) | 문서로 예측하지 못했고 코드를 돌려서 알게 된 것들. 각각 대응이 코드에 남아 있다 |
 | [docs/roadmap.md](docs/roadmap.md) | 아직 안 한 것과 실측으로 확정된 GPU 제약 |
 | [docs/README.md](docs/README.md) | 명세서·티칭 노트·측정 결과·배경 문서 전체 안내 |
