@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from prova.llm.factory import BackendError, make_llm
-from prova.pipeline import build_plan, run_pipeline
+from prova.pipeline import build_plan, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
 from prova.theme import TOKENS_CSS
@@ -240,10 +240,6 @@ def run(body: RunRequest) -> dict:
     if build.blocks:
         raise HTTPException(409, build.message)
 
-    exec_cfg = cfg.get("execution", {})
-    ground_cfg = cfg.get("grounding", {})
-    agent_cfg = cfg.get("agent", {})
-
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
         run_id = "ui-" + datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -257,13 +253,7 @@ def run(body: RunRequest) -> dict:
             case_ids=body.case_ids,
             request=body.request,
             reason=body.reason,
-            headless=exec_cfg.get("headless", True),
-            viewport=exec_cfg.get("viewport"),
-            step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
-            settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
-            screenshot_every_step=exec_cfg.get("screenshot_every_step", True),
-            max_heal=int(agent_cfg.get("max_heal", 2)),
-            min_confidence=float(ground_cfg.get("vlm_confidence_threshold", 0.5)),
+            **execution_options(cfg),
             sut_build=build.state,
             on_progress=report,
         )

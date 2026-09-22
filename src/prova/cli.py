@@ -37,9 +37,7 @@ def _verify_sut_build(url: str) -> str:
     """
     check = check_sut_build(url)
     if check.blocks:
-        typer.echo("")
-        typer.secho(check.message, fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail(check.message)
     return check.state
 
 
@@ -112,8 +110,7 @@ def _make_vlm(vlm_url: Optional[str], vlm_model: Optional[str]):
     try:
         vlm.health()
     except VLMError as exc:
-        typer.secho(str(exc), fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail(str(exc))
     return vlm
 
 
@@ -193,29 +190,23 @@ def run(
             ("--plan-only", plan_only), ("--runs-root", runs_root),
         ] if value]
         if given:
-            typer.secho(
+            _fail(
                 f"--resume 은 저장된 계획의 값을 쓰므로 {', '.join(given)} 과 "
-                "함께 쓸 수 없습니다.", fg=typer.colors.RED)
-            raise typer.Exit(2)
+                "함께 쓸 수 없습니다.")
         if engine == "graph":
-            typer.secho("--resume 은 pipeline 엔진에서만 동작합니다.",
-                        fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail("--resume 은 pipeline 엔진에서만 동작합니다.")
         if session and not session.exists():
-            typer.secho(f"세션 파일을 찾을 수 없습니다: {session} — "
-                        "prova login 으로 먼저 만드세요.", fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail(f"세션 파일을 찾을 수 없습니다: {session} — "
+                  "prova login 으로 먼저 만드세요.")
 
         from prova.plan_store import PlanError, load_plan
 
         try:
             plan = load_plan(resume)
         except PlanError as exc:
-            typer.secho(str(exc), fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail(str(exc))
 
         cfg = _load_config(config)
-        exec_cfg = cfg.get("execution", {})
         vlm = _make_vlm(vlm_url, vlm_model)
 
         typer.secho(f"Prova 재개 {resume.name}", bold=True)
@@ -226,7 +217,7 @@ def run(
             typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
         typer.echo("")
 
-        from prova.pipeline import resume_pipeline
+        from prova.pipeline import execution_options, resume_pipeline
 
         # 재개는 '서버를 교체한 뒤' 도는 실행이다 — 교체한 그 서버가 낡았을
         # 자리가 오히려 여기다.
@@ -236,14 +227,7 @@ def run(
             resume,
             vlm=vlm,
             sut_build=build_state,
-            headless=not headed and exec_cfg.get("headless", True),
-            viewport=exec_cfg.get("viewport"),
-            step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
-            settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
-            screenshot_every_step=bool(exec_cfg.get("screenshot_every_step", True)),
-            max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
-            min_confidence=float(
-                cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
+            **execution_options(cfg, headed=headed),
             slow_mo=slow,
             record_video=video,
             hold_sec=hold,
@@ -262,57 +246,50 @@ def run(
             ("--video", video), ("--hold", hold),
         ] if value]
         if given:
-            typer.secho(
+            _fail(
                 f"--plan-only 는 실행 단계 옵션 {', '.join(given)} 과 함께 쓸 수 "
-                "없습니다 — 실행 조건은 --resume 시점에 줍니다.",
-                fg=typer.colors.RED)
-            raise typer.Exit(2)
+                "없습니다 — 실행 조건은 --resume 시점에 줍니다.")
         if engine == "graph":
-            typer.secho("--plan-only 는 pipeline 엔진에서만 동작합니다.",
-                        fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail("--plan-only 는 pipeline 엔진에서만 동작합니다.")
 
     if not url:
-        typer.secho("--url 이 필요합니다 (--resume 재개는 예외 — 계획에서 옵니다).",
-                    fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail("--url 이 필요합니다 (--resume 재개는 예외 — 계획에서 옵니다).")
     runs_root = runs_root or Path("runs")
     # Figma 경로 검증. --pdf 와 함께 주면 병합 모드다(기획서 규칙 + 디자인
     # 문구·요소·흐름, 어긋나면 발견) — 단독이면 정적 대조 모드.
     if not figma_json and not pdf:
-        typer.secho("--pdf 또는 --figma-json 이 필요합니다.", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail("--pdf 또는 --figma-json 이 필요합니다.")
     if figma_json and not pdf and request:
-        typer.secho(
+        _fail(
             "--figma-json 단독은 --request 와 함께 쓸 수 없습니다 — 요청 해석은 "
-            "LLM 이 필요한데 figma 단독 경로는 LLM 을 쓰지 않습니다.",
-            fg=typer.colors.RED)
-        raise typer.Exit(2)
+            "LLM 이 필요한데 figma 단독 경로는 LLM 을 쓰지 않습니다.")
     if figma_json and engine == "graph":
-        typer.secho("--figma-json 은 pipeline 엔진에서만 동작합니다.", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail("--figma-json 은 pipeline 엔진에서만 동작합니다.")
     if figma_json and not figma_json.exists():
-        typer.secho(f"Figma 응답 파일을 찾을 수 없습니다: {figma_json}", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail(f"Figma 응답 파일을 찾을 수 없습니다: {figma_json}")
     screen_urls: dict[str, str] = {}
     for pair in screen_url:
         if "=" not in pair:
-            typer.secho(f"--screen-url 형식은 '화면=/경로' 입니다: {pair!r}",
-                        fg=typer.colors.RED)
-            raise typer.Exit(2)
+            _fail(f"--screen-url 형식은 '화면=/경로' 입니다: {pair!r}")
         k, _, v = pair.partition("=")
         screen_urls[k.strip()] = v.strip()
 
     if pdf and not pdf.exists():
-        typer.secho(f"설계 문서를 찾을 수 없습니다: {pdf}", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail(f"설계 문서를 찾을 수 없습니다: {pdf}")
     if session and not session.exists():
-        typer.secho(f"세션 파일을 찾을 수 없습니다: {session} — "
-                    "prova login 으로 먼저 만드세요.", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail(f"세션 파일을 찾을 수 없습니다: {session} — "
+              "prova login 으로 먼저 만드세요.")
     if session and engine == "graph":
-        typer.secho("--session 은 pipeline 엔진에서만 동작합니다.", fg=typer.colors.RED)
-        raise typer.Exit(2)
+        _fail("--session 은 pipeline 엔진에서만 동작합니다.")
+
+    # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로
+    # 실행 조건을 바꾸는 옵션을 받지 않는다 — 두 경로를 같은 조건으로 비교해야 한다.
+    # 모델 서버·대상 확인(수 초)보다 먼저 본다.
+    if engine == "graph" and vlm_url:
+        _fail("--vlm 은 pipeline 엔진에서만 동작합니다 (graph 는 결과 동일성 대조용).")
+    if engine == "graph" and (slow or video or only or hold or request):
+        _fail("--slow / --video / --only / --hold / --request 는 pipeline 엔진에서만 "
+              "동작합니다 (graph 는 결과 동일성 대조용).")
 
     cfg = _load_config(config)
     backend = backend or cfg.get("llm", {}).get("backend", "vllm")
@@ -374,7 +351,8 @@ def run(
     # 여기부터는 실제로 대상을 상대로 실행한다 (--plan-only 는 위에서 끝났다).
     build_state = _verify_sut_build(url)
 
-    exec_cfg = cfg.get("execution", {})
+    from prova.pipeline import execution_options
+
     common = dict(
         pdf_path=str(pdf) if pdf else "",
         base_url=url,
@@ -382,32 +360,8 @@ def run(
         llm=llm,
         run_id=rid,
         runs_root=runs_root,
-        headless=not headed and exec_cfg.get("headless", True),
-        viewport=exec_cfg.get("viewport"),
-        step_timeout_ms=int(exec_cfg.get("step_timeout_ms", 10000)),
-        settle_timeout_ms=int(exec_cfg.get("settle_timeout_ms", 2000)),
-        screenshot_every_step=bool(exec_cfg.get("screenshot_every_step", True)),
-        max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
-        min_confidence=float(
-            cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
+        **execution_options(cfg, headed=headed),
     )
-
-    # 관찰용 옵션은 pipeline 엔진만 지원한다. graph 엔진은 결과 동일성 대조가 목적이므로
-    # 실행 조건을 바꾸는 옵션을 받지 않는다 — 두 경로를 같은 조건으로 비교해야 한다.
-    if engine == "graph" and vlm:
-        typer.secho(
-            "--vlm 은 pipeline 엔진에서만 동작합니다 (graph 는 결과 동일성 대조용).",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(2)
-
-    if engine == "graph" and (slow or video or only or hold or request):
-        typer.secho(
-            "--slow / --video / --only / --hold / --request 는 pipeline 엔진에서만 "
-            "동작합니다 (graph 는 결과 동일성 대조용).",
-            fg=typer.colors.RED,
-        )
-        raise typer.Exit(2)
 
     if engine == "graph":
         from prova.graph import run_graph
