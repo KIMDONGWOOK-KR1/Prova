@@ -163,6 +163,14 @@ def _no_error_reason(state: PageState) -> str:
 
     판정(FAIL)은 그대로 둔다. 기획서가 문구를 노출한다고 적었고 구현은 노출하지
     않으므로 불일치는 실재한다. 바꾸는 것은 **사유**뿐이다.
+
+    ## 기본 분기도 같은 병이었다 (2026-09-22)
+
+    위에서 native 분기만 고치고 기본 분기에는 '구현이 이 규칙을 강제하지 않는다'
+    를 남겨 뒀다. 멘토링 시연 준비에서 상품등록 가격 규칙(P1) 사유로 화면에
+    그대로 떴다. 이번엔 사실과 맞는 경우였지만, 그것도 도구가 본 것이 아니다 —
+    도구가 본 것은 '위반값을 제출한 뒤 에러 문구가 없었다' 까지다. 검증이 서버
+    쪽 다른 단계에 있을 수도, 다른 화면에 있을 수도 있다. 관찰만 쓴다.
     """
     if state.blocked_by_browser:
         return (
@@ -171,7 +179,7 @@ def _no_error_reason(state: PageState) -> str:
             "기획서가 지정한 문구는 노출되지 않습니다 "
             "(novalidate 를 쓰고 문구를 직접 노출하거나, 기획서를 고쳐야 합니다)"
         )
-    return "에러가 전혀 노출되지 않음 — 구현이 이 규칙을 강제하지 않는다"
+    return "에러가 전혀 노출되지 않음 — 위반값을 제출한 뒤 화면에 에러 문구가 없었다"
 
 
 def _judge_error_message(expected: Expectation, state: PageState) -> tuple[bool, str]:
