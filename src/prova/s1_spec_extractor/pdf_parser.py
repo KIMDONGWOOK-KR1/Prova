@@ -391,6 +391,32 @@ class ParsedDocument:
             table.setdefault(_header_key(row["element_id"]), row["label"])
         return table
 
+    _SUCCESS_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*성공\s*조건\s*$")
+    # 다음 절의 시작 — '4. 실패 조건', '2-1. 입력 검증 규칙 상세' 같은 번호 붙은 제목.
+    _NUMBERED_HEADING_RE = re.compile(r"^\s*\d+(?:-\d+)?\.\s")
+
+    def declared_success_text(self) -> Optional[str]:
+        """'성공 조건' 절의 본문. 절이 없으면 None.
+
+        S1 의 모델이 success_condition 을 의역하다가 경로·문구를 빠뜨릴 때 되짚어
+        읽는 원문이다(extractor._apply_declared_success). saucedemo 실측에서 본문의
+        `/inventory.html` 과 "Products" 가 둘 다 빠졌고, 정상 케이스는 '에러 없음' 만
+        보고 통과했다. 다음 번호 붙은 절 제목에서 멈춘다 — 실패 조건의 경로가
+        섞이면 엉뚱한 기대가 된다.
+        """
+        for page in self.pages:
+            lines = [text for text, _ in page.body_lines]
+            for i, text in enumerate(lines):
+                if not self._SUCCESS_HEADING_RE.match(text):
+                    continue
+                body = []
+                for line in lines[i + 1:]:
+                    if self._NUMBERED_HEADING_RE.match(line):
+                        break
+                    body.append(line)
+                return normalize_ws(" ".join(body)) or None
+        return None
+
     def unread_example_tables(self) -> list[str]:
         """입력-결과 예시 표로 보이는데 요소와 맞는 열이 하나도 없어 쓰지 않은 표.
 

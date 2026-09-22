@@ -170,6 +170,7 @@ h2 { font-size:17px; margin:28px 0 12px; }
 .tag.rule { background:var(--accent-bg); color:var(--accent-fg); font-weight:600; }
 .tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
 .tag.cat.infra { background:var(--warn-bg); color:var(--warn-fg); }
+.tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
 .breakdown { color:var(--muted); font-size:13px; margin:-8px 0 16px; }
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; }
@@ -271,6 +272,19 @@ def _shots_html(verdict: Verdict) -> str:
     return f"<div class='shots'>{items}</div>"
 
 
+def is_weak_pass(verdict: Verdict) -> bool:
+    """성공 조건 없이 '에러가 안 떴다' 만 보고 통과한 케이스인가 (WEAK_PASS_REASON).
+
+    판정은 PASS 로 둔다 — 약하게나마 확인한 것이다. 다만 경로·문구로 확인한 통과와
+    같은 모양이면 읽는 사람은 둘을 구별하지 못한다. saucedemo 실측에서는 로그인하지
+    않고도 이 모양으로 통과했다(2026-09-23).
+    """
+    from prova.s5_verifier.assertion_engine import WEAK_PASS_REASON
+
+    return (verdict.verdict == "PASS"
+            and (verdict.evidence or {}).get("actual") == WEAK_PASS_REASON)
+
+
 def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     ev = verdict.evidence or {}
     # 요소와 규칙을 함께 보여준다. 화면에 같은 규칙을 가진 요소가 여럿이면
@@ -288,6 +302,8 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
         name = CATEGORY_LABELS.get(verdict.failure_category,
                                    CATEGORY_LABELS["unknown"])[0]
         cat_tag = f"<span class='tag cat {kind}'>{_esc(name)}</span>"
+    elif is_weak_pass(verdict):
+        cat_tag = "<span class='tag cat weak'>약한 확인</span>"
 
     reason = ""
     if verdict.verdict == "FAIL" and verdict.failure_detail:
@@ -596,6 +612,10 @@ def render_html(report: TestReport) -> str:
     breakdown = (f"<div class='breakdown'>실패 {len(fails)} = 기획서와 다름 {defects}"
                  f" · 실행 문제 {len(fails) - defects} (도구·환경을 먼저 확인)</div>"
                  if fails else "")
+    weak = sum(1 for v in passes if is_weak_pass(v))
+    if weak:
+        breakdown += (f"<div class='breakdown'>성공 조건이 없어 '에러 없음'만 확인한 정상 케이스 "
+                      f"{weak}건 — 기획서의 성공 조건에 이동 경로나 문구가 있으면 더 강하게 확인합니다</div>")
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
