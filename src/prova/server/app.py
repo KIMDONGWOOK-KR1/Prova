@@ -211,6 +211,8 @@ def plan(body: PlanRequest) -> dict:
             # 실행 전에 봐야 한다. 구현을 검증하기 전에 입력끼리 모순이면 그게
             # 먼저다.
             "design_mismatches": state.design_mismatches,
+            # 대상 URL 에 화면 경로가 붙어 있어 뗐다면 그 사실 (pipeline.strip_screen_path)
+            "url_note": state.url_note,
         }
 
     return _submit("plan", work)
