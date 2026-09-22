@@ -330,6 +330,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_date_filter(spec, doc.declared_date_filter())
     _apply_declared_status_filter(spec, doc.declared_status_filter())
     _apply_declared_options(spec, doc.declared_options())
+    _apply_declared_success(spec, doc)
     _drop_invented_strings(spec, doc)
 
     spec.warnings.extend(structural_warnings(spec, doc))
@@ -691,6 +692,35 @@ def _apply_declared_date_filter(spec: ScreenSpec, declared: Optional[dict[str, s
         )
         return
     spec.date_filter = DateFilter(**kwargs)
+
+
+def _apply_declared_success(spec: ScreenSpec, doc: ParsedDocument) -> None:
+    """모델의 성공 조건 문장에 경로·문구가 하나도 없으면 기획서 본문에서 다시 읽는다.
+
+    saucedemo 실측(2026-09-23)에서 7B 가 "로그인하면 상품 목록으로 이동한다" 처럼
+    의역해 본문의 `/inventory.html` 과 "Products" 를 둘 다 잃었다. 정상 케이스의
+    기대가 비어 '에러 없음' 만 보고 통과했다.
+
+    채우는 조건은 좁다 — 모델 문장에서 **아무것도** 못 찾았고, 본문에서는 찾았을
+    때만. '쓸 만하다' 의 기준은 케이스 생성기가 쓰는 것과 같은 파서다
+    (generator.parse_success_expectation). 채운 사실은 경고로 남긴다.
+    """
+    from prova.s2_case_generator.generator import parse_success_expectation
+
+    def usable(text: str) -> bool:
+        exp = parse_success_expectation(spec.model_copy(update={"success_condition": text}))
+        return bool(exp.value or exp.url_contains)
+
+    if usable(spec.success_condition or ""):
+        return
+    text = doc.declared_success_text()
+    if not text or not usable(text):
+        return
+    spec.success_condition = text
+    spec.warnings.append(
+        f"성공 조건을 기획서 본문에서 채웠습니다: {text!r} "
+        f"(추출 결과에 이동 경로·문구가 없었습니다)"
+    )
 
 
 def _apply_declared_options(spec: ScreenSpec, declared: dict[str, list[str]]) -> None:

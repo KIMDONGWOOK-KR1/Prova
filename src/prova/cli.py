@@ -423,7 +423,13 @@ def _print_summary(report, run_dir: Path) -> None:
 
     # 구현 결함(assertion_mismatch)과 도구·환경 실패를 섞어 찍지 않는다. 분류는
     # 판정에 이미 있는데, 모두 같은 모양으로 찍으면 화면에서는 그 구분이 사라진다.
-    from prova.s6_report.report_builder import CATEGORY_LABELS
+    from prova.s6_report.report_builder import CATEGORY_LABELS, is_weak_pass
+
+    weak = sum(1 for v in report.cases if is_weak_pass(v))
+    if weak:
+        typer.secho(f"  ! 성공 조건이 없어 '에러 없음'만 확인한 정상 케이스 {weak}건 — "
+                    "기획서의 성공 조건에 이동 경로나 문구가 있으면 더 강하게 확인합니다",
+                    fg=typer.colors.YELLOW)
 
     fails = [v for v in report.cases if v.verdict == "FAIL"]
     defects = [v for v in fails if v.failure_category == "assertion_mismatch"]

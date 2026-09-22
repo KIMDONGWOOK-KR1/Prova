@@ -224,6 +224,11 @@ def _judge_redirect(expected: Expectation, state: PageState) -> tuple[bool, str]
     return False, f"기대 경로 {target!r} 로 이동하지 않음 (현재 {state.url})"
 
 
+#: 성공 조건에서 경로·문구를 하나도 못 찾아 '에러가 안 떴다' 만 보고 통과시킨 사유.
+#: 리포트·터미널이 이 문장으로 '약한 확인' 을 알아본다 — 사유를 바꾸면 거기도 같이 바뀐다.
+WEAK_PASS_REASON = "성공 조건이 명시되지 않아 '에러 없음' 으로 확인"
+
+
 def _judge_toast_or_redirect(expected: Expectation, state: PageState) -> tuple[bool, str]:
     """정상 처리 확인 — 경로 이동과 문구 노출을 둘 다 검사한다.
 
@@ -243,7 +248,7 @@ def _judge_toast_or_redirect(expected: Expectation, state: PageState) -> tuple[b
         # 기획서에서 성공 조건을 못 뽑은 경우. 에러가 없으면 통과로 본다.
         if _error_shown(state):
             return False, f"에러가 노출됨: {' '.join(state.error_texts)!r}"
-        return True, "성공 조건이 명시되지 않아 '에러 없음' 으로 확인"
+        return True, WEAK_PASS_REASON
 
     passed = all(ok for ok, _ in checks)
     return passed, "; ".join(reason for _, reason in checks)

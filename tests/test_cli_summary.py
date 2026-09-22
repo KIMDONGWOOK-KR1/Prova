@@ -52,3 +52,13 @@ def test_실행_문제가_없으면_그_묶음을_찍지_않는다(capsys):
     out = capsys.readouterr().out
     assert "기획서와 다름 1건" in out
     assert "실행 문제" not in out
+
+
+def test_약한_확인_통과도_한_줄로_알린다(capsys):
+    from prova.s5_verifier.assertion_engine import WEAK_PASS_REASON
+
+    weak = SimpleNamespace(verdict="PASS", failure_category=None, title="정상 검색",
+                           violates=None, failure_detail="",
+                           evidence={"actual": WEAK_PASS_REASON})
+    _print_summary(_report(weak), Path("runs/x"))
+    assert "'에러 없음'만 확인한 정상 케이스 1건" in capsys.readouterr().out
