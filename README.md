@@ -126,6 +126,25 @@ selector-first 는 취향이 아니라 측정 결과다: 더 정확하고, 없�
 124배 빠르다. 2차는 1차가 닿지 못하는 자리에서만 값을 한다. 전체 표는
 `docs/measurements/grounding-selector-vs-vlm-2026-08-27.md`.
 
+**판정 정확도와 리포트 완결성도 한 숫자로 잰다** (2026-09-23, mock).
+
+| 지표 | 값 | 뜻 |
+|---|---|---|
+| PASS/FAIL 판단 정확도 (§9 ≥90%) | **196/196 = 100.0%** · 오탐 0 · 미탐 0 | 여섯 화면 × good/bad · 커버리지 100% |
+| 리포트 완결성 (§9 100%) | **793/793 = 100.0%** | 리포트 12개 · 케이스 196건 |
+
+위 표의 화면별 문장("심은 결함을 모두 지목, 오탐 0건")은 맞는 말이었지만 **한 숫자가
+아니었다.** 정답 라벨은 `sut/app.py` 의 심은 결함 표에서 왔고, 라벨마다 어느 결함
+때문인지 적는다 — 결함에 대응되지 않는 FAIL 라벨은 만들 수 없다.
+
+완결성은 처음 재니 **79.1%** 였다. **입력 데이터가 리포트에 하나도 없었다**(0/166) —
+`StepResult` 에 `value` 필드가 없어 실행한 값이 결과로 넘어가지 않았다. 개발자가 FAIL 을
+보고 가장 먼저 하는 일이 같은 값을 손으로 넣어 보는 것인데 그걸 할 수 없었다. 고치고
+다시 재서 100% 다. 두 측정 모두 **일부러 틀린 입력으로 점수가 내려가는지 테스트한다** —
+늘 100% 를 내는 채점기는 아무것도 재지 않는다.
+`docs/measurements/verdict-accuracy-2026-09-23.md` ·
+`docs/measurements/report-completeness-2026-09-23.md`.
+
 
 `bad`에서도 구현돼 있는 검증은 PASS로 나온다. 한 리포트 안에
 "구현된 규칙은 PASS, 누락된 규칙은 FAIL"이 함께 나오는 것이 판정을 신뢰할 근거다.
@@ -173,6 +192,8 @@ torch 를 끌고 오는데, 아무도 설치하지 않는 것을 프로젝트 �
 | `build_iou_dataset.py` | — 탐지 시험지를 굳힌다 (`fixtures/iou`) | 불필요 |
 | `eval_vlm_iou.py` | 화면 이미지에서 요소를 찾는 정확도 (IoU·적중·오탐·속도) | 필요 |
 | `eval_selector_speed.py` | 같은 시험지를 1차 경로로 — §9 의 selector vs VLM 비교 | 불필요 (SUT 만) |
+| `eval_verdict_accuracy.py` | 판정이 정답 라벨과 맞는가 — §9 의 PASS/FAIL 판단 정확도 | 불필요 (SUT 만) |
+| `eval_report_completeness.py` | 리포트가 §9 의 다섯 필드를 다 담았는가 (로그·입력·기대·실제·원인) | 불필요 |
 | `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
 | `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
 

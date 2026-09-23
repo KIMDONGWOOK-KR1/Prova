@@ -186,6 +186,10 @@ table.kv td { padding:5px 0; word-break:break-all; }
 .steps th, .steps td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
 .steps th { background:var(--bg-inset); font-weight:600; }
 .steps td.err { color:var(--fail); }
+/* 입력값은 그대로 복사해 다시 넣어 보라고 있는 칸이다. 고정폭이라야 공백과
+   비슷한 글자(l·1·I, O·0)가 구분된다 — 값 하나가 달라지면 재현이 안 된다. */
+.steps td.val { font-family:var(--font-mono); white-space:pre-wrap;
+                word-break:break-all; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 .shots a { display:block; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
