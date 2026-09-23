@@ -345,18 +345,35 @@ def _label_model_warnings(spec: ScreenSpec, doc_text: str) -> None:
     (2026-09-22). 읽는 사람은 도구가 기획서에서 문제를 찾았다고 읽는다 —
     코드가 낸 구조 경고와 같은 칸에 같은 모양으로 섞여 있어서다.
 
-    본문에 그대로 있는 문장은 정보가 0 이라 뺀다. 공백을 전부 걷고 비교하는
+    기획서를 옮겨 적은 문장은 정보가 0 이라 뺀다. 공백을 전부 걷고 비교하는
     이유: PDF 는 문장 중간에서 줄을 바꾸고, 한글은 그 자리에 공백이 생기기도
     안 생기기도 한다. 나머지는 버리지 않는다 — 모델이 판단을 못 했다고 말하는
     통로는 필요하다. 다만 '모델 메모' 로 출처를 밝힌다.
+
+    ## 글자가 같은지가 아니라 얼마나 겹치는지를 본다 (2026-09-23)
+
+    처음에는 '본문에 통째로 들어 있는가' 만 봤다. 7B 가 실패 조건 표를 **의역해서**
+    옮기자 그대로 새어 나갔다 — `비어 있음` 이 `비어 있으면` 으로, 큰따옴표가
+    작은따옴표로 바뀐 정도였다. 그래서 글자 네 개짜리 조각으로 잘라 본문에 있는
+    조각의 비율을 본다. 실측(saucedemo 기획서)에서 옮겨 적은 메모는 0.82~0.88,
+    판단을 말한 메모("가격의 최대값이 기획서에 없습니다")는 0.00~0.10 이었다.
+    경계를 그 한가운데인 0.6 에 둔다 — 어느 쪽으로도 여유가 있다.
     """
     def squash(s: str) -> str:
-        return "".join(s.split())
+        return "".join(s.split()).casefold()
 
     body = squash(doc_text)
+
+    def restates(memo: str, n: int = 4) -> bool:
+        m = squash(memo)
+        if len(m) < n:
+            return m in body
+        grams = [m[i:i + n] for i in range(len(m) - n + 1)]
+        return sum(1 for g in grams if g in body) / len(grams) >= 0.6
+
     kept = []
     for w in spec.warnings:
-        if not w.strip() or squash(w) in body:
+        if not w.strip() or restates(w):
             continue
         kept.append(f"모델 메모: {w.strip()}")
     spec.warnings = kept

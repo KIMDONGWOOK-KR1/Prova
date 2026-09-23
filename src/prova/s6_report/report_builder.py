@@ -36,6 +36,10 @@ from prova.theme import TOKENS_CSS
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
 
+#: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
+#: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
+MEMO_PREFIX = "모델 메모:"
+
 # 스텝 표의 동작·상태. 코드 이름(fill·ok)은 코드를 아는 사람만 읽는다.
 ACTION_LABELS = {
     "navigate": "이동", "fill": "입력", "click": "클릭", "select": "선택",
@@ -417,11 +421,22 @@ def render_html(report: TestReport) -> str:
     passes = [v for v in report.cases if v.verdict == "PASS"]
 
     warnings = s.get("spec_warnings") or []
+    # 코드가 확인한 경고와 모델이 남긴 메모를 나눈다. 한 상자에 섞이면 도구가
+    # 기획서에서 찾은 문제인지 모델이 한 말인지 읽는 사람이 구별하지 못한다.
+    memos = [w for w in warnings if w.startswith(MEMO_PREFIX)]
+    checked = [w for w in warnings if not w.startswith(MEMO_PREFIX)]
     warn_html = ""
-    if warnings:
-        items = "".join(f"<div>· {_esc(w)}</div>" for w in warnings)
+    if checked:
+        items = "".join(f"<div>· {_esc(w)}</div>" for w in checked)
         warn_html = (
             "<div class='warn'><b>설계 문서 추출 경고</b>"
+            f"{items}</div>"
+        )
+    if memos:
+        items = "".join(f"<div>· {_esc(w[len(MEMO_PREFIX):].strip())}</div>" for w in memos)
+        warn_html += (
+            "<div class='warn'><b>모델 메모</b> — 모델이 '판단할 수 없다' 고 남긴 말입니다. "
+            "도구가 확인한 사실이 아닙니다."
             f"{items}</div>"
         )
 

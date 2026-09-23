@@ -84,6 +84,32 @@ class PageState:
     baseline_text: str | None = None
 
 
+# 오류 영역을 모으는 스크립트 (capture_page_state).
+#
+# role=alert 만 보던 것을 넓혔다(2026-09-23). parabank 는 `span.error`, expandtesting 은
+# `div.alert-danger`, saucedemo 는 `[data-test=error]` 에 오류를 띄우고 role=alert 가 없다.
+# 그러면 '에러가 떴는가' 판정이 화면에 오류가 떠 있는데도 "에러가 전혀 노출되지 않음"
+# 이라고 거짓으로 말하고, 실패 사유에서 화면의 오류 문구가 빠진다.
+#
+# 넓히되 오탐을 막는 조건 셋 — 보이는 것만(숨은 오류 칸: practicetestautomation), 글자가
+# 있는 것만(`input_error` 클래스가 붙은 빈 입력란: saucedemo), 성공 알림 제외(`.alert`
+# 전체가 아니라 `alert-danger` 만). 겹치면 가장 안쪽 것만 센다 — 같은 글자를 두 번 세지 않게.
+_ERROR_AREA_JS = """() => {
+    const sel = '[role="alert"], .alert-danger, [class*="error" i], [id*="error" i], '
+              + '[data-test*="error" i]';
+    const visible = (e) => {
+        const s = getComputedStyle(e);
+        return s.display !== 'none' && s.visibility !== 'hidden'
+            && e.getClientRects().length > 0;
+    };
+    const picked = Array.from(document.querySelectorAll(sel))
+        .filter(e => visible(e) && (e.innerText || '').trim());
+    return picked
+        .filter(e => !picked.some(o => o !== e && e.contains(o)))
+        .map(e => e.innerText);
+}"""
+
+
 def capture_page_state(
     page,
     console_errors: list[str] | None = None,
@@ -101,10 +127,8 @@ def capture_page_state(
     """
     error_texts: list[str] = []
     try:
-        for locator in page.get_by_role("alert").all():
-            text = normalize_ws(locator.inner_text())
-            if text:
-                error_texts.append(text)
+        error_texts = [normalize_ws(t) for t in page.evaluate(_ERROR_AREA_JS)
+                       if normalize_ws(t)]
     except Exception:
         pass
 
@@ -734,10 +758,23 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
     if passed:
         return Verdict(**base, verdict="PASS", evidence=evidence)
 
+    # 정상 케이스가 실패했는데 화면에 오류 문구가 떠 있으면 사유에 싣는다. expandtesting
+    # 2회차에서 계정 중복으로 가입이 거절됐는데 사유는 "경로 '/login' 미이동" 뿐이었다 —
+    # 화면이 이미 말해 준 원인을 개발자가 다시 찾게 된다. (위반 케이스는 사유에 이미
+    # '다른 문구가 노출됨' 으로 실린다.)
+    if case.type == "positive" and state.error_texts:
+        reason += f" · 화면 오류: {' / '.join(state.error_texts)!r}"
+
+    # 콘솔 오류는 분류를 바꾸지 않고 근거로 남긴다 (_classify 설명).
+    detail = _failure_detail(case, reason)
+    if state.console_errors:
+        evidence["console_errors"] = state.console_errors[:5]
+        detail += f" (참고: 콘솔 오류 {len(state.console_errors)}건 — 판정과 무관할 수 있음)"
+
     return Verdict(
         **base, verdict="FAIL",
         failure_category=_classify(case, state),
-        failure_detail=_failure_detail(case, reason),
+        failure_detail=detail,
         evidence=evidence,
     )
 
@@ -788,11 +825,18 @@ def _classify(case: TestCase, state: PageState) -> str:
     1차에서는 LLM 을 쓰지 않는다. 실행이 끝까지 진행된 뒤의 불일치는 대부분
     assertion_mismatch 이고, 그 판단에 추론이 필요하지 않다. LLM 보조 분류는
     2차에서 unknown 으로 남는 사례를 모아 본 뒤 도입한다.
+
+    ## 콘솔 오류로 분류를 바꾸지 않는다 (2026-09-23)
+
+    예전에는 콘솔 오류가 하나라도 있으면 page_error('실행 문제')로 분류했다. 광고·분석
+    스크립트가 콘솔 오류를 내는 실사이트(automationexercise)에서는 판정 실패가 전부
+    '구현 결함이 아닐 수 있다' 로 바뀌었다 — **진짜 결함이 숨는 방향**이다. 앱 자신의
+    JS 오류로 검증이 안 돌았다면 그것도 구현을 고칠 일이고, 남의 스크립트 오류라면 판정과
+    무관하다. 어느 쪽도 '실행 문제' 의 근거가 아니다. 콘솔 오류는 근거와 사유에 남긴다.
+    HTTP 오류로 화면을 못 연 경우는 스텝 단계에서 page_error 로 따로 분류된다.
     """
-    if state.console_errors:
-        return "page_error"
     # 도구가 목록을 찾고도 읽지 못했으면 '기획서와 다름' 이 아니다. 그렇게 두면
-    # 없는 결함을 보고하는 것이고, 개발자가 멀쩡한 구현을 고치러 간다(설계 판단 19).
+    # 없는 결함을 보고하는 것이고, 개발자가 멀쩡한 구현을 고치러 간다(설계 판단 19·22).
     if state.collection is not None and state.collection.status == "unverifiable":
         return "unverifiable"
     if state.column_texts and any(
