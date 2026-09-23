@@ -26,6 +26,11 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
     find-account F1   계정 존재 여부를 문구로 노출 (금지 문구)
     product     P1    가격 숫자 검증 없음
                 P2    로그인 가드 없음
+    contact     H1    연락처 정규식(pattern) 형식 검증 없음
+                H2    문의 내용 최소 길이 검증 없음 (최대 길이만 구현)
+                H3    접수 문구가 기획서와 다름 ("접수 완료!")
+    (contact 에는 `/icons` 변형이 더 있다 — 검증 로직은 good 과 같고 화면의
+     접근성 이름이 **하나도 없다**. 2차 경로(VLM)를 재는 대상이다.)
     orders      O1    주문 목록이 오름차순 (기획서는 최신순)
                 O2    합계가 마지막 표시 행을 뺀 값 (O1 과 겹쳐 569,000)
                 O3    날짜 필터가 시작일 당일을 뺀다 (경계 비교 등호 누락)
@@ -353,6 +358,27 @@ def check_email_format(email: str) -> bool:
     return bool(re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email))
 
 
+#: 문의하기 — 기획서 §2 의 문구·목록. 화면이 쓰는 값은 전부 여기 하나에서 온다.
+MSG_CONTACT_NAME_LENGTH = "이름은 2자 이상 20자 이하로 입력하세요."
+MSG_CONTACT_PHONE_FORMAT = "연락처는 010-0000-0000 형식으로 입력하세요."
+MSG_CONTACT_CATEGORY_REQUIRED = "문의 유형을 선택하세요."
+MSG_CONTACT_CONTENT_LENGTH = "문의 내용은 10자 이상 500자 이하로 입력하세요."
+MSG_CONTACT_PRIVACY_REQUIRED = "개인정보 수집에 동의해야 합니다."
+MSG_CONTACT_DONE = "문의가 접수되었습니다. 답변은 입력하신 이메일로 보내 드립니다."
+#: H3 — bad 가 노출하는 다른 문구. 기획서에 없는 말이다.
+MSG_CONTACT_DONE_WRONG = "접수 완료!"
+
+CONTACT_CATEGORIES = ("결제", "배송", "환불", "기타")
+
+#: 기획서 §2-1 의 `pattern` 규칙 그대로. 자리수와 구분자까지 고정한다 —
+#: 상담원이 그 값으로 바로 전화를 걸 수 있어야 한다.
+_PHONE_RE = re.compile(r"^010-\d{4}-\d{4}$")
+
+
+def check_phone_format(phone: str) -> bool:
+    return bool(_PHONE_RE.fullmatch(phone))
+
+
 def check_password_rules(pw: str) -> bool:
     """기획서 §2-1 비밀번호 규칙: 8자 이상 + 대문자 1자 이상 + 특수문자 1자 이상."""
     return (
@@ -444,6 +470,21 @@ def render_find_account(
         name="find_account.html",
         context={"variant": variant, "error": error, "sent": sent,
                  "slow_delay_ms": SLOW_DELAY_MS},
+    )
+
+
+def render_contact(
+    request: Request,
+    variant: str,
+    form: dict,
+    error: str | None = None,
+    done: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="contact.html",
+        context={"variant": variant, "form": form, "error": error, "done": done,
+                 "categories": CONTACT_CATEGORIES},
     )
 
 
@@ -1078,6 +1119,93 @@ for _variant in ("good", "bad", "slowleak"):
     _register_find_account(_variant)
 
 
+# contact — 문의하기 (2026-09-23 추가)
+# ---------------------------------------------------------------------------
+#
+# 이 화면이 앞의 것들과 다른 점: **정규식 형식 규칙(`pattern`)을 처음 쓴다.**
+#
+# 기존 화면의 형식 검증은 전부 `format: email` 이었다. 이메일은 '@ 가 있고
+# 점이 있으면' 통과라 느슨하다. 연락처는 자리수와 구분자까지 맞아야 하므로
+# 규칙을 정규식으로 고정한다 — 파이프라인의 `pattern` 경로를 실제로 밟는
+# 첫 화면이다(`rule_expander` 는 지원하고 있었는데 쓰는 기획서가 없었다).
+#
+# 심은 결함 셋은 서로 다른 **종류**다. 같은 종류를 또 심으면 화면을 늘린 만큼의
+# 검증력을 얻지 못한다(회원가입 화면에서 배운 것).
+#
+#   H1  정규식 형식 검증이 없다        — 새 규칙 종류가 실제로 잡히는지
+#   H2  최소 길이 검증이 없다          — 대조군. 이미 증명된 종류가 이 화면에서도 도는지
+#   H3  접수 문구가 기획서와 다르다    — 값이 아니라 **문구**가 어긋나는 종류
+
+
+def _contact_error(variant: str, f: dict) -> str | None:
+    """문의 검증. 통과하면 None, 아니면 노출할 문구.
+
+    검증 순서는 기획서 §2 의 요소 순서와 같다. 순서가 다르면 한 번에 두 곳을
+    틀리게 입력했을 때 어느 문구가 뜨는지가 구현마다 달라진다.
+    """
+    if not f["name"] or not f["email"] or not f["phone"] or not f["content"]:
+        return MSG_REQUIRED
+    # H2: bad 는 이름 길이는 보면서 문의 내용 길이는 보지 않는다. 같은 규칙
+    # (min_length)이 한 화면 안에서 한쪽만 구현된 모양이다 — 닉네임 max_length 에서
+    # 배운 것과 같은 자리이고, 규칙 단위로 케이스를 가르는 설계의 근거다.
+    if not (2 <= len(f["name"]) <= 20):
+        return MSG_CONTACT_NAME_LENGTH
+    if not check_email_format(f["email"]):
+        return MSG_EMAIL_FORMAT
+    # H1: bad 는 연락처 형식을 보지 않는다.
+    if variant != "bad" and not check_phone_format(f["phone"]):
+        return MSG_CONTACT_PHONE_FORMAT
+    if not f["category"]:
+        return MSG_CONTACT_CATEGORY_REQUIRED
+    # H2: bad 는 최대 길이만 보고 최소 길이를 빠뜨린다. 한 요소의 규칙 중 일부만
+    # 구현된 모양이라 '규칙 하나당 케이스 하나' 설계가 그 하나만 짚어야 한다
+    # (닉네임 C3 의 거울상 — 그쪽은 최소만 구현하고 최대를 빠뜨렸다).
+    too_short = len(f["content"]) < 10
+    too_long = len(f["content"]) > 500
+    if too_long or (variant != "bad" and too_short):
+        return MSG_CONTACT_CONTENT_LENGTH
+    if not f["agree_privacy"]:
+        return MSG_CONTACT_PRIVACY_REQUIRED
+    return None
+
+
+def _contact_form(name: str, email: str, phone: str, category: str,
+                  content: str, agree_privacy: str) -> dict:
+    return {"name": name, "email": email, "phone": phone, "category": category,
+            "content": content, "agree_privacy": bool(agree_privacy)}
+
+
+CONTACT_VARIANTS = ("good", "bad", "icons")
+
+
+for _variant in CONTACT_VARIANTS:
+    def _register_contact(variant: str) -> None:
+        @app.get(f"/{variant}/contact", response_class=HTMLResponse)
+        def show_form(request: Request):
+            return render_contact(request, variant, _contact_form("", "", "", "", "", ""))
+
+        @app.post(f"/{variant}/contact", response_class=HTMLResponse)
+        def submit(request: Request,
+                   name: str = Form(default=""),
+                   email: str = Form(default=""),
+                   phone: str = Form(default=""),
+                   category: str = Form(default=""),
+                   content: str = Form(default=""),
+                   agree_privacy: str = Form(default="")):
+            f = _contact_form(name, email, phone, category, content, agree_privacy)
+            error = _contact_error(variant, f)
+            if error:
+                return render_contact(request, variant, f, error=error)
+            # H3: bad 는 기획서에 없는 문구를 노출한다.
+            done = MSG_CONTACT_DONE_WRONG if variant == "bad" else MSG_CONTACT_DONE
+            return render_contact(request, variant, f, done=done)
+
+        show_form.__name__ = f"{variant}_contact_form"
+        submit.__name__ = f"{variant}_contact_submit"
+
+    _register_contact(_variant)
+
+
 @app.get("/", response_class=HTMLResponse)
 def index():
     return HTMLResponse(
@@ -1091,6 +1219,9 @@ def index():
         "<li><a href='/bad/search'>/bad/search — 의도적 불일치 구현</a></li>"
         "<li><a href='/good/find-account'>/good/find-account — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/find-account'>/bad/find-account — 계정 존재 여부를 노출</a></li>"
+        "<li><a href='/good/contact'>/good/contact — 기획서 준수 구현</a></li>"
+        "<li><a href='/bad/contact'>/bad/contact — 연락처 형식(H1)·내용 길이(H2)·문구(H3)</a></li>"
+        "<li><a href='/icons/contact'>/icons/contact — 라벨·버튼이 전부 아이콘 (2차 경로 대상)</a></li>"
         "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"
