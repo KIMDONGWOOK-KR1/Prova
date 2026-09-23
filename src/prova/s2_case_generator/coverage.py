@@ -46,10 +46,10 @@ from __future__ import annotations
 import re
 
 from prova.models import ScreenSpec, TestCase
-from prova.text_utils import loosen, quoted_re
+from prova.text_utils import find_quoted, loosen
 
-# 표·문장 안의 인용된 문구. pdf_parser 와 같은 인용부호 집합을 본다.
-_QUOTED = quoted_re(80)
+# 표·문장 안의 인용된 문구 길이 상한 (text_utils.find_quoted).
+_QUOTED_MAX = 80
 
 
 def declared_messages(spec: ScreenSpec) -> dict[str, str]:
@@ -69,9 +69,9 @@ def declared_messages(spec: ScreenSpec) -> dict[str, str]:
     add(spec.required_message, "필수 입력 공통 문구")
 
     for i, condition in enumerate(spec.failure_conditions, 1):
-        for quoted in _QUOTED.findall(condition):
+        for quoted in find_quoted(condition, _QUOTED_MAX):
             add(quoted, f"실패 조건 {i}번")
-    for quoted in _QUOTED.findall(spec.success_condition or ""):
+    for quoted in find_quoted(spec.success_condition or "", _QUOTED_MAX):
         add(quoted, "성공 조건")
     for i, scenario in enumerate(spec.scenarios, 1):
         add(scenario.expect_text, f"예시 시나리오 {i}번")
@@ -119,7 +119,7 @@ def _originals(spec: ScreenSpec) -> list[str]:
     if spec.required_message:
         out.append(spec.required_message)
     for condition in spec.failure_conditions:
-        out.extend(_QUOTED.findall(condition))
-    out.extend(_QUOTED.findall(spec.success_condition or ""))
+        out.extend(find_quoted(condition, _QUOTED_MAX))
+    out.extend(find_quoted(spec.success_condition or "", _QUOTED_MAX))
     out.extend(s.expect_text for s in spec.scenarios)
     return [t for t in out if t]

@@ -49,7 +49,7 @@ from typing import Optional
 
 import pdfplumber
 
-from prova.text_utils import normalize_ws, quoted_re
+from prova.text_utils import find_quoted, normalize_ws
 
 # 건수 열을 값의 모양으로 찾을 때 쓴다. 음수·소수는 건수가 아니다.
 _INT_RE = re.compile(r"\d+")
@@ -64,8 +64,8 @@ _INT_RE = re.compile(r"\d+")
 # 문구다. 넣으면 회원가입 기획서에서 후보가 셋이 되어 판별을 포기하게 된다.
 _EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|누락|공백")
 
-# 표 칸 안의 인용된 문구. 기획서가 쓰는 인용부호가 여러 가지다.
-_QUOTED_RE = quoted_re(60)
+# 표 칸 안의 인용된 문구 길이 상한 (text_utils.find_quoted).
+_QUOTED_MAX = 60
 
 # 흐름 표의 '화면 순서'·'이동 방법' 칸에서 항목을 가르는 구분자.
 # 화살표 표현이 기획서마다 다르고(->, →, >, 쉼표) PDF 변환에서 모양이 바뀌기도 한다.
@@ -496,9 +496,9 @@ class ParsedDocument:
                 continue
             if not _EMPTY_INPUT_RE.search(normalize_ws(row[cond_col])):
                 continue
-            quoted = _QUOTED_RE.search(row[act_col])
+            quoted = find_quoted(row[act_col], _QUOTED_MAX)
             if quoted:
-                found.append(normalize_ws(quoted.group(1)))
+                found.append(normalize_ws(quoted[0]))
         return found[0] if len(found) == 1 else None
 
     def _failure_table(self) -> Optional[ParsedTable]:
