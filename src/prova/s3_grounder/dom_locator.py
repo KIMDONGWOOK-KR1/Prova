@@ -503,7 +503,9 @@ def _locate_table_cells(page, target: str):
     t = m["table"] + 1
     if m["kind"] == "col":
         if m["colspan"] != 1:
-            return ("absent", None, None, 0,
+            # absent 가 아니다 — 머리글은 화면에 **있고**, 못 읽는 것은 도구 쪽이다.
+            # absent 로 돌리면 0건 기대에서 '0건으로 확인' PASS 가 난다(설계 판단 19).
+            return ("unverifiable", None, None, 0,
                     f"표 머리글 {target!r} 가 여러 열에 걸쳐 있어(colspan) 열을 정할 수 없음")
         cells = page.locator(f"xpath=(//table)[{t}]/tbody/tr/*[{m['index']}]")
         detail = f"표 머리글 {target!r} {m['index']}열로 찾음 (aria-label 없음)"
@@ -570,10 +572,25 @@ class CollectionCount:
     반대로 3건이 나와야 하는데 목록이 없는 것은 진짜 실패다. 같은 status=absent
     이지만 기대값이 다르므로 판정이 갈린다 — 그 판단은 S5 가 한다. S3 는 무엇을
     봤는지만 사실대로 보고한다.
+
+    ## absent 와 unverifiable 을 가르는 이유
+
+    absent 는 **화면에 대한 진술**이다("그 목록이 렌더되지 않았다"). 그래서 0건
+    기대의 PASS 근거가 될 수 있다.
+
+    그런데 도구가 대상을 **찾고도 읽지 못하는** 경우가 있다 — 머리글에 colspan 이
+    붙어 어느 열인지 정할 수 없을 때가 그렇다. 이때 absent 를 돌려주면 "표에 3건이
+    있는데 0건으로 확인" 이라는 빈 통과가 난다. 화면에 대해 거짓을 말하는 것이다.
+
+    그 경우는 unverifiable 로 돌려준다. S5 는 기대 건수와 무관하게 통과시키지 않고,
+    분류도 '기획서와 다름' 이 아니라 '확인 불가' 다 — 구현 결함이 아니라 도구의
+    한계이기 때문이다(설계 판단 19).
     """
 
     target: str
-    status: str          # "ok" | "absent" | "ambiguous" | "error"(도구 실패)
+    # "ok" | "absent"(화면에 없음) | "ambiguous" | "unverifiable"(찾았으나 못 읽음)
+    # | "error"(도구 실패). absent 와 unverifiable 을 가르는 이유는 아래 참고.
+    status: str
     count: int = 0
     detail: str = ""
 
@@ -636,7 +653,7 @@ class CollectionTexts:
     이유로, texts 도 '못 찾았다' 를 빈 배열로 뭉개지 않는다.
     """
 
-    status: Literal["ok", "absent", "ambiguous", "error"]
+    status: Literal["ok", "absent", "ambiguous", "unverifiable", "error"]
     texts: list[str] = field(default_factory=list)
     detail: str = ""
 

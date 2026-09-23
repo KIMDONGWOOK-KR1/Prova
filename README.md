@@ -317,7 +317,7 @@ docs/
 ├── pr/                       PR 읽기 안내
 ├── superpowers/              지난 설계·구현 계획서 (도구가 남긴 것)
 ├── cheetah-setup.md          GPU 서버 vLLM 세팅 절차
-├── design-decisions.md       명세서와 다르게 한 21군데
+├── design-decisions.md       명세서와 다르게 한 22군데
 ├── lessons.md                코드를 돌려서 알게 된 것들
 ├── roadmap.md                아직 안 한 것
 └── README.md                 문서 안내
@@ -329,7 +329,7 @@ docs/
 
 | 문서 | 무엇이 있나 |
 |---|---|
-| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **21군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
+| [docs/design-decisions.md](docs/design-decisions.md) | 명세서와 다르게 구현한 **22군데**와 각각의 이유. 코드를 보기 전에 읽으면 왜 그렇게 생겼는지 알 수 있다 |
 | [docs/lessons.md](docs/lessons.md) | 문서로 예측하지 못했고 코드를 돌려서 알게 된 것들. 각각 대응이 코드에 남아 있다 |
 | [docs/roadmap.md](docs/roadmap.md) | 아직 안 한 것과 실측으로 확정된 GPU 제약 |
 | [docs/README.md](docs/README.md) | 명세서·티칭 노트·측정 결과·배경 문서 전체 안내 |

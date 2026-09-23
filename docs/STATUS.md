@@ -61,7 +61,7 @@
 | **하** | CI 연동 (`locator 캐시 · 병렬 실행 · CI 연동` 중) | `.github/workflows/` **(아직 없음)** | 0.5~1일 | GitHub Actions 로 `pytest` 를 돌리는 것. 코드를 안 건드리고 배울 수 있다 |
 | **하~중** | 표 헤더 후보 넓히기 (`항목`·`필드`·`구분` 등) | `s1_spec_extractor/pdf_parser.py` | 1~2일 | 로드맵이 **"실물 문서를 본 뒤 결정한다"** 고 보류. 미리 넓히면 엉뚱한 표를 요소 표로 오독한다 |
 | **중** | 셀렉트형 기간 (최근 1주일 등) | `s2_case_generator/generator.py` 의 `_filter_cases`, `sut/app.py` | 2~3일 | 날짜 필터의 남은 모양 하나. 앞의 O1~O6 이 전부 닫혀 있어 **따라 할 본보기가 많다** |
-| **중** | 표 마크업의 나머지 모양 — colspan 머리글 · 머리글 없는 표 · `<div role="grid">` | `s3_grounder/dom_locator.py`, `sut/app.py` | 3~5일 | `<caption>`·`<th>` 경로는 이미 있다. 그 옆에 붙이는 일 |
+| **중** | 표 마크업의 나머지 모양 — ~~colspan 머리글~~ · 머리글 없는 표 · `<div role="grid">` | `s3_grounder/dom_locator.py`, `sut/app.py` | 2~4일 | `<caption>`·`<th>` 경로는 이미 있다. **colspan 이 내던 빈 통과는 2026-09-23 에 막았다**(설계 판단 22) — 읽게 만든 것이 아니라 못 읽었다고 말하게 만든 것이다. 머리글 없는 표엔 같은 빈 통과가 남아 있다 |
 | **중** | 확장프로그램 트리거 | 새 폴더 (Python 아님 — JS + manifest) | 2~4일 | 현재 탭 URL 을 `localhost:7007` 로 넘기는 얇은 것. **파이프라인을 안 건드려서 안전하다** |
 | **중~상** | Figma 명시 매핑 override · 컴포넌트 이름 매핑 확장 | `s1_figma/figma_parser.py`, `s1_merge.py` | 3~5일 | 실물 디자인 시스템을 본 뒤 결정 |
 | **상** | 요청 해석 — "화면 전반 점검" 에서 가드가 빠지는 모양 | `s2_case_generator/selector.py`, `scripts/probe_request_selection.py` | 5일~ | **GPU 필요.** 홀드아웃 B 9/10 에서 막혀 있고 실물 기획서에서 재측정해야 한다 |
@@ -166,7 +166,7 @@
 |---|---|
 | [`docs/teaching/00-overview.md`](teaching/00-overview.md) | **가장 먼저.** 전체 그림 + 용어 사전 |
 | [`docs/teaching/03-llm-vs-code.md`](teaching/03-llm-vs-code.md) | "AI 에 뭘 맡기고 뭘 안 맡기나" — 이 프로젝트의 핵심 판단 |
-| [`docs/design-decisions.md`](design-decisions.md) | 명세서와 다르게 한 **21군데**. 코드를 고치기 전에 읽는다 |
+| [`docs/design-decisions.md`](design-decisions.md) | 명세서와 다르게 한 **22군데**. 코드를 고치기 전에 읽는다 |
 | [`docs/lessons.md`](lessons.md) | 문서로는 예측 못 하고 돌려 보고 알게 된 것들 |
 | [`docs/pr/00-reading-guide.md`](pr/00-reading-guide.md) | 큰 PR 을 읽는 순서 + 스스로 적은 한계 목록 |
 | [`docs/measurements/`](measurements/) | **보고에 쓰는 숫자의 출처.** 회의 전에 여기 수치를 확인한다 |

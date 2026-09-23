@@ -324,6 +324,15 @@ def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, 
         # 확인하지 않은 것과 확인해서 0건인 것은 다르다.
         return False, f"건수를 세지 못했습니다 — 도구 오류 ({got.detail}). 구현 결함이 아닙니다"
 
+    if got.status == "unverifiable":
+        # 목록을 찾고도 읽지 못한 경우다(표 머리글의 colspan 등). absent 와 달리
+        # 화면에 내용이 있을 수 있으므로 0건 기대여도 통과가 아니다 — 여기서
+        # PASS 를 내면 '표에 3건이 있는데 0건으로 확인' 이라는 빈 통과가 된다.
+        return False, (
+            f"{target!r} 을 화면에서 찾았지만 읽지 못해 건수를 확인할 수 없습니다 "
+            f"({got.detail}). 구현 결함이 아니라 도구의 한계입니다"
+        )
+
     if got.status == "absent":
         if want == 0:
             return True, f"{target!r} 이 렌더되지 않음 — 0건으로 확인"
@@ -782,6 +791,14 @@ def _classify(case: TestCase, state: PageState) -> str:
     """
     if state.console_errors:
         return "page_error"
+    # 도구가 목록을 찾고도 읽지 못했으면 '기획서와 다름' 이 아니다. 그렇게 두면
+    # 없는 결함을 보고하는 것이고, 개발자가 멀쩡한 구현을 고치러 간다(설계 판단 19).
+    if state.collection is not None and state.collection.status == "unverifiable":
+        return "unverifiable"
+    if state.column_texts and any(
+        col.status == "unverifiable" for col in state.column_texts.values()
+    ):
+        return "unverifiable"
     return "assertion_mismatch"
 
 
