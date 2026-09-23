@@ -151,11 +151,17 @@ class TestStepFailure:
         assert v.failure_category == "element_not_found"
         assert "스텝 3" in v.failure_detail
 
-    def test_콘솔_오류가_있으면_page_error로_분류한다(self):
+    def test_콘솔_오류는_분류를_덮지_않고_근거로_남는다(self):
+        """예전에는 콘솔 오류가 하나라도 있으면 page_error('실행 문제')로 분류했다.
+        광고·분석 스크립트가 콘솔 오류를 내는 실사이트(automationexercise, 2026-09-23)
+        에서는 판정 실패가 전부 '구현 결함이 아닐 수 있다' 로 바뀌어 **진짜 결함이
+        숨는다.** 앱의 JS 오류로 검증이 안 돌았다면 그것도 구현을 고칠 일이다."""
         case = negative_case(Expectation(type="error_message", value=PW_MESSAGE))
         v = verify(case, steps_ok(), state(text="", console=["Uncaught TypeError"]))
         assert v.verdict == "FAIL"
-        assert v.failure_category == "page_error"
+        assert v.failure_category == "assertion_mismatch"
+        assert v.evidence["console_errors"] == ["Uncaught TypeError"]
+        assert "콘솔 오류 1건" in v.failure_detail
 
 
 class TestEvidence:
