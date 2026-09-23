@@ -418,8 +418,18 @@ def _print_summary(report, run_dir: Path) -> None:
             fg=typer.colors.YELLOW,
         )
 
-    for warning in s.get("spec_warnings", []):
-        typer.secho(f"  ! 설계 문서 경고: {warning}", fg=typer.colors.YELLOW)
+    # 코드가 확인한 경고를 먼저, 모델이 남긴 메모를 뒤에. 섞어 찍으면 도구가
+    # 찾은 문제와 모델이 한 말을 구별할 수 없다.
+    from prova.s6_report.report_builder import MEMO_PREFIX
+
+    spec_warnings = s.get("spec_warnings", [])
+    for warning in spec_warnings:
+        if not warning.startswith(MEMO_PREFIX):
+            typer.secho(f"  ! 설계 문서 경고: {warning}", fg=typer.colors.YELLOW)
+    for warning in spec_warnings:
+        if warning.startswith(MEMO_PREFIX):
+            typer.secho(f"  · 모델 메모(도구가 확인한 사실 아님): "
+                        f"{warning[len(MEMO_PREFIX):].strip()}", dim=True)
 
     # 구현 결함(assertion_mismatch)과 도구·환경 실패를 섞어 찍지 않는다. 분류는
     # 판정에 이미 있는데, 모두 같은 모양으로 찍으면 화면에서는 그 구분이 사라진다.
