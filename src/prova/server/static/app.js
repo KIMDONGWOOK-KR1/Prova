@@ -506,13 +506,13 @@ async function startRun() {
     showResult(out);
     loadRuns();
   } catch (err) {
-    if (err.status === 409) {
-      showError("이미 실행 중입니다",
-        "브라우저와 GPU 를 두 작업이 함께 쓰면 판정 타이밍이 흔들리므로 " +
-        "한 번에 하나만 실행합니다. 지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
-    } else {
-      showError("실행 실패", err.message);
-    }
+    // 409 는 두 가지다 — 작업이 이미 돌고 있거나, 대상 웹앱이 안 떠 있거나
+    // 낡았거나(`check_sut_build`). 서버는 둘을 구분해 무엇을 하면 되는지 적어
+    // 보내는데, 화면이 한 문구로 덮어쓰고 있었다. 그래서 SUT 를 안 띄운 사람이
+    // '이미 실행 중입니다 — 끝난 뒤 다시 눌러 주세요' 를 보고 **있지도 않은
+    // 작업을 기다렸다**(2026-09-23). 원인을 잘못 짚는 메시지는 없느니만 못하다.
+    showError(err.status === 409 ? "실행을 시작하지 않았습니다" : "실행 실패",
+              err.message);
   } finally {
     state.busy = false;
     renderChrome();
@@ -587,11 +587,8 @@ $("planBtn").addEventListener("click", async () => {
     state.filter = ""; state.onlyOff = false;
     showPlan();
   } catch (err) {
-    if (err.status === 409) {
-      showError("이미 실행 중입니다", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
-    } else {
-      showError("계획을 만들지 못했습니다", err.message);
-    }
+    // 위와 같은 이유로 409 를 따로 잡지 않는다 — 서버 메시지가 이미 정확하다.
+    showError("계획을 만들지 못했습니다", err.message);
   } finally {
     state.busy = false;
     $("planBtn").disabled = false;

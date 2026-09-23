@@ -273,6 +273,18 @@ def run(body: RunRequest) -> dict:
 # 공통
 # ---------------------------------------------------------------------------
 
+#: GPU 서버가 없을 때 다음에 할 수 있는 것. 연결 실패 사유 뒤에 붙인다.
+#:
+#: 무엇을 고르는 것인지 함께 적는다 — 연습용은 저장된 정답을 쓰므로 배관은
+#: 증명해도 추출 정확도는 증명하지 못한다. 그 사실을 빼고 권하면, 연습용으로
+#: 낸 숫자가 실측으로 보고되는 길을 화면이 열어 주는 셈이다.
+_NO_GPU_HINT = (
+    "GPU 서버가 없다면 'LLM 백엔드' 를 '연습용 — 저장된 정답 사용' 으로 바꿔 "
+    "지금 바로 돌려볼 수 있습니다. 다만 연습용은 픽스처 기획서의 저장된 정답을 "
+    "쓰므로, 파이프라인이 끝까지 도는 것은 보여 주지만 기획서 추출이 정확한지는 "
+    "증명하지 못합니다 — 연습용으로 나온 수치를 실측으로 보고하지 마세요."
+)
+
 
 def _backend(name: str, cfg: dict, pdf: Path, report):
     """백엔드를 만들고 경고를 진행 메시지로 흘린다.
@@ -283,7 +295,13 @@ def _backend(name: str, cfg: dict, pdf: Path, report):
     try:
         llm, warnings = make_llm(name, cfg, pdf)
     except BackendError as exc:
-        raise RuntimeError(str(exc)) from exc
+        # 연결 실패 사유는 factory 가 정확히 적어 준다(터널·vllm serve). 그런데
+        # 그것만 보면 GPU 가 없는 사람은 **여기서 막힌다** — 바로 위 드롭다운에
+        # 답이 있는데 화면이 그 얘기를 하지 않는다. 다음에 할 수 있는 것을 알려
+        # 준다. mock 으로 대신 돌려 주지는 않는다(설계: 조용히 폴백하지 않는다) —
+        # 고르는 것은 사람이고, 무엇을 고르는 것인지도 함께 적는다.
+        raise RuntimeError(f"{exc}\n\n{_NO_GPU_HINT}" if name == "vllm" else str(exc)
+                           ) from exc
     for w in warnings:
         report(w)
     return llm
@@ -360,9 +378,30 @@ def report(run_id: str) -> RedirectResponse:
     return RedirectResponse(f"/runs/{run_id}/report.html")
 
 
+class _NoStoreStatic(StaticFiles):
+    """정적 파일을 캐시하지 않게 준다.
+
+    이 서버는 127.0.0.1 전용 개발 도구이고, `static/` 은 우리가 계속 고치는
+    화면 코드다. 그런데 브라우저가 `app.js` 를 캐시하면 **고쳐도 화면이 안
+    바뀐다** — 서버는 새 파일을 주는데 브라우저가 옛 것을 쓴다. 코드를 의심하며
+    같은 자리를 두 번 고치게 되는 함정이고, 2026-09-23 에 실제로 걸렸다.
+
+    이 저장소가 반복해서 치른 값과 같은 모양이다 — 있는 것과 동작하는 것은
+    다르고, 둘이 갈라지면 사람이 엉뚱한 곳을 본다.
+
+    `/runs` 에는 걸지 않는다. 실행 산출물은 한 번 쓰이면 바뀌지 않고, 스크린샷이
+    많아 캐시가 실제로 값을 한다.
+    """
+
+    def file_response(self, *args, **kwargs):
+        resp = super().file_response(*args, **kwargs)
+        resp.headers["Cache-Control"] = "no-store"
+        return resp
+
+
 # 정적 파일은 마지막에 붙인다. 위의 /static/tokens.css 라우트가 먼저 잡혀야
 # 파일이 없는 그 경로가 404 로 떨어지지 않는다.
-app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/static", _NoStoreStatic(directory=STATIC), name="static")
 
 # 실행 산출물. 리포트가 스크린샷·DOM 스냅샷을 상대 경로로 참조하므로 디렉터리를
 # 통째로 서빙해야 증거 자료가 살아 있다. StaticFiles 가 경로 탈출을 막는다.
