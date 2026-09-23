@@ -107,6 +107,13 @@ class RunRequest(PlanRequest):
     case_ids: list[str] = []
     #: 계획 단계에서 모델이 밝힌 근거 (리포트에 그대로 남긴다)
     reason: str = ""
+    #: 2차 경로(VLM) 서버 주소. CLI 의 `--vlm` 과 같다. 비우면 1차 경로만 쓴다.
+    #:
+    #: 계획 단계(PlanRequest)에는 두지 않는다 — 계획은 브라우저를 열지 않으므로
+    #: 요소를 찾을 일이 없다. 읽지 않는 값을 받으면 화면이 거짓 약속을 한다.
+    vlm: Optional[str] = None
+    #: 2차 경로 모델 이름. 비우면 QwenVLClient 의 기본값.
+    vlm_model: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------
@@ -244,11 +251,16 @@ def run(body: RunRequest) -> dict:
 
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
+        # 2차 경로는 백엔드보다 **뒤에** 만든다. 둘 다 GPU 서버를 쓰는데, 먼저
+        # 실패하는 쪽이 사람이 먼저 고칠 쪽이라야 한다 — 추출이 안 되면 2차
+        # 경로가 붙어도 실행할 케이스가 없다.
+        vlm = _vlm(body.vlm, body.vlm_model, report)
         run_id = "ui-" + datetime.now().strftime("%Y%m%d-%H%M%S")
         test_report, run_dir = run_pipeline(
             pdf_path=str(pdf),
             base_url=body.url,
             llm=llm,
+            vlm=vlm,
             figma_json=str(figma) if figma else None,
             run_id=run_id,
             runs_root=RUNS,  # 목록·리포트 조회(RUNS)와 같은 뿌리여야 한다
@@ -284,6 +296,41 @@ _NO_GPU_HINT = (
     "쓰므로, 파이프라인이 끝까지 도는 것은 보여 주지만 기획서 추출이 정확한지는 "
     "증명하지 못합니다 — 연습용으로 나온 수치를 실측으로 보고하지 마세요."
 )
+
+
+def _vlm(url: Optional[str], model: Optional[str], report):
+    """2차 경로(VLM) 클라이언트를 만들고 연결을 확인한다. 비어 있으면 None.
+
+    ## 연결이 안 되면 실행하지 않는다
+
+    조용히 보정 없이 진행하면 **'2차 경로를 켰다' 고 믿는 실행이 실제로는 그냥
+    1차 경로**가 된다. CLI 가 같은 이유로 여기서 멈춘다(`cli._make_vlm`).
+    자가치유가 동작하는지 보려고 켠 실행이 말없이 안 켜진 채 끝나면, 그 결과를
+    보고 "2차 경로가 필요 없다" 는 반대 결론까지 낼 수 있다.
+
+    ## 켰다는 사실을 진행 로그에 남긴다
+
+    리포트는 보정된 케이스를 표시하지만, 보정이 **한 건도 일어나지 않은** 실행은
+    2차 경로를 켠 것과 끈 것이 리포트에서 똑같아 보인다. 무엇을 켜고 돌렸는지는
+    판정의 전제이므로 화면이 말해야 한다 (mock 경고와 같은 판단).
+    """
+    if not url:
+        return None
+    from prova.vlm.base import VLMError
+    from prova.vlm.qwen_vl import QwenVLClient
+
+    client = QwenVLClient(base_url=url, model=model) if model else QwenVLClient(base_url=url)
+    try:
+        client.health()
+    except VLMError as exc:
+        raise RuntimeError(
+            f"2차 경로(VLM) 서버에 연결할 수 없습니다: {url}\n"
+            f"  원인: {exc}\n\n"
+            "주소를 비우면 1차 경로(selector)만으로 실행합니다. 1차가 요소를 "
+            "찾지 못한 케이스는 탐지 실패로 남고, 없는 결함으로 보고하지 않습니다."
+        ) from exc
+    report(f"2차 경로: {client.name} @ {url} ({client.model})")
+    return client
 
 
 def _backend(name: str, cfg: dict, pdf: Path, report):

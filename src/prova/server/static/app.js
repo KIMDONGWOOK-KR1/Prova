@@ -106,7 +106,7 @@ function saveSettings() {
   try {
     localStorage.setItem(LS, JSON.stringify({
       pdf: $("pdf").value, url: $("url").value, backend: $("backend").value,
-      figma: $("figma").value,
+      figma: $("figma").value, vlm: $("vlm").value,
     }));
   } catch (e) { /* 저장 못 해도 기능은 그대로 돈다 */ }
 }
@@ -122,6 +122,10 @@ function form() {
     request: $("request").value.trim() || null,
     backend: $("backend").value,
     figma: $("figma").value || null,
+    // 계획 단계는 이 값을 읽지 않는다(브라우저를 열지 않으므로). 한 곳에서
+    // 만들어 두 요청이 같은 설정을 쓰게 하고, 쓰지 않는 쪽은 무시한다 —
+    // 두 벌로 갈라지면 한쪽이 반드시 뒤처진다.
+    vlm: $("vlm").value.trim() || null,
   };
 }
 
@@ -706,7 +710,7 @@ function syncVariant() {
 $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
 
-["pdf", "url", "backend", "figma"].forEach((id) =>
+["pdf", "url", "backend", "figma", "vlm"].forEach((id) =>
   $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); }));
 
 $("url").addEventListener("input", () => { syncVariant(); renderChrome(); });
@@ -743,6 +747,7 @@ async function boot() {
       $("figma").value = saved.figma;
     }
     if (saved.url) $("url").value = saved.url;
+    if (saved.vlm) $("vlm").value = saved.vlm;
     // 지난번 선택이 서버 기본값을 덮을 때는 그 사실을 보인다 — 한 번 mock 을
     // 고른 사람이 모르는 채 계속 mock 으로 돌지 않게.
     if (saved.backend && saved.backend !== st.backend) {
