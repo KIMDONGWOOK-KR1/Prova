@@ -1,0 +1,92 @@
+{
+  "screen_id": "shipping",
+  "screen_name": "배송지 등록",
+  "url_path": "/shipping",
+  "elements": [
+    {
+      "element_id": "recipient",
+      "type": "input",
+      "label": "받는 사람",
+      "required": true,
+      "constraints": {
+        "min_length": 2,
+        "max_length": 20
+      },
+      "error_message": "받는 사람은 2자 이상 20자 이하로 입력하세요.",
+      "placeholder": "받는 분 성함",
+      "options": [],
+      "sample_value": "홍길동"
+    },
+    {
+      "element_id": "postcode",
+      "type": "input",
+      "label": "우편번호",
+      "required": true,
+      "constraints": {
+        "numeric": true,
+        "min_length": 5,
+        "max_length": 5
+      },
+      "error_message": "우편번호는 숫자 5자리로 입력하세요.",
+      "placeholder": "우편번호 5자리",
+      "options": [],
+      "sample_value": "61186"
+    },
+    {
+      "element_id": "address",
+      "type": "input",
+      "label": "주소",
+      "required": true,
+      "constraints": {
+        "min_length": 5
+      },
+      "error_message": "주소는 5자 이상 입력하세요.",
+      "placeholder": "도로명 주소를 입력하세요",
+      "options": [],
+      "sample_value": "광주광역시 북구 용봉로 77"
+    },
+    {
+      "element_id": "detail_address",
+      "type": "input",
+      "label": "상세 주소",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": "동·호수 (선택)",
+      "options": [],
+      "sample_value": null
+    },
+    {
+      "element_id": "request_msg",
+      "type": "select",
+      "label": "배송 요청사항",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": null,
+      "options": ["문 앞에 두기", "경비실에 맡기기", "배송 전 연락"],
+      "sample_value": null
+    },
+    {
+      "element_id": "save_btn",
+      "type": "button",
+      "label": "배송지 저장",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": null,
+      "options": [],
+      "sample_value": null
+    }
+  ],
+  "scenarios": [],
+  "success_condition": "같은 화면에 \"배송지가 저장되었습니다.\" 문구를 노출한다",
+  "failure_conditions": [
+    "필수 입력 항목입니다.",
+    "받는 사람은 2자 이상 20자 이하로 입력하세요.",
+    "우편번호는 숫자 5자리로 입력하세요.",
+    "주소는 5자 이상 입력하세요."
+  ],
+  "required_message": "필수 입력 항목입니다.",
+  "warnings": []
+}

@@ -26,6 +26,9 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
     find-account F1   계정 존재 여부를 문구로 노출 (금지 문구)
     product     P1    가격 숫자 검증 없음
                 P2    로그인 가드 없음
+    shipping    J1    우편번호 숫자 검증 없음 (자릿수는 본다)
+                J2    주소 최소 길이 검증 없음
+                J3    저장 문구가 기획서와 다름 ("저장 완료")
     change_pw   I1    새 비밀번호 소문자 포함 검증 없음
                 I2    새 비밀번호 숫자 포함 검증 없음
                 I3    새 비밀번호 확인 일치 검증 없음
@@ -384,6 +387,14 @@ MSG_PASSWORD_CHANGED = "비밀번호가 변경되었습니다."
 #: 이 화면의 '현재 비밀번호'. 기획서 §5 테스트 계정 표와 같아야 한다.
 CURRENT_PASSWORD = "Abcd123!"
 
+#: 배송지 등록 — 기획서 §2·§4 의 문구·목록.
+MSG_SHIPPING_RECIPIENT_LENGTH = "받는 사람은 2자 이상 20자 이하로 입력하세요."
+MSG_SHIPPING_POSTCODE = "우편번호는 숫자 5자리로 입력하세요."
+MSG_SHIPPING_ADDRESS_LENGTH = "주소는 5자 이상 입력하세요."
+MSG_SHIPPING_SAVED = "배송지가 저장되었습니다."
+
+SHIPPING_REQUESTS = ("문 앞에 두기", "경비실에 맡기기", "배송 전 연락")
+
 
 def check_new_password_rules(pw: str) -> bool:
     """기획서 §2-1: 10자 이상 + 대문자·소문자·숫자·특수문자 각 1자 이상."""
@@ -510,6 +521,21 @@ def render_contact(
         name="contact.html",
         context={"variant": variant, "form": form, "error": error, "done": done,
                  "categories": CONTACT_CATEGORIES},
+    )
+
+
+def render_shipping(
+    request: Request,
+    variant: str,
+    form: dict,
+    error: str | None = None,
+    done: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="shipping.html",
+        context={"variant": variant, "form": form, "error": error, "done": done,
+                 "request_options": SHIPPING_REQUESTS},
     )
 
 
@@ -1160,6 +1186,80 @@ for _variant in ("good", "bad", "slowleak"):
     _register_find_account(_variant)
 
 
+# shipping — 배송지 등록 (2026-09-23 추가)
+# ---------------------------------------------------------------------------
+#
+# 이 화면이 새로 밟는 것: **선택 항목(필수가 아닌 요소).**
+#
+# 지금까지 기획서에 적힌 요소는 전부 필수였다. 그래서 '필수가 아닌 요소에
+# required 위반 케이스를 만들지 않는가' 를 한 번도 확인하지 못했다. 만들면
+# 멀쩡한 구현이 FAIL 한다 — 비워 두고 저장하는 것이 정상 동작이기 때문이다.
+#
+# 상세 주소와 배송 요청사항이 그 요소다. 아파트가 아닌 주소에는 동·호수가 없고,
+# 요청사항이 없는 주문이 더 많다.
+#
+#   J1  우편번호 숫자 검증 없음   (자릿수는 보면서 숫자 여부를 안 본다)
+#   J2  주소 최소 길이 검증 없음
+#   J3  저장 문구가 기획서와 다름
+
+
+def _shipping_error(variant: str, f: dict) -> str | None:
+    """배송지 검증. 통과하면 None, 아니면 노출할 문구.
+
+    **선택 항목은 검사하지 않는다.** 상세 주소와 요청사항이 비어 있어도 저장이
+    성공해야 한다 — 기획서 §2 가 그렇게 적었다.
+    """
+    if not f["recipient"] or not f["postcode"] or not f["address"]:
+        return MSG_REQUIRED
+    if not (2 <= len(f["recipient"]) <= 20):
+        return MSG_SHIPPING_RECIPIENT_LENGTH
+    # J1: bad 는 자릿수만 보고 숫자 여부를 보지 않는다. 한 요소의 규칙 중 일부만
+    # 빠진 모양이라, 규칙 단위로 케이스를 가르지 않으면 자릿수에 가려 안 보인다.
+    digits_ok = f["postcode"].isdigit() if variant != "bad" else True
+    if not digits_ok or len(f["postcode"]) != 5:
+        return MSG_SHIPPING_POSTCODE
+    # J2: bad 는 주소 길이를 보지 않는다.
+    if variant != "bad" and len(f["address"]) < 5:
+        return MSG_SHIPPING_ADDRESS_LENGTH
+    return None
+
+
+def _shipping_form(recipient: str, postcode: str, address: str,
+                   detail_address: str, request_msg: str) -> dict:
+    return {"recipient": recipient, "postcode": postcode, "address": address,
+            "detail_address": detail_address, "request_msg": request_msg}
+
+
+SHIPPING_VARIANTS = ("good", "bad", "icons")
+
+
+for _variant in SHIPPING_VARIANTS:
+    def _register_shipping(variant: str) -> None:
+        @app.get(f"/{variant}/shipping", response_class=HTMLResponse)
+        def show_form(request: Request):
+            return render_shipping(request, variant, _shipping_form("", "", "", "", ""))
+
+        @app.post(f"/{variant}/shipping", response_class=HTMLResponse)
+        def submit(request: Request,
+                   recipient: str = Form(default=""),
+                   postcode: str = Form(default=""),
+                   address: str = Form(default=""),
+                   detail_address: str = Form(default=""),
+                   request_msg: str = Form(default="")):
+            f = _shipping_form(recipient, postcode, address, detail_address, request_msg)
+            error = _shipping_error(variant, f)
+            if error:
+                return render_shipping(request, variant, f, error=error)
+            # J3: bad 는 기획서에 없는 문구를 노출한다.
+            done = "저장 완료" if variant == "bad" else MSG_SHIPPING_SAVED
+            return render_shipping(request, variant, f, done=done)
+
+        show_form.__name__ = f"{variant}_shipping_form"
+        submit.__name__ = f"{variant}_shipping_submit"
+
+    _register_shipping(_variant)
+
+
 # change-password — 비밀번호 변경 (2026-09-23 추가)
 # ---------------------------------------------------------------------------
 #
@@ -1335,6 +1435,9 @@ def index():
         "<li><a href='/good/change-password'>/good/change-password — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/change-password'>/bad/change-password — 소문자(I1)·숫자(I2)·일치(I3)</a></li>"
         "<li><a href='/icons/change-password'>/icons/change-password — 전부 아이콘 (2차 경로 대상)</a></li>"
+        "<li><a href='/good/shipping'>/good/shipping — 기획서 준수 구현 (선택 항목 포함)</a></li>"
+        "<li><a href='/bad/shipping'>/bad/shipping — 우편번호 숫자(J1)·주소 길이(J2)·문구(J3)</a></li>"
+        "<li><a href='/icons/shipping'>/icons/shipping — 전부 아이콘 (2차 경로 대상)</a></li>"
         "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"

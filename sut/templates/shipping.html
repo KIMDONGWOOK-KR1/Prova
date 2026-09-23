@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>배송지 등록</title>
+  <style>
+    body { font-family: "Malgun Gothic", sans-serif; background:#f4f5f7; margin:0;
+           display:flex; align-items:center; justify-content:center; min-height:100vh;
+           padding:32px 0; }
+    .card { background:#fff; padding:36px 40px; border-radius:10px; width:400px;
+            box-shadow:0 2px 12px rgba(0,0,0,.08); }
+    h1 { font-size:22px; margin:0 0 8px; }
+    .lead { font-size:13px; color:#666; margin:0 0 22px; line-height:1.6; }
+    label { display:block; font-size:13px; color:#444; margin:14px 0 6px; }
+    input, select { width:100%; padding:10px 12px; border:1px solid #ccd0d5;
+            border-radius:6px; font-size:14px; box-sizing:border-box; font-family:inherit; }
+    button.icon { width:auto; padding:10px 18px; font-size:18px; }
+    button { width:100%; margin-top:22px; padding:11px; border:0; border-radius:6px;
+             background:#2f6fed; color:#fff; font-size:15px; cursor:pointer; }
+    .error { margin-top:16px; padding:10px 12px; background:#fdeaea; color:#b32020;
+             border-radius:6px; font-size:13px; line-height:1.5; }
+    .done { margin-top:16px; padding:10px 12px; background:#e9f4ee; color:#1a6b45;
+            border-radius:6px; font-size:13px; line-height:1.5; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>배송지 등록</h1>
+    <p class="lead">물건을 받을 주소와 받는 분을 등록합니다.</p>
+
+    <!-- 마크업은 good/bad 가 완전히 동일하다. icons 변형만 접근성 이름을 없앤다. -->
+    <form method="post" action="/{{ variant }}/shipping" novalidate>
+      <label for="recipient">
+        {% if variant == 'icons' %}&#128100;{% else %}받는 사람{% endif %}</label>
+      <input type="text" id="recipient" name="recipient"
+             placeholder="{% if variant != 'icons' %}받는 분 성함{% endif %}"
+             value="{{ form.recipient }}">
+
+      <label for="postcode">
+        {% if variant == 'icons' %}&#128205;{% else %}우편번호{% endif %}</label>
+      <input type="text" id="postcode" name="postcode"
+             placeholder="{% if variant != 'icons' %}우편번호 5자리{% endif %}"
+             value="{{ form.postcode }}">
+
+      <label for="address">
+        {% if variant == 'icons' %}&#127968;{% else %}주소{% endif %}</label>
+      <input type="text" id="address" name="address"
+             placeholder="{% if variant != 'icons' %}도로명 주소를 입력하세요{% endif %}"
+             value="{{ form.address }}">
+
+      <label for="detail_address">
+        {% if variant == 'icons' %}&#128682;{% else %}상세 주소{% endif %}</label>
+      <input type="text" id="detail_address" name="detail_address"
+             placeholder="{% if variant != 'icons' %}동·호수 (선택){% endif %}"
+             value="{{ form.detail_address }}">
+
+      <label for="request_msg">
+        {% if variant == 'icons' %}&#128172;{% else %}배송 요청사항{% endif %}</label>
+      <select id="request_msg" name="request_msg">
+        <option value="">{% if variant == 'icons' %}&#8212;{% else %}선택 안 함{% endif %}</option>
+        {% for opt in request_options %}
+        <option value="{{ opt }}" {% if form.request_msg == opt %}selected{% endif %}>{{ opt }}</option>
+        {% endfor %}
+      </select>
+
+      {% if variant == 'icons' %}
+      <button type="submit" class="icon">&#128230;</button>
+      {% else %}
+      <button type="submit">배송지 저장</button>
+      {% endif %}
+    </form>
+
+    {% if error %}
+    <div class="error" role="alert">{{ error }}</div>
+    {% endif %}
+
+    <!-- 저장 안내에 role=alert 를 붙이지 않는다 — 다른 화면과 같은 이유다. -->
+    {% if done %}
+    <div class="done">{{ done }}</div>
+    {% endif %}
+  </div>
+</body>
+</html>
