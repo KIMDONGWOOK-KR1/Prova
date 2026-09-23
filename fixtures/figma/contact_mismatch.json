@@ -1,0 +1,178 @@
+{
+  "_note": "문의하기 — **디자인이 기획서와 어긋난** 합성 응답. 설계 판단 17 의 경로를 재는 픽스처다: 어긋남은 판정(FAIL)이 아니라 '기획↔디자인 불일치' 발견으로 보고돼야 한다. 구현 코드를 보기 전에 입력끼리의 모순을 잡는 자리다. 기획서와 다르게 둔 것 셋 — 이름 안내 문구, 버튼 글자, 선택 목록 한 항목.",
+  "name": "prova-contact-mismatch",
+  "document": {
+    "id": "0:0",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "type": "CANVAS",
+        "name": "Page 1",
+        "children": [
+          {
+            "id": "10:1",
+            "type": "FRAME",
+            "name": "문의하기",
+            "children": [
+              {
+                "id": "10:2",
+                "type": "INSTANCE",
+                "componentId": "9:1",
+                "name": "Input",
+                "children": [
+                  {
+                    "id": "10:3",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "이름"
+                  },
+                  {
+                    "id": "10:4",
+                    "type": "TEXT",
+                    "name": "placeholder",
+                    "characters": "성함을 입력하세요"
+                  }
+                ]
+              },
+              {
+                "id": "10:5",
+                "type": "INSTANCE",
+                "componentId": "9:1",
+                "name": "Input",
+                "children": [
+                  {
+                    "id": "10:6",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "이메일"
+                  },
+                  {
+                    "id": "10:7",
+                    "type": "TEXT",
+                    "name": "placeholder",
+                    "characters": "답변받을 이메일을 입력하세요"
+                  }
+                ]
+              },
+              {
+                "id": "10:8",
+                "type": "INSTANCE",
+                "componentId": "9:1",
+                "name": "Input",
+                "children": [
+                  {
+                    "id": "10:9",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "연락처"
+                  },
+                  {
+                    "id": "10:10",
+                    "type": "TEXT",
+                    "name": "placeholder",
+                    "characters": "휴대폰 번호를 입력하세요"
+                  }
+                ]
+              },
+              {
+                "id": "10:11",
+                "type": "INSTANCE",
+                "componentId": "9:4",
+                "name": "Select",
+                "children": [
+                  {
+                    "id": "10:12",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "문의 유형"
+                  },
+                  {
+                    "id": "10:13",
+                    "type": "TEXT",
+                    "name": "option",
+                    "characters": "결제"
+                  },
+                  {
+                    "id": "10:14",
+                    "type": "TEXT",
+                    "name": "option",
+                    "characters": "배송"
+                  },
+                  {
+                    "id": "10:16",
+                    "type": "TEXT",
+                    "name": "option",
+                    "characters": "기타"
+                  }
+                ]
+              },
+              {
+                "id": "10:17",
+                "type": "INSTANCE",
+                "componentId": "9:1",
+                "name": "Input",
+                "children": [
+                  {
+                    "id": "10:18",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "문의 내용"
+                  },
+                  {
+                    "id": "10:19",
+                    "type": "TEXT",
+                    "name": "placeholder",
+                    "characters": "문의 내용을 10자 이상 입력하세요"
+                  }
+                ]
+              },
+              {
+                "id": "10:20",
+                "type": "INSTANCE",
+                "componentId": "9:3",
+                "name": "Checkbox",
+                "children": [
+                  {
+                    "id": "10:21",
+                    "type": "TEXT",
+                    "name": "label",
+                    "characters": "개인정보 수집 동의"
+                  }
+                ]
+              },
+              {
+                "id": "10:22",
+                "type": "INSTANCE",
+                "componentId": "9:2",
+                "name": "Button",
+                "children": [
+                  {
+                    "id": "10:23",
+                    "type": "TEXT",
+                    "name": "text",
+                    "characters": "보내기"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "components": {
+    "9:1": {
+      "name": "Input"
+    },
+    "9:2": {
+      "name": "Button"
+    },
+    "9:3": {
+      "name": "Checkbox"
+    },
+    "9:4": {
+      "name": "Select"
+    }
+  }
+}

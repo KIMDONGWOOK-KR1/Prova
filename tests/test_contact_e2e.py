@@ -136,3 +136,68 @@ class TestIconsVariant:
     def test_검증_로직은_good_과_같다(self, icons_run, good_run):
         """변수는 '접근성 이름이 없다' 하나뿐이다 — 케이스 구성이 달라지면 안 된다."""
         assert icons_run.summary["total"] == good_run.summary["total"]
+
+
+# ---------------------------------------------------------------------------
+# Figma 입력 — 디자인↔구현 정합성 (설계 판단 16·17)
+# ---------------------------------------------------------------------------
+
+FIGMA = "fixtures/figma/contact.json"
+FIGMA_MISMATCH = "fixtures/figma/contact_mismatch.json"
+
+
+def _run_merged(figma: str, sut_base: str, tmp_path):
+    report, _ = run_pipeline(
+        pdf_path=SPEC_PDF,
+        base_url=f"{sut_base}/good",
+        llm=MockLLM.for_spec(SPEC_PDF),
+        run_id="test-contact-merged",
+        runs_root=tmp_path,
+        figma_json=figma,
+    )
+    return report
+
+
+@pytest.fixture(scope="module")
+def merged_run(sut_base, tmp_path_factory):
+    return _run_merged(FIGMA, sut_base, tmp_path_factory.mktemp("contact-merged"))
+
+
+@pytest.fixture(scope="module")
+def mismatch_run(sut_base, tmp_path_factory):
+    return _run_merged(FIGMA_MISMATCH, sut_base, tmp_path_factory.mktemp("contact-mm"))
+
+
+class TestFigmaMerged:
+    def test_디자인이_기획서와_같으면_발견이_없다(self, merged_run):
+        found = merged_run.summary.get("design_mismatches", [])
+        assert not found, "같은 문구인데 불일치로 보고했다 — 오탐이다:\n" + "\n".join(found)
+
+    def test_규칙_검증은_그대로_돈다(self, merged_run, good_run):
+        """병합은 문구를 더하는 것이지 검증을 줄이는 것이 아니다."""
+        assert merged_run.summary["total"] == good_run.summary["total"]
+        assert merged_run.summary["fail"] == 0
+
+
+class TestFigmaMismatch:
+    """어긋남은 **판정이 아니라 발견**이다 (설계 판단 17).
+
+    구현 코드를 보기 전에 입력끼리의 모순부터 정리해야 한다. FAIL 로 두면
+    멀쩡한 구현이 결함으로 보고된다 — 어느 쪽이 맞는지는 사람이 정할 일이다.
+    """
+
+    def test_판정은_그대로_전부_통과한다(self, mismatch_run):
+        assert mismatch_run.summary["fail"] == 0, (
+            "디자인이 어긋났다고 구현을 FAIL 시키면 없는 결함을 보고하는 것이다"
+        )
+
+    def test_어긋난_넷을_발견으로_보고한다(self, mismatch_run):
+        found = "\n".join(mismatch_run.summary.get("design_mismatches", []))
+        assert "성함을 입력하세요" in found, "안내 문구 불일치를 못 잡았다"
+        assert "환불" in found, "선택 항목 누락을 못 잡았다"
+        assert "문의 접수" in found and "보내기" in found, "요소 이름 불일치를 못 잡았다"
+
+    def test_어느_쪽이_맞는지_단정하지_않는다(self, mismatch_run):
+        """기획서와 디자인 중 무엇이 옳은지는 도구가 정할 수 없다."""
+        found = "\n".join(mismatch_run.summary.get("design_mismatches", []))
+        assert "기획서에 없습니다" in found and "검증하지 않습니다" in found
