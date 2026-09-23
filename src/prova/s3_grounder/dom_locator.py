@@ -46,6 +46,7 @@ STRATEGY_LABELS = {
     "label": "<label> 연결",
     "placeholder": "안내 문구",
     "placeholder_hint": "안내 문구 (기획서 값)",
+    "table_label": "표 칸 라벨",
     "role": "접근성 role+name",
     "text": "텍스트 일치",
     "vlm": "화면 이미지 (2차)",
@@ -137,6 +138,36 @@ def _role_name(target: str) -> "re.Pattern[str]":
 # 그다음 텍스트다.
 _CLICKABLE_TYPES = ("button", "link")
 
+# 값을 넣는 요소. 표 칸 라벨 전략은 이 유형에만 쓴다.
+_FILLABLE_TYPES = ("input", "select", "checkbox", "date")
+
+
+def _xpath_literal(text: str) -> str:
+    """XPath 문자열 리터럴. 따옴표가 섞여 있어도 깨지지 않게 한다."""
+    if '"' not in text:
+        return f'"{text}"'
+    if "'" not in text:
+        return f"'{text}'"
+    parts = text.split('"')
+    return "concat(" + ", '\"', ".join(f'"{p}"' for p in parts) + ")"
+
+
+def _table_label_locator(page, target: str):
+    """표 칸 라벨로 찾는다 — `<td>First Name:</td><td><input></td>` 모양.
+
+    parabank 회원가입(2026-09-23)은 11칸 모두 이 모양이라 1차 경로가 하나도 못 찾았다.
+    글자는 보이지만 `<label for>` 로 이어져 있지 않다. 레거시·기업 화면에 흔하다.
+
+    같은 표 행에서 라벨 칸의 **바로 다음 칸** 안의 입력란만 본다. 라벨 끝의 `:` 와
+    필수 표시 `*` 는 무시한다. 개수 확인(정확히 1개)은 다른 전략과 같이 부르는 쪽이 한다.
+    """
+    lit = _xpath_literal(target)
+    cell = ("*[self::td or self::th]"
+            f"[normalize-space(translate(normalize-space(.), ':*', ''))={lit}]")
+    field = ("*[self::input[not(@type='hidden')] or self::select or self::textarea]")
+    return page.locator(
+        f"xpath=//{cell}/following-sibling::*[self::td or self::th][1]//{field}")
+
 
 def _try_strategies(page, target: str, hint: UIElement | None):
     """전략을 순서대로 시도하고 (locator, strategy, attempts) 를 돌려준다.
@@ -166,6 +197,12 @@ def _try_strategies(page, target: str, hint: UIElement | None):
 
     if hint and hint.type in _CLICKABLE_TYPES:
         candidates = [c for c in candidates if c[0] in ("role", "text")]
+    elif hint and hint.type in _FILLABLE_TYPES:
+        # 접근성 연결(label·placeholder)이 없을 때만 쓴다 — role 보다는 앞이다.
+        # 입력란의 role 이름은 대개 비어 있고, text 전략은 입력란이 아니라 라벨 글자를
+        # 잡는다(parabank 의 `<b>Username</b>`).
+        at = next(i for i, c in enumerate(candidates) if c[0] == "role")
+        candidates.insert(at, ("table_label", lambda: _table_label_locator(page, target)))
 
     for strategy, build in candidates:
         try:
@@ -330,6 +367,8 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
             # 실패로 둔갑하므로, 탐지 실패로 명확히 돌린다.
             raise GroundingError(target, [Attempt(strategy=strategy, count=0)])
         return page.get_by_placeholder(hint.placeholder, exact=True)
+    if strategy == "table_label":
+        return _table_label_locator(page, target)
     if strategy == "role":
         return page.get_by_role(_role_for(hint), name=_role_name(target))
     if strategy == "text":
@@ -869,8 +908,13 @@ def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[s
     result: dict[str, str] = {}
     for label in labels:
         try:
-            ground(page, label, by_label.get(label))
-            result[label] = ""
+            location = ground(page, label, by_label.get(label))
+            # 표 칸 라벨로만 찾았다면 도구는 조작할 수 있어도 라벨이 요소와 이어져 있지는
+            # 않다 — 스크린리더는 그 칸의 이름을 읽지 못한다. 이 검사가 보는 것은 그 연결이다.
+            result[label] = (
+                "라벨이 요소와 연결되지 않았습니다 — 같은 표 행의 글자로만 찾았습니다 "
+                "(<label for> 로 잇거나 aria-label 을 달아 주세요)"
+                if location.strategy == "table_label" else "")
         except SpecTypeMismatch:
             result[label] = ""
         except GroundingError as exc:

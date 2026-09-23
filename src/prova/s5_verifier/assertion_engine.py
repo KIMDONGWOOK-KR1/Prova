@@ -456,8 +456,14 @@ def _judge_labels_findable(
     if got is None:
         return False, "라벨 탐지 가능 여부를 확인하지 않았습니다 (실행 단계에서 수집되지 않음)"
 
-    failed = [f"{label!r}: {got[label]}" for label in labels
-              if label in got and got[label]]
+    # 같은 사유는 라벨을 묶어 한 번만 말한다. parabank 에서 11개 라벨이 같은 문장을
+    # 11번 반복해 사유를 읽을 수 없었다(2026-09-23). 사유가 처음 나온 순서를 지킨다.
+    by_reason: dict[str, list[str]] = {}
+    for label in labels:
+        if label in got and got[label]:
+            by_reason.setdefault(got[label], []).append(label)
+    failed = [", ".join(repr(l) for l in names) + f": {reason}"
+              for reason, names in by_reason.items()]
     unknown = [label for label in labels if label not in got]
 
     if not failed and not unknown:
