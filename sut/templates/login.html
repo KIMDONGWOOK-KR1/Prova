@@ -12,6 +12,7 @@
     label { display:block; font-size:13px; color:#444; margin:14px 0 6px; }
     input { width:100%; padding:10px 12px; border:1px solid #ccd0d5; border-radius:6px;
             font-size:14px; box-sizing:border-box; }
+    button.icon { width:auto; padding:10px 18px; font-size:18px; }
     button { width:100%; margin-top:22px; padding:11px; border:0; border-radius:6px;
              background:#2f6fed; color:#fff; font-size:15px; cursor:pointer; }
     .error { margin-top:16px; padding:10px 12px; background:#fdeaea; color:#b32020;
@@ -34,7 +35,7 @@
     {%- set pid = 'p4c2d80e' if variant == 'hashed' else 'password' -%}
     <form method="post" action="/{{ variant }}/login"
           {{ '' if variant == 'native' else 'novalidate' }}>
-      <label for="{{ eid }}">이메일</label>
+      <label for="{{ eid }}">{% if variant == 'icons' %}&#9993;{% else %}이메일{% endif %}</label>
       <!-- B4: bad 는 안내 문구가 기획서와 다르다.
            기획서 §2 '안내 문구' 열은 "이메일을 입력하세요" 다.
 
@@ -43,14 +44,19 @@
            달라도 탐지는 그대로 된다 — 그래서 조용히 지나갔다. -->
       <input type="text" id="{{ eid }}" name="email"
              {{ 'required' if variant == 'native' else '' }}
-             placeholder="{{ '아이디를 입력하세요' if variant == 'bad' else '이메일을 입력하세요' }}">
+             placeholder="{% if variant == 'icons' %}{% elif variant == 'bad' %}아이디를 입력하세요{% else %}이메일을 입력하세요{% endif %}">
 
-      <label for="{{ pid }}">비밀번호</label>
+      <label for="{{ pid }}">{% if variant == 'icons' %}&#128274;{% else %}비밀번호{% endif %}</label>
       <input type="password" id="{{ pid }}" name="password"
              {{ 'required' if variant == 'native' else '' }}
-             placeholder="비밀번호를 입력하세요">
+             placeholder="{% if variant != 'icons' %}비밀번호를 입력하세요{% endif %}">
 
+      {# icons: 접근성 이름이 하나도 없다 — 2차 경로(VLM)를 재는 대상. #}
+      {% if variant == 'icons' %}
+      <button type="submit" class="icon">&#128273;</button>
+      {% else %}
       <button type="submit">로그인</button>
+      {% endif %}
     </form>
 
     {% if error %}

@@ -26,6 +26,9 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
     find-account F1   계정 존재 여부를 문구로 노출 (금지 문구)
     product     P1    가격 숫자 검증 없음
                 P2    로그인 가드 없음
+    change_pw   I1    새 비밀번호 소문자 포함 검증 없음
+                I2    새 비밀번호 숫자 포함 검증 없음
+                I3    새 비밀번호 확인 일치 검증 없음
     contact     H1    연락처 정규식(pattern) 형식 검증 없음
                 H2    문의 내용 최소 길이 검증 없음 (최대 길이만 구현)
                 H3    접수 문구가 기획서와 다름 ("접수 완료!")
@@ -370,6 +373,28 @@ MSG_CONTACT_DONE_WRONG = "접수 완료!"
 
 CONTACT_CATEGORIES = ("결제", "배송", "환불", "기타")
 
+#: 비밀번호 변경 — 기획서 §2·§4 의 문구. 가입(8자·대문자·특수문자)보다 규칙이
+#: 네 종류로 늘었다. 이미 쓰는 계정의 비밀번호를 바꾸는 자리라서다.
+MSG_NEW_PASSWORD_RULE = ("새 비밀번호는 10자 이상이며 대문자·소문자·숫자·특수문자를 "
+                         "각 1자 이상 포함해야 합니다.")
+MSG_NEW_PASSWORD_MISMATCH = "새 비밀번호가 일치하지 않습니다."
+MSG_CURRENT_PASSWORD_WRONG = "현재 비밀번호가 올바르지 않습니다."
+MSG_PASSWORD_CHANGED = "비밀번호가 변경되었습니다."
+
+#: 이 화면의 '현재 비밀번호'. 기획서 §5 테스트 계정 표와 같아야 한다.
+CURRENT_PASSWORD = "Abcd123!"
+
+
+def check_new_password_rules(pw: str) -> bool:
+    """기획서 §2-1: 10자 이상 + 대문자·소문자·숫자·특수문자 각 1자 이상."""
+    return (
+        len(pw) >= 10
+        and any(c.isupper() for c in pw)
+        and any(c.islower() for c in pw)
+        and any(c.isdigit() for c in pw)
+        and any(c in SPECIAL_CHARS for c in pw)
+    )
+
 #: 기획서 §2-1 의 `pattern` 규칙 그대로. 자리수와 구분자까지 고정한다 —
 #: 상담원이 그 값으로 바로 전화를 걸 수 있어야 한다.
 _PHONE_RE = re.compile(r"^010-\d{4}-\d{4}$")
@@ -485,6 +510,19 @@ def render_contact(
         name="contact.html",
         context={"variant": variant, "form": form, "error": error, "done": done,
                  "categories": CONTACT_CATEGORIES},
+    )
+
+
+def render_change_password(
+    request: Request,
+    variant: str,
+    error: str | None = None,
+    done: str | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        request=request,
+        name="change_password.html",
+        context={"variant": variant, "error": error, "done": done},
     )
 
 
@@ -623,6 +661,9 @@ def search_render_args(query: str | None) -> dict:
 #: 로그인 화면을 가진 변형. dashboard_inline=True 면 리다이렉트하지 않는다.
 LOGIN_VARIANTS = {
     "good": False,
+    # icons — 라벨·버튼이 전부 아이콘이고 placeholder 가 없다. 검증 로직은 good 과
+    # 같고 재는 변수는 '접근성 이름이 하나도 없다' 하나다 (2차 경로 측정 대상).
+    "icons": False,
     "slow": False,
     "hashed": False,
     "native": False,
@@ -634,7 +675,7 @@ LOGIN_VARIANTS = {
 }
 
 #: 검색 화면을 가진 변형 (bad 는 결함이 있어 따로 둔다).
-SEARCH_VARIANTS = ("good", "nolabel", "slow")
+SEARCH_VARIANTS = ("good", "nolabel", "icons", "slow")
 
 
 def _register_login(variant: str, dashboard_inline: bool) -> None:
@@ -1119,6 +1160,75 @@ for _variant in ("good", "bad", "slowleak"):
     _register_find_account(_variant)
 
 
+# change-password — 비밀번호 변경 (2026-09-23 추가)
+# ---------------------------------------------------------------------------
+#
+# 이 화면이 새로 밟는 것: **`require_lowercase` 와 `require_digit`.**
+#
+# 두 규칙은 `rule_expander` 가 처음부터 지원했는데 쓰는 기획서가 없었다.
+# 가입 화면의 비밀번호 규칙이 8자·대문자·특수문자 셋뿐이어서다. 코드에 있고
+# 아무도 쓰지 않는 기능은 동작한다는 증거가 없다 — 이 화면이 그 증거를 만든다.
+#
+# 심은 결함 셋은 서로 다른 **규칙**이다. 한 요소(새 비밀번호)에 규칙이 다섯인데
+# 그중 둘만 빠진 모양이라, '규칙 하나당 케이스 하나' 설계가 그 둘만 짚어야 한다.
+#
+#   I1  소문자 포함 검증 없음      새 규칙 종류
+#   I2  숫자 포함 검증 없음        새 규칙 종류
+#   I3  새 비밀번호 확인 일치 검증 없음   대조군 (가입 C1 과 같은 종류)
+
+
+def _change_password_error(variant: str, current: str, new: str, confirm: str) -> str | None:
+    """비밀번호 변경 검증. 통과하면 None, 아니면 노출할 문구.
+
+    검사 순서는 기획서 §4 의 표 순서와 같다. 현재 비밀번호 확인을 **마지막에**
+    하는 이유: 새 비밀번호가 규칙을 어겼는데 '현재 비밀번호가 틀렸다' 가 먼저
+    뜨면, 고쳐야 할 곳을 사람이 잘못 찾는다.
+    """
+    if not current or not new or not confirm:
+        return MSG_REQUIRED
+    # I1·I2: bad 는 소문자·숫자 포함을 보지 않는다. 나머지 셋(길이·대문자·특수문자)은
+    # 구현돼 있다 — 한 요소의 규칙 중 일부만 빠진 모양이다.
+    if variant == "bad":
+        ok = (len(new) >= 10 and any(c.isupper() for c in new)
+              and any(c in SPECIAL_CHARS for c in new))
+    else:
+        ok = check_new_password_rules(new)
+    if not ok:
+        return MSG_NEW_PASSWORD_RULE
+    # I3: bad 는 확인 값이 달라도 그냥 넘어간다.
+    if variant != "bad" and confirm != new:
+        return MSG_NEW_PASSWORD_MISMATCH
+    if current != CURRENT_PASSWORD:
+        return MSG_CURRENT_PASSWORD_WRONG
+    return None
+
+
+CHANGE_PASSWORD_VARIANTS = ("good", "bad", "icons")
+
+
+for _variant in CHANGE_PASSWORD_VARIANTS:
+    def _register_change_password(variant: str) -> None:
+        @app.get(f"/{variant}/change-password", response_class=HTMLResponse)
+        def show_form(request: Request):
+            return render_change_password(request, variant)
+
+        @app.post(f"/{variant}/change-password", response_class=HTMLResponse)
+        def submit(request: Request,
+                   current_password: str = Form(default=""),
+                   new_password: str = Form(default=""),
+                   new_password_confirm: str = Form(default="")):
+            error = _change_password_error(
+                variant, current_password, new_password, new_password_confirm)
+            if error:
+                return render_change_password(request, variant, error=error)
+            return render_change_password(request, variant, done=MSG_PASSWORD_CHANGED)
+
+        show_form.__name__ = f"{variant}_change_password_form"
+        submit.__name__ = f"{variant}_change_password_submit"
+
+    _register_change_password(_variant)
+
+
 # contact — 문의하기 (2026-09-23 추가)
 # ---------------------------------------------------------------------------
 #
@@ -1222,6 +1332,9 @@ def index():
         "<li><a href='/good/contact'>/good/contact — 기획서 준수 구현</a></li>"
         "<li><a href='/bad/contact'>/bad/contact — 연락처 형식(H1)·내용 길이(H2)·문구(H3)</a></li>"
         "<li><a href='/icons/contact'>/icons/contact — 라벨·버튼이 전부 아이콘 (2차 경로 대상)</a></li>"
+        "<li><a href='/good/change-password'>/good/change-password — 기획서 준수 구현</a></li>"
+        "<li><a href='/bad/change-password'>/bad/change-password — 소문자(I1)·숫자(I2)·일치(I3)</a></li>"
+        "<li><a href='/icons/change-password'>/icons/change-password — 전부 아이콘 (2차 경로 대상)</a></li>"
         "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"

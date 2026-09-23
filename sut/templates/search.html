@@ -38,8 +38,8 @@
          결과를 공유·재현할 수 있다. 개인정보가 아니라 검색어이므로 URL 노출이
          문제되지 않는다. -->
     <form method="get" action="/{{ variant }}/search" novalidate>
-      <label for="query">검색어</label>
-      <input type="text" id="query" name="query" placeholder="상품명을 입력하세요"
+      <label for="query">{% if variant == 'icons' %}&#128269;{% else %}검색어{% endif %}</label>
+      <input type="text" id="query" name="query" placeholder="{% if variant != 'icons' %}상품명을 입력하세요{% endif %}"
              value="{{ query or '' }}">
 
       <!-- nolabel 변형: 접근성 이름이 없는 아이콘 버튼.
@@ -52,7 +52,7 @@
            필요한 지점이 여기다.
 
            good/bad 는 이 마크업이 동일하다. nolabel 만 다르다. -->
-      {% if variant == 'nolabel' %}
+      {% if variant in ('nolabel', 'icons') %}
       <button type="submit" class="icon">&#128269;</button>
       {% else %}
       <button type="submit">검색</button>
