@@ -1,0 +1,71 @@
+{
+  "_note": "방문 예약 화면의 Figma 응답 — REST 모양을 따라 손으로 작성한 합성 응답. 문구는 SUT good / booking_spec 과 일치시켰다. 날짜 요소는 Figma 컴포넌트 이름에 대응이 없어(COMPONENT_TYPES 는 Input·Button·Select·Checkbox 넷만 인식) Input 으로 둔다 — 디자인에서 날짜와 텍스트 입력은 같은 컴포넌트를 쓰는 일이 흔하다.",
+  "name": "prova-booking",
+  "document": {
+    "id": "0:0",
+    "type": "DOCUMENT",
+    "children": [
+      {
+        "id": "0:1",
+        "type": "CANVAS",
+        "name": "Page 1",
+        "children": [
+          {
+            "id": "30:1",
+            "type": "FRAME",
+            "name": "방문 예약",
+            "children": [
+              {
+                "id": "30:2", "type": "INSTANCE", "componentId": "9:1", "name": "Input",
+                "children": [
+                  {"id": "30:3", "type": "TEXT", "name": "label", "characters": "예약자"},
+                  {"id": "30:4", "type": "TEXT", "name": "placeholder", "characters": "예약자 성함"}
+                ]
+              },
+              {
+                "id": "30:5", "type": "INSTANCE", "componentId": "9:1", "name": "Input",
+                "children": [
+                  {"id": "30:6", "type": "TEXT", "name": "label", "characters": "방문 날짜"}
+                ]
+              },
+              {
+                "id": "30:7", "type": "INSTANCE", "componentId": "9:4", "name": "Select",
+                "children": [
+                  {"id": "30:8", "type": "TEXT", "name": "label", "characters": "방문 시간"},
+                  {"id": "30:9", "type": "TEXT", "name": "option", "characters": "10:00"},
+                  {"id": "30:10", "type": "TEXT", "name": "option", "characters": "14:00"},
+                  {"id": "30:11", "type": "TEXT", "name": "option", "characters": "18:00"}
+                ]
+              },
+              {
+                "id": "30:12", "type": "INSTANCE", "componentId": "9:1", "name": "Input",
+                "children": [
+                  {"id": "30:13", "type": "TEXT", "name": "label", "characters": "인원수"},
+                  {"id": "30:14", "type": "TEXT", "name": "placeholder", "characters": "1~20"}
+                ]
+              },
+              {
+                "id": "30:15", "type": "INSTANCE", "componentId": "9:1", "name": "Input",
+                "children": [
+                  {"id": "30:16", "type": "TEXT", "name": "label", "characters": "요청사항"},
+                  {"id": "30:17", "type": "TEXT", "name": "placeholder", "characters": "남기실 말씀 (선택)"}
+                ]
+              },
+              {
+                "id": "30:18", "type": "INSTANCE", "componentId": "9:2", "name": "Button",
+                "children": [
+                  {"id": "30:19", "type": "TEXT", "name": "text", "characters": "예약하기"}
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "components": {
+    "9:1": {"name": "Input"},
+    "9:2": {"name": "Button"},
+    "9:4": {"name": "Select"}
+  }
+}

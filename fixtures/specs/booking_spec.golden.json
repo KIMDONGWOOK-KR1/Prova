@@ -1,0 +1,99 @@
+{
+  "screen_id": "booking",
+  "screen_name": "방문 예약",
+  "url_path": "/booking",
+  "elements": [
+    {
+      "element_id": "visitor",
+      "type": "input",
+      "label": "예약자",
+      "required": true,
+      "constraints": {
+        "min_length": 2,
+        "max_length": 20
+      },
+      "error_message": "예약자는 2자 이상 20자 이하로 입력하세요.",
+      "placeholder": "예약자 성함",
+      "options": [],
+      "sample_value": "홍길동"
+    },
+    {
+      "element_id": "visit_date",
+      "type": "select",
+      "label": "방문 날짜",
+      "required": true,
+      "constraints": {},
+      "error_message": "방문 날짜를 선택하세요.",
+      "placeholder": null,
+      "options": [
+        "2026-10-15",
+        "2026-10-16",
+        "2026-10-17"
+      ],
+      "sample_value": "2026-10-15"
+    },
+    {
+      "element_id": "visit_time",
+      "type": "select",
+      "label": "방문 시간",
+      "required": true,
+      "constraints": {},
+      "error_message": "방문 시간을 선택하세요.",
+      "placeholder": null,
+      "options": [
+        "10:00",
+        "14:00",
+        "18:00"
+      ],
+      "sample_value": "14:00"
+    },
+    {
+      "element_id": "people",
+      "type": "input",
+      "label": "인원수",
+      "required": true,
+      "constraints": {
+        "numeric": true,
+        "min_length": 1,
+        "max_length": 2
+      },
+      "error_message": "인원수는 1~20 사이의 숫자로 입력하세요.",
+      "placeholder": "1~20",
+      "options": [],
+      "sample_value": "4"
+    },
+    {
+      "element_id": "memo",
+      "type": "input",
+      "label": "요청사항",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": "남기실 말씀 (선택)",
+      "options": [],
+      "sample_value": null
+    },
+    {
+      "element_id": "book_btn",
+      "type": "button",
+      "label": "예약하기",
+      "required": false,
+      "constraints": {},
+      "error_message": null,
+      "placeholder": null,
+      "options": [],
+      "sample_value": null
+    }
+  ],
+  "scenarios": [],
+  "success_condition": "같은 화면에 \"예약이 접수되었습니다.\" 문구를 노출한다",
+  "failure_conditions": [
+    "필수 입력 항목입니다.",
+    "예약자는 2자 이상 20자 이하로 입력하세요.",
+    "방문 날짜를 선택하세요.",
+    "방문 시간을 선택하세요.",
+    "인원수는 1~20 사이의 숫자로 입력하세요."
+  ],
+  "required_message": "필수 입력 항목입니다.",
+  "warnings": []
+}

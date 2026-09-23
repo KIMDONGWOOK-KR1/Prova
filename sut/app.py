@@ -26,6 +26,11 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
     find-account F1   계정 존재 여부를 문구로 노출 (금지 문구)
     product     P1    가격 숫자 검증 없음
                 P2    로그인 가드 없음
+    booking     K1    인원수 숫자 검증 없음 (자릿수는 본다)
+                K2    방문 시간 선택 목록에서 '18:00' 누락
+                K3    예약 문구가 기획서와 다름 ("예약 완료")
+    (booking 에는 `/icons`(이모지)와 `/svgicons`(인라인 SVG) 둘이 있다 —
+     아이콘 종류가 2차 경로에 주는 차이를 재려고 변수를 갈라 둔 것이다.)
     shipping    J1    우편번호 숫자 검증 없음 (자릿수는 본다)
                 J2    주소 최소 길이 검증 없음
                 J3    저장 문구가 기획서와 다름 ("저장 완료")
@@ -395,6 +400,18 @@ MSG_SHIPPING_SAVED = "배송지가 저장되었습니다."
 
 SHIPPING_REQUESTS = ("문 앞에 두기", "경비실에 맡기기", "배송 전 연락")
 
+#: 방문 예약 — 기획서 §2·§4 의 문구·목록.
+MSG_BOOKING_VISITOR_LENGTH = "예약자는 2자 이상 20자 이하로 입력하세요."
+MSG_BOOKING_TIME_REQUIRED = "방문 시간을 선택하세요."
+MSG_BOOKING_PEOPLE = "인원수는 1~20 사이의 숫자로 입력하세요."
+MSG_BOOKING_DONE = "예약이 접수되었습니다."
+
+BOOKING_DATES = ("2026-10-15", "2026-10-16", "2026-10-17")
+MSG_BOOKING_DATE_REQUIRED = "방문 날짜를 선택하세요."
+BOOKING_TIMES = ("10:00", "14:00", "18:00")
+#: K2 — bad 는 '18:00' 을 목록에서 빠뜨린다.
+BOOKING_TIMES_BAD = ("10:00", "14:00")
+
 
 def check_new_password_rules(pw: str) -> bool:
     """기획서 §2-1: 10자 이상 + 대문자·소문자·숫자·특수문자 각 1자 이상."""
@@ -521,6 +538,22 @@ def render_contact(
         name="contact.html",
         context={"variant": variant, "form": form, "error": error, "done": done,
                  "categories": CONTACT_CATEGORIES},
+    )
+
+
+def render_booking(
+    request: Request,
+    variant: str,
+    form: dict,
+    error: str | None = None,
+    done: str | None = None,
+) -> HTMLResponse:
+    times = BOOKING_TIMES_BAD if variant == "bad" else BOOKING_TIMES
+    return templates.TemplateResponse(
+        request=request,
+        name="booking.html",
+        context={"variant": variant, "form": form, "error": error, "done": done,
+                 "date_options": BOOKING_DATES, "time_options": times},
     )
 
 
@@ -1186,6 +1219,87 @@ for _variant in ("good", "bad", "slowleak"):
     _register_find_account(_variant)
 
 
+# booking — 방문 예약 (2026-09-23 추가)
+# ---------------------------------------------------------------------------
+#
+# 이 화면이 새로 밟는 것 둘.
+#
+# 1) **필수인 날짜 요소.** 지금까지 date 유형은 주문조회의 조회 조건으로만
+#    쓰였고 필수가 아니었다 — 비워 두고 조회하는 것이 정상이라서다. 그래서
+#    '날짜를 비웠을 때 필수 검증이 도는가' 를 확인한 적이 없다. 날짜 입력은
+#    텍스트와 채우는 방법이 다르므로(<input type=date>) 돌려 봐야 안다.
+#
+# 2) **아이콘의 종류.** icons 는 이모지, svgicons 는 인라인 SVG 를 쓴다.
+#    이모지는 글꼴 안의 그림이라 어느 앱에서나 같고, SVG 는 직접 그린 선이라
+#    앱마다 다르다 — 실물 웹사이트가 쓰는 쪽은 SVG 다. 2차 경로가 둘을 똑같이
+#    찾는지가 이 화면으로 갈린다. 1차 경로에는 차이가 없어야 하고(둘 다 접근성
+#    이름이 없다), 그 '똑같음' 을 테스트가 못 박는다 — 1차에서 이미 다르면
+#    2차를 켠 뒤의 차이를 아이콘 종류 탓으로 돌릴 수 없다.
+#
+#   K1  인원수 숫자 검증 없음   자릿수는 보면서 숫자 여부를 안 본다
+#   K2  방문 시간 선택 목록에서 '18:00' 누락
+#   K3  예약 문구가 기획서와 다름
+
+
+def _booking_error(variant: str, f: dict) -> str | None:
+    """예약 검증. 통과하면 None, 아니면 노출할 문구.
+
+    요청사항(memo)은 선택 항목이라 검사하지 않는다.
+    """
+    # 검사 순서는 기획서 §4 의 표 순서와 같다. 선택 요소를 **공통 문구보다 먼저**
+    # 본다 — 기획서가 '방문 날짜를 선택하세요.' 라는 요소별 문구를 적어 뒀으므로,
+    # 비었을 때 공통 문구가 뜨면 기획서와 다르다 (회원가입의 '가입 경로' 와 같다).
+    if not f["visitor"] or not f["people"]:
+        return MSG_REQUIRED
+    if f["visit_date"] not in BOOKING_DATES:
+        return MSG_BOOKING_DATE_REQUIRED
+    if f["visit_time"] not in BOOKING_TIMES:
+        return MSG_BOOKING_TIME_REQUIRED
+    if not (2 <= len(f["visitor"]) <= 20):
+        return MSG_BOOKING_VISITOR_LENGTH
+    # K1: bad 는 자릿수만 보고 숫자 여부를 보지 않는다.
+    digits_ok = f["people"].isdigit() if variant != "bad" else True
+    if not digits_ok or not (1 <= len(f["people"]) <= 2):
+        return MSG_BOOKING_PEOPLE
+    return None
+
+
+def _booking_form(visitor: str, visit_date: str, visit_time: str,
+                  people: str, memo: str) -> dict:
+    return {"visitor": visitor, "visit_date": visit_date, "visit_time": visit_time,
+            "people": people, "memo": memo}
+
+
+BOOKING_VARIANTS = ("good", "bad", "icons", "svgicons")
+
+
+for _variant in BOOKING_VARIANTS:
+    def _register_booking(variant: str) -> None:
+        @app.get(f"/{variant}/booking", response_class=HTMLResponse)
+        def show_form(request: Request):
+            return render_booking(request, variant, _booking_form("", "", "", "", ""))
+
+        @app.post(f"/{variant}/booking", response_class=HTMLResponse)
+        def submit(request: Request,
+                   visitor: str = Form(default=""),
+                   visit_date: str = Form(default=""),
+                   visit_time: str = Form(default=""),
+                   people: str = Form(default=""),
+                   memo: str = Form(default="")):
+            f = _booking_form(visitor, visit_date, visit_time, people, memo)
+            error = _booking_error(variant, f)
+            if error:
+                return render_booking(request, variant, f, error=error)
+            # K3: bad 는 기획서에 없는 문구를 노출한다.
+            done = "예약 완료" if variant == "bad" else MSG_BOOKING_DONE
+            return render_booking(request, variant, f, done=done)
+
+        show_form.__name__ = f"{variant}_booking_form"
+        submit.__name__ = f"{variant}_booking_submit"
+
+    _register_booking(_variant)
+
+
 # shipping — 배송지 등록 (2026-09-23 추가)
 # ---------------------------------------------------------------------------
 #
@@ -1438,6 +1552,10 @@ def index():
         "<li><a href='/good/shipping'>/good/shipping — 기획서 준수 구현 (선택 항목 포함)</a></li>"
         "<li><a href='/bad/shipping'>/bad/shipping — 우편번호 숫자(J1)·주소 길이(J2)·문구(J3)</a></li>"
         "<li><a href='/icons/shipping'>/icons/shipping — 전부 아이콘 (2차 경로 대상)</a></li>"
+        "<li><a href='/good/booking'>/good/booking — 기획서 준수 구현 (필수 날짜 요소)</a></li>"
+        "<li><a href='/bad/booking'>/bad/booking — 인원수 숫자(K1)·시간 목록(K2)·문구(K3)</a></li>"
+        "<li><a href='/icons/booking'>/icons/booking — 이모지 아이콘 (2차 경로 대상)</a></li>"
+        "<li><a href='/svgicons/booking'>/svgicons/booking — 인라인 SVG 아이콘 (2차 경로 대상)</a></li>"
         "<li><a href='/good/product'>/good/product — 기획서 준수 구현 (로그인 필요)</a></li>"
         "<li><a href='/bad/product'>/bad/product — 로그인 가드·가격 숫자 검사 누락</a></li>"
         "<li><a href='/good/orders'>/good/orders — 기획서 준수 구현 (로그인 필요)</a></li>"
