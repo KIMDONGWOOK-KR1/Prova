@@ -31,7 +31,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from prova.llm.base import LLMClient, LLMError
-from prova.text_utils import quoted_re
+from prova.text_utils import find_quoted
 from prova.models import (
     Expectation,
     Flow,
@@ -59,7 +59,10 @@ from prova.s2_case_generator.rule_expander import (
 # 항상 영문 세그먼트로 시작하므로(/login, /dashboard) 이 제약이 실제 경로를
 # 놓치지 않는다.
 _PATH_RE = re.compile(r"(/[a-zA-Z][a-zA-Z0-9_\-/]*)")
-_QUOTED_RE = quoted_re(40)
+# 성공 조건의 인용 문구 길이 상한. 40 이었을 때 parabank 의 61자 성공 문구를 못 읽어
+# 정상 가입이 '에러 없음' 만 보고 통과했다(2026-09-23). 엉뚱한 구간을 잡는 것은
+# 따옴표 짝 맞추기가 막으므로(find_quoted) 한도는 문단 하나를 거르는 정도면 된다.
+_QUOTED_MAX = 200
 
 # 씨앗 표(seed_rows)에서 날짜 열·금액 열을 값의 **모양**으로 찾을 때 쓴다.
 #
@@ -106,7 +109,7 @@ def parse_success_expectation(spec: ScreenSpec) -> Expectation:
     """
     text = spec.success_condition or ""
     paths = [p for p in _PATH_RE.findall(text) if p != spec.url_path]
-    quoted = _QUOTED_RE.findall(text)
+    quoted = find_quoted(text, _QUOTED_MAX)
 
     return Expectation(
         type="toast_or_redirect",
