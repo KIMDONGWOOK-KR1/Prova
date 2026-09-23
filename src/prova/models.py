@@ -592,6 +592,18 @@ class StepResult(BaseModel):
     seq: int
     action: str
     target: str = ""
+    # 이 스텝이 실제로 넣은 값. `TestStep.value` 를 그대로 옮겨 담는다.
+    #
+    # 명세서 §9 의 리포트 완결성 다섯 필드 중 '입력 데이터' 가 이것이다. 없으면
+    # 리포트를 읽는 개발자가 **"정말 그런가" 를 재현할 수 없다** — FAIL 을 보고
+    # 가장 먼저 하는 일이 같은 값을 손으로 넣어 보는 것인데, 무엇을 넣었는지가
+    # 리포트에 없었다(2026-09-23 측정에서 166/166 누락).
+    #
+    # 값을 가리지 않는다. 여기 오는 값은 `rule_expander` 가 규칙에서 만든 것이거나
+    # 기획서의 예시값이고, 케이스 제목에도 이미 그대로 적힌다("입력값 'Aa1!aaa'").
+    # 실제 계정 자격증명은 이 경로로 들어오지 않는다 — `prova login` 은 사람이
+    # 브라우저에서 직접 넣고 storage_state 만 저장한다.
+    value: Optional[str] = None
     status: Literal["ok", "error"] = "ok"
     elapsed_ms: int = 0
     screenshot: Optional[str] = None

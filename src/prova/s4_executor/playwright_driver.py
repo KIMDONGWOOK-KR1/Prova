@@ -499,6 +499,8 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
 
     return StepResult(
         seq=step.seq, action=step.action, target=step.target,
+        # 무엇을 넣었는지를 결과에 남긴다 — 리포트 완결성의 '입력 데이터'(명세서 §9).
+        value=step.value,
         status=status, elapsed_ms=elapsed_ms,
         screenshot=shot, dom_snapshot=dom,
         error_code=error_code, error_detail=error_detail,

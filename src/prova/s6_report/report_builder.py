@@ -51,8 +51,9 @@ CATEGORY_LABELS = {
     "timeout": ("시간 초과", "대기 시간을 초과했습니다."),
     "page_error": ("페이지 오류", "HTTP 오류 또는 JS 콘솔 예외가 있습니다."),
     "unknown": ("원인 미분류", "규칙으로 분류되지 않았습니다."),
-    "unverifiable": ("확인 불가", "기대한 문구가 조작 전부터 같은 화면에 있어, 그 문구로는 "
-                     "결과를 확인할 수 없습니다."),
+    "unverifiable": ("확인 불가", "도구가 결과를 확인할 수 없었습니다 — 기대 문구가 조작 "
+                     "전부터 같은 화면에 있었거나, 목록을 찾고도 읽지 못했습니다 "
+                     "(표 머리글의 colspan 등). 구현 결함이 아닙니다."),
     "precondition_failed": ("전제 미충족", "전제(로그인)를 세우지 못했습니다. 이 화면의 결함이 "
                             "아닙니다 — 로그인 화면의 결과를 먼저 확인하세요."),
 }
@@ -242,16 +243,22 @@ def _steps_html(verdict: Verdict) -> str:
         # 어느 단계의 3번인지 표만 봐서는 알 수 없다 — models.py 의 phase
         # 필드가 "리포트가 구분해 보여준다" 고 약속한 자리가 여기다.
         phase_label = "준비" if r.phase == "setup" else "실행"
+        # 넣은 값을 보여준다 — FAIL 을 보고 개발자가 가장 먼저 하는 일이 같은 값을
+        # 손으로 넣어 보는 것이다. 빈 문자열을 넣은 것과 아무것도 안 넣은 것은
+        # 다르므로(필수 입력 검증이 정확히 그 차이를 본다) 빈 값은 '' 로 보인다.
+        shown_value = "''" if r.value == "" else _esc(r.value)
         rows.append(
             f"<tr><td>{_esc(phase_label)}</td><td>{r.seq}</td>"
             f"<td>{_esc(ACTION_LABELS.get(r.action, r.action))}</td><td>{_esc(r.target)}</td>"
+            f"<td class='val'>{shown_value}</td>"
             f"<td>{_esc(strategy)}</td><td{cls}>{_esc(STATUS_LABELS.get(r.status, r.status))}</td>"
             f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
             f"<td>{evidence}</td></tr>"
         )
     return (
         "<table class='steps'><thead><tr><th>단계</th><th>#</th><th>동작</th><th>대상</th>"
-        "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
+        "<th>입력값</th><th>탐지</th><th>결과</th><th>소요</th><th>오류</th>"
+        "<th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
