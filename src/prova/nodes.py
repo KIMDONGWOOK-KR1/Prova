@@ -40,6 +40,7 @@ from prova.s1_merge import merge_documents
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
+from prova.s2_case_generator.precondition import login_screen
 from prova.s2_case_generator.selector import case_kind
 from prova.s2_case_generator.rule_expander import spec_defects
 from prova.s3_grounder.dom_locator import (
@@ -524,6 +525,12 @@ def _specs_for(state: AgentState, case: TestCase) -> list[ScreenSpec]:
     """
     own = state.doc.screen_by_id(case.screen_id)
     ordered = [own] if own else []
+    # 전제 스텝은 로그인 화면의 요소를 조작한다 — 그 화면의 명세가 없으면 'Login' 이
+    # 버튼이라는 힌트가 없어, saucedemo 에서 같은 이름의 <form> 을 잡아 눌렀다(2026-09-28).
+    if case.setup_steps and own and own.precondition:
+        login = login_screen(own.precondition, state.doc)
+        if login is not None and login not in ordered:
+            ordered.append(login)
     if case.flow_id:
         flow = next((f for f in state.doc.flows if f.flow_id == case.flow_id), None)
         if flow:

@@ -38,9 +38,13 @@ def _pick_one(screen: ScreenSpec, kind: str) -> tuple[Optional[str], Optional[st
                  if el.constraints.get("format") == "email"
                  or "이메일" in el.label or "email" in el.label.lower()]
         word = "이메일"
+        if not cands:
+            # 아이디로 로그인하는 화면(saucedemo 'Username', 2026-09-28) — 비밀번호가
+            # 아닌 입력란이 **하나뿐일 때만** 그것을 아이디 칸으로 본다.
+            cands = [el for el in inputs if not _is_password(el)]
+            word = "아이디"
     else:
-        cands = [el for el in inputs
-                 if "비밀번호" in el.label or "password" in el.label.lower()]
+        cands = [el for el in inputs if _is_password(el)]
         word = "비밀번호"
     if len(cands) == 1:
         return cands[0].label, None
@@ -48,6 +52,25 @@ def _pick_one(screen: ScreenSpec, kind: str) -> tuple[Optional[str], Optional[st
         return None, f"{word} 입력란"
     return None, (f"{word} 입력란 후보가 {len(cands)}개"
                   f"({', '.join(el.label for el in cands)})라 하나로 확정할 수 없음")
+
+
+def _is_password(el) -> bool:
+    return "비밀번호" in el.label or "password" in el.label.lower()
+
+
+def login_screen(pre: Precondition, doc: SpecDocument) -> Optional[ScreenSpec]:
+    """전제가 가리키는 로그인 화면.
+
+    ID(기본값 'login')가 맞는 화면이 먼저다. 없으면 비밀번호 입력란이 있는 화면이
+    **정확히 하나**일 때 그것을 쓴다 — saucedemo 는 로그인 화면 ID 가 'sd_login' 이라
+    전제가 통째로 빠졌다(2026-09-28). 둘 이상이면 고르지 않는다.
+    """
+    by_id = next((s for s in doc.screens if s.screen_id == pre.login_screen_id), None)
+    if by_id is not None:
+        return by_id
+    with_password = [s for s in doc.screens
+                     if any(el.type == "input" and _is_password(el) for el in s.elements)]
+    return with_password[0] if len(with_password) == 1 else None
 
 
 def _login_success_path(login: ScreenSpec) -> Optional[str]:
@@ -76,11 +99,11 @@ def expand_precondition(
 ) -> tuple[list[TestStep], list[str]]:
     if not pre or not pre.requires_login:
         return [], []
-    login = next((s for s in doc.screens
-                  if s.screen_id == pre.login_screen_id), None)
+    login = login_screen(pre, doc)
     if login is None:
         return [], [f"전제가 가리키는 로그인 화면({pre.login_screen_id})이 "
-                    f"문서에 없어 전제 스텝을 만들지 못했습니다."]
+                    f"문서에 없어 전제 스텝을 만들지 못했습니다 — 비밀번호 입력란이 있는 "
+                    f"화면도 하나로 정해지지 않았습니다."]
     email, why_e = _pick_one(login, "email")
     password, why_p = _pick_one(login, "password")
     submit = next((el.label for el in login.elements if el.type == "button"), None)
@@ -109,8 +132,7 @@ def guard_case(
     """'비로그인이면 로그인으로 이동' — 전제 절 자체의 검증 (스펙 §3-3)."""
     if not pre or not pre.requires_login:
         return None
-    login = next((s for s in doc.screens
-                  if s.screen_id == pre.login_screen_id), None)
+    login = login_screen(pre, doc)
     if login is None:
         return None
     return TestCase(
