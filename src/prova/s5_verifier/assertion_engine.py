@@ -349,6 +349,12 @@ def _judge_result_count(expected: Expectation, state: PageState) -> tuple[bool, 
         return False, f"건수를 세지 못했습니다 — 도구 오류 ({got.detail}). 구현 결함이 아닙니다"
 
     if got.status == "absent":
+        if want == 0 and got.lookalikes:
+            # 이름 없는 표·목록이 보이는데 이름으로 못 찾았다 — 목록이 있는데 도구가 못
+            # 본 것일 수 있다. '0건 확인' 으로 받으면 검색 필터를 한 번도 보지 않은 채
+            # 통과한다(demoqa 'zzzz → 0개', 2026-09-28).
+            return False, (
+                f"{target!r} 을 찾지 못해 0건인지 확인할 수 없습니다 ({got.detail})")
         if want == 0:
             return True, f"{target!r} 이 렌더되지 않음 — 0건으로 확인"
         return False, (

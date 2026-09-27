@@ -49,8 +49,17 @@ class TestCountClassification:
         v = _count_verdict("absent", lookalikes=0)
         assert v.failure_category == "assertion_mismatch"
 
-    def test_0건_기대의_부재는_여전히_통과다(self):
-        assert _count_verdict("absent", lookalikes=2, want=0).verdict == "PASS"
+    def test_0건_기대의_부재는_목록_비슷한_것이_없을_때만_통과다(self):
+        """결과 0건이라 목록을 안 그린 정상 구현 — 조건부 렌더링."""
+        assert _count_verdict("absent", lookalikes=0, want=0).verdict == "PASS"
+
+    def test_이름_없는_표가_보이면_0건도_확인한_것이_아니다(self):
+        """demoqa 'zzzz → 0개' 가 이렇게 통과했다 — 처음부터 목록을 못 찾았는데 '0건 확인'
+        으로 받아 줬다. 확인하지 않은 것과 확인해서 0건인 것은 다르다 (2026-09-28)."""
+        v = _count_verdict("absent", lookalikes=1, want=0)
+        assert v.verdict == "FAIL"
+        assert v.failure_category == "element_not_found"
+        assert "확인할 수 없습니다" in v.evidence["actual"]
 
     def test_목록을_특정하지_못하면_탐지_실패다(self):
         assert _count_verdict("ambiguous").failure_category == "element_not_found"
