@@ -15,7 +15,10 @@ Confirm 칸 하나에 문구가 둘이다 — 비었을 때 "Password confirmati
 from __future__ import annotations
 
 from prova.models import ScreenSpec, UIElement
-from prova.s1_spec_extractor.extractor import _apply_declared_element_required
+from prova.s1_spec_extractor.extractor import (
+    _apply_declared_element_required,
+    _apply_declared_required_message,
+)
 from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage, ParsedTable
 from prova.s2_case_generator.generator import generate_cases
 
@@ -79,6 +82,57 @@ class TestDeclared:
 
     def test_절이_없으면_빈손(self):
         assert _doc(LINES[:1]).declared_element_required_messages() == {}
+
+
+def _failure_doc(condition: str, message: str, element_rows):
+    return ParsedDocument(source="x", pages=[ParsedPage(page_no=1, tables=[
+        ParsedTable(rows=[ELEMENT_TABLE[0], *element_rows]),
+        ParsedTable(rows=[["상황", "처리"], [condition, f'"{message}" 노출']]),
+    ])])
+
+
+USERNAME = ["username", "입력", "Username", "필수", "-", "-", "-"]
+PASSWORD = ["password", "입력", "Password", "필수", "-", "-", "-"]
+QUERY = ["query", "입력", "검색어", "필수", "-", "-", "-"]
+
+
+class TestFailureTableRow:
+    """실패 조건 표의 '비어 있음' 한 행 — 화면 공통인가, 한 칸의 것인가 (saucedemo, 2026-09-27)."""
+
+    def test_일반_문장은_화면_공통이다(self):
+        d = _failure_doc("필수 입력값이 비어 있음", "필수 입력 항목입니다.", [USERNAME, PASSWORD])
+        assert d.declared_required_message() == "필수 입력 항목입니다."
+        assert d.unresolved_required_rows() == []
+
+    def test_라벨을_가리키면_그_요소의_문구다(self):
+        d = _failure_doc("Username 이 비어 있음", "Username is required", [USERNAME, PASSWORD])
+        assert d.declared_required_message() is None
+        assert d.declared_element_required_messages() == {"Username": "Username is required"}
+
+    def test_필수_입력이_하나뿐이면_화면_공통이어도_같다(self):
+        """검색어 화면 — 가리킬 수 있는 칸이 하나뿐이다."""
+        d = _failure_doc("사용자 입력이 비었음", "검색어를 입력하세요.", [QUERY])
+        assert d.declared_required_message() == "검색어를 입력하세요."
+
+    def test_어느_칸인지_모르면_쓰지_않고_알린다(self):
+        """'사용자 이름' 은 'Username' 이 아니다 — 추측하면 Password 에도 붙어 오탐이 났다."""
+        d = _failure_doc("사용자 이름이 비어 있음", "Epic sadface: Username is required",
+                         [USERNAME, PASSWORD])
+        assert d.declared_required_message() is None
+        assert d.declared_element_required_messages() == {}
+        assert d.unresolved_required_rows() == [
+            ("사용자 이름이 비어 있음", "Epic sadface: Username is required")]
+
+    def test_모델이_그_문구를_화면_공통으로_내도_지운다(self):
+        """파서가 답을 안 하면 모델 값이 남는다 — 같은 오탐이 모델 쪽으로 돌아온다."""
+        d = _failure_doc("사용자 이름이 비어 있음", "Epic sadface: Username is required",
+                         [USERNAME, PASSWORD])
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/",
+                          required_message="Epic sadface: Username is required")
+        _apply_declared_required_message(spec, d.declared_required_message(),
+                                         d.unresolved_required_rows())
+        assert spec.required_message is None
+        assert any("사용자 이름이 비어 있음" in w for w in spec.warnings)
 
 
 class TestApply:

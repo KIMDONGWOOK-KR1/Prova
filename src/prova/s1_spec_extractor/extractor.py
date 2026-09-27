@@ -323,7 +323,8 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _backfill_declared_elements(spec, doc)
     _apply_declared_types(spec, doc.declared_element_types())
     _apply_declared_placeholders(spec, doc.declared_placeholders())
-    _apply_declared_required_message(spec, doc.declared_required_message())
+    _apply_declared_required_message(spec, doc.declared_required_message(),
+                                     doc.unresolved_required_rows())
     _apply_declared_element_required(spec, doc.declared_element_required_messages())
     _apply_declared_scenarios(spec, declared_scenarios)
     _apply_declared_precondition(spec, doc.declared_precondition_account())
@@ -514,7 +515,10 @@ def _apply_declared_placeholders(spec: ScreenSpec, declared: dict[str, str]) -> 
         element.placeholder = want
 
 
-def _apply_declared_required_message(spec: ScreenSpec, declared: str | None) -> None:
+def _apply_declared_required_message(
+    spec: ScreenSpec, declared: str | None,
+    unresolved: list[tuple[str, str]] = (),
+) -> None:
     """필수 입력 누락 문구를 실패 조건 표의 값으로 맞춘다.
 
     화면을 한 문서에 모으자 7B 가 검색 화면의 이 값을 **few-shot 예시의 문구로**
@@ -523,7 +527,19 @@ def _apply_declared_required_message(spec: ScreenSpec, declared: str | None) -> 
 
     표에서 후보를 하나로 특정하지 못하면 declared 가 None 이고, 그때는 손대지
     않는다 (declared_required_message 참고).
+
+    unresolved 는 한 칸을 가리키는데 어느 칸인지 모르는 '비어 있음' 행이다
+    (saucedemo '사용자 이름이 비어 있음'). 쓰지 않았다고 알리고, 모델이 그 문구를
+    화면 공통으로 냈으면 지운다 — 남기면 다른 칸의 필수 케이스가 오탐이 된다.
     """
+    for cond, msg in unresolved:
+        spec.warnings.append(
+            f"실패 조건 표의 '{cond}' 문구({msg!r})가 어느 요소의 것인지 정하지 못해 "
+            f"쓰지 않았습니다 — 필수 케이스는 '에러가 떴는가' 만 확인합니다. 상황 칸에 "
+            f"요소 라벨을 그대로 적어 주세요."
+        )
+        if spec.required_message == msg:
+            spec.required_message = None
     if declared is None or declared == spec.required_message:
         return
     spec.warnings.append(
