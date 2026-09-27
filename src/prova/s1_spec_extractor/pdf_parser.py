@@ -67,6 +67,17 @@ _EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|
 # 표 칸 안의 인용된 문구 길이 상한 (text_utils.find_quoted).
 _QUOTED_MAX = 60
 
+def is_account_header(header: list[str]) -> bool:
+    """전제 계정 표의 머리글인가 — [로그인 아이디, 비밀번호] 2열.
+
+    예전에는 정확히 '이메일|비밀번호' 만 받았다. 아이디로 로그인하는 화면(saucedemo
+    'Username|Password')의 전제가 경고 없이 빠졌다(2026-09-28). 첫 열은 무엇이든 로그인
+    아이디로 본다 — '전제' 절 제목 바로 뒤의 표라는 조건이 다른 표를 거른다.
+    """
+    cells = [normalize_ws(h).casefold() for h in header]
+    return len(cells) == 2 and cells[1] in ("비밀번호", "password")
+
+
 # 사용자가 값을 넣는 요소 — 예시 표의 '입력 열' 이 될 수 있는 것 (declared_scenarios).
 # dom_locator._FILLABLE_TYPES 와 같은 집합이다. S1 이 S3 를 가져다 쓰지 않도록 따로 둔다.
 _FILLABLE_TYPES = ("input", "select", "checkbox", "date")
@@ -716,9 +727,7 @@ class ParsedDocument:
         """
         heading_re = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
         table = self._table_after_heading(
-            heading_re,
-            lambda header, t: [normalize_ws(h) for h in header] == ["이메일", "비밀번호"],
-        )
+            heading_re, lambda header, t: is_account_header(header))
         return [list(r) for r in table.rows] if table is not None else None
 
     def declared_seed_rows(self) -> list[dict[str, str]]:

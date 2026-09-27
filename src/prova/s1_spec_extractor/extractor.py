@@ -29,6 +29,7 @@ from prova.models import (DateFilter, Flow, Precondition, Scenario, ScreenSpec,
                           SpecDocument, StatusFilter, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
     ParsedDocument,
+    is_account_header,
     normalize_ws,
     parse_pdf,
 )
@@ -635,8 +636,7 @@ def _apply_declared_precondition(
     """
     if not account_table or len(account_table) < 2:
         return
-    header = [normalize_ws(h) for h in account_table[0]]
-    if header != ["이메일", "비밀번호"]:
+    if not is_account_header(account_table[0]):
         return
     row = account_table[1]
     if len(row) < 2:
