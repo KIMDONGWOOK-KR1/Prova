@@ -49,7 +49,7 @@ from typing import Optional
 
 import pdfplumber
 
-from prova.text_utils import find_quoted, normalize_ws
+from prova.text_utils import contains_loose, find_quoted, normalize_ws
 
 # 건수 열을 값의 모양으로 찾을 때 쓴다. 음수·소수는 건수가 아니다.
 _INT_RE = re.compile(r"\d+")
@@ -455,6 +455,12 @@ class ParsedDocument:
                 quoted = find_quoted(bullet, _QUOTED_MAX)
                 if len(quoted) == 1:
                     found.setdefault(label, normalize_ws(quoted[0]))
+
+        # 실패 조건 표에서 한 칸을 가리키는 행도 그 칸의 것이다. 2-1 절이 먼저다.
+        for cond, msg in self._empty_rows():
+            owner, label = self._empty_row_owner(cond)
+            if owner == "element":
+                found.setdefault(label, msg)
         return found
 
     def unread_example_tables(self) -> list[str]:
@@ -518,28 +524,66 @@ class ParsedDocument:
         후보가 정확히 하나일 때만 값을 돌려준다. 여러 행이 '비어 있음' 을 다루면
         (요소별로 다른 문구를 쓰는 기획서) 어느 것이 화면 공통 문구인지 알 수
         없으므로 None 을 돌려주고 LLM 의 판단을 남긴다. 억측한 문구는 오탐이 된다.
+
+        ## 한 칸을 가리키는 행은 화면 공통이 아니다 (2026-09-27)
+
+        saucedemo 의 '사용자 이름이 비어 있음 → "…Username is required"' 한 행이 화면
+        공통이 되자 Password 필수 케이스까지 그 문구를 기대해 오탐이 났다. 행의 주인은
+        _empty_row_owner 가 정한다 — 화면 공통으로 쓰는 것은 'common' 뿐이다.
         """
+        found = [msg for cond, msg in self._empty_rows()
+                 if self._empty_row_owner(cond)[0] == "common"]
+        return found[0] if len(found) == 1 else None
+
+    # '어느 칸이든' 을 뜻하는 상황 문장 — '필수 입력값이 비어 있음'.
+    _GENERIC_EMPTY_RE = re.compile(r"필수|모든|입력\s*값|항목")
+
+    def _empty_rows(self) -> list[tuple[str, str]]:
+        """실패 조건 표의 '비어 있음' 행 — (상황, 따옴표 문구)."""
         table = self._failure_table()
         if table is None:
-            return None
+            return []
         header = [normalize_ws(h) for h in table.header]
         cond_col = next((i for i, h in enumerate(header)
                          if "상황" in h or "조건" in h), None)
         act_col = next((i for i, h in enumerate(header)
                         if i != cond_col and ("처리" in h or "동작" in h)), None)
         if cond_col is None or act_col is None:
-            return None
+            return []
 
-        found: list[str] = []
+        rows = []
         for row in table.rows[1:]:
             if len(row) <= max(cond_col, act_col):
                 continue
-            if not _EMPTY_INPUT_RE.search(normalize_ws(row[cond_col])):
+            cond = normalize_ws(row[cond_col])
+            if not _EMPTY_INPUT_RE.search(cond):
                 continue
             quoted = find_quoted(row[act_col], _QUOTED_MAX)
             if quoted:
-                found.append(normalize_ws(quoted[0]))
-        return found[0] if len(found) == 1 else None
+                rows.append((cond, normalize_ws(quoted[0])))
+        return rows
+
+    def _empty_row_owner(self, cond: str) -> tuple[str, Optional[str]]:
+        """'비어 있음' 행이 누구의 것인가 — ("common"|"element"|"unknown", 라벨).
+
+        일반 문장이면 화면 공통. 요소 라벨을 정확히 하나 가리키면 그 요소의 것. 라벨을
+        못 찾아도 필수 입력이 하나뿐이면 그것을 가리킬 수밖에 없으니 화면 공통과 같다.
+        그 밖에는 모른다 — '사용자 이름' 이 'Username' 인지 추측하지 않는다.
+        """
+        if self._GENERIC_EMPTY_RE.search(cond):
+            return "common", None
+        rows = self.declared_element_rows()
+        named = [r["label"] for r in rows if contains_loose(cond, r["label"])]
+        if len(named) == 1:
+            return "element", named[0]
+        if sum(1 for r in rows if r["required"]) <= 1:
+            return "common", None
+        return "unknown", None
+
+    def unresolved_required_rows(self) -> list[tuple[str, str]]:
+        """주인을 정하지 못해 쓰지 않은 '비어 있음' 행 — (상황, 문구)."""
+        return [(cond, msg) for cond, msg in self._empty_rows()
+                if self._empty_row_owner(cond)[0] == "unknown"]
 
     def _failure_table(self) -> Optional[ParsedTable]:
         """실패 조건 표. '상황|처리' 2열로 판별한다.
