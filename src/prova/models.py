@@ -20,6 +20,7 @@ from __future__ import annotations
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
+from pydantic.json_schema import SkipJsonSchema
 
 # ---------------------------------------------------------------------------
 # S1 · 설계 문서에서 추출한 화면 명세
@@ -59,6 +60,13 @@ class UIElement(BaseModel):
     required: bool = False
     constraints: dict = Field(default_factory=dict)
     error_message: Optional[str] = None
+    # 이 요소가 **비었을 때** 노출하는 문구. 기획서 2-1 절에 요소별로 적힌 경우만 있다.
+    #
+    # error_message 와 따로 두는 이유: 칸 하나에 문구가 둘일 수 있다(parabank Confirm —
+    # 비면 "…is required.", 다르면 "…did not match."). 자리가 하나면 필수 케이스가 일치
+    # 문구를 빌려 써 오탐이 난다(2026-09-23). 코드만 채운다 — LLM 스키마에서 뺐다
+    # (extractor._apply_declared_element_required).
+    required_message: SkipJsonSchema[Optional[str]] = None
     placeholder: Optional[str] = None
     # select 의 선택 항목. 기획서의 '선택 목록' 을 그대로 담는다.
     #
