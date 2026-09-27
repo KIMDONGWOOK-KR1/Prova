@@ -324,6 +324,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_types(spec, doc.declared_element_types())
     _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message())
+    _apply_declared_element_required(spec, doc.declared_element_required_messages())
     _apply_declared_scenarios(spec, declared_scenarios)
     _apply_declared_precondition(spec, doc.declared_precondition_account())
     _apply_declared_seed_rows(spec, doc.declared_seed_rows())
@@ -530,6 +531,16 @@ def _apply_declared_required_message(spec: ScreenSpec, declared: str | None) -> 
         f"(모델: {spec.required_message!r}). 프롬프트를 확인하세요."
     )
     spec.required_message = declared
+
+
+def _apply_declared_element_required(spec: ScreenSpec, declared: dict[str, str]) -> None:
+    """요소별 필수 문구를 2-1 절에서 읽은 값으로 둔다 (라벨 -> 문구).
+
+    이 필드는 LLM 스키마에 없으니 모델 몫이 없다 — 그래서 경고 없이 덮어쓰고,
+    기획서에 없으면 비운다(UIElement.required_message 참고).
+    """
+    for element in spec.elements:
+        element.required_message = declared.get(element.label)
 
 
 def _apply_declared_scenarios(

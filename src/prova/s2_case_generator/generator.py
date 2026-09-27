@@ -129,10 +129,19 @@ def _required_message_for(element: UIElement, spec: ScreenSpec) -> Optional[str]
     그렇다 — 체크박스에 형식 검증이 있을 수 없으니 "약관에 동의해야 합니다." 는
     미동의 상태의 문구다. 이때 화면 공통 문구를 쓰면 구현이 옳아도 문구가 달라
     FAIL 이 되어 오탐이 된다.
+
+    기획서가 그 요소의 '비었을 때' 문구를 따로 적었으면 그게 가장 먼저다.
+
+    규칙이 있는 요소의 error_message 는 **빌려 쓰지 않는다.** parabank Confirm 은
+    비면 "…is required.", 다르면 "…did not match." 였는데, 화면 공통 문구가 없자
+    일치 문구가 필수 케이스의 기대가 되어 오탐이 났다(2026-09-23). 모르면 None —
+    호출자가 '에러가 떴는가' 로 격하한다.
     """
+    if element.required_message:
+        return element.required_message
     if element.error_message and not element.constraints:
         return element.error_message
-    return spec.required_message or element.error_message
+    return spec.required_message
 
 
 def _expectation_for_violation(

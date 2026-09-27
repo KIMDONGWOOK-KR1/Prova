@@ -13,6 +13,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "이메일을 입력하세요",
           "options": [],
           "sample_value": null
@@ -24,6 +25,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "비밀번호를 입력하세요",
           "options": [],
           "sample_value": null
@@ -35,6 +37,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": null,
           "options": [],
           "sample_value": null
@@ -65,6 +68,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "이메일을 입력하세요",
           "options": [],
           "sample_value": null
@@ -76,6 +80,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "비밀번호를 입력하세요",
           "options": [],
           "sample_value": null
@@ -87,6 +92,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "비밀번호를 다시 입력하세요",
           "options": [],
           "sample_value": null
@@ -98,6 +104,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": "닉네임을 입력하세요",
           "options": [],
           "sample_value": null
@@ -109,6 +116,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": null,
           "options": [
             "검색",
@@ -124,6 +132,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": null,
           "options": [],
           "sample_value": null
@@ -135,6 +144,7 @@
           "required": false,
           "constraints": {},
           "error_message": null,
+          "required_message": null,
           "placeholder": null,
           "options": [],
           "sample_value": null

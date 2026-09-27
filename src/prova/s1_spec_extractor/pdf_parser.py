@@ -417,6 +417,46 @@ class ParsedDocument:
                 return normalize_ws(" ".join(body)) or None
         return None
 
+    _RULE_DETAIL_HEADING_RE = re.compile(r"^\s*\d+(?:-\d+)?\.\s.*규칙\s*상세")
+    _BULLET_RE = re.compile(r"\s*[•·\-]\s+")
+
+    def declared_element_required_messages(self) -> dict[str, str]:
+        """'입력 검증 규칙 상세' 절에서 요소가 **비었을 때** 문구. 라벨 -> 문구.
+
+        절 안에서 요소 라벨과 똑같은 줄(굵은 소제목)이 그 요소의 시작이다. 글머리
+        하나에 '비어 있으면'·'선택하지 않으면'·'체크하지 않으면' 이 있고 따옴표 문구가
+        **정확히 하나**일 때만 답한다. 우리 픽스처처럼 '에러 메시지를 노출한다' 로만
+        적었으면 답하지 않는다 — 문구를 지어내면 오탐이다.
+
+        PDF 는 글머리 중간에서 줄을 바꾸므로 요소 단위로 이어 붙인 뒤 글머리로 다시 자른다.
+        """
+        labels = {r["label"] for r in self.declared_element_rows()}
+        blocks: dict[str, list[str]] = {}
+        current = None
+        inside = False
+        for page in self.pages:
+            for text, _ in page.body_lines:
+                if self._RULE_DETAIL_HEADING_RE.match(text):
+                    inside, current = True, None
+                elif self._NUMBERED_HEADING_RE.match(text):
+                    inside = False
+                elif inside and normalize_ws(text) in labels:
+                    current = normalize_ws(text)
+                    blocks.setdefault(current, [])
+                elif inside and current:
+                    blocks[current].append(text)
+
+        found: dict[str, str] = {}
+        for label, lines in blocks.items():
+            for bullet in self._BULLET_RE.split(" " + " ".join(lines)):
+                if not (_EMPTY_INPUT_RE.search(bullet)
+                        or re.search(r"(선택|체크)하지\s*않", bullet)):
+                    continue
+                quoted = find_quoted(bullet, _QUOTED_MAX)
+                if len(quoted) == 1:
+                    found.setdefault(label, normalize_ws(quoted[0]))
+        return found
+
     def unread_example_tables(self) -> list[str]:
         """입력-결과 예시 표로 보이는데 요소와 맞는 열이 하나도 없어 쓰지 않은 표.
 

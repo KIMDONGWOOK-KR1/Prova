@@ -132,10 +132,12 @@ class TestExpectationSource:
         case = next(c for c in generate_cases(login_spec) if c.violates == "format")
         assert case.expected.value == "올바른 이메일 형식을 입력하세요."
 
-    def test_공통문구가_없으면_요소_메시지로_폴백(self):
+    def test_공통문구가_없으면_규칙_문구를_빌리지_않고_격하한다(self):
+        """'4자 이상' 은 길이 문구다 — 빈 칸 케이스의 기대로 빌리면 오탐이 된다
+        (parabank Confirm, 2026-09-23 · test_required_per_element.py)."""
         spec = minimal_spec(required_message=None)
         case = next(c for c in generate_cases(spec) if c.violates == "required")
-        assert case.expected.value == "4자 이상 입력하세요."
+        assert case.expected.type == "error_shown"
 
     def test_문구를_전혀_모르면_error_shown으로_격하한다(self):
         """억측한 문구로 오탐을 만드는 것보다 '에러가 떴는지' 만 보는 게 낫다."""
