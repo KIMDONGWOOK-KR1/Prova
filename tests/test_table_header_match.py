@@ -83,7 +83,7 @@ class TestUnreadExampleTable:
 
 class TestInventedValue:
     def _spec(self, **kw):
-        el = dict(element_id="username", type="input", label="Username")
+        el = dict(element_id="username", type="input", label="Username", required=True)
         el.update(kw)
         return ScreenSpec(screen_id="s", screen_name="s", url_path="/",
                           elements=[UIElement(**el)])
@@ -99,6 +99,11 @@ class TestInventedValue:
         """이메일 형식 규칙이 있으면 user@test.com 을 만든다 — 규칙이 정한 값이다."""
         spec = self._spec(constraints={"format": "email"})
         assert not any("임의 값" in w for w in spec_defects(spec))
+
+    def test_선택_입력은_조용하다(self):
+        """등록된 값이 필요한 칸은 필수다. 전화번호·검색어처럼 비워도 되는 칸에
+        뜨던 경고는 잡음이었다(parabank 'Phone #'·automationexercise '검색어', 2026-09-23)."""
+        assert not any("임의 값" in w for w in spec_defects(self._spec(required=False)))
 
 
 def test_못_읽은_예시_표는_설계_문서_경고로_나온다():
