@@ -55,6 +55,7 @@ from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_s
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
 from prova.text_utils import normalize_ws
+from prova.unique_token import fill_unique
 
 
 @dataclass
@@ -279,6 +280,8 @@ def run_cases(state: AgentState) -> AgentState:
             # 세션 모드: 메인 컨텍스트는 지우지 않는다(세션이 곧 의도된 기준
             # 상태 — 지우면 세션 자체가 사라진다). 가드 컨텍스트만 격리한다.
             page.context.clear_cookies()
+        # 예시값의 {고유} 를 실행할 사본에서만 바꾼다 — state.cases(계획)는 그대로.
+        case = fill_unique(case)
         ctx = ExecutionContext(
             page=page,
             base_url=state.base_url,
