@@ -350,7 +350,7 @@ def _scenario_cases(
 
         # 건수만 적은 예시 표(demoqa '검색어 | 결과 건수')는 문구가 비어 있다. 빈 문구로
         # text_visible 을 만들면 무엇이든 통과한다 — 만들지 않는다.
-        if scenario.expect_text:
+        if scenario.expect_text.strip():
             cases.append(TestCase(
                 case_id=f"{spec.screen_id}-scenario-{start_seq + i:03d}",
                 screen_id=spec.screen_id,
@@ -496,7 +496,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         )
     else:
         spec.warnings.append(
-            "테스트 주문 데이터 표에서 날짜(YYYY-MM-DD) 열을 찾지 못했거나 "
+            "테스트 데이터 표에서 날짜(YYYY-MM-DD) 열을 찾지 못했거나 "
             "그 라벨의 화면 요소가 없어 정렬(sorted_desc) 케이스를 만들지 "
             "않았습니다."
         )
@@ -527,13 +527,13 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         )
     elif amount_label is None or amount_label not in labels:
         spec.warnings.append(
-            "테스트 주문 데이터 표에서 금액(숫자·쉼표) 열을 찾지 못했거나 "
+            "테스트 데이터 표에서 금액(숫자·쉼표) 열을 찾지 못했거나 "
             "그 라벨의 화면 요소가 없어 합계(sum_matches) 케이스를 만들지 "
             "않았습니다."
         )
     else:
         spec.warnings.append(
-            "테스트 주문 데이터 표는 있지만 화면 요소 표에 '합계' 요소가 없어 "
+            "테스트 데이터 표는 있지만 화면 요소 표에 '합계' 요소가 없어 "
             "합계(sum_matches) 케이스를 만들지 않았습니다."
         )
 
@@ -547,7 +547,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         cases.append(TestCase(
             case_id=f"{spec.screen_id}-seedcount-{seq:03d}",
             screen_id=spec.screen_id,
-            title=f"시드 주문 {n}건이 모두 표시되는지 확인",
+            title=f"시드 {n}건이 모두 표시되는지 확인",
             type="positive",
             steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
             expected=Expectation(
@@ -557,7 +557,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         seq += 1
     else:
         spec.warnings.append(
-            "테스트 주문 데이터 표는 있지만 화면 요소 표에 반복 목록(list) "
+            "테스트 데이터 표는 있지만 화면 요소 표에 반복 목록(list) "
             "요소가 없어 건수(result_count) 케이스를 만들지 않았습니다."
         )
 
@@ -595,7 +595,7 @@ def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
         return []
     if not spec.seed_rows:
         spec.warnings.append(
-            "날짜 필터 절은 있지만 테스트 주문 데이터 표가 없어 기간 조회 "
+            "날짜 필터 절은 있지만 테스트 데이터 표가 없어 기간 조회 "
             "케이스를 만들지 않았습니다."
         )
         return []
