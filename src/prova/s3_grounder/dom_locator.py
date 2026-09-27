@@ -615,6 +615,24 @@ class CollectionCount:
     status: str          # "ok" | "absent" | "ambiguous" | "error"(도구 실패)
     count: int = 0
     detail: str = ""
+    # absent 일 때만 센다 — 화면에 보이는 **이름 없는** 표·목록의 수. 목록이 이름으로
+    # 안 잡혔는데 이런 것이 있으면 도구가 못 찾은 쪽이다(S5 _classify 가 쓴다).
+    # 없으면 결과가 0건이라 안 그린 구현일 수 있다 — 그 판단은 S5 몫이다.
+    lookalikes: int = 0
+
+
+# 이름 없는 표·목록. `ul`/`ol` 은 넣지 않는다 — 메뉴·내비게이션이 거의 모든 화면에
+# 있어 '목록이 있다' 는 근거가 되지 못한다.
+_LOOKALIKE_JS = """() => [...document.querySelectorAll(
+    'table, [role=table], [role=grid], [role=list]')]
+  .filter(e => e.getClientRects().length > 0 && e.innerText.trim()).length"""
+
+
+def _count_lookalikes(page) -> int:
+    try:
+        return int(page.evaluate(_LOOKALIKE_JS))
+    except Exception:
+        return 0  # 못 세면 근거 없음 — 예전 분류(결함) 그대로 간다
 
 
 def count_items(page, target: str, hint: UIElement | None = None) -> CollectionCount:
@@ -632,9 +650,15 @@ def count_items(page, target: str, hint: UIElement | None = None) -> CollectionC
         CollectionCount. status 가 "ok" 일 때만 count 가 의미를 가진다.
     """
     status, container, item_role, found, detail = _locate_collection(page, target, hint)
+    if status == "absent":
+        n = _count_lookalikes(page)
+        if n:
+            detail += f" · 이름 없는 표·목록 {n}개는 화면에 있음"
+        return CollectionCount(target=target, status=status, count=found, detail=detail,
+                               lookalikes=n)
     if status != "ok":
         # ambiguous 일 때는 found 가 겹친 컨테이너 개수다 — 기존 계약대로
-        # count 에도 남긴다. absent 일 때는 0 그대로다.
+        # count 에도 남긴다.
         return CollectionCount(target=target, status=status, count=found, detail=detail)
 
     # item_role 이 None 이면 반복 라벨 모양이다(_locate_collection 설명 참고) —

@@ -831,7 +831,30 @@ def _classify(case: TestCase, state: PageState) -> str:
     JS 오류로 검증이 안 돌았다면 그것도 구현을 고칠 일이고, 남의 스크립트 오류라면 판정과
     무관하다. 어느 쪽도 '실행 문제' 의 근거가 아니다. 콘솔 오류는 근거와 사유에 남긴다.
     HTTP 오류로 화면을 못 연 경우는 스텝 단계에서 page_error 로 따로 분류된다.
+
+    ## 도구가 못 찾은 것은 결함이 아니다 — 근거가 있을 때만 (2026-09-27)
+
+    이름 없는 `<table>` 로 목록을 보여 주는 실사이트(the-internet·demoqa)에서 "목록을
+    찾지 못했다" 가 결함으로 분류됐다. 전부 탐지 실패로 옮기면 결과 0건이라 목록을
+    안 그린 구현(SUT 검색 bad)이 숨으므로, 이름 없는 표·목록이 화면에 있을 때만
+    옮긴다(CollectionCount.lookalikes). 안내 문구는 문구가 다른 요소 없이 못 찾은 것만
+    있을 때만 옮긴다.
     """
+    expected = case.expected
+    counted = state.collection
+    if expected.type == "result_count" and counted is not None:
+        if counted.status == "error":
+            return "unknown"
+        if counted.status == "ambiguous":
+            return "element_not_found"
+        if counted.status == "absent" and counted.lookalikes:
+            return "element_not_found"
+    if expected.type == "placeholders_match" and state.placeholders is not None:
+        want = expected.placeholders or {}
+        found = [label for label in want if label in state.placeholders]
+        if all(normalize_ws(state.placeholders[label]) == normalize_ws(want[label])
+               for label in found):
+            return "element_not_found"
     return "assertion_mismatch"
 
 
