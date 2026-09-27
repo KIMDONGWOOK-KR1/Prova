@@ -48,6 +48,21 @@ class TestDeclaredScenarios:
         assert scenarios[0]["expect_count"] == 1
 
 
+def test_건수가_있으면_빈_문구를_경고하지_않는다():
+    """'항상 실패합니다' 는 문구 케이스를 만들던 때의 말이다 — 이제 만들지 않는다."""
+    from prova.s2_case_generator.rule_expander import spec_defects
+
+    def spec(count):
+        return ScreenSpec(screen_id="dq", screen_name="직원 표", url_path="/w",
+                          elements=[UIElement(element_id="search", type="input", label="검색어")],
+                          scenarios=[Scenario(given={"search": "x"}, expect_text="",
+                                              expect_count=count)])
+    assert not any("비어 있습니다" in w for w in spec_defects(spec(1)))
+    assert any("확인할 것이 없어" in w for w in spec_defects(spec(None)))
+    # 경고가 말한 대로 — 공백뿐인 문구로도 케이스를 만들지 않는다
+    assert not [c for c in generate_cases(spec(None)) if "scenario" in c.case_id]
+
+
 def test_문구가_빈_시나리오는_건수_케이스만_만든다():
     spec = ScreenSpec(
         screen_id="dq", screen_name="직원 표", url_path="/webtables",

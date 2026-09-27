@@ -691,7 +691,7 @@ def _apply_declared_seed_rows(spec: ScreenSpec, rows: list[dict[str, str]]) -> N
         return
     if spec.seed_rows:
         spec.warnings.append(
-            f"테스트 주문 데이터를 기획서 표에서 직접 읽어 썼습니다 "
+            f"테스트 데이터 표를 기획서에서 직접 읽어 썼습니다 "
             f"({len(rows)}행). 모델이 낸 것과 달랐습니다 — 프롬프트를 확인하세요."
         )
     spec.seed_rows = rows

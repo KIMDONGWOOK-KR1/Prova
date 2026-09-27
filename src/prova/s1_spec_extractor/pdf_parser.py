@@ -756,7 +756,11 @@ class ParsedDocument:
             for row in table.rows[1:]
         ]
 
-    _SEED_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*테스트\s*주문\s*데이터\s*$")
+    # '테스트 주문 데이터' · '테스트 데이터' · '테스트 상품 데이터'. 예전에는 '주문' 이
+    # 박혀 있어 사용자·직원·상품 표 기획서의 데이터 표가 경고 없이 무시됐다(2026-09-27).
+    # 가운데 낱말은 하나까지만 — '테스트 데이터를 확인한다' 같은 문장은 줄 끝이 '데이터' 가
+    # 아니라 걸리지 않고, '입력 예시 데이터'·'테스트 계정' 도 걸리지 않는다.
+    _SEED_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*테스트\s*(?:\S+\s*)?데이터\s*$")
 
     def _seed_rows_tables(self) -> list[ParsedTable]:
         """declared_seed_rows 가 읽는 표 조각들(행이 아니라 ParsedTable 객체).

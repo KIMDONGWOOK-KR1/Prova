@@ -296,9 +296,10 @@ class TestScenarioDefects:
         assert any("없는요소" in d for d in spec_defects(spec))
 
     def test_기대_문구가_비면_경고한다(self):
-        """비교할 대상이 없어 그 케이스는 항상 실패한다 — 오탐이다."""
+        """문구도 건수도 없으면 확인할 것이 없어 케이스가 만들어지지 않는다 — 조용히 두지 않는다.
+        (예전에는 빈 문구로 케이스를 만들어 '항상 실패' 했다. 이제 만들지 않는다.)"""
         spec = self.spec_with_scenario(given={"query": "값"}, expect_text="   ")
-        assert any("항상 실패" in d for d in spec_defects(spec))
+        assert any("확인할 것이 없어" in d for d in spec_defects(spec))
 
     def test_정상_시나리오는_경고가_없다(self):
         spec = self.spec_with_scenario(given={"query": "노트북"}, expect_text="검색 결과 3건")

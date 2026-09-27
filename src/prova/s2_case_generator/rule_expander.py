@@ -599,10 +599,12 @@ def _scenario_defects(spec: ScreenSpec) -> list[str]:
                 f"기획서 예시 {i}번이 가리키는 요소 {', '.join(missing)} 가 화면에 "
                 f"없습니다. 그 값은 무시되므로 시나리오가 의도한 것을 확인하지 못합니다."
             )
-        if not scenario.expect_text.strip():
+        # 문구가 비어도 건수가 있으면 건수 케이스로 확인한다(generator._scenario_cases —
+        # 빈 문구로는 문구 케이스를 만들지 않는다). 둘 다 없을 때만 알린다.
+        if not scenario.expect_text.strip() and scenario.expect_count is None:
             defects.append(
-                f"기획서 예시 {i}번에 노출돼야 하는 문구가 비어 있습니다. "
-                f"비교할 대상이 없어 이 케이스는 항상 실패합니다."
+                f"기획서 예시 {i}번에 노출돼야 하는 문구도 결과 건수도 없습니다. "
+                f"확인할 것이 없어 이 예시는 케이스가 만들어지지 않습니다."
             )
 
     # 건수를 적어 두고 목록 요소는 정의하지 않은 경우.
