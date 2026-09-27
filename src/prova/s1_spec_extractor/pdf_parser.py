@@ -67,6 +67,10 @@ _EMPTY_INPUT_RE = re.compile(r"비어\s*있|비었|입력하지\s*않|미입력|
 # 표 칸 안의 인용된 문구 길이 상한 (text_utils.find_quoted).
 _QUOTED_MAX = 60
 
+# 사용자가 값을 넣는 요소 — 예시 표의 '입력 열' 이 될 수 있는 것 (declared_scenarios).
+# dom_locator._FILLABLE_TYPES 와 같은 집합이다. S1 이 S3 를 가져다 쓰지 않도록 따로 둔다.
+_FILLABLE_TYPES = ("input", "select", "checkbox", "date")
+
 # 흐름 표의 '화면 순서'·'이동 방법' 칸에서 항목을 가르는 구분자.
 # 화살표 표현이 기획서마다 다르고(->, →, >, 쉼표) PDF 변환에서 모양이 바뀌기도 한다.
 _FLOW_SEP = r"→|->|—>|>|,|·"
@@ -1054,6 +1058,11 @@ class ParsedDocument:
         if not label_to_id:
             return None
         to_label = self.header_to_label()
+        # 입력 열은 **채울 수 있는** 요소의 라벨이어야 한다. 표시 전용(텍스트·목록) 라벨이
+        # 걸린 데이터 표를 예시 표로 읽으면, 입력 없는 '예시' 가 원래 화면의 글자로 통과하고
+        # 정수 열(나이)이 결과 건수가 된다 (2026-09-27 the-internet·demoqa).
+        fillable = {r["label"] for r in self.declared_element_rows()
+                    if r["type"] in _FILLABLE_TYPES}
 
         element_table = self._element_table()
         seed_tables = self._seed_rows_tables()
@@ -1067,7 +1076,7 @@ class ParsedDocument:
                 continue
             # 열 제목 -> 라벨 (대소문자·공백·요소 ID 까지 허용, header_to_label 참고)
             col_label = {i: to_label.get(_header_key(h)) for i, h in enumerate(header)}
-            input_cols = [i for i in col_label if col_label[i] in label_to_id]
+            input_cols = [i for i in col_label if col_label[i] in fillable]
             other_cols = [i for i in col_label if col_label[i] not in label_to_id]
             if not input_cols or not other_cols:
                 continue
@@ -1093,22 +1102,23 @@ class ParsedDocument:
             expect_col = next(
                 (i for i in other_cols if i not in (count_col, absent_col)), None
             )
-            if expect_col is None:
+            # 건수만 적은 예시 표('검색어 | 결과 건수')도 예시 표다 — 문구 열이 없다고
+            # 버리면 검증이 조용히 빠진다(demoqa).
+            if expect_col is None and count_col is None:
                 continue
 
             scenarios: list[dict] = []
             for row in table.rows[1:]:
-                if len(row) <= expect_col:
-                    continue
                 given = {
                     label_to_id[col_label[i]]: row[i].strip()
                     for i in input_cols
                     if i < len(row) and row[i].strip()
                 }
-                expect_text = row[expect_col].strip()
+                expect_text = (row[expect_col].strip()
+                               if expect_col is not None and expect_col < len(row) else "")
                 absent = (row[absent_col].strip()
                           if absent_col is not None and absent_col < len(row) else "")
-                if given and expect_text:
+                if given and (expect_text or _cell_int(row, count_col) is not None):
                     scenarios.append({
                         "given": given,
                         "expect_text": expect_text,

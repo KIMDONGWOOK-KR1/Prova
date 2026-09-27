@@ -316,9 +316,10 @@ class TestDeclaredScenarioCounts:
             {"given": {"query": "notebook"}, "expect_text": "검색 결과 3건",
              "expect_count": None, "expect_absent": None}]
 
-    def test_건수_열만_있고_문구_열이_없으면_시나리오가_아니다(self):
-        """기대 문구가 없으면 대조할 문구 케이스를 만들 수 없다. 그 표는 예시
-        시나리오 표가 아니므로 여기서 걸러진다."""
+    def test_건수_열만_있어도_시나리오다(self):
+        """예전에는 문구 열이 없으면 걸렀다. 그러면 '검색어 | 결과 건수' 만 적은 표가
+        조용히 버려진다(demoqa, 2026-09-27). 건수 케이스는 문구 없이도 만든다 —
+        문구 케이스만 만들지 않는다(test_scenario_tables.py)."""
         from prova.s1_spec_extractor.pdf_parser import ParsedDocument, ParsedPage
 
         doc = ParsedDocument(source="x", pages=[ParsedPage(
@@ -328,7 +329,9 @@ class TestDeclaredScenarioCounts:
                 ParsedTable(rows=[["검색어", "결과 건수"], ["notebook", "3"]]),
             ],
         )])
-        assert doc.declared_scenarios() == []
+        assert doc.declared_scenarios() == [
+            {"given": {"query": "notebook"}, "expect_text": "",
+             "expect_count": 3, "expect_absent": None}]
 
 
 def _doc(*pages):

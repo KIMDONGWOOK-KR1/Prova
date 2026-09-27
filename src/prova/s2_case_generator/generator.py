@@ -348,14 +348,17 @@ def _scenario_cases(
         steps = _steps_for_case(spec, values)
         shown = ", ".join(f"{k}={v!r}" for k, v in scenario.given.items()) or "기본값"
 
-        cases.append(TestCase(
-            case_id=f"{spec.screen_id}-scenario-{start_seq + i:03d}",
-            screen_id=spec.screen_id,
-            title=f"기획서 예시: {shown} → {scenario.expect_text!r} 노출 확인",
-            type="positive",
-            steps=steps,
-            expected=Expectation(type="text_visible", value=scenario.expect_text),
-        ))
+        # 건수만 적은 예시 표(demoqa '검색어 | 결과 건수')는 문구가 비어 있다. 빈 문구로
+        # text_visible 을 만들면 무엇이든 통과한다 — 만들지 않는다.
+        if scenario.expect_text:
+            cases.append(TestCase(
+                case_id=f"{spec.screen_id}-scenario-{start_seq + i:03d}",
+                screen_id=spec.screen_id,
+                title=f"기획서 예시: {shown} → {scenario.expect_text!r} 노출 확인",
+                type="positive",
+                steps=steps,
+                expected=Expectation(type="text_visible", value=scenario.expect_text),
+            ))
 
         # 금지 문구 확인도 케이스를 따로 만든다.
         #
