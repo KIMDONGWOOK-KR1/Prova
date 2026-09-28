@@ -134,6 +134,27 @@ class TestFailureTableRow:
         assert spec.required_message is None
         assert any("사용자 이름이 비어 있음" in w for w in spec.warnings)
 
+    def test_모델이_그_문구의_일부만_옮겨_적어도_지운다(self):
+        """Qwen3.5-4B 가 'Epic sadface: ' 를 떼고 'Username is required' 만 냈다
+        (2026-09-28). 정확히 같을 때만 지우면 빠져나가, 'Password 를 비우면 Username
+        is required 가 떠야 한다' 는 오탐 케이스가 만들어졌다. 7B 도 할 수 있는 일이다."""
+        d = _failure_doc("사용자 이름이 비어 있음", "Epic sadface: Username is required",
+                         [USERNAME, PASSWORD])
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/",
+                          required_message="Username  is required")
+        _apply_declared_required_message(spec, d.declared_required_message(),
+                                         d.unresolved_required_rows())
+        assert spec.required_message is None
+
+    def test_다른_문구는_남긴다(self):
+        d = _failure_doc("사용자 이름이 비어 있음", "Epic sadface: Username is required",
+                         [USERNAME, PASSWORD])
+        spec = ScreenSpec(screen_id="s", screen_name="s", url_path="/",
+                          required_message="필수 항목입니다.")
+        _apply_declared_required_message(spec, d.declared_required_message(),
+                                         d.unresolved_required_rows())
+        assert spec.required_message == "필수 항목입니다."
+
 
 class TestApply:
     def test_기획서_값으로_채우고_없으면_비운다(self):

@@ -520,6 +520,15 @@ class ParsedDocument:
         return {r["label"]: r["placeholder"]
                 for r in self.declared_element_rows() if r["placeholder"]}
 
+    def declared_error_messages(self) -> dict[str, str]:
+        """UI 요소 표의 '에러 메시지' 열. 라벨 -> 문구다.
+
+        declared_placeholders 와 같은 원칙 — 표에 적힌 문구는 코드가 읽는다. '-'
+        (없음)인 요소는 담지 않는다. 열이 없으면 빈 dict 다.
+        """
+        return {r["label"]: r["error_message"]
+                for r in self.declared_element_rows() if r["error_message"]}
+
     def declared_required_message(self) -> Optional[str]:
         """실패 조건 표에서 '값이 비어 있을 때' 노출하는 문구를 읽는다.
 
