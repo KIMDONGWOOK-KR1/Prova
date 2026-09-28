@@ -35,7 +35,7 @@ negative 케이스가 규칙을 하나씩만 위반하는 것과 같은 이유�
 ## LLM 을 어떻게 쓰는가
 
 mock 을 쓰지 않는다. mock 은 PDF 를 읽지 않고 정답을 돌려주므로 훼손된 문서에서도
-같은 답을 낸다 — 측정이 성립하지 않는다. 실물 7B 가 필요하다.
+같은 답을 낸다 — 측정이 성립하지 않는다. 실물 LLM 서버가 필요하다.
 
 ## 사용법
 
@@ -143,15 +143,38 @@ def _replace_element_table(md: str, replacement: str) -> str:
     return "\n".join(out)
 
 
+# 넷째 칸: 그 훼손이 문서에서 **일부러 지운** 값. 기준선과 비교하지 않고 0 이어야
+# 정답이다 — 줄어든 것은 잃은 것이 아니고, 남아 있으면 없는 곳에서 지어낸 것이다.
 DEGRADATIONS = [
-    ("원본", None, "훼손 없음 — 기준선"),
-    ("열 이름 변경", d_rename_header, "'요소 ID' -> '항목'"),
-    ("열 누락", d_drop_column, "'안내 문구' 열 제거"),
-    ("산문 서술", d_prose, "요소 표를 문장으로"),
-    ("셀 병합", d_merge_cells, "한 요소가 두 줄"),
-    ("표 이미지화", d_image_table, "표를 못 읽는 상태"),
-    ("절 번호 없음", d_no_section_numbers, "'## 2.' -> '##'"),
+    ("원본", None, "훼손 없음 — 기준선", set()),
+    ("열 이름 변경", d_rename_header, "'요소 ID' -> '항목'", set()),
+    ("열 누락", d_drop_column, "'안내 문구' 열 제거", {"placeholder수"}),
+    ("산문 서술", d_prose, "요소 표를 문장으로", set()),
+    ("셀 병합", d_merge_cells, "한 요소가 두 줄", set()),
+    ("표 이미지화", d_image_table, "표를 못 읽는 상태", set()),
+    ("절 번호 없음", d_no_section_numbers, "'## 2.' -> '##'", set()),
 ]
+
+COUNTS = ("요소수", "규칙수", "placeholder수")
+SILENT = "*** 조용한 실패 ***"
+INVENTED = "*** 지어냄 ***"
+
+
+def _verdict(base: dict, r: dict, removed: set) -> str:
+    """훼손 하나의 결과를 기준선과 견줘 판정한다.
+
+    지어낸 것은 경고가 있어도 INVENTED 다 — 경고는 다른 것에 관한 것일 수 있고,
+    지어낸 안내 문구는 그대로 케이스의 기대값이 된다.
+    """
+    if any(r[k] > 0 for k in removed):
+        return INVENTED
+    # 조용한 실패: 기준선보다 잃은 것이 있는데 경고가 하나도 없다
+    lost = any(r[k] < base[k] for k in COUNTS if k not in removed)
+    if not lost:
+        return "영향 없음"
+    if r["경고"]:
+        return "시끄러운 실패 (경고 있음)"
+    return SILENT
 
 
 # ---------------------------------------------------------------- 측정
@@ -193,23 +216,19 @@ def _report(rows) -> None:
     print()
     print(f"{'훼손':<15}{'표':<5}{'요소':<6}{'규칙':<6}{'안내':<6}{'경고':<6}판정")
     print("-" * 76)
+    removed_by_name = {name: removed for name, _fn, _note, removed in DEGRADATIONS}
     silent = []
+    invented = []
     for name, note, r in rows:
         if "추출실패" in r:
             print(f"{name:<15}{'-':<5}{'-':<6}{'-':<6}{'-':<6}{'-':<6}"
                   f"예외로 끊김 — 시끄러운 실패")
             continue
-        # 조용한 실패: 기준선보다 잃은 것이 있는데 경고가 하나도 없다
-        lost = (r["요소수"] < base["요소수"]
-                or r["규칙수"] < base["규칙수"]
-                or r["placeholder수"] < base["placeholder수"])
-        if not lost:
-            verdict = "영향 없음"
-        elif r["경고"]:
-            verdict = "시끄러운 실패 (경고 있음)"
-        else:
-            verdict = "*** 조용한 실패 ***"
+        verdict = _verdict(base, r, removed_by_name[name])
+        if verdict == SILENT:
             silent.append(name)
+        elif verdict == INVENTED:
+            invented.append(name)
         print(f"{name:<15}{'O' if r['표찾음'] else 'X':<5}"
               f"{r['요소수']:<6}{r['규칙수']:<6}{r['placeholder수']:<6}"
               f"{len(r['경고']):<6}{verdict}")
@@ -241,6 +260,9 @@ def _report(rows) -> None:
         print("이것이 최우선 수정 대상이다 — 사람이 초록불을 믿고 넘어가는 경로다.")
     else:
         print("조용한 실패 없음. 잃은 것이 있을 때는 모두 경고나 예외로 드러났다.")
+    if invented:
+        print(f"지어냄 {len(invented)}건: {', '.join(invented)}")
+        print("문서에서 지운 값이 나왔다 — 그 값이 케이스의 기대값이 되면 오탐이다.")
 
 
 def main() -> int:
@@ -248,7 +270,7 @@ def main() -> int:
     ap.add_argument("--out", default="runs/s1-robustness",
                     help="훼손된 기획서를 둘 곳 (픽스처를 건드리지 않는다)")
     ap.add_argument("--keep", action="store_true", help="측정 후 파일을 남긴다")
-    ap.add_argument("--model", help="vllm 서빙 모델 이름 (모델 비교용. 기본: 7B)")
+    ap.add_argument("--model", help="vllm 서빙 모델 이름 (모델 비교용. 기본: vllm_backend.DEFAULT_MODEL)")
     args = ap.parse_args()
 
     from make_spec_pdf import convert, register_fonts
@@ -259,7 +281,7 @@ def main() -> int:
     try:
         llm.health()
     except Exception as exc:
-        print("7B 서버가 필요합니다 — mock 은 PDF 를 읽지 않아 측정이 성립하지 않습니다.")
+        print("LLM 서버가 필요합니다 — mock 은 PDF 를 읽지 않아 측정이 성립하지 않습니다.")
         print(f"  {exc}")
         return 2
 
@@ -269,7 +291,7 @@ def main() -> int:
     base = BASE_MD.read_text(encoding="utf-8")
 
     rows = []
-    for index, (name, fn, note) in enumerate(DEGRADATIONS):
+    for index, (name, fn, note, _removed) in enumerate(DEGRADATIONS):
         md = base if fn is None else fn(base)
         md_path = out_dir / f"login_{index}.md"
         md_path.write_text(md, encoding="utf-8")
