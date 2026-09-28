@@ -248,13 +248,14 @@ def main() -> int:
     ap.add_argument("--out", default="runs/s1-robustness",
                     help="훼손된 기획서를 둘 곳 (픽스처를 건드리지 않는다)")
     ap.add_argument("--keep", action="store_true", help="측정 후 파일을 남긴다")
+    ap.add_argument("--model", help="vllm 서빙 모델 이름 (모델 비교용. 기본: 7B)")
     args = ap.parse_args()
 
     from make_spec_pdf import convert, register_fonts
 
     from prova.llm.vllm_backend import VLLMClient
 
-    llm = VLLMClient()
+    llm = VLLMClient(model=args.model) if args.model else VLLMClient()
     try:
         llm.health()
     except Exception as exc:
