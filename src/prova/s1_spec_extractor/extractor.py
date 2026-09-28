@@ -33,6 +33,7 @@ from prova.s1_spec_extractor.pdf_parser import (
     normalize_ws,
     parse_pdf,
 )
+from prova.text_utils import contains_loose, loosen
 
 SYSTEM_PROMPT = """\
 당신은 웹 서비스 화면기획서를 읽고 QA 테스트에 쓸 구조화 명세를 만드는 전문가입니다.
@@ -339,6 +340,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_types(spec, doc.declared_element_types())
     _drop_non_text_constraints(spec)  # 유형이 확정된 뒤에 본다
     _apply_declared_placeholders(spec, doc.declared_placeholders())
+    _apply_declared_error_messages(spec, doc.declared_error_messages())
     _apply_declared_required_message(spec, doc.declared_required_message(),
                                      doc.unresolved_required_rows())
     _apply_declared_element_required(spec, doc.declared_element_required_messages())
@@ -531,6 +533,28 @@ def _apply_declared_placeholders(spec: ScreenSpec, declared: dict[str, str]) -> 
         element.placeholder = want
 
 
+def _apply_declared_error_messages(spec: ScreenSpec, declared: dict[str, str]) -> None:
+    """요소별 에러 문구를 기획서 표의 '에러 메시지' 열로 맞춘다 (라벨 -> 문구).
+
+    _apply_declared_placeholders 와 같은 원칙이다. 파서는 이 열을 읽고 있었지만
+    백필에만 써서, Qwen3.5-4B 가 회원가입 '약관 동의' 의 문구를 비우자 표에 적힌
+    문구가 명세에서 사라졌다(2026-09-28). 표에 없는 라벨은 건드리지 않는다.
+
+    공백만 다르면 모델 값을 둔다 — PDF 표 칸은 줄바꿈 자리에 공백이 끼어
+    '특수문 자' 처럼 깨진다. 같은 문구를 깨진 표 값으로 덮지 않는다.
+    """
+    for element in spec.elements:
+        want = declared.get(element.label)
+        if want is None or loosen(want) == loosen(element.error_message or ""):
+            continue
+        if element.error_message:
+            spec.warnings.append(
+                f"'{element.label}' 의 에러 문구를 기획서 표대로 {want!r} 로 맞췄습니다 "
+                f"(모델: {element.error_message!r}). 프롬프트를 확인하세요."
+            )
+        element.error_message = want
+
+
 def _apply_declared_required_message(
     spec: ScreenSpec, declared: str | None,
     unresolved: list[tuple[str, str]] = (),
@@ -554,7 +578,10 @@ def _apply_declared_required_message(
             f"쓰지 않았습니다 — 필수 케이스는 '에러가 떴는가' 만 확인합니다. 상황 칸에 "
             f"요소 라벨을 그대로 적어 주세요."
         )
-        if spec.required_message == msg:
+        # 정확히 같을 때만이 아니라 일부만 옮겨 적은 것도 지운다 — Qwen3.5-4B 가
+        # 'Epic sadface: ' 를 떼고 'Username is required' 만 내 빠져나갔다(2026-09-28).
+        # 지우면 '에러가 떴는가' 로 약해질 뿐이고, 남기면 오탐이다.
+        if contains_loose(msg, spec.required_message):
             spec.required_message = None
     if declared is None or declared == spec.required_message:
         return
