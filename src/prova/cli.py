@@ -94,7 +94,7 @@ def _make_llm(backend: str, cfg: dict, pdf: Path):
     return client
 
 
-def _make_vlm(vlm_url: Optional[str], vlm_model: Optional[str]):
+def _make_vlm(vlm_url: Optional[str], vlm_model: Optional[str], vlm_coords: str = "norm1000"):
     """2차 경로 클라이언트를 만들고 연결을 확인한다.
 
     서버가 없으면 여기서 바로 실패시킨다 — 조용히 보정 없이 진행하면 '보정을
@@ -105,8 +105,11 @@ def _make_vlm(vlm_url: Optional[str], vlm_model: Optional[str]):
     from prova.vlm.base import VLMError
     from prova.vlm.qwen_vl import QwenVLClient
 
-    vlm = (QwenVLClient(base_url=vlm_url, model=vlm_model) if vlm_model
-           else QwenVLClient(base_url=vlm_url))
+    try:
+        vlm = (QwenVLClient(base_url=vlm_url, model=vlm_model, coords=vlm_coords) if vlm_model
+               else QwenVLClient(base_url=vlm_url, coords=vlm_coords))
+    except ValueError as exc:
+        _fail(str(exc))
     try:
         vlm.health()
     except VLMError as exc:
@@ -154,10 +157,14 @@ def run(
     vlm_url: Optional[str] = typer.Option(
         None, "--vlm", metavar="URL",
         help="2차 경로: 접근성 속성으로 못 찾은 요소를 화면 이미지로 찾는다 "
-             "(예: http://localhost:8001/v1)"),
+             "(예: http://localhost:8000/v1 — 기본 모델이 추출과 함께 맡는다)"),
     vlm_model: Optional[str] = typer.Option(
         None, "--vlm-model", metavar="이름",
         help="VLM 서버가 서빙하는 모델 이름 (vLLM 의 --served-model-name 과 같게)"),
+    vlm_coords: str = typer.Option(
+        "norm1000", "--vlm-coords", metavar="규약",
+        help="VLM 의 좌표 규약: norm1000(Qwen3.5, 기본) | pixel(옛 Qwen2.5-VL). "
+             "틀리면 화면 안의 엉뚱한 곳을 조용히 누른다 (prova/vlm/qwen_vl.py)"),
     session: Optional[Path] = typer.Option(
         None, "--session", metavar="경로",
         help="prova login 으로 저장한 로그인 세션(storage_state). 스크립트로 "
@@ -207,7 +214,7 @@ def run(
             _fail(str(exc))
 
         cfg = _load_config(config)
-        vlm = _make_vlm(vlm_url, vlm_model)
+        vlm = _make_vlm(vlm_url, vlm_model, vlm_coords)
 
         typer.secho(f"Prova 재개 {resume.name}", bold=True)
         typer.echo(f"  계획      : {resume / 'plan.json'} "
@@ -242,6 +249,7 @@ def run(
         # 값이 생기고, 사용자는 그 옵션이 적용됐다고 믿는다.
         given = [name for name, value in [
             ("--vlm", vlm_url), ("--vlm-model", vlm_model),
+            ("--vlm-coords", vlm_coords if vlm_coords != "norm1000" else None),
             ("--session", session), ("--headed", headed), ("--slow", slow),
             ("--video", video), ("--hold", hold),
         ] if value]
@@ -299,7 +307,7 @@ def run(
     #
     # 기본으로 켜면 라벨 연결이 깨진 화면에서도 케이스가 통과해 그 사실이 리포트에서
     # 사라진다 (_make_vlm 참고).
-    vlm = _make_vlm(vlm_url, vlm_model)
+    vlm = _make_vlm(vlm_url, vlm_model, vlm_coords)
 
     typer.secho(f"Prova 실행 {rid}", bold=True)
     if figma_json and pdf:

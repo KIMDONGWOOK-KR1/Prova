@@ -53,7 +53,7 @@ class TestNorm1000:
     def test_프롬프트가_0_1000_규약을_요구한다(self):
         client = QwenVLClient(coords="norm1000")
         assert "1000" in client.system_prompt
-        assert "1000" not in QwenVLClient().system_prompt
+        assert "1000" not in QwenVLClient(coords="pixel").system_prompt
 
     def test_모르는_규약은_거부한다(self):
         with pytest.raises(ValueError):

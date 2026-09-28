@@ -1,24 +1,36 @@
 #!/bin/bash
-# Qwen2.5-7B-Instruct-AWQ 서빙 (A100 MIG 1g.10gb, VRAM 10GiB)
+# Qwen3.5-4B (4bit, compressed-tensors) 서빙 — 추출(S1)과 요소 탐지(S3)를 한 모델이 맡는다
+# (A100 MIG 1g.10gb, VRAM 9.5GiB)
 #
 #   bash ~/serve_vllm.sh            포그라운드 (로그 보면서)
 #   tmux new -d -s vllm 'bash ~/serve_vllm.sh > /tmp/vllm.log 2>&1'   상시 실행
 #
-# VRAM 계산 근거:
-#   AWQ 4bit 가중치      약 5.6 GB
-#   vLLM 오버헤드        약 1.0 GB
-#   -> KV 캐시           약 2.4 GB
-#   Qwen2.5-7B 는 GQA(KV head 4, layer 28, head_dim 128)라 토큰당 KV 가 약 56KB.
-#   2.4GB / 56KB = 약 43,000 토큰 -> 8K 컨텍스트 요청 5개 동시 처리 가능.
+# 가중치는 홈(영구 볼륨)의 $HOME/models/qwen35-4b 에 둔다. 없으면 받는다 — huggingface_hub
+# 는 이 노드에서 큰 파일을 받다 멈추므로 curl 로 받는다:
+#   mkdir -p ~/models/qwen35-4b && cd ~/models/qwen35-4b && for f in chat_template.jinja \
+#     config.json generation_config.json merges.txt model.safetensors.index.json \
+#     preprocessor_config.json tokenizer.json tokenizer_config.json \
+#     video_preprocessor_config.json vocab.json model-00001-of-00001.safetensors; do
+#     curl -sL -C - -o $f https://huggingface.co/cyankiwi/Qwen3.5-4B-AWQ-4bit/resolve/main/$f; done
+#
+# 실측 (2026-09-28): 적재 3.91GiB, KV 캐시 2.8GiB(약 7.5만 토큰), 기동 시 컴파일 약 7분.
+# 선형 어텐션 층이 섞인 구조라 동시 요청 수(--max-num-seqs)를 작게 둔다.
+#
+# 옛 구성(Qwen2.5-7B-AWQ)으로 되돌리기 — 가중치를 다시 받는다(약 3분):
+#   MODEL=Qwen/Qwen2.5-7B-Instruct-AWQ QUANT=awq_marlin SERVED= NUM_SEQS= bash ~/serve_vllm.sh
+#   그리고 configs/default.yaml 의 llm.model 을 그 이름으로.
 #
 # OOM 이 나면 순서대로 시도한다.
 #   1) MAX_LEN=4096          KV 캐시 요구량을 절반으로
 #   2) EXTRA="--enforce-eager"  CUDA graph 메모리(수백 MB) 포기
-#   3) MODEL=Qwen/Qwen2.5-3B-Instruct-AWQ  로 교체
 set -e
 
 VENV=/tmp/vllm-venv
-MODEL="${MODEL:-Qwen/Qwen2.5-7B-Instruct-AWQ}"
+MODEL="${MODEL:-$HOME/models/qwen35-4b}"
+# 클라이언트가 이 이름으로 부른다 (llm.vllm_backend.DEFAULT_MODEL, configs/default.yaml).
+# 비우면(SERVED=) vLLM 이 MODEL 을 그대로 이름으로 쓴다.
+SERVED="${SERVED-qwen3.5-4b-awq}"
+NUM_SEQS="${NUM_SEQS-8}"
 MAX_LEN="${MAX_LEN:-8192}"
 PORT="${PORT:-8000}"
 UTIL="${UTIL:-0.90}"
@@ -26,7 +38,7 @@ EXTRA="${EXTRA:-}"
 # 양자화 방식. 비우면(QUANT=) vLLM 이 모델 config 를 보고 고른다 — compressed-tensors
 # 형식(llm-compressor 로 만든 4bit, 예: cyankiwi/Qwen3.5-4B-AWQ-4bit)에 awq_marlin 을
 # 강제하면 기동이 실패한다.
-QUANT="${QUANT-awq_marlin}"
+QUANT="${QUANT-}"
 
 if [ ! -d "$VENV" ]; then
   echo "venv 가 없습니다 (/tmp 는 pod 재시작 시 사라집니다)."
@@ -60,6 +72,8 @@ echo ""
 
 exec vllm serve "$MODEL" \
   ${QUANT:+--quantization "$QUANT"} \
+  ${SERVED:+--served-model-name "$SERVED"} \
+  ${NUM_SEQS:+--max-num-seqs "$NUM_SEQS"} \
   --max-model-len "$MAX_LEN" \
   --gpu-memory-utilization "$UTIL" \
   --port "$PORT" \

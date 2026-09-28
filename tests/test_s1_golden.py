@@ -109,11 +109,11 @@ def client():
     if backend != "vllm":
         pytest.skip(f"backend={backend} — 이 테스트는 실제 모델 정확도를 측정한다")
 
-    from prova.llm.vllm_backend import VLLMClient
+    from prova.llm.vllm_backend import DEFAULT_MODEL, VLLMClient
 
     inst = VLLMClient(
         base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
-        model=llm_cfg.get("model", "Qwen/Qwen2.5-7B-Instruct-AWQ"),
+        model=llm_cfg.get("model", DEFAULT_MODEL),
         timeout=float(llm_cfg.get("timeout", 180)),
     )
     try:
@@ -122,7 +122,8 @@ def client():
         # 서버는 살아 있는데 다른 모델(예: IoU 채점용 VL)이 떠 있다. 환경이 없는
         # 게 아니라 잘못 구성된 것이므로 skip 이 아니라 실패다 — skip 으로 접으면
         # 69개가 조용히 빠지고 추출 정확도를 아무것도 확인하지 않은 채 초록불이 된다.
-        pytest.fail(f"vLLM 이 다른 모델을 서빙 중입니다 — 7B 를 되돌리세요: {exc}")
+        pytest.fail(f"vLLM 이 설정과 다른 모델을 서빙 중입니다 — configs/default.yaml 의 "
+                    f"llm.model 로 되돌리세요(scripts/cheetah/serve_vllm.sh): {exc}")
     except LLMError as exc:
         pytest.skip(f"vLLM 에 연결할 수 없습니다 — {exc}")
     return inst
