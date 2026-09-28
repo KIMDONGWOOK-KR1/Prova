@@ -98,6 +98,9 @@ _FORBIDDEN_HEADER_RE = re.compile(
 # 입력-결과 예시 표의 기대 결과 열을 알아보는 헤더 패턴 (unread_example_tables).
 _EXPECT_HEADER_RE = re.compile(r"문구|메시지")
 
+# '전제' 절 제목 줄 — 번호 + '전제' 뿐인 줄. 문장 속 낱말('...를 전제한다')은 아니다.
+_PRECONDITION_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
+
 
 def _same_table(table, element_table) -> bool:
     """요소 표(또는 그 페이지 조각)인가. _element_table() 이 이어 붙인 사본을 돌려주므로
@@ -734,10 +737,19 @@ class ParsedDocument:
         돌려준다 — 억측해서 엉뚱한 값으로 계정을 덮어쓰는 것보다, 판별 못 함을
         인정하는 편이 안전하다.
         """
-        heading_re = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
         table = self._table_after_heading(
-            heading_re, lambda header, t: is_account_header(header))
+            _PRECONDITION_HEADING_RE, lambda header, t: is_account_header(header))
         return [list(r) for r in table.rows] if table is not None else None
+
+    def has_precondition_section(self) -> bool:
+        """본문에 '전제' 절 제목 줄이 있는가 (번호 + '전제' 뿐인 줄).
+
+        프롬프트는 이 절이 있을 때만 requires_login 을 true 로 하라고 지시한다.
+        그 지시를 모델에 맡기지 않고 코드가 확인하는 데 쓴다
+        (extractor._drop_undeclared_precondition).
+        """
+        return any(_PRECONDITION_HEADING_RE.match(text)
+                   for page in self.pages for text, _ in page.body_lines)
 
     def declared_seed_rows(self) -> list[dict[str, str]]:
         """'테스트 주문 데이터' 절 아래 표를 [헤더 -> 값] 딕셔너리 목록으로 읽는다.

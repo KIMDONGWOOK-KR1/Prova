@@ -346,6 +346,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _apply_declared_element_required(spec, doc.declared_element_required_messages())
     _apply_declared_scenarios(spec, declared_scenarios)
     _apply_declared_precondition(spec, doc.declared_precondition_account())
+    _drop_undeclared_precondition(spec, doc)
     _apply_declared_seed_rows(spec, doc.declared_seed_rows())
     _apply_declared_date_filter(spec, doc.declared_date_filter())
     _apply_declared_status_filter(spec, doc.declared_status_filter())
@@ -712,6 +713,28 @@ def _apply_declared_precondition(
     )
     spec.precondition.account_email = email
     spec.precondition.account_password = password
+
+
+def _drop_undeclared_precondition(spec: ScreenSpec, doc: ParsedDocument) -> None:
+    """화면 문서에 '전제' 절이 없으면 모델이 붙인 로그인 전제를 버린다.
+
+    프롬프트는 "'전제' 절이 있으면 true, 없으면 null" 이라고 지시하지만 코드가
+    확인하지 않았다. Qwen3.5-4B 가 onboarding 문서의 **회원가입** 화면에 로그인
+    전제를 붙여, "비로그인으로 회원가입에 들어가면 로그인으로 보내야 한다" 는 가드
+    케이스가 생겼다(2026-09-28) — 올바른 구현이 FAIL 인 오탐이다. '전제' 절은 상품
+    등록 화면 몫에만 있었다.
+
+    버리는 쪽이 안전하다 — 정말 로그인이 필요한 화면이면 요소를 못 찾는 시끄러운
+    실패와 이 경고로 드러난다.
+    """
+    pre = spec.precondition
+    if pre is None or not pre.requires_login or doc.has_precondition_section():
+        return
+    spec.precondition = None
+    spec.warnings.append(
+        f"'{spec.screen_name}' 화면 문서에 '전제' 절이 없어 모델이 붙인 로그인 전제를 "
+        f"버렸습니다. 로그인이 필요한 화면이면 '전제' 절을 두어 적어 주세요."
+    )
 
 
 def _apply_declared_seed_rows(spec: ScreenSpec, rows: list[dict[str, str]]) -> None:
