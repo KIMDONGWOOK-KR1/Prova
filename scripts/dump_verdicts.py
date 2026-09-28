@@ -15,7 +15,7 @@ SUT 의 변형 10종(good·bad·slow·spa·…)은 같은 화면의 올바른 �
 
 SUT 를 8199 포트로 먼저 띄운다(다른 테스트가 쓰는 포트와 겹치지 않게):
 
-    uv run uvicorn sut.app:app --port 8199
+    uv run uvicorn sut.app:app --port 8199 --reload --reload-dir sut
 
 LLM 은 mock 이다 — 모델 흔들림을 빼고 **판정 코드만** 비교하기 위해서다.
 
