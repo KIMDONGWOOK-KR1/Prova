@@ -623,9 +623,27 @@ class CollectionCount:
 
 # 이름 없는 표·목록. `ul`/`ol` 은 넣지 않는다 — 메뉴·내비게이션이 거의 모든 화면에
 # 있어 '목록이 있다' 는 근거가 되지 못한다.
-_LOOKALIKE_JS = """() => [...document.querySelectorAll(
-    'table, [role=table], [role=grid], [role=list]')]
-  .filter(e => e.getClientRects().length > 0 && e.innerText.trim()).length"""
+#
+# div 를 반복해 만든 카드 목록도 센다(saucedemo 상품 목록, 2026-09-28) — 같은 이유로
+# 좁힌다: 같은 태그·클래스의 보이는 형제가 3개 이상, 각자 글자와 하위 요소 3개 이상
+# (이미지·이름·가격 같은 카드), nav·header·footer 밖. 글자뿐인 메뉴 항목은 걸리지 않는다.
+_LOOKALIKE_JS = """() => {
+  const visible = e => e.getClientRects().length > 0 && e.innerText.trim();
+  const tables = [...document.querySelectorAll(
+      'table, [role=table], [role=grid], [role=list]')].filter(visible).length;
+  let cards = 0;
+  for (const parent of document.querySelectorAll('body *')) {
+    if (parent.closest('nav, header, footer, table')) continue;
+    const groups = {};
+    for (const c of parent.children) {
+      if (!visible(c) || c.querySelectorAll('*').length < 3) continue;
+      const key = c.tagName + '.' + c.className;
+      groups[key] = (groups[key] || 0) + 1;
+    }
+    if (Object.values(groups).some(n => n >= 3)) cards += 1;
+  }
+  return tables + cards;
+}"""
 
 
 def _count_lookalikes(page) -> int:

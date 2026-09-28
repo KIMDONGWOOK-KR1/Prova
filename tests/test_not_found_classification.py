@@ -118,3 +118,36 @@ class TestLookalikes:
     def test_숨은_표는_세지_않는다(self, page):
         page.set_content('<table hidden><tr><td>x</td></tr></table>')
         assert count_items(page, "사용자 목록", LIST).lookalikes == 0
+
+
+def _card(name: str) -> str:
+    return (f'<div class="inventory_item"><img alt=""><div class="name">{name}</div>'
+            f'<div class="price">$9.99</div><button>Add to cart</button></div>')
+
+
+class TestRepeatedCards:
+    """div 를 반복해 만든 목록 (2026-09-28, saucedemo 상품 목록).
+
+    표·role=list 만 셌더니 saucedemo 의 이름 없는 상품 카드 6개가 '목록 비슷한 것 없음' 이
+    되어, 목록을 이름으로 못 찾은 것이 '기획서와 다름' 으로 분류됐다. 메뉴가 걸리지 않게
+    좁힌다 — 같은 모양 형제 3개 이상, 각자 요소 3개 이상, nav·header·footer 밖.
+    """
+
+    def test_같은_모양_카드가_반복되면_목록_비슷한_것이다(self, page):
+        page.set_content('<div class="inventory_list">'
+                         + "".join(_card(n) for n in ("Backpack", "Bike Light", "T-Shirt"))
+                         + "</div>")
+        assert count_items(page, "상품 목록", LIST).lookalikes == 1
+
+    def test_둘뿐이면_세지_않는다(self, page):
+        page.set_content("<div>" + _card("A") + _card("B") + "</div>")
+        assert count_items(page, "상품 목록", LIST).lookalikes == 0
+
+    def test_글자뿐인_메뉴_항목은_세지_않는다(self, page):
+        page.set_content('<div><div class="m"><a>홈</a></div><div class="m"><a>상품</a></div>'
+                         '<div class="m"><a>주문</a></div><div class="m"><a>문의</a></div></div>')
+        assert count_items(page, "상품 목록", LIST).lookalikes == 0
+
+    def test_nav_안의_반복은_세지_않는다(self, page):
+        page.set_content("<nav>" + "".join(_card(n) for n in "ABCD") + "</nav>")
+        assert count_items(page, "상품 목록", LIST).lookalikes == 0
