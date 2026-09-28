@@ -441,17 +441,30 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     location: ElementLocation | None = None
     status = "ok"
     error_code = error_detail = None
+    http_status: int | None = None
 
     try:
         if step.action == "navigate":
             url = _resolve_url(ctx, step.target)
             response = ctx.page.goto(url, timeout=ctx.step_timeout_ms,
                                      wait_until="domcontentloaded")
+            http_status = response.status if response is not None else None
             # 4xx/5xx 를 성공으로 넘기면 이후 스텝이 전부 요소 미탐지로 실패해
             # 원인이 흐려진다. 여기서 page_error 로 확정한다.
-            if response is not None and response.status >= 400:
+            #
+            # 404 만 예외다 — SPA 호스팅은 앱의 경로를 모르는 서버가 모든 경로에 404 와
+            # 같은 index.html 을 주고, 앱이 화면을 그린다(saucedemo `/inventory.html`,
+            # 2026-09-28). 없는 경로도 404 라 응답 코드로는 못 가른다. 본문에 글자가
+            # 생기면 계속하고, 판정이 http_status 로 그 사실을 다룬다(verify 참고).
+            # HTML 일 때만 — JSON 404(우리 SUT 의 {"detail":"Not Found"})도 글자는 있다.
+            if (http_status == 404 and _is_html(response)
+                    and _renders_text(ctx.page)):
+                pass
+            elif http_status is not None and http_status >= 400:
                 status, error_code = "error", "page_error"
-                error_detail = f"HTTP {response.status} — {url}"
+                error_detail = f"HTTP {http_status} — {url}"
+                if http_status == 404:
+                    error_detail += " (본문이 비어 있습니다)"
 
         elif step.action == "wait":
             ctx.page.wait_for_timeout(int(step.value or 500))
@@ -502,8 +515,28 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         status=status, elapsed_ms=elapsed_ms,
         screenshot=shot, dom_snapshot=dom,
         error_code=error_code, error_detail=error_detail,
-        location=location,
+        location=location, http_status=http_status,
     )
+
+
+# 404 를 받은 SPA 가 화면을 그리기를 기다리는 상한. 판정 전 대기(settle_timeout_ms)의
+# 기본값과 같다 — 느린 것은 참을 수 있고 틀린 것은 참을 수 없다.
+_SPA_RENDER_WAIT_MS = 2000
+
+
+def _is_html(response) -> bool:
+    return "html" in (response.headers.get("content-type") or "").lower()
+
+
+def _renders_text(page: Page) -> bool:
+    """본문에 보이는 글자가 생기는가 (SPA 가 화면을 그렸는가)."""
+    try:
+        page.wait_for_function(
+            "() => document.body && document.body.innerText.trim().length > 0",
+            timeout=_SPA_RENDER_WAIT_MS)
+        return True
+    except PlaywrightTimeout:
+        return False
 
 
 def execute_case_steps(ctx: ExecutionContext, steps: list[TestStep]) -> list[StepResult]:
