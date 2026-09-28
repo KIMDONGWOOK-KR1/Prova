@@ -294,6 +294,20 @@ def build_user_prompt(
     )
 
 
+# 모델이 생략하지 못하게 하는 키. ScreenSpec 에서는 기본값이 있어 선택이지만, 정형
+# 출력은 스키마가 허락한 생략을 그대로 허락한다 — Qwen3.5-4B 가 표 머리글이 바뀐
+# 기획서에서 요소·실패 조건을 통째로 빼고 틀만 돌려줬다(2026-09-28). 빈 목록은
+# 허용한다. 최소 개수를 강제하면 요소가 정말 없는 문서에서 모델이 지어낸다.
+EXTRACTION_REQUIRED = ("elements", "success_condition", "failure_conditions")
+
+
+def _extraction_schema() -> dict:
+    schema = ScreenSpec.model_json_schema()
+    schema["required"] = [*schema.get("required", []),
+                          *(k for k in EXTRACTION_REQUIRED if k not in schema.get("required", []))]
+    return schema
+
+
 def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3072) -> ScreenSpec:
     """추출된 문서 텍스트에서 ScreenSpec 을 만든다."""
     doc_text = doc.to_llm_text()
@@ -311,7 +325,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
             doc.declared_sample_values(),
             declared_scenarios,
         ),
-        schema=ScreenSpec.model_json_schema(),
+        schema=_extraction_schema(),
         max_tokens=max_tokens,
     )
     spec = ScreenSpec.model_validate(raw)
@@ -323,6 +337,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     _normalize_element_ids(spec)
     _backfill_declared_elements(spec, doc)
     _apply_declared_types(spec, doc.declared_element_types())
+    _drop_non_text_constraints(spec)  # 유형이 확정된 뒤에 본다
     _apply_declared_placeholders(spec, doc.declared_placeholders())
     _apply_declared_required_message(spec, doc.declared_required_message(),
                                      doc.unresolved_required_rows())
@@ -765,6 +780,28 @@ def _apply_declared_success(spec: ScreenSpec, doc: ParsedDocument) -> None:
         f"성공 조건을 기획서 본문에서 채웠습니다: {text!r} "
         f"(추출 결과에 이동 경로·문구가 없었습니다)"
     )
+
+
+def _drop_non_text_constraints(spec: ScreenSpec) -> None:
+    """선택·체크 요소에 붙은 문자 규칙을 버린다.
+
+    고르거나 체크하는 요소에는 '규칙 하나만 어긴 입력' 을 만들 방법이 없어 S2 가
+    이미 무시한다(rule_expander.NON_TEXT_TYPES — S1 이 S2 를 import 하지 않도록
+    같은 튜플을 여기 둔다). 남겨 두면 검증하지 않을 규칙을 명세에 적어 두는 셈이다.
+
+    실측(2026-09-28): 추출 스키마의 키를 필수로 두자 7B 가 주문조회 '상태' select 에
+    선택지를 이어 붙인 pattern 을 지어냈다. 스키마가 조금만 바뀌어도 흔들리는 경계
+    항목이라, 모델에 맡기지 않고 코드가 막는다. 버렸으면 알린다.
+    """
+    for element in spec.elements:
+        if element.type in ("checkbox", "select") and element.constraints:
+            keys = ", ".join(sorted(element.constraints))
+            element.constraints = {}
+            spec.warnings.append(
+                f"선택·체크 요소 '{element.label}' 에 붙은 입력 규칙({keys})을 버렸습니다 — "
+                f"고르거나 체크하는 요소에는 문자 규칙을 검증할 방법이 없습니다. "
+                f"기획서에 없는 규칙이면 모델이 지어낸 것입니다."
+            )
 
 
 def _apply_declared_options(spec: ScreenSpec, declared: dict[str, list[str]]) -> None:
