@@ -107,6 +107,10 @@ class TestModelName:
         클라이언트가 고정 이름을 강요하면 안 된다."""
         assert QwenVLClient(base_url=BASE, model="아무개").model == "아무개"
 
-    def test_기본_이름은_HF_경로다(self):
-        """--served-model-name 을 주지 않으면 vLLM 이 모델 경로를 그대로 쓴다."""
-        assert QwenVLClient(base_url=BASE).model == "Qwen/Qwen2.5-VL-3B-Instruct-AWQ"
+    def test_기본값은_LLM_과_같은_서버다(self):
+        """Qwen3.5-4B 가 추출과 탐지를 함께 맡는다(2026-09-28) — 기본 주소·이름·규약이
+        LLM 과 어긋나면 --vlm 을 켰을 때 health() 가 '서빙하지 않는다' 로 끊긴다."""
+        from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL
+        client = QwenVLClient()
+        assert (client.base_url, client.model) == (DEFAULT_BASE_URL, DEFAULT_MODEL)
+        assert client.coords == "norm1000"

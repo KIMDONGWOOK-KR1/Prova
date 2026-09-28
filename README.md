@@ -244,13 +244,18 @@ uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100
 uv run prova serve      # http://127.0.0.1:7007
 ```
 
-한 GPU 에서 추출 모델(7B)과 탐지 모델(VL)을 시간분할로 쓸 때는 실행을 둘로
+2026-09-28 부터는 Qwen3.5-4B 한 모델이 추출과 탐지를 함께 맡아, 2차 경로도 같은
+서버로 켠다(`--vlm http://localhost:8000/v1`). 근거는
+[모델 비교 측정](docs/measurements/model-compare-qwen35-4b-2026-09-28.md) —
+탐지 성공률 57→81%, 없는 요소를 있다고 한 비율 71→7%.
+
+그 전처럼 추출 모델(7B)과 탐지 모델(VL)을 한 GPU 에서 시간분할로 쓸 때는 실행을 둘로
 자른다 — 계획을 저장하고, 서버를 교체한 뒤, LLM 없이 이어 돈다(설계 판단 18).
 
 ```powershell
 uv run prova run --pdf 기획서.pdf --url http://... --run-id two-model --plan-only
 # (tmux 에서 7B 를 내리고 VL 을 올린다)
-uv run prova run --resume runs/two-model --vlm http://localhost:8001/v1 --vlm-model Qwen2.5-VL-3B-AWQ
+uv run prova run --resume runs/two-model --vlm http://localhost:8001/v1 --vlm-model Qwen2.5-VL-3B-AWQ --vlm-coords pixel
 ```
 
 2026-08-26 에 실물 7B(추출) → 실물 VL(탐지)로 관통시켰다. `nolabel` 에서 2차

@@ -4,7 +4,7 @@ GPU 파드 홈(`~`)에 두고 쓰는 두 스크립트의 사본이다. 원본은
 **볼륨이 바뀌거나 비워지면 같이 사라지므로** 여기에 백업해 둔다.
 
     setup_vllm.sh    venv 재생성 + vLLM(cu129) 설치. pod 재시작마다 필요 (약 2분)
-    serve_vllm.sh    Qwen2.5-7B-Instruct-AWQ 서빙, 포트 8000 (약 3분)
+    serve_vllm.sh    Qwen3.5-4B(4bit) 서빙, 포트 8000 — 추출·탐지 겸용 (기동 약 7분)
 
 파드에 올리기:
 

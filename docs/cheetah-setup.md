@@ -1,7 +1,14 @@
 # CHEETAH GPU 서버에 vLLM 올리기
 
-로컬 LLM(Qwen2.5-7B-Instruct-AWQ)을 CHEETAH에 서빙하고, 로컬 개발 머신에서 SSH 터널로 붙이는 절차.
+로컬 모델을 CHEETAH에 서빙하고, 로컬 개발 머신에서 SSH 터널로 붙이는 절차.
 **2026-08-15 실제로 구축해 동작을 확인한 내용이다.**
+
+> **2026-09-28 부터 모델은 Qwen3.5-4B(4bit, `cyankiwi/Qwen3.5-4B-AWQ-4bit`) 하나다.**
+> 이미지를 읽으므로 추출(S1)과 요소 탐지(S3 2차 경로)를 같은 서버·같은 이름
+> (`qwen3.5-4b-awq`)으로 맡는다. 가중치는 홈의 `~/models/qwen35-4b`, 서빙은
+> `scripts/cheetah/serve_vllm.sh`(받는 명령도 그 머리말에 있다). 바꾼 근거는
+> `docs/measurements/model-compare-qwen35-4b-2026-09-28.md`. 아래 본문은 7B 로 구축하던
+> 때의 기록이라 모델 이름이 옛것이지만, 절차와 함정은 그대로 유효하다.
 
 ## 접속 정보
 
@@ -181,10 +188,10 @@ KV 캐시를 늘리려면 로그가 안내하는 대로 `UTIL=0.9625 bash ~/serv
 ```powershell
 # 연결 + 정형 출력
 uv run prova check
-#   연결 정상 · 모델 Qwen/Qwen2.5-7B-Instruct-AWQ
+#   연결 정상 · 모델 qwen3.5-4b-awq
 #   정형 출력 정상 · 응답 {'ok': True, 'note_text': '정상'}
 
-# 7B 의 실제 추출 정확도 (골든 비교)
+# 실제 추출 정확도 (골든 비교)
 uv run pytest tests/test_s1_golden.py -v
 
 # 전체 관통

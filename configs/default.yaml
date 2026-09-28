@@ -10,7 +10,8 @@
 llm:
   backend: vllm          # vllm | mock
   base_url: http://localhost:8000/v1
-  model: Qwen/Qwen2.5-7B-Instruct-AWQ
+  # serve_vllm.sh 의 --served-model-name. 같은 서버가 VLM(--vlm)도 맡는다.
+  model: qwen3.5-4b-awq
   timeout: 180
 
 execution:

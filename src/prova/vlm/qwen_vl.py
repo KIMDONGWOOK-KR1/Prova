@@ -1,15 +1,11 @@
 """vLLM 이 서빙하는 시각-언어 모델 백엔드 (OpenAI 호환 chat/completions + 이미지).
 
-## 왜 별도 서버 주소인가
+## 기본값은 LLM 과 같은 서버다 (2026-09-28 부터)
 
-LLM 과 다른 포트를 쓴다. 같은 vLLM 프로세스는 모델 하나만 서빙하고, 우리는 텍스트
-7B 와 시각 모델을 둘 다 쓴다. 코드 입장에서는 base_url 이 다른 두 서버다.
-
-**GPU 에서 두 모델이 함께 올라갈 수 있는지는 아직 실측하지 않았다.** 10GiB MIG 조각에
-Qwen2.5-7B-AWQ 가 약 5.6GB 를 쓰므로 3B 급 4bit 모델(약 2GB)이 들어갈 여지가 있어
-보이지만, vLLM 은 기본으로 GPU 메모리의 90% 를 미리 잡는다(gpu_memory_utilization).
-둘을 함께 올리려면 양쪽 값을 낮춰야 하고, 그 조정이 이미 동작하는 7B 서빙을 건드린다.
-그래서 이 파일은 **주소만 다르면 붙는 형태**로 두고, 실측은 별도 단계로 남긴다.
+Qwen3.5-4B 가 추출(S1)과 요소 탐지를 함께 맡는다 — 기본 주소·이름이 LLM 과 같다
+(`llm.vllm_backend.DEFAULT_MODEL`). 그 전에는 텍스트 7B 와 Qwen2.5-VL-3B 가 MIG
+조각에 함께 올라가지 않아 포트 8001 의 VL 서버로 번갈아 띄웠다. 주소·이름·좌표
+규약을 인자로 받으므로 옛 VL 서버에도 그대로 붙는다(`coords="pixel"`).
 
 ## 좌표 규약을 이 파일이 흡수한다
 
@@ -38,6 +34,8 @@ import json
 import re
 
 import httpx
+
+from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL
 
 from prova.vlm.base import Located, VLMError
 
@@ -83,10 +81,10 @@ class QwenVLClient:
 
     def __init__(
         self,
-        base_url: str = "http://localhost:8001/v1",
-        model: str = "Qwen/Qwen2.5-VL-3B-Instruct-AWQ",
+        base_url: str = DEFAULT_BASE_URL,
+        model: str = DEFAULT_MODEL,
         timeout: float = 120.0,
-        coords: str = "pixel",
+        coords: str = "norm1000",
     ) -> None:
         if coords not in _COORD_RULES:
             raise ValueError(f"좌표 규약은 {sorted(_COORD_RULES)} 중 하나: {coords!r}")

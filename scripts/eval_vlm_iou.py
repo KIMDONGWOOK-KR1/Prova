@@ -1,6 +1,7 @@
 """굳은 데이터셋으로 탐지 정확도를 채점한다 (VL 서버 필요).
 
-    uv run python scripts/eval_vlm_iou.py --vlm http://localhost:8001/v1 --vlm-model qwen-vl
+    uv run python scripts/eval_vlm_iou.py                      (기본 모델 — LLM 과 같은 서버)
+    uv run python scripts/eval_vlm_iou.py --vlm http://localhost:8001/v1 --vlm-model qwen-vl --vlm-coords pixel
     uv run python scripts/eval_vlm_iou.py --backend oracle          # 배관만 점검 (GPU 불필요)
 
 ## 무엇을 재는가
@@ -251,9 +252,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--dataset", default="fixtures/iou/dataset.json")
     ap.add_argument("--backend", choices=("qwen", "oracle"), default="qwen")
-    ap.add_argument("--vlm", default="http://localhost:8001/v1")
-    ap.add_argument("--vlm-model", default="qwen-vl")
-    ap.add_argument("--vlm-coords", choices=("pixel", "norm1000"), default="pixel",
+    ap.add_argument("--vlm", default="http://localhost:8000/v1")
+    ap.add_argument("--vlm-model", default="qwen3.5-4b-awq")
+    ap.add_argument("--vlm-coords", choices=("pixel", "norm1000"), default="norm1000",
                     help="모델의 좌표 규약 (qwen_vl.py 참고). Qwen3.5 는 norm1000")
     ap.add_argument("--min-confidence", type=float, default=None,
                     help="기본값은 파이프라인과 같은 MIN_CONFIDENCE 다")

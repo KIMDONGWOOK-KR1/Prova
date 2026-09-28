@@ -3,7 +3,7 @@
 ## 접속 구조
 
     [CHEETAH A100 MIG 1g.10gb]              [로컬 개발 머신]
-     vLLM (Qwen2.5-7B-Instruct-AWQ)  <--SSH 터널-->  Prova
+     vLLM (Qwen3.5-4B, 4bit)         <--SSH 터널-->  Prova
      OpenAI 호환 :8000                                Playwright
 
 로컬에서 다음 명령으로 터널을 열어두면, 코드 입장에서 GPU 모델은 그냥
@@ -29,17 +29,12 @@ extra_body={"guided_json": ...} 로 보내면 **오류 없이 조용히 무시�
 response_format 은 OpenAI 표준이라 vLLM 버전이 올라가도 유지될 가능성이 높고,
 Claude API 백엔드를 붙일 때도 같은 개념을 쓴다.
 
-## VRAM 10GiB 에서의 서빙 명령
+## 한 모델이 추출(S1)과 요소 탐지(S3)를 함께 맡는다 (2026-09-28 부터)
 
-    vllm serve Qwen/Qwen2.5-7B-Instruct-AWQ \
-      --quantization awq_marlin \
-      --max-model-len 8192 \
-      --gpu-memory-utilization 0.90 \
-      --port 8000
-
-가중치 약 5.6GB + 오버헤드 약 1GB 를 빼면 KV 캐시로 약 2.4GB 가 남는다.
-Qwen2.5-7B 는 GQA(KV head 4개, 28 layer)라 토큰당 KV 가 약 56KB 이므로
-대략 43K 토큰 분량이다. 8K 컨텍스트 요청 5개를 동시에 처리할 수 있다.
+서빙은 `scripts/cheetah/serve_vllm.sh` 다. Qwen3.5-4B(4bit, 3.76GiB)는 이미지를 읽으므로
+VLM(`prova.vlm.qwen_vl`)도 같은 서버·같은 이름으로 부른다. 그 전에는 Qwen2.5-7B-AWQ 와
+Qwen2.5-VL-3B 를 MIG 조각에 번갈아 올렸다. 바꾼 근거와 측정은
+`docs/measurements/model-compare-qwen35-4b-2026-09-28.md`.
 """
 
 from __future__ import annotations
@@ -49,7 +44,8 @@ import json
 from prova.llm.base import LLMError
 
 DEFAULT_BASE_URL = "http://localhost:8000/v1"
-DEFAULT_MODEL = "Qwen/Qwen2.5-7B-Instruct-AWQ"
+# serve_vllm.sh 의 --served-model-name 과 같아야 한다 (health() 가 이름을 확인한다).
+DEFAULT_MODEL = "qwen3.5-4b-awq"
 
 
 class ModelNotServed(LLMError):
