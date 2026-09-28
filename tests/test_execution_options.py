@@ -12,6 +12,7 @@ def test_기본값():
     opts = execution_options({})
     assert opts == {
         "headless": True, "viewport": None, "step_timeout_ms": 10000,
+        "navigation_timeout_ms": 30000,
         "settle_timeout_ms": 2000, "screenshot_every_step": True,
         "max_heal": 2, "min_confidence": 0.5,
     }

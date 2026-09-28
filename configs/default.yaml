@@ -18,6 +18,9 @@ execution:
   headless: true
   viewport: {width: 1280, height: 800}
   step_timeout_ms: 10000
+  # 페이지 열기(navigate)의 상한. 요소 조작보다 길게 둔다 — 실물 사이트는 잠든 서버를
+  # 깨우거나 외부 스크립트를 받느라 첫 로드가 느리다(the-internet 첫 접속 8초).
+  navigation_timeout_ms: 30000
   # 화면이 기대 상태에 도달하기를 기다리는 상한.
   #
   # 실물 웹앱은 제출 결과를 나중에 렌더한다. 기다리지 않으면 렌더 전 DOM 을 보고

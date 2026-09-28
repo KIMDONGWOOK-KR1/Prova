@@ -68,6 +68,10 @@ class ExecutionContext:
     run_dir: Path
     case_id: str
     step_timeout_ms: int = 10000
+    # 페이지 열기(navigate)의 상한. 요소 조작(step_timeout_ms)과 따로 둔다 — the-internet
+    # 이 잠든 서버를 깨우느라 첫 접속에 8초가 걸려 10초 제한에 걸렸다(2026-09-28).
+    # 실물 사이트의 로드는 버튼 누르기보다 원래 느리다.
+    navigation_timeout_ms: int = 30000
     screenshot_every_step: bool = True
     # 2차 경로. None 이면 접근성 속성으로 못 찾은 요소는 그대로 탐지 실패다.
     #
@@ -446,7 +450,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     try:
         if step.action == "navigate":
             url = _resolve_url(ctx, step.target)
-            response = ctx.page.goto(url, timeout=ctx.step_timeout_ms,
+            response = ctx.page.goto(url, timeout=ctx.navigation_timeout_ms,
                                      wait_until="domcontentloaded")
             http_status = response.status if response is not None else None
             # 4xx/5xx 를 성공으로 넘기면 이후 스텝이 전부 요소 미탐지로 실패해
@@ -501,7 +505,8 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         status, error_code, error_detail = "error", "input_error", str(exc)
     except PlaywrightTimeout as exc:
         status, error_code = "error", "timeout"
-        error_detail = f"{ctx.step_timeout_ms}ms 초과 — {str(exc).splitlines()[0]}"
+        limit = ctx.navigation_timeout_ms if step.action == "navigate" else ctx.step_timeout_ms
+        error_detail = f"{limit}ms 초과 — {str(exc).splitlines()[0]}"
     except PlaywrightError as exc:
         # 요소는 찾았지만 조작할 수 없는 경우(다른 요소에 가림, disabled 등)
         status, error_code = "error", "input_error"
