@@ -683,20 +683,31 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
             },
         )
 
+    # 404 를 받았지만 앱이 화면을 그려 계속한 스텝 (SPA 호스팅, playwright_driver 참고).
+    # 응답 코드로는 정상 경로와 없는 경로를 못 가르므로, 그 뒤의 결과로 가른다.
+    soft404 = next((r for r in step_results if r.http_status == 404 and r.status == "ok"),
+                   None)
+    note404 = (f" (스텝 {soft404.seq} 의 '{soft404.target}' 은 HTTP 404 였지만 화면이 떠서 "
+               f"계속했습니다)") if soft404 else ""
+
     failed_step = next((r for r in step_results if r.status == "error"), None)
     if failed_step is not None:
         # 흐름 케이스에서 이 분기가 결정적이다. 중간 화면에서 끊기면 그 스텝이
         # 지목되고, 마지막 화면이 애먼 소리를 듣지 않는다. 흐름임을 문장에
         # 밝히는 이유: '검색이 실패했다' 로 읽히면 개발자가 검색 코드를 보게 된다.
         where = f"흐름 '{case.flow_id}' 가 " if case.flow_id else ""
+        category = failed_step.error_code or "unknown"
+        # 404 를 받은 화면에서 끊겼으면 원인을 페이지로 본다 (아래 판정 실패와 같은 판단).
+        if soft404 is not None and category in ("element_not_found", "assertion_mismatch"):
+            category = "page_error"
         return Verdict(
             **base,
             verdict="FAIL",
-            failure_category=failed_step.error_code or "unknown",
+            failure_category=category,
             failure_detail=(
                 f"{where}스텝 {failed_step.seq}"
                 f"({failed_step.action} {failed_step.target!r}) "
-                f"실패: {failed_step.error_detail}"
+                f"실패: {failed_step.error_detail}{note404}"
             ),
             evidence={
                 "expected": _expected_summary(case.expected),
@@ -748,6 +759,18 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
             for label, col in state.column_texts.items()
         }
 
+    if soft404 is not None:
+        evidence["http_status"] = 404
+        # '에러 없음'·'문구 없음' 은 망가진 경로에서도 참이다 — 빈 통과로 두지 않는다.
+        if passed and (reason == WEAK_PASS_REASON or case.expected.type == "text_absent"):
+            return Verdict(
+                **base, verdict="FAIL", failure_category="page_error",
+                failure_detail=(
+                    f"HTTP 404 를 받은 화면에서 '{reason}' 만 확인했습니다 — 화면이 제대로 "
+                    f"떴는지 알 수 없습니다{note404}"),
+                evidence=evidence,
+            )
+
     if passed and _rests_on_baseline(case.expected, state):
         return Verdict(
             **base, verdict="FAIL", failure_category="unverifiable",
@@ -769,14 +792,18 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         reason += f" · 화면 오류: {' / '.join(state.error_texts)!r}"
 
     # 콘솔 오류는 분류를 바꾸지 않고 근거로 남긴다 (_classify 설명).
-    detail = _failure_detail(case, reason)
+    detail = _failure_detail(case, reason) + note404
     if state.console_errors:
         evidence["console_errors"] = state.console_errors[:5]
         detail += f" (참고: 콘솔 오류 {len(state.console_errors)}건 — 판정과 무관할 수 있음)"
 
+    # 404 를 받고 계속한 화면의 불일치는 구현 결함으로 보고하지 않는다. 서버의 HTML 404
+    # 페이지도 글자가 있어 계속하게 되고, 그 화면이 앱인지 코드가 알 수 없다 — 결함으로
+    # 부르면 오탐이다. 사유(판정 내용)는 그대로 실어 진짜 결함이 사라지지는 않게 한다.
+    category = "page_error" if soft404 is not None else _classify(case, state)
     return Verdict(
         **base, verdict="FAIL",
-        failure_category=_classify(case, state),
+        failure_category=category,
         failure_detail=detail,
         evidence=evidence,
     )

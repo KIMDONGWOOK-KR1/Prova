@@ -609,6 +609,9 @@ class StepResult(BaseModel):
     location: Optional[ElementLocation] = None
     # 전제를 세우는 스텝인지 — 리포트가 구분해 보여준다.
     phase: Literal["setup", "test"] = "test"
+    # navigate 가 받은 HTTP 상태. 404 인데 앱이 화면을 그려 계속한 경우(SPA)에 판정이
+    # 그 사실을 근거로 쓴다 (playwright_driver.execute_step·assertion_engine.verify).
+    http_status: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
