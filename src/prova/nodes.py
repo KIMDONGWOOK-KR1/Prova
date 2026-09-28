@@ -137,6 +137,8 @@ class AgentState:
 
     # 실행 설정
     step_timeout_ms: int = 10000
+    # 페이지 열기(navigate)의 상한. 실물 사이트의 로드는 조작보다 원래 느리다.
+    navigation_timeout_ms: int = 30000
     screenshot_every_step: bool = True
 
     # 화면이 기대 상태에 도달하기를 기다리는 상한.
@@ -290,6 +292,7 @@ def run_cases(state: AgentState) -> AgentState:
             run_dir=state.run_dir,
             case_id=case.case_id,
             step_timeout_ms=state.step_timeout_ms,
+            navigation_timeout_ms=state.navigation_timeout_ms,
             screenshot_every_step=state.screenshot_every_step,
             vlm=state.vlm,
             max_heal=state.max_heal,
