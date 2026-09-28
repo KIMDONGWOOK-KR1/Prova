@@ -140,6 +140,11 @@ class VLLMClient:
                         "schema": schema,
                     },
                 },
+                # 생각(thinking) 모드가 있는 모델(Qwen3.5 등)은 켜진 채로 두면 JSON
+                # 앞에 긴 추론을 쓰느라 느려지고 max_tokens 에 걸린다. 이 호출은
+                # 옮겨 적기라 추론이 필요 없다. 그 변수를 쓰지 않는 템플릿(Qwen2.5)은
+                # 무시한다.
+                extra_body={"chat_template_kwargs": {"enable_thinking": False}},
             )
         except Exception as exc:
             raise LLMError(f"vLLM 호출 실패: {exc}") from exc

@@ -23,6 +23,10 @@ MAX_LEN="${MAX_LEN:-8192}"
 PORT="${PORT:-8000}"
 UTIL="${UTIL:-0.90}"
 EXTRA="${EXTRA:-}"
+# 양자화 방식. 비우면(QUANT=) vLLM 이 모델 config 를 보고 고른다 — compressed-tensors
+# 형식(llm-compressor 로 만든 4bit, 예: cyankiwi/Qwen3.5-4B-AWQ-4bit)에 awq_marlin 을
+# 강제하면 기동이 실패한다.
+QUANT="${QUANT-awq_marlin}"
 
 if [ ! -d "$VENV" ]; then
   echo "venv 가 없습니다 (/tmp 는 pod 재시작 시 사라집니다)."
@@ -31,7 +35,7 @@ if [ ! -d "$VENV" ]; then
 fi
 
 # 모델 가중치는 영구 볼륨에 둔다. 재시작 후 재다운로드를 피하기 위해서다.
-export HF_HOME="$HOME/.cache/huggingface"
+export HF_HOME="${HF_HOME:-$HOME/.cache/huggingface}"
 
 # CUDA 런타임 경로. setup 이 +cu129 wheel 을 넣었으므로 cu12 런타임을 쓴다.
 # (cu13 경로를 넣으면 안 된다 — 그 조합은 커널 실행에서 죽는다. setup 주석 참고)
@@ -55,7 +59,7 @@ echo "포트   : $PORT"
 echo ""
 
 exec vllm serve "$MODEL" \
-  --quantization awq_marlin \
+  ${QUANT:+--quantization "$QUANT"} \
   --max-model-len "$MAX_LEN" \
   --gpu-memory-utilization "$UTIL" \
   --port "$PORT" \

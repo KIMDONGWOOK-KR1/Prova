@@ -21,6 +21,14 @@ Qwen2.5-VL 계열은 리사이즈된 이미지 기준 **절대 픽셀**로 bbox 
 복제하는 것이다. 그건 모델을 바꿀 때마다 틀린다. 대신 받은 값이 화면 안에 있는지를
 Located.is_sane() 이 확인하고, 벗어나면 보정을 포기한다 — 이상한 좌표로 아무 데나
 누르는 것보다 못 찾았다고 말하는 편이 낫다.
+
+### 규약을 섞어 내는 모델 — `coords="norm1000"`
+
+Qwen3.5 는 0~1 을 달라는 프롬프트에도 한 화면 안에서 0~1 과 0~1000 을 섞어 냈다
+(2026-09-28). 위 규칙은 그 0~1000 값을 픽셀로 보고 1280 으로 나눠 365 -> 0.285
+(정답 0.367)를 만들고, 그 값이 화면 안이라 is_sane() 도 통과한다 — **엉뚱한 곳을
+조용히 누른다.** 그런 모델에는 학습된 규약(0~1000 정수)을 프롬프트로 명시하고,
+받은 값은 추측 없이 전부 1000 으로 나눈다. 규약을 정했으면 섞어 읽지 않는다.
 """
 
 from __future__ import annotations
@@ -33,14 +41,20 @@ import httpx
 
 from prova.vlm.base import Located, VLMError
 
+_COORD_RULES = {
+    "pixel": "좌표는 **이미지 왼쪽 위를 (0, 0), 오른쪽 아래를 (1, 1) 로 두는 상대값**입니다.\n"
+             "픽셀 값을 쓰지 마세요.",
+    "norm1000": "좌표는 **이미지 왼쪽 위를 (0, 0), 오른쪽 아래를 (1000, 1000) 으로 두는 "
+                "0~1000 정수**입니다.\n픽셀 값이나 0~1 소수를 쓰지 마세요.",
+}
+
 _SYSTEM = """\
 당신은 웹 화면 스크린샷에서 UI 요소의 위치를 찾는 도구입니다.
 찾은 요소를 감싸는 사각형을 JSON 으로만 답하세요.
 
-{"bbox": [x1, y1, x2, y2], "confidence": 0.0~1.0}
+{{"bbox": [x1, y1, x2, y2], "confidence": 0.0~1.0}}
 
-좌표는 **이미지 왼쪽 위를 (0, 0), 오른쪽 아래를 (1, 1) 로 두는 상대값**입니다.
-픽셀 값을 쓰지 마세요.
+{coord_rule}
 
 요소를 찾지 못했으면 confidence 를 0.0 으로 두세요. 그럴듯한 위치를 지어내지 마세요 —
 엉뚱한 곳을 누르면 그 뒤의 판정이 전부 무의미해집니다.
@@ -72,10 +86,15 @@ class QwenVLClient:
         base_url: str = "http://localhost:8001/v1",
         model: str = "Qwen/Qwen2.5-VL-3B-Instruct-AWQ",
         timeout: float = 120.0,
+        coords: str = "pixel",
     ) -> None:
+        if coords not in _COORD_RULES:
+            raise ValueError(f"좌표 규약은 {sorted(_COORD_RULES)} 중 하나: {coords!r}")
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout = timeout
+        self.coords = coords
+        self.system_prompt = _SYSTEM.format(coord_rule=_COORD_RULES[coords])
 
     def health(self, timeout: float = 4.0) -> None:
         """서버가 살아 있고 **이 모델 이름을 서빙하는지** 확인한다.
@@ -111,7 +130,7 @@ class QwenVLClient:
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": _SYSTEM},
+                {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": [
                     {"type": "image_url", "image_url": {"url": data_uri}},
                     {"type": "text", "text": f"이 화면에서 '{what}' 의 위치를 찾으세요."},
@@ -124,6 +143,8 @@ class QwenVLClient:
             "response_format": {"type": "json_schema",
                                 "json_schema": {"name": "Located",
                                                 "schema": _BBOX_SCHEMA}},
+            # LLM 쪽(vllm_backend)과 같은 이유 — 좌표 하나 내는 데 추론이 필요 없다.
+            "chat_template_kwargs": {"enable_thinking": False},
         }
 
         try:
@@ -134,11 +155,13 @@ class QwenVLClient:
         except Exception as exc:
             raise VLMError(f"VLM 호출 실패: {exc}")
 
-        return _parse(content, image_png)
+        return _parse(content, image_png, coords=self.coords)
 
 
-def _parse(content: str, image_png: bytes) -> Located:
+def _parse(content: str, image_png: bytes, coords: str = "pixel") -> Located:
     """응답에서 bbox 를 뽑고 0~1 상대값으로 맞춘다."""
+    if coords not in _COORD_RULES:
+        raise VLMError(f"모르는 좌표 규약: {coords!r}")
     try:
         data = json.loads(content)
     except json.JSONDecodeError:
@@ -157,7 +180,9 @@ def _parse(content: str, image_png: bytes) -> Located:
         raise VLMError(f"bbox 가 없거나 형식이 다릅니다: {data!r}")
 
     values = [float(v) for v in raw]
-    if any(v > 1.0 for v in values):
+    if coords == "norm1000":
+        values = [v / 1000.0 for v in values]
+    elif any(v > 1.0 for v in values):
         # 픽셀로 낸 것으로 본다. 이미지 크기로 나눈다.
         width, height = _png_size(image_png)
         values = [values[0] / width, values[1] / height,

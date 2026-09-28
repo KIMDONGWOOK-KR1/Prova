@@ -253,6 +253,8 @@ def main() -> int:
     ap.add_argument("--backend", choices=("qwen", "oracle"), default="qwen")
     ap.add_argument("--vlm", default="http://localhost:8001/v1")
     ap.add_argument("--vlm-model", default="qwen-vl")
+    ap.add_argument("--vlm-coords", choices=("pixel", "norm1000"), default="pixel",
+                    help="모델의 좌표 규약 (qwen_vl.py 참고). Qwen3.5 는 norm1000")
     ap.add_argument("--min-confidence", type=float, default=None,
                     help="기본값은 파이프라인과 같은 MIN_CONFIDENCE 다")
     ap.add_argument("--iou-threshold", type=float, default=DEFAULT_IOU_THRESHOLD)
@@ -289,7 +291,8 @@ def main() -> int:
         print("=" * 72)
     else:
         from prova.vlm.qwen_vl import QwenVLClient
-        vlm = QwenVLClient(base_url=args.vlm, model=args.vlm_model)
+        vlm = QwenVLClient(base_url=args.vlm, model=args.vlm_model,
+                           coords=args.vlm_coords)
         try:
             vlm.health()
         except VLMError as exc:
