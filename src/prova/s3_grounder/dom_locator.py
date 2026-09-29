@@ -507,28 +507,79 @@ def _locate_collection(page, target: str, hint: UIElement | None):
 #
 # ## 지원 범위 (밖이면 absent)
 #
-# - 열 값: <th> 가 한 열의 머리글이고, 값은 <tbody> 행의 같은 위치 셀이다.
-#   colspan 이 있는 머리글·머리글 없는 표는 지원하지 않는다.
+# - 열 값: <th> 가 한 열의 머리글이고, 값은 <tbody> 행의 같은 **칸 위치** 셀이다
+#   (colspan·rowspan 반영, 두 줄 머리글의 아래 칸 포함). 여러 열에 걸친 그룹 머리글,
+#   대상 열의 본문 칸이 여러 칸·여러 행에 걸친 표, 머리글 없는 표는 지원하지 않는다.
+# - 안내 행: 표 폭이 2칸 이상인데 칸이 하나뿐인 본문 행('주문이 없습니다')은 값도
+#   건수도 아니다.
 # - 행 값: <th> 가 <tbody>/<tfoot> 행 안에 있으면(행머리, '합계' 처럼) 같은 행의
 #   <td> 들이 값이다.
 # - 컨테이너: <caption> 텍스트가 라벨인 표. 항목은 <tbody> 행이다 — thead·tfoot
 #   행은 건수에 넣지 않는다.
 
-_TABLE_HEADER_JS = r"""
+# 칸 위치 계산 — colspan·rowspan 을 반영한다. 머리글과 본문이 **같은 계산**을 써야
+# 짝이 맞는다. 2026-09-30 까지는 '그 줄에서 몇 번째 칸인가' 로 셌고, 앞 칸에 colspan·
+# rowspan 이 있으면 오류 없이 엉뚱한 열을 읽었다(tests/test_table_spans.py).
+#
+# 돌려주는 것: rows(table.rows), out[r] = 그 행이 가진 칸들의 {cell, col(1부터),
+# colspan, rowspan}, taken[r][c] = 그 자리를 덮은 칸과 그 칸이 시작한 행, width.
+_TABLE_GRID_FN = r"""
+function tableGrid(table) {
+  const rows = Array.from(table.rows);
+  const taken = rows.map(() => []);
+  const out = rows.map(() => []);
+  rows.forEach((tr, r) => {
+    let col = 0;
+    Array.from(tr.cells).forEach((cell) => {
+      while (taken[r][col]) col++;
+      const cs = Math.max(1, cell.colSpan), rs = Math.max(1, cell.rowSpan);
+      for (let dr = 0; dr < rs && r + dr < rows.length; dr++)
+        for (let dc = 0; dc < cs; dc++) taken[r + dr][col + dc] = {cell, origin: r};
+      out[r].push({cell, col: col + 1, colspan: cs, rowspan: rs});
+      col += cs;
+    });
+  });
+  const width = Math.max(0, ...taken.map((t) => t.length));
+  return {rows, out, taken, width};
+}
+
+// 안내 행 — 표 폭이 2칸 이상인데 칸이 하나뿐이고 위에서 내려온 칸도 없는 본문 행.
+// '주문이 없습니다' 처럼 한 칸이 폭을 덮는(또는 짧은) 모양이다. 값도 건수도 아니다.
+function isNoticeRow(g, r) {
+  if (g.width < 2 || g.rows[r].cells.length !== 1) return false;
+  return g.taken[r].every((s) => !s || s.origin === r);
+}
+
+// 본문 행의 xpath 조각 좌표 [tbody 순번, tbody 안 행 순번] (1부터).
+function bodyRef(table, tr) {
+  const tb = tr.parentElement;
+  return [Array.from(table.tBodies).indexOf(tb) + 1, Array.from(tb.rows).indexOf(tr) + 1];
+}
+"""
+
+def _with_grid(fn: str) -> str:
+    """보조 함수(_TABLE_GRID_FN)를 품은 함수 하나로 감싼다 — evaluate 는 식 하나만 받는다."""
+    return "(arg) => {" + _TABLE_GRID_FN + "return (" + fn.strip() + ")(arg); }"
+
+
+_TABLE_HEADER_JS = _with_grid(r"""
 (label) => {
   const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
   const out = [];
   document.querySelectorAll("table").forEach((table, ti) => {
+    let g = null;
     table.querySelectorAll("th").forEach((th) => {
+      if (th.closest("table") !== table) return;   // 안쪽 표의 머리글은 그 표의 것이다
       if (norm(th.innerText) !== label) return;
       const tr = th.parentElement;
       const section = tr.parentElement;
       const inHead = section.tagName === "THEAD"
         || (section.tagName === "TABLE" && tr === table.rows[0]);
       if (inHead) {
-        const cells = Array.from(tr.children);
-        out.push({table: ti, kind: "col", index: cells.indexOf(th) + 1,
-                  colspan: th.colSpan});
+        g = g || tableGrid(table);
+        const r = g.rows.indexOf(tr);
+        const pos = g.out[r].find((e) => e.cell === th);
+        out.push({table: ti, kind: "col", index: pos.col, colspan: pos.colspan});
       } else {
         const rows = Array.from(table.querySelectorAll("tr"));
         out.push({table: ti, kind: "row", index: rows.indexOf(tr) + 1, colspan: 1});
@@ -537,7 +588,55 @@ _TABLE_HEADER_JS = r"""
   });
   return out;
 }
-"""
+""")
+
+# 열 하나의 본문 값 칸 — [tbody 순번, 행 순번, 칸 순번] 목록. 안내 행은 건너뛴다.
+# 대상 열의 칸이 여러 칸·여러 행에 걸치면 짝을 정할 수 없으므로 stop 을 돌려준다 —
+# 짐작해서 읽으면 조용히 틀린 값이 판정에 들어간다.
+_TABLE_COLUMN_JS = _with_grid(r"""
+([ti, col]) => {
+  const table = document.querySelectorAll("table")[ti];
+  const g = tableGrid(table);
+  const refs = [];
+  for (let r = 0; r < g.rows.length; r++) {
+    const tr = g.rows[r];
+    if (tr.parentElement.tagName !== "TBODY" || isNoticeRow(g, r)) continue;
+    const slot = g.taken[r][col - 1];
+    if (!slot) return {stop: `본문 행에 ${col}열 칸이 없음`};
+    if (slot.origin !== r) return {stop: "rowspan"};
+    const own = g.out[r].find((e) => e.cell === slot.cell);
+    if (own.rowspan > 1) return {stop: "rowspan"};
+    if (own.colspan > 1) return {stop: "colspan"};
+    refs.push([...bodyRef(table, tr), Array.from(tr.children).indexOf(slot.cell) + 1]);
+  }
+  return {refs};
+}
+""")
+
+# caption 으로 찾은 표의 항목 행 — [tbody 순번, 행 순번] 목록. 안내 행은 세지 않는다.
+_TABLE_ROWS_JS = _with_grid(r"""
+(table) => {
+  const g = tableGrid(table);
+  const refs = [];
+  g.rows.forEach((tr, r) => {
+    if (tr.parentElement.tagName === "TBODY" && !isNoticeRow(g, r))
+      refs.push(bodyRef(table, tr));
+  });
+  return {ti: Array.from(document.querySelectorAll("table")).indexOf(table), refs};
+}
+""")
+
+
+def _cells_locator(page, t: int, refs: list[list[int]]):
+    """(//table)[t] 안의 좌표 목록을 하나의 locator 로. 비었으면 아무것도 잡지 않는다.
+
+    xpath 합집합은 문서 순서로 돌려주므로 값의 순서가 화면 순서와 같다.
+    """
+    if not refs:
+        return page.locator(f"xpath=(//table)[{t}]/tbody/tr[false()]")
+    parts = [f"(//table)[{t}]/tbody[{ref[0]}]/tr[{ref[1]}]"
+             + (f"/*[{ref[2]}]" if len(ref) > 2 else "") for ref in refs]
+    return page.locator("xpath=" + " | ".join(parts))
 
 
 def _locate_table_cells(page, target: str):
@@ -562,7 +661,17 @@ def _locate_table_cells(page, target: str):
         if m["colspan"] != 1:
             return ("absent", None, None, 0,
                     f"표 머리글 {target!r} 가 여러 열에 걸쳐 있어(colspan) 열을 정할 수 없음")
-        cells = page.locator(f"xpath=(//table)[{t}]/tbody/tr/*[{m['index']}]")
+        try:
+            col = page.evaluate(_TABLE_COLUMN_JS, [m["table"], m["index"]])
+        except Exception as exc:
+            return "error", None, None, 0, f"표 셀 조회 실패: {exc}"
+        if "stop" in col:
+            why = {"rowspan": "여러 행에 걸친 칸(rowspan)이 있어 행과 값을 짝지을 수 없음",
+                   "colspan": "여러 열에 걸친 칸(colspan)이 있어 값을 정할 수 없음"}
+            return ("absent", None, None, 0,
+                    f"표 머리글 {target!r} {m['index']}열에 "
+                    f"{why.get(col['stop'], col['stop'])}")
+        cells = _cells_locator(page, t, col["refs"])
         detail = f"표 머리글 {target!r} {m['index']}열로 찾음 (aria-label 없음)"
     else:
         cells = page.locator(f"xpath=((//table)[{t}]//tr)[{m['index']}]/td")
@@ -596,8 +705,11 @@ def _locate_table_by_caption(page, target: str, container_role: str):
             "ambiguous", None, "row", found,
             f"caption 이 {target!r} 인 표가 {found}개 — 어느 것을 볼지 확정할 수 없음",
         )
-    rows = tables.first.locator("tbody > tr")
     try:
+        # 안내 행('주문이 없습니다')은 세지 않는다 — 세면 0건 표가 1건이 되어,
+        # 올바른 구현이 '0건이어야 한다' 케이스에서 FAIL 한다.
+        got = tables.first.evaluate(_TABLE_ROWS_JS)
+        rows = _cells_locator(page, got["ti"] + 1, got["refs"])
         n = rows.count()
     except Exception as exc:
         return "error", None, None, 0, f"표 행 조회 실패: {exc}"
