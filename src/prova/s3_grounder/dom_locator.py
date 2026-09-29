@@ -225,6 +225,24 @@ def _try_strategies(page, target: str, hint: UIElement | None):
     return None, None, attempts
 
 
+#: 요소 자체를 정확한 이름으로 찾는 전략. text 는 빠진다 — 요소가 아니라 글자를
+#: 잡으므로(제목·라벨 글자), 여러 개여도 '같은 이름의 요소가 여럿' 이라는 뜻이 아니다.
+_ELEMENT_STRATEGIES = ("label", "placeholder", "placeholder_hint", "table_label", "role")
+
+
+def ambiguous_count(attempts: list[Attempt]) -> int:
+    """1차 시도가 같은 이름의 요소를 둘 이상 봤다면 그 최대 개수, 아니면 0.
+
+    0 이 아니면 2차 경로로 넘기지 않는다(`playwright_driver._locate`). 1차가 둘 중
+    무엇인지 정하지 못했다면 화면 이미지도 고를 근거가 없고 — 2026-09-29 외부 화면
+    측정에서 모델은 parabank 의 두 Username 중 **다른 쪽**을 가리켰다 — 정체 대조는
+    이름이 같아 막지 못한다. '후보가 정확히 하나일 때만 답한다' 를 2차 경로에도 적용한다.
+    """
+    counts = [a.count for a in attempts
+              if a.strategy in _ELEMENT_STRATEGIES and a.count >= 2]
+    return max(counts, default=0)
+
+
 def _value_for(strategy: str, target: str, hint: UIElement | None) -> str:
     """전략이 실제로 조회에 쓴 값. placeholder_hint 만 target 이 아니다."""
     if strategy == "placeholder_hint" and hint and hint.placeholder:
