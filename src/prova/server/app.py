@@ -35,6 +35,9 @@ from prova.pipeline import build_plan, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
 from prova.theme import TOKENS_CSS
+from prova.vlm.base import VLMError
+from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL
+from prova.vlm.qwen_vl import QwenVLClient
 
 STATIC = Path(__file__).parent / "static"
 UPLOADS = Path("uploads")
@@ -107,6 +110,9 @@ class RunRequest(PlanRequest):
     case_ids: list[str] = []
     #: 계획 단계에서 모델이 밝힌 근거 (리포트에 그대로 남긴다)
     reason: str = ""
+    #: 2차 경로(화면 이미지로 찾기). 기본은 끈다 — 좌표를 누르는 경로라 틀리면
+    #: 그 뒤 판정이 전부 거짓이 된다. 켜는 것은 사람이 고르고, 리포트가 남긴다.
+    vlm: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -241,6 +247,9 @@ def run(body: RunRequest) -> dict:
     build = check_sut_build(body.url)
     if build.blocks:
         raise HTTPException(409, build.message)
+    # 같은 이유로 작업을 띄우기 전에 확인한다. 켰는데 서버가 없으면 locate 마다
+    # 실패가 탐지 실패로 되돌아가, '보정을 켠' 실행이 조용히 1차 경로만 돈다.
+    vlm = _make_vlm(cfg) if body.vlm else None
 
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
@@ -255,6 +264,7 @@ def run(body: RunRequest) -> dict:
             case_ids=body.case_ids,
             request=body.request,
             reason=body.reason,
+            vlm=vlm,
             **execution_options(cfg),
             sut_build=build.state,
             on_progress=report,
@@ -287,6 +297,22 @@ def _backend(name: str, cfg: dict, pdf: Path, report):
     for w in warnings:
         report(w)
     return llm
+
+
+def _make_vlm(cfg: dict):
+    """2차 경로 클라이언트를 만들고 연결을 확인한다 (CLI `_make_vlm` 과 같은 규칙).
+
+    주소와 모델은 설정의 llm 을 쓴다 — 추출과 요소 찾기를 같은 서버·같은 모델이
+    맡는다(Qwen3.5-4B, 2026-09-28). 따로 받지 않으니 둘이 어긋날 수도 없다.
+    """
+    llm_cfg = cfg.get("llm", {})
+    try:
+        client = QwenVLClient(base_url=llm_cfg.get("base_url", DEFAULT_BASE_URL),
+                              model=llm_cfg.get("model", DEFAULT_MODEL))
+        client.health()
+    except (ValueError, VLMError) as exc:
+        raise HTTPException(409, f"2차 경로를 켤 수 없습니다 — {exc}")
+    return client
 
 
 def _submit(kind: str, work) -> dict:

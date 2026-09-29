@@ -423,3 +423,67 @@ class TestStaleTarget:
         })
         job = wait(client, res.json()["job_id"])
         assert job["result"]["summary"]["sut_build"] == "match"
+
+
+class _FakeVL:
+    """2차 경로 대역. 연결 확인만 흉내 낸다 — 라벨로 찾히는 화면이라 locate 는 안 불린다."""
+
+    made: list = []
+    down = False
+    name = "fake-vl"
+
+    def __init__(self, base_url, model, coords="norm1000"):
+        self.base_url, self.model, self.coords = base_url, model, coords
+        _FakeVL.made.append(self)
+
+    def health(self):
+        from prova.vlm.base import VLMError
+        if _FakeVL.down:
+            raise VLMError("VLM 서버에 연결할 수 없습니다 — 터널을 열었나요?")
+
+    def locate(self, *a, **kw):  # pragma: no cover - 불리면 테스트 전제가 깨진 것
+        raise AssertionError("라벨로 찾히는 화면에서 2차 경로가 불렸습니다")
+
+
+class TestSecondaryPath:
+    """웹 UI 에서도 2차 경로를 켤 수 있고, 켰는지가 리포트에 남는다.
+
+    켰는데 서버가 없으면 작업을 띄우기 전에 409 로 말한다 — 조용히 1차 경로만
+    돌면 '보정을 켰다' 고 믿는 실행이 실제로는 그냥 1차 경로다.
+    """
+
+    @pytest.fixture(autouse=True)
+    def fake_vl(self, monkeypatch):
+        _FakeVL.made = []
+        _FakeVL.down = False
+        monkeypatch.setattr(server_app, "QwenVLClient", _FakeVL)
+
+    def _run(self, client, sut_base, **extra):
+        make_plan(client, sut_base)
+        return client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "case_ids": ["login-valid-001"], **extra,
+        })
+
+    def test_기본은_꺼져_있고_꺼짐이_남는다(self, client, sut_base):
+        res = self._run(client, sut_base)
+        job = wait(client, res.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        assert _FakeVL.made == []
+        assert job["result"]["summary"]["vlm"] == ""
+
+    def test_켜면_설정의_서버와_모델로_붙는다(self, client, sut_base):
+        cfg = server_app._config()["llm"]
+        res = self._run(client, sut_base, vlm=True)
+        job = wait(client, res.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        (vl,) = _FakeVL.made
+        assert (vl.base_url, vl.model) == (cfg["base_url"], cfg["model"])
+        assert job["result"]["summary"]["vlm"] == cfg["model"]
+
+    def test_켰는데_서버가_없으면_시작하지_않는다(self, client, sut_base):
+        _FakeVL.down = True
+        res = self._run(client, sut_base, vlm=True)
+        assert res.status_code == 409, res.text
+        assert "터널" in res.text
+        assert not server_app.runner.busy

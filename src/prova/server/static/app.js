@@ -498,7 +498,10 @@ async function startRun() {
     const { job_id } = await api("/api/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ ...form(), case_ids: ids, reason: state.plan.reason || "" }),
+      // 2차 경로는 실행에만 쓰인다. 저장하지 않는다 — 지난번에 켠 채로 모르고
+      // 계속 도는 일이 없게, 페이지를 열 때마다 꺼진 상태로 시작한다.
+      body: JSON.stringify({ ...form(), case_ids: ids, reason: state.plan.reason || "",
+                             vlm: $("vlm").checked }),
     });
     const out = await follow(job_id, pushProgress);
     finishProgress();
@@ -507,9 +510,9 @@ async function startRun() {
     loadRuns();
   } catch (err) {
     if (err.status === 409) {
-      showError("이미 실행 중입니다",
-        "브라우저와 GPU 를 두 작업이 함께 쓰면 판정 타이밍이 흔들리므로 " +
-        "한 번에 하나만 실행합니다. 지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
+      // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
+      // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
+      showError("실행을 시작하지 않았습니다", err.message);
     } else {
       showError("실행 실패", err.message);
     }
@@ -533,6 +536,11 @@ function showResult(out) {
     notes.push(alertBox("info", "이 통과율은 전체 상태가 아닙니다",
       `생성된 ${planned}건 중 ${s.total}건만 실행했습니다. 나머지 ${off}건은 ` +
       `<b>통과한 것이 아니라 확인하지 않은 것</b>입니다.`));
+  }
+  if (s.vlm) {
+    notes.push(alertBox("info", "2차 경로를 켜고 실행했습니다",
+      `라벨로 못 찾은 요소를 화면 이미지로 찾았습니다 (${esc(s.vlm)}) — ` +
+      `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시됩니다.`));
   }
   if (s.llm_backend === "mock") {
     notes.push(alertBox("warn", "mock 백엔드로 실행한 결과입니다",

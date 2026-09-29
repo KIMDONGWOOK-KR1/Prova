@@ -466,11 +466,19 @@ select {
 .case:hover { background: var(--bg-hover); }
 .case.off { opacity: 0.45; }
 
+label.check {
+  display: flex; align-items: center; gap: var(--sp-2);
+  cursor: pointer;
+}
+
+label.check input[type=checkbox],
 .case input[type=checkbox] {
   width: 15px; height: 15px; margin: 2px 0 0;
   accent-color: var(--accent-solid);
   cursor: pointer;
 }
+
+label.check input[type=checkbox] { margin: 0; }
 
 .case .desc { font-size: var(--tx-md); color: var(--fg-default); }
 

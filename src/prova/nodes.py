@@ -653,5 +653,6 @@ def build_final_report(state: AgentState) -> AgentState:
         plan=state.plan_meta,
         sut_build=state.sut_build,
         url_note=state.url_note,
+        vlm=getattr(state.vlm, "model", "") if state.vlm else "",
     )
     return state
