@@ -75,8 +75,16 @@
           <label for="backend">LLM 백엔드</label>
           <select id="backend">
             <option value="mock">연습용 — 저장된 정답 사용 (GPU 불필요)</option>
-            <option value="vllm">실제 모델 — GPU 서버의 7B</option>
+            <option value="vllm">실제 모델 — GPU 서버</option>
           </select>
+        </div>
+
+        <div class="field">
+          <label class="check" for="vlm">
+            <input type="checkbox" id="vlm"> 화면 이미지로 찾기 (2차 경로)
+          </label>
+          <div class="hint">라벨로 못 찾은 요소만 스크린샷에서 찾아 누릅니다 · GPU 서버 필요.
+            좌표를 누르는 경로라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
         </div>
       </section>
 

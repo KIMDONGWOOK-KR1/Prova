@@ -76,6 +76,7 @@ def build_report(
     plan: dict | None = None,
     sut_build: str = "",
     url_note: str = "",
+    vlm: str | None = None,
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
@@ -116,6 +117,11 @@ def build_report(
         summary["sut_build"] = sut_build
     if url_note:
         summary["url_note"] = url_note
+    # 2차 경로(화면 이미지로 찾기)를 켰는가. '탐지 실패' 가 이미지로도 못 찾은
+    # 것인지, 시도하지 않은 것인지는 이 칸이 가른다. 꺼진 것('')도 남긴다 —
+    # 칸이 없는 것은 '기록되기 전의 리포트' 라는 다른 사실이다.
+    if vlm is not None:
+        summary["vlm"] = vlm
 
     return TestReport(
         run_id=run_id,
@@ -570,6 +576,10 @@ def render_html(report: TestReport) -> str:
     if build_state:
         label = "일치" if build_state == "match" else "확인 불가"
         build_meta = f" · 대상 빌드 <code>{_esc(label)}</code>"
+    # 2차 경로도 머리말 한 줄이다 — 꺼진 것이 기본이라 상자로 만들면 매번 뜬다.
+    if "vlm" in s:
+        state = f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"
+        build_meta += f" · 2차 경로 <code>{_esc(state)}</code>"
 
     backend = s.get("llm_backend", "")
     mock_warn = ""
