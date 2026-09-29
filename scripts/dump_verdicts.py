@@ -8,8 +8,9 @@ S3~S5 의 분류 규칙을 고치면(예: '못 찾음' 과 '구현 결함' 의 �
 
     기획서 stem \\t 변형 \\t case_id \\t 판정 \\t 실패 분류
 
-SUT 의 변형 10종(good·bad·slow·spa·…)은 같은 화면의 올바른 구현과 결함 구현이다.
-기획서 9개 × 10 = 90 실행, 약 30분 걸린다.
+SUT 의 변형 12종(good·bad·slow·spa·…)은 같은 화면의 올바른 구현과 결함 구현이다.
+기획서 9개 × 12 = 108 실행, 약 35분 걸린다. (grid·badgrid 는 2026-09-30 에 더했다 —
+그 전 덤프와 비교할 때는 두 변형의 줄을 빼고 본다.)
 
 ## 준비
 
@@ -38,7 +39,7 @@ from prova.llm.factory import make_llm
 from prova.pipeline import run_pipeline
 
 VARIANTS = ["good", "bad", "slow", "spa", "hashed", "native", "nolabel", "slowleak",
-            "table", "badtable"]
+            "table", "badtable", "grid", "badgrid"]
 
 
 def main() -> None:

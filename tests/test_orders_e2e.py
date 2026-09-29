@@ -278,3 +278,36 @@ class TestTableMarkup:
         report, _ = badtable_run
         case = _case(report, "orders-sorted-")
         assert "표 머리글" in (case.failure_detail or ""), case.failure_detail
+
+
+# ---------------------------------------------------------------------------
+# div role=grid 격자 — React 데이터 그리드 모양에서도 판정이 같은가
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def grid_run(sut_base, tmp_path_factory):
+    return _run("grid", sut_base, tmp_path_factory.mktemp("orders-grid"))
+
+
+@pytest.fixture(scope="module")
+def badgrid_run(sut_base, tmp_path_factory):
+    return _run("badgrid", sut_base, tmp_path_factory.mktemp("orders-badgrid"))
+
+
+class TestGridMarkup:
+    def test_격자_마크업에서도_전부_통과한다(self, grid_run):
+        report, _ = grid_run
+        failures = [v for v in report.cases if v.verdict == "FAIL"]
+        assert not failures, "\n".join(f"  {v.case_id}: {v.failure_detail}" for v in failures)
+        assert report.summary["total"] == 22
+
+    def test_격자_마크업에서도_표와_같은_결함만_지목한다(self, badgrid_run, badtable_run):
+        grid_fails = {v.case_id for v in badgrid_run[0].cases if v.verdict == "FAIL"}
+        table_fails = {v.case_id for v in badtable_run[0].cases if v.verdict == "FAIL"}
+        assert grid_fails == table_fails and len(grid_fails) == 9
+
+    def test_격자_경로로_찾은_사실이_사유에_남는다(self, badgrid_run):
+        report, _ = badgrid_run
+        case = _case(report, "orders-sorted-")
+        assert "격자 머리글" in (case.failure_detail or ""), case.failure_detail

@@ -16,6 +16,9 @@
     caption { text-align:left; font-weight:700; margin-bottom:8px; }
     th, td { text-align:left; padding:10px 4px; border-bottom:1px solid #eee; }
     tfoot th, tfoot td { border-top:2px solid #333; border-bottom:0; font-weight:700; }
+    .grid [role=row] { display:flex; justify-content:space-between; gap:12px;
+                       padding:10px 0; border-bottom:1px solid #eee; font-size:14px; }
+    .grid [role=columnheader] { font-weight:700; }
     .total-row { display:flex; justify-content:space-between; margin-top:16px;
                  padding-top:14px; border-top:2px solid #333; font-size:15px;
                  font-weight:700; }
@@ -60,6 +63,24 @@
       </tbody>
       <tfoot><tr><th>합계</th><td colspan="2">{{ total_text }}</td></tr></tfoot>
     </table>
+    {% elif markup == "grid" %}
+    {# grid/badgrid 변형: React 데이터 그리드(MUI·AG Grid) 모양의 div 격자. 격자 이름과
+       aria-rowcount·aria-colindex 는 있고 칸에는 aria-label 이 없다. 가상화하지 않으므로
+       aria-rowcount 는 그린 행 전부(머리글 포함)다. 합계는 격자 밖(데이터 그리드의
+       바닥글처럼)에 둔다 — 시험하는 변수는 '격자 탐지' 하나다. #}
+    <div class="grid" role="grid" aria-label="주문 목록"
+         aria-rowcount="{{ orders|length + 1 }}" aria-colcount="3">
+      <div role="rowgroup"><div role="row" aria-rowindex="1"><div role="columnheader" aria-colindex="1">주문번호</div><div role="columnheader" aria-colindex="2">주문일</div><div role="columnheader" aria-colindex="3">금액</div></div></div>
+      <div role="rowgroup">
+        {% for order in orders %}
+        <div role="row" aria-rowindex="{{ loop.index + 1 }}"><div role="gridcell" aria-colindex="1">{{ order.주문번호 }}</div><div role="gridcell" aria-colindex="2">{{ order.주문일 }}</div><div role="gridcell" aria-colindex="3">{{ order.금액_표시 }}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+    <div class="total-row">
+      <span>합계</span>
+      <div aria-label="합계">{{ total_text }}</div>
+    </div>
     {% else %}
     <!-- 마크업은 good/bad 가 완전히 동일하다. 두 실행의 차이가 정렬 순서(O1)와
          합계 계산(O2)에서만 나오게 하기 위한 것이다. -->

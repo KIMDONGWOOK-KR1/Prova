@@ -590,6 +590,9 @@ LOGIN_VARIANTS = {
     # 로그인 화면도 함께 있어야 한다.
     "table": False,
     "badtable": False,
+    # 주문조회의 div role=grid 격자 변형 (React 데이터 그리드 모양)
+    "grid": False,
+    "badgrid": False,
 }
 
 #: 검색 화면을 가진 변형 (bad 는 결함이 있어 따로 둔다).
@@ -855,6 +858,21 @@ def table_orders(request: Request, start_date: str = "", end_date: str = "",
                          start_date=start_date, end_date=end_date, status=status)
 
 
+# grid — good 과 데이터가 같고 마크업만 div role=grid 격자다 (MUI·AG Grid 모양).
+@app.get("/grid/orders", response_class=HTMLResponse)
+def grid_orders(request: Request, start_date: str = "", end_date: str = "",
+                status: str = ""):
+    if "session_grid" not in request.cookies:
+        return RedirectResponse("/grid/login", status_code=303)
+    if _period_reversed(start_date, end_date):
+        return render_orders(request, "grid", [], 0, markup="grid",
+                             start_date=start_date, end_date=end_date,
+                             status=status, error=MSG_ORDERS_REVERSED)
+    rows, total = _good_orders_data(start_date, end_date, status)
+    return render_orders(request, "grid", rows, total, markup="grid",
+                         start_date=start_date, end_date=end_date, status=status)
+
+
 # ---------------------------------------------------------------------------
 # bad/signup — 의도적으로 규칙을 빠뜨린 구현
 # ---------------------------------------------------------------------------
@@ -996,6 +1014,17 @@ def badtable_orders(request: Request, start_date: str = "", end_date: str = "",
                          start_date=start_date, end_date=end_date, status=status)
 
 
+# badgrid — bad 와 결함(O1~O6)이 같고 마크업만 div role=grid 격자다.
+@app.get("/badgrid/orders", response_class=HTMLResponse)
+def badgrid_orders(request: Request, start_date: str = "", end_date: str = "",
+                   status: str = ""):
+    if "session_badgrid" not in request.cookies:
+        return RedirectResponse("/badgrid/login", status_code=303)
+    rows, total = _bad_orders_data(start_date, end_date, status)
+    return render_orders(request, "badgrid", rows, total, markup="grid",
+                         start_date=start_date, end_date=end_date, status=status)
+
+
 # ---------------------------------------------------------------------------
 # bad/search — 의도적으로 규칙을 빠뜨린 구현
 # ---------------------------------------------------------------------------
@@ -1097,6 +1126,8 @@ def index():
         "<li><a href='/bad/orders'>/bad/orders — 정렬(O1)·합계(O2) 결함</a></li>"
         "<li><a href='/table/orders'>/table/orders — good 과 같고 마크업만 순수 &lt;table&gt;</a></li>"
         "<li><a href='/badtable/orders'>/badtable/orders — bad 와 같고 마크업만 순수 &lt;table&gt;</a></li>"
+        "<li><a href='/grid/orders'>/grid/orders — good 과 같고 마크업만 div role=grid 격자</a></li>"
+        "<li><a href='/badgrid/orders'>/badgrid/orders — bad 와 같고 마크업만 div role=grid 격자</a></li>"
         "</ul>"
         "<p>도구의 한계를 재는 변형 — 검증 로직은 good 과 같고 변수 하나만 다르다:</p>"
         "<ul>"
