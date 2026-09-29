@@ -107,6 +107,42 @@ class TestTableMarkup:
         assert r.status_code == 303 and r.headers["location"] == "/table/login"
 
 
+class TestGridMarkup:
+    """grid/badgrid 변형 — 같은 데이터·같은 결함을 div role=grid 격자로 렌더한다.
+    React 데이터 그리드(MUI·AG Grid) 모양이다: 격자 이름(aria-label)과 aria-rowcount·
+    aria-colindex 는 있고, 칸에는 aria-label 이 없다. 합계는 격자 밖에 있다."""
+
+    def test_grid_는_div_격자다(self, client):
+        _login(client, "grid")
+        html = client.get("/grid/orders").text
+        assert "<table" not in html and "<ul" not in html
+        assert 'role="grid" aria-label="주문 목록"' in html
+        assert 'role="columnheader" aria-colindex="2">주문일<' in html
+        assert 'aria-label="주문일"' not in html
+
+    def test_grid_는_good_과_같은_순서·합계다(self, client):
+        _login(client, "grid"); t = client.get("/grid/orders").text
+        _login(client, "good"); g = client.get("/good/orders").text
+        assert re.findall(r'aria-colindex="2">(\d{4}-\d{2}-\d{2})<', t) == _dates(g)
+        assert _total(t) == _total(g)
+
+    def test_badgrid_는_bad_와_같은_순서·합계다(self, client):
+        _login(client, "badgrid"); t = client.get("/badgrid/orders").text
+        _login(client, "bad"); b = client.get("/bad/orders").text
+        assert re.findall(r'aria-colindex="2">(\d{4}-\d{2}-\d{2})<', t) == _dates(b)
+        assert _total(t) == _total(b)
+
+    def test_aria_rowcount_는_그린_행_전부다(self, client):
+        """가상화하지 않은 격자 — 전체 행 수(머리글 포함)와 그린 행 수가 같다."""
+        _login(client, "grid"); t = client.get("/grid/orders").text
+        rc = int(re.search(r'aria-rowcount="(\d+)"', t).group(1))
+        assert rc == t.count('role="row"')
+
+    def test_grid_도_가드가_있다(self, client):
+        r = client.get("/grid/orders")
+        assert r.status_code == 303 and r.headers["location"] == "/grid/login"
+
+
 class TestDateFilter:
     """날짜 필터 — 심은 결함 O3(경계일 제외)·O4(합계 미재계산) (specs/2026-08-24).
 

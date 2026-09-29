@@ -647,13 +647,24 @@ def _locate_table_cells(page, target: str):
     except Exception as exc:
         return "error", None, None, 0, f"표 머리글 조회 실패: {exc}"
 
-    if not matches:
-        return "absent", None, None, 0, f"라벨 {target!r} 인 요소도 표 머리글도 화면에 없음"
-    if len(matches) > 1:
+    # 격자(div role=grid)의 열 머리글도 같은 자리에서 센다 — 표와 격자에 같은 머리글이
+    # 있으면 어느 것을 볼지 모르는 것이고, 한쪽만 먼저 보면 그 사실이 가려진다.
+    try:
+        grid_matches = page.evaluate(_GRID_HEADER_JS, normalize_ws(target))
+    except Exception as exc:
+        return "error", None, None, 0, f"격자 머리글 조회 실패: {exc}"
+
+    total = len(matches) + len(grid_matches)
+    if total == 0:
+        return ("absent", None, None, 0,
+                f"라벨 {target!r} 인 요소도 표·격자 머리글도 화면에 없음")
+    if total > 1:
         return (
-            "ambiguous", None, None, len(matches),
-            f"표 머리글 {target!r} 가 {len(matches)}개 — 어느 것을 볼지 확정할 수 없음",
+            "ambiguous", None, None, total,
+            f"표·격자 머리글 {target!r} 가 {total}개 — 어느 것을 볼지 확정할 수 없음",
         )
+    if grid_matches:
+        return _locate_grid_cells(page, target, grid_matches[0])
 
     m = matches[0]
     t = m["table"] + 1
@@ -696,10 +707,8 @@ def _locate_table_by_caption(page, target: str, container_role: str):
         return "error", None, "row", 0, f"표 조회 실패: {exc}"
 
     if found == 0:
-        return (
-            "absent", None, "row", 0,
-            f"role={container_role} name={target!r} 인 목록도 caption 이 {target!r} 인 표도 화면에 없음",
-        )
+        # caption 도 없으면 이름(aria-label)이 붙은 표·격자를 본다.
+        return _locate_grid_by_name(page, target, container_role)
     if found > 1:
         return (
             "ambiguous", None, "row", found,
@@ -715,6 +724,202 @@ def _locate_table_by_caption(page, target: str, container_role: str):
         return "error", None, None, 0, f"표 행 조회 실패: {exc}"
     # item_role 을 None 으로 돌린다 — rows 자체가 항목 목록이다(반복 라벨 모양과 같다).
     return "ok", rows, None, n, f"caption {target!r} 인 표의 본문 행 {n}개로 찾음 (aria-label 없음)"
+
+
+# ---------------------------------------------------------------------------
+# ARIA 격자 경로 — div role=grid (React 데이터 그리드)
+# ---------------------------------------------------------------------------
+#
+# MUI·AG Grid 는 <table> 이 아니라 div 에 role 을 붙인다: grid > row >
+# columnheader / gridcell. 2026-09-30 까지 이 모양은 '찾을 수 없음' 이었다.
+#
+# 계약은 표 경로와 같다(정확 일치, 후보 하나, 머리글·안내 행 제외). 하나가 더 있다 —
+# **일부 행만 그려진 격자는 세지도 읽지도 않는다.** 데이터 그리드는 보이는 행만
+# 그린다(가상화). aria-rowcount 가 그려진 행 수와 다르거나 -1 이면, 그리지 않은
+# 행을 0 으로 세어 '20건이어야 하는데 12건' 같은 오탐을 낸다.
+#
+# 항목은 absolute xpath 합집합으로 돌려준다. 페이지에 표시(data-*)를 심는 방법도
+# 있지만 검사 도구가 대상 DOM 을 바꾸지 않는다.
+
+_GRID_FN = r"""
+const GRID_SEL = "[role=grid],[role=table],[role=treegrid]";
+const CELL_ROLES = /^(columnheader|rowheader|gridcell|cell)$/;
+function gridOf(el) { return el.closest(GRID_SEL + ",table"); }
+function gridRows(grid) {
+  return Array.from(grid.querySelectorAll("[role=row]")).filter((r) => gridOf(r) === grid);
+}
+function cellsOf(row) {
+  return Array.from(row.children).filter((c) => CELL_ROLES.test(c.getAttribute("role") || ""));
+}
+function isHeaderRow(row) { return cellsOf(row).some((c) => c.getAttribute("role") === "columnheader"); }
+// 그려진 행이 전부인가. aria-rowcount 는 머리글 행을 포함한 전체 행 수다.
+function partial(grid, rows) {
+  const rc = grid.getAttribute("aria-rowcount");
+  if (rc === null) return "";
+  const n = parseInt(rc, 10);
+  return (n >= 0 && n === rows.length) ? "" : `aria-rowcount ${rc} · 그려진 행 ${rows.length}`;
+}
+function dataRows(grid, rows) {
+  const width = Math.max(0, ...rows.map((r) => cellsOf(r).length),
+                         parseInt(grid.getAttribute("aria-colcount") || "0", 10) || 0);
+  // 안내 행 — 폭이 2칸 이상인데 칸이 하나뿐인 행('주문이 없습니다')
+  return rows.filter((r) => !isHeaderRow(r) && !(width >= 2 && cellsOf(r).length === 1));
+}
+// 불러오는 중인가 — 데이터 행이 0개인데 행 밖에 크기가 있고 글자가 없는 빈 요소
+// (스켈레톤)가 셋 이상. MUI 데모(2026-09-30)는 로딩 중 aria-busy 없이 aria-rowcount=1
+// 과 스켈레톤만 그렸다. '0건' 으로 읽으면 N건 기대가 오탐 FAIL 한다. 'No rows' 같은
+// 빈 격자 안내는 글자가 있어 걸리지 않는다.
+function loading(grid, data) {
+  if (data.length) return "";
+  const blanks = Array.from(grid.querySelectorAll("*")).filter((e) => {
+    if (e.closest("[role=row]") || e.children.length) return false;
+    if ((e.textContent || "").trim()) return false;
+    const r = e.getBoundingClientRect();
+    return r.width * r.height > 0;
+  }).length;
+  return blanks >= 3 ? `데이터 행 0 · 빈 자리 표시 ${blanks}개` : "";
+}
+function spans(c) {
+  return (parseInt(c.getAttribute("aria-colspan") || "1", 10) > 1)
+      || (parseInt(c.getAttribute("aria-rowspan") || "1", 10) > 1);
+}
+function xpathOf(el) {
+  const parts = [];
+  for (; el && el.nodeType === 1; el = el.parentElement) {
+    let i = 1;
+    for (let s = el.previousElementSibling; s; s = s.previousElementSibling)
+      if (s.tagName === el.tagName) i++;
+    parts.unshift(el.tagName.toLowerCase() + "[" + i + "]");
+  }
+  return "/" + parts.join("/");
+}
+"""
+
+# 이름으로 찾은 격자(div)의 항목 행.
+_GRID_ROWS_JS = r"""(grid) => {""" + _GRID_FN + r"""
+  const rows = gridRows(grid);
+  const why = partial(grid, rows);
+  if (why) return {stop: why};
+  const data = dataRows(grid, rows);
+  const busy = loading(grid, data);
+  if (busy) return {stop: busy, loading: true};
+  return {paths: data.map(xpathOf)};
+}"""
+
+# 머리글 텍스트가 label 인 columnheader — 격자(div)의 것만. <table> 안의 것은 표 경로 몫이다.
+_GRID_HEADER_JS = r"""(label) => {""" + _GRID_FN + r"""
+  const norm = (s) => (s || "").replace(/\s+/g, " ").trim();
+  const grids = Array.from(document.querySelectorAll(GRID_SEL));
+  const out = [];
+  document.querySelectorAll("[role=columnheader]").forEach((h) => {
+    if (norm(h.innerText) !== label) return;
+    const grid = gridOf(h);
+    if (!grid || grid.tagName === "TABLE") return;
+    const row = h.closest("[role=row]");
+    const ci = h.getAttribute("aria-colindex");
+    out.push({grid: grids.indexOf(grid), colindex: ci,
+              pos: row ? cellsOf(row).indexOf(h) + 1 : 0, spans: spans(h)});
+  });
+  return out;
+}"""
+
+# 격자 한 열의 값 칸. 짝을 정할 수 없으면 stop.
+_GRID_COLUMN_JS = r"""([gi, colindex, pos]) => {""" + _GRID_FN + r"""
+  const grid = Array.from(document.querySelectorAll(GRID_SEL))[gi];
+  const rows = gridRows(grid);
+  const why = partial(grid, rows);
+  if (why) return {stop: why};
+  const data = dataRows(grid, rows);
+  const busy = loading(grid, data);
+  if (busy) return {stop: busy, loading: true};
+  const paths = [];
+  for (const r of data) {
+    const cells = cellsOf(r);
+    const cell = colindex !== null
+      ? cells.find((c) => c.getAttribute("aria-colindex") === colindex)
+      : cells[pos - 1];
+    if (!cell) return {stop: "그 열의 칸이 없는 행이 있음"};
+    if (spans(cell)) return {stop: "여러 칸·여러 행에 걸친 칸(aria-colspan·rowspan)이 있음"};
+    paths.push(xpathOf(cell));
+  }
+  return {paths};
+}"""
+
+
+def _paths_locator(page, paths: list[str]):
+    """absolute xpath 목록을 하나의 locator 로. 비었으면 아무것도 잡지 않는다."""
+    if not paths:
+        return page.locator("xpath=//*[false()]")
+    return page.locator("xpath=" + " | ".join(paths))
+
+
+def _locate_grid_by_name(page, target: str, container_role: str):
+    """caption 경로도 비었을 때, 이름이 target 인 격자(role=grid/table/treegrid)를 찾는다.
+
+    이름 붙은 순수 <table>(aria-label)도 여기서 닿는다 — 암묵 role 이 table 이다.
+    그때 항목은 표 경로와 같은 규칙(tbody 행, 안내 행 제외)으로 센다.
+    """
+    try:
+        found = [page.get_by_role(role, name=_role_name(target))
+                 for role in ("grid", "table", "treegrid")]
+        counts = [loc.count() for loc in found]
+    except Exception as exc:
+        return "error", None, "row", 0, f"격자 조회 실패: {exc}"
+
+    total = sum(counts)
+    if total == 0:
+        return (
+            "absent", None, "row", 0,
+            f"role={container_role} name={target!r} 인 목록도 caption·이름이 {target!r} 인 "
+            "표·격자도 화면에 없음",
+        )
+    if total > 1:
+        return ("ambiguous", None, "row", total,
+                f"이름이 {target!r} 인 표·격자가 {total}개 — 어느 것을 볼지 확정할 수 없음")
+    grid = next(loc for loc, n in zip(found, counts) if n).first
+    try:
+        if grid.evaluate("e => e.tagName") == "TABLE":
+            got = grid.evaluate(_TABLE_ROWS_JS)
+            rows = _cells_locator(page, got["ti"] + 1, got["refs"])
+            how = "이름 붙은 표의 본문 행"
+        else:
+            got = grid.evaluate(_GRID_ROWS_JS)
+            if "stop" in got:
+                state = ("불러오는 중으로 보여 0건인지 알 수 없음" if got.get("loading")
+                         else "일부 행만 그려져 있어 셀 수 없음")
+                return ("absent", None, "row", 0, f"격자 {target!r} 는 {state} ({got['stop']})")
+            rows = _paths_locator(page, got["paths"])
+            how = "격자(role=grid)의 데이터 행"
+        n = rows.count()
+    except Exception as exc:
+        return "error", None, None, 0, f"격자 행 조회 실패: {exc}"
+    return "ok", rows, None, n, f"이름이 {target!r} 인 {how} {n}개로 찾음"
+
+
+def _locate_grid_cells(page, target: str, m: dict):
+    """격자 머리글 하나(m)의 열 값을 찾는다. 반환 형식은 _locate_collection 과 같다."""
+    if m["spans"]:
+        return ("absent", None, None, 0,
+                f"격자 머리글 {target!r} 가 여러 열에 걸쳐 있어 열을 정할 수 없음")
+    try:
+        col = page.evaluate(_GRID_COLUMN_JS, [m["grid"], m["colindex"], m["pos"]])
+    except Exception as exc:
+        return "error", None, None, 0, f"격자 셀 조회 실패: {exc}"
+    where = f"{m['colindex']}열(aria-colindex)" if m["colindex"] is not None else f"{m['pos']}열"
+    if "stop" in col:
+        if col.get("loading"):
+            why = f"불러오는 중으로 보여 0건인지 알 수 없음 ({col['stop']})"
+        elif col["stop"].startswith("aria-rowcount"):
+            why = f"일부 행만 그려져 있어 읽을 수 없음 ({col['stop']})"
+        else:
+            why = col["stop"]
+        return ("absent", None, None, 0, f"격자 머리글 {target!r} {where}: {why}")
+    cells = _paths_locator(page, col["paths"])
+    try:
+        found = cells.count()
+    except Exception as exc:
+        return "error", None, None, 0, f"격자 셀 조회 실패: {exc}"
+    return "ok", cells, None, found, f"격자 머리글 {target!r} {where}로 찾음 (aria-label 없음)"
 
 
 def _exact_text_re(text: str) -> re.Pattern[str]:
