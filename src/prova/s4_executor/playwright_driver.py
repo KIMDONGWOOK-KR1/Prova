@@ -40,6 +40,7 @@ from prova.s3_grounder.dom_locator import (
     Attempt,
     GroundingError,
     SpecTypeMismatch,
+    ambiguous_count,
     bbox_center,
     ground,
     heal_with_vlm,
@@ -249,6 +250,14 @@ def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
     except GroundingError as first:
         if ctx.vlm is None or ctx.heal_count >= ctx.max_heal:
             raise
+        # 같은 이름의 후보가 여럿이면 이미지도 고를 근거가 없다 (ambiguous_count).
+        # 사유를 남긴다 — '2차 경로를 켰는데 왜 보정하지 않았나' 가 리포트에서 보여야 한다.
+        n = ambiguous_count(first.attempts)
+        if n:
+            raise GroundingError(target, first.attempts + [Attempt(
+                strategy="vlm", count=0,
+                detail=(f"보정하지 않음 — 같은 이름의 후보 {n}개 중 어느 것인지 "
+                        "화면 이미지로도 정할 수 없습니다"))]) from first
         try:
             location = heal_with_vlm(ctx.page, target, ctx.vlm, hint,
                                      ctx.min_confidence)
