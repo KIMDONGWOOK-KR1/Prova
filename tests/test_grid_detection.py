@@ -156,6 +156,20 @@ class TestVirtualized:
         r = count_items(page, "주문 목록", hint("주문 목록", "list"))
         assert r.status == "ok" and r.count == 0
 
+    def test_열_가상화로_한_열만_그렸어도_행은_행이다(self, page):
+        """좁은 화면에서 3열 격자가 1열만 그렸다(aria-colcount=3). 폭을 aria-colcount 로
+        재면 모든 데이터 행이 '안내 행' 으로 빠져 3건을 ok·0건으로 읽었다 — N건 기대가
+        오탐 FAIL 한다(2026-09-30 점검). 폭은 그려진 행에서만 잰다."""
+        page.set_content(
+            '<div role="grid" aria-label="주문 목록" aria-rowcount="4" aria-colcount="3">'
+            '<div role="row"><div role="columnheader" aria-colindex="1">주문번호</div></div>'
+            + "".join(f'<div role="row"><div role="gridcell" aria-colindex="1">A{i}</div>'
+                      '</div>' for i in (1, 2, 3))
+            + '</div>')
+        assert count_items(page, "주문 목록", hint("주문 목록", "list")).count == 3
+        assert collect_item_texts(page, "주문번호", hint("주문번호")).texts == [
+            "A1", "A2", "A3"]
+
     def test_aria_rowcount_가_없으면_그려진_것을_센다(self, page):
         page.set_content(grid(ROWS, rowcount=None))
         assert count_items(page, "주문 목록", hint("주문 목록", "list")).count == 3
