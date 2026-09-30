@@ -759,9 +759,10 @@ function partial(grid, rows) {
   const n = parseInt(rc, 10);
   return (n >= 0 && n === rows.length) ? "" : `aria-rowcount ${rc} · 그려진 행 ${rows.length}`;
 }
+// 폭은 그려진 행에서만 잰다. aria-colcount 를 넣으면 열 가상화로 한 열만 그린 격자의
+// 데이터 행이 전부 안내 행으로 빠져, 3건을 ok·0건으로 읽는다(2026-09-30 점검).
 function dataRows(grid, rows) {
-  const width = Math.max(0, ...rows.map((r) => cellsOf(r).length),
-                         parseInt(grid.getAttribute("aria-colcount") || "0", 10) || 0);
+  const width = Math.max(0, ...rows.map((r) => cellsOf(r).length));
   // 안내 행 — 폭이 2칸 이상인데 칸이 하나뿐인 행('주문이 없습니다')
   return rows.filter((r) => !isHeaderRow(r) && !(width >= 2 && cellsOf(r).length === 1));
 }
