@@ -16,7 +16,8 @@
 | saucedemo | `/inventory.html` | 아이디(Username)로 로그인하는 전제, `div` 카드 목록, 정렬 select, **정상 화면에 HTTP 404** |
 
 방식은 스파이크 2 와 같다 — 기획서는 사이트가 보여 주는 동작만 옮겨 적었고, 기획서·리포트는
-저장소에 넣지 않았다. 처음 잴 때 S1 은 실물 Qwen2.5-7B-AWQ, 수정 뒤 재확인 일부는 Qwen3.5-4B
+저장소에 넣지 않았다(기획서는 2026-10-12 에 원문 그대로 복원해 [external-specs/](external-specs/README.md) 에
+두었다, 리포트는 없음). 처음 잴 때 S1 은 실물 Qwen2.5-7B-AWQ, 수정 뒤 재확인 일부는 Qwen3.5-4B
 (같은 날 기본 모델 전환, [model-compare-qwen35-4b-2026-09-28.md](model-compare-qwen35-4b-2026-09-28.md)).
 
 **처음 결과의 실패 중 진짜 결함은 0건이었다.** 전부 도구 쪽 가정이 깨진 것이다.
