@@ -90,11 +90,13 @@ class AgentState:
     design_mismatches: list[str] = field(default_factory=list)
     # 로그인 세션 재사용 (--session). 스크립트로 로그인할 수 없는 화면(SSO 등)의
     # 길이다. 실려 있으면: 전제 불능 케이스도 실행하고(세션이 전제를 대신한다),
-    # 메인 컨텍스트의 케이스 간 쿠키 격리를 끄고(세션이 의도된 기준 상태다),
-    # 가드 케이스는 guard_page(세션 없는 컨텍스트)에서 돈다.
+    # 메인 컨텍스트를 케이스 사이에 유지하고(세션이 의도된 기준 상태다),
+    # 가드 케이스는 guard_page(세션 없는 새 컨텍스트)에서 돈다.
     storage_state: Optional[str] = None
     # 가드(비로그인 차단) 케이스 전용 페이지 — 세션 없는 깨끗한 컨텍스트.
     guard_page: Optional[Page] = None
+    # 새 컨텍스트의 새 페이지를 연다 (page_opener). 케이스마다 부른다 — run_cases 설명 참고.
+    open_page: Optional[Callable[..., Page]] = None
     # 두 단계 실행(--plan-only → --resume)의 계획 기록. 재개 실행에서만 실린다.
     # build_final_report 가 읽어 "추출을 누가 언제 했는가" 를 리포트에 남긴다 —
     # 재개는 llm=None 으로 돌므로 이 기록이 없으면 백엔드가 리포트에서 사라진다.
@@ -153,6 +155,27 @@ class AgentState:
     #: 케이스 단위 진행 보고 (run_cases 가 읽는다). 없으면 조용히 돈다.
     #: S3~S5 는 몇 분이 걸려서, 이게 없으면 멈춘 것과 도는 것이 구별되지 않는다.
     on_progress: Optional[Callable[[str], None]] = None
+
+
+def page_opener(browser, viewport: Optional[dict] = None,
+                video_dir: Optional[Path] = None) -> Callable[..., Page]:
+    """부를 때마다 새 컨텍스트의 새 페이지를 여는 함수를 돌려준다.
+
+    인자 storage_state 를 주면 그 세션을 싣고 연다(--session). 없으면 깨끗한 상태다.
+    """
+
+    def open_page(storage_state: Optional[str] = None) -> Page:
+        context = browser.new_context(
+            storage_state=storage_state,
+            viewport=viewport or {"width": 1280, "height": 800},
+            # 녹화 크기를 뷰포트보다 작게 잡는다. 1280x800 으로 녹화하면 webm 이 커지고
+            # GIF 로 변환한 뒤 용량이 감당되지 않는다.
+            record_video_dir=str(video_dir) if video_dir else None,
+            record_video_size={"width": 960, "height": 600} if video_dir else None,
+        )
+        return context.new_page()
+
+    return open_page
 
 
 def extract_spec(state: AgentState) -> AgentState:
@@ -231,8 +254,8 @@ def generate_test_cases(state: AgentState) -> AgentState:
 def run_cases(state: AgentState) -> AgentState:
     """S3+S4+S5 — 케이스를 실행하고 판정한다.
 
-    읽는 필드: cases, doc, page, base_url, run_dir
-    쓰는 필드: verdicts
+    읽는 필드: cases, doc, open_page, page(세션 모드), base_url, run_dir
+    쓰는 필드: verdicts, page, guard_page
 
     한 케이스가 실패해도 다음 케이스를 계속 실행한다. 한 번 돌려서 전체 상태를
     파악할 수 있어야 리포트가 쓸모 있기 때문이다(명세서 §2-S6 실패 처리).
@@ -241,15 +264,33 @@ def run_cases(state: AgentState) -> AgentState:
     verify -> next_case)로 펼쳐진다. 1차에서는 self-heal 분기가 없어 루프를
     노드로 쪼갤 이득이 없으므로 한 노드에 담는다.
     """
-    if state.page is None or state.doc is None:
-        raise ValueError("run_cases 에는 page 와 doc 이 필요합니다")
+    if state.doc is None:
+        raise ValueError("run_cases 에는 doc 이 필요합니다")
 
     console_errors: list[str] = []
-    for listened in (state.page, state.guard_page):
-        if listened is not None:
-            listened.on("console", lambda msg: (
-                console_errors.append(msg.text) if msg.type == "error" else None
-            ))
+
+    def listen(page: Page) -> Page:
+        page.on("console", lambda msg: (
+            console_errors.append(msg.text) if msg.type == "error" else None
+        ))
+        return page
+
+    def fresh(previous: Optional[Page]) -> Page:
+        """앞 케이스의 컨텍스트를 닫고 새 컨텍스트를 연다.
+
+        쿠키만 지우면 localStorage·sessionStorage·IndexedDB 가 남아, 토큰을 거기 두는 SPA
+        에서 다음 케이스가 로그인된 채 시작한다. 저장소 종류를 세는 대신 통째로 버린다.
+        닫는 시점이 다음 케이스인 이유: 마지막 화면은 --hold 가 봐야 한다.
+        """
+        if state.open_page is None:
+            raise ValueError("run_cases 에는 open_page 가 필요합니다 (nodes.page_opener)")
+        if previous is not None:
+            previous.context.close()
+        return listen(state.open_page())
+
+    # 세션 모드의 메인 페이지만 미리 열려 있다.
+    if state.page is not None:
+        listen(state.page)
 
     total = len(state.cases)
     for i, case in enumerate(state.cases, 1):
@@ -266,23 +307,19 @@ def run_cases(state: AgentState) -> AgentState:
             state.verdicts.append(_precondition_unmet_verdict(state, case))
             continue
 
-        # 가드(비로그인 차단) 케이스는 세션이 실린 페이지에서는 성립하지 않는다
-        # — 이미 로그인 상태라 리다이렉트가 일어나지 않아 오탐이 된다. 세션
-        # 없는 깨끗한 컨텍스트(guard_page)에서 돌린다.
-        page = state.page
-        if state.guard_page is not None and case_kind(case) == "precondition-guard":
-            page = state.guard_page
-
         if state.storage_state is None:
             # 케이스 격리 — 앞 케이스가 남긴 세션이 다음 판정을 오염시키지 않게
             # 한다. 가드 케이스가 실행 순서와 무관하게 정직해지고, 전제가 있는
             # 케이스는 어차피 setup 으로 매번 로그인한다 — storage_state 를
             # 기본으로 채택하지 않은 스펙 §7 과 같은 판단이다.
-            state.page.context.clear_cookies()
-        elif page is state.guard_page:
-            # 세션 모드: 메인 컨텍스트는 지우지 않는다(세션이 곧 의도된 기준
-            # 상태 — 지우면 세션 자체가 사라진다). 가드 컨텍스트만 격리한다.
-            page.context.clear_cookies()
+            page = state.page = fresh(state.page)
+        elif case_kind(case) == "precondition-guard":
+            # 세션 모드: 메인 컨텍스트는 유지한다(세션이 곧 의도된 기준 상태 —
+            # 버리면 세션 자체가 사라진다). 가드(비로그인 차단) 케이스는 세션이 실린
+            # 페이지에서 성립하지 않으므로 세션 없는 새 컨텍스트에서 돈다.
+            page = state.guard_page = fresh(state.guard_page)
+        else:
+            page = state.page
         # 예시값의 {고유} 를 실행할 사본에서만 바꾼다 — state.cases(계획)는 그대로.
         case = fill_unique(case)
         ctx = ExecutionContext(

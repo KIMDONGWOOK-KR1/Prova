@@ -68,7 +68,7 @@ class TestFillUnique:
 class _Page:
     class context:
         @staticmethod
-        def clear_cookies():
+        def close():
             pass
 
     def on(self, *_):
@@ -93,7 +93,7 @@ def test_run_cases_가_바꾼_값으로_실행하고_판정한다(monkeypatch, t
     monkeypatch.setattr(nodes, "_specs_for", lambda state, case: [])
 
     state = nodes.AgentState(pdf_path="", base_url="http://x", run_id="t", run_dir=tmp_path,
-                             page=_Page(), doc=SpecDocument(source="x", screens=[]),
+                             open_page=_Page, doc=SpecDocument(source="x", screens=[]),
                              cases=[_case()])
     nodes.run_cases(state)
 

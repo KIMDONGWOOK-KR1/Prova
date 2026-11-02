@@ -29,6 +29,7 @@ from prova.nodes import (
     build_final_report,
     extract_spec,
     generate_test_cases,
+    page_opener,
     run_cases,
 )
 from prova.plan_store import load_plan, plan_warnings, save_plan
@@ -249,7 +250,8 @@ def run_pipeline(
 
     Args:
         slow_mo: 동작 사이 지연(ms). 사람이 눈으로 따라가려면 400~600 정도가 적당하다.
-        record_video: 실행 영상(webm) 녹화. run_dir/video/ 에 저장된다.
+        record_video: 실행 영상(webm) 녹화. run_dir/video/ 에 케이스마다 하나씩 저장된다
+            (세션 모드의 메인 컨텍스트는 하나로 이어진다).
         vlm: 2차 경로 백엔드. None 이면 접근성 속성으로 못 찾은 요소는 그대로
             탐지 실패다. 기본을 None 으로 둔 이유: 보정을 기본으로 켜면 라벨
             연결이 깨진 화면에서도 케이스가 통과해 그 사실이 리포트에서 사라진다.
@@ -333,27 +335,14 @@ def _execute(
     progress = on_progress or _quiet
 
     progress("S3~S5 브라우저 실행 및 판정")
-    video_path: Optional[Path] = None
+    video_dir = run_dir / "video" if record_video else None
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
-        context = browser.new_context(
-            # 로그인 세션 재사용(--session). None 이면 지금까지와 같다.
-            storage_state=storage_state,
-            viewport=viewport or {"width": 1280, "height": 800},
-            # 녹화 크기를 뷰포트보다 작게 잡는다. 1280x800 으로 녹화하면 webm 이 커지고
-            # GIF 로 변환한 뒤 용량이 감당되지 않는다.
-            record_video_dir=str(run_dir / "video") if record_video else None,
-            record_video_size={"width": 960, "height": 600} if record_video else None,
-        )
-        page = context.new_page()
-        state.page = page
-        guard_context = None
+        # 케이스마다 새 컨텍스트를 연다(run_cases). 가드 케이스는 세션 모드에서도 이쪽이다.
+        state.open_page = page_opener(browser, viewport, video_dir)
         if storage_state:
-            # 가드(비로그인 차단) 검증은 세션이 실린 페이지에서 성립하지 않는다
-            # — 세션 없는 컨텍스트를 따로 열어 그 케이스만 거기서 돌린다.
-            guard_context = browser.new_context(
-                viewport=viewport or {"width": 1280, "height": 800})
-            state.guard_page = guard_context.new_page()
+            # 로그인 세션 재사용(--session). 세션이 기준 상태라 이 컨텍스트 하나를 유지한다.
+            state.page = state.open_page(storage_state)
             state.storage_state = storage_state
         state.on_progress = progress
         try:
@@ -365,21 +354,19 @@ def _execute(
                 time.sleep(hold_sec)
         finally:
             # 판정이 중간에 실패해도 브라우저를 반드시 닫는다.
-            # 영상은 컨텍스트를 닫는 시점에 파일로 기록되므로, 경로 조회는 close() 뒤에
-            # 해야 한다.
-            if guard_context is not None:
-                guard_context.close()
-            context.close()
-            if record_video and page.video:
-                try:
-                    video_path = Path(page.video.path())
-                except Exception:
-                    video_path = None
+            # 영상은 컨텍스트를 닫는 시점에 파일로 기록된다.
+            for opened in (state.guard_page, state.page):
+                if opened is not None:
+                    opened.context.close()
             browser.close()
-            state.page = None
+            state.page = state.guard_page = state.open_page = None
 
-    if video_path and video_path.exists():
-        progress(f"     영상 {video_path} ({video_path.stat().st_size // 1024} KB)")
+    if video_dir:
+        videos = list(video_dir.glob("*.webm"))
+        if videos:
+            # 케이스마다 컨텍스트가 달라 영상도 케이스마다 하나다.
+            progress(f"     영상 {len(videos)}개 {video_dir} "
+                     f"({sum(v.stat().st_size for v in videos) // 1024} KB)")
 
     # --- S6: 리포트 ---
     progress("S6 리포트 생성")
