@@ -18,7 +18,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -30,8 +29,10 @@ from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from prova.history import list_runs
 from prova.llm.factory import BackendError, make_llm
-from prova.pipeline import build_plan, execution_options, run_pipeline
+from prova.nodes import finish_titles
+from prova.pipeline import build_plan, configured_workers, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
 from prova.theme import TOKENS_CSS
@@ -113,6 +114,8 @@ class RunRequest(PlanRequest):
     #: 2차 경로(화면 이미지로 찾기). 기본은 끈다 — 좌표를 누르는 경로라 틀리면
     #: 그 뒤 판정이 전부 거짓이 된다. 켜는 것은 사람이 고르고, 리포트가 남긴다.
     vlm: bool = False
+    #: 실행을 묶을 이름. 비우면 기획서와 대상 URL 로 묶는다 (prova.history)
+    project: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -186,6 +189,7 @@ def plan(body: PlanRequest) -> dict:
             figma_json=str(figma) if figma else None,
             on_progress=report,
         )
+        finish_titles(state)  # 사람이 승인하는 자리라 다듬은 제목을 보여 준다
         sel = state.selection
         chosen = set(sel.selected)
         return {
@@ -267,6 +271,8 @@ def run(body: RunRequest) -> dict:
             vlm=vlm,
             **execution_options(cfg),
             sut_build=build.state,
+            project=body.project.strip(),
+            workers=configured_workers(cfg),
             on_progress=report,
         )
         return {
@@ -291,7 +297,7 @@ def _backend(name: str, cfg: dict, pdf: Path, report):
     리포트를 실제 실행 결과로 착각하는 것이 이 도구에서 가장 위험한 실패다.
     """
     try:
-        llm, warnings = make_llm(name, cfg, pdf)
+        llm, warnings = make_llm(name, cfg, pdf, cache=True)
     except BackendError as exc:
         raise RuntimeError(str(exc)) from exc
     for w in warnings:
@@ -338,33 +344,7 @@ def runs(limit: int = 20) -> dict:
     report.json 이 없는 디렉터리가 많다 — 디버그·데모 잔여물이다. 그런 것을
     목록에 넣으면 눌렀을 때 404 가 나므로 애초에 거른다.
     """
-    root = RUNS
-    if not root.exists():
-        return {"runs": []}
-
-    found = []
-    for d in root.iterdir():
-        meta = d / "report.json"
-        if not d.is_dir() or not meta.exists():
-            continue
-        try:
-            data = json.loads(meta.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        summary = data.get("summary") or {}
-        found.append({
-            "run_id": data.get("run_id", d.name),
-            "target": data.get("target_url", ""),
-            "spec": Path(data.get("spec_source", "")).name,
-            "created_at": data.get("created_at", ""),
-            "total": summary.get("total", 0),
-            "pass": summary.get("pass", 0),
-            "fail": summary.get("fail", 0),
-            "summary": summary,
-        })
-
-    found.sort(key=lambda r: r["created_at"], reverse=True)
-    return {"runs": found[:limit]}
+    return {"runs": list_runs(RUNS, limit)}
 
 
 @app.get("/api/report/{run_id}")

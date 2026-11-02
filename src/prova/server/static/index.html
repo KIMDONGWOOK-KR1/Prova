@@ -72,6 +72,12 @@
         </div>
 
         <div class="field">
+          <label for="project">프로젝트 (선택 — 차수 묶음)</label>
+          <input type="text" id="project" placeholder="예) A사 1차 납품" spellcheck="false">
+          <div class="hint">적으면 대상 주소가 바뀌어도 같은 기획서를 차수로 잇습니다.</div>
+        </div>
+
+        <div class="field">
           <label for="backend">LLM 백엔드</label>
           <select id="backend">
             <option value="mock">연습용 — 저장된 정답 사용 (GPU 불필요)</option>

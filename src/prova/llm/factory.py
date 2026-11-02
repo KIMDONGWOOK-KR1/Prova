@@ -21,13 +21,17 @@ class BackendError(RuntimeError):
     """백엔드를 준비할 수 없는 상태 (지원하지 않는 이름, 연결 실패 등)."""
 
 
-def make_llm(backend: str, cfg: dict, pdf: Path | str) -> tuple[object, list[str]]:
+def make_llm(backend: str, cfg: dict, pdf: Path | str, cache: bool = False,
+             cache_read: bool = True) -> tuple[object, list[str]]:
     """설정에 맞는 LLM 백엔드를 만든다.
 
     Args:
         backend: "vllm" | "mock"
         cfg: configs/default.yaml 를 읽은 dict
         pdf: 검증할 기획서 경로. mock 은 그 옆의 골든을 정답으로 쓴다.
+        cache: 모델 응답 캐시(llm.cache_dir)를 쓴다. 기본은 끈다 — 측정 스크립트가 모르는
+            새 옛 답을 재면 안 된다. 제품 입구(CLI·웹 UI)만 켠다 (llm/cache.py).
+        cache_read: False 면 저장된 답을 읽지 않고 새로 묻는다 (--no-cache).
 
     Returns:
         (백엔드, 사용자에게 보여야 할 경고 목록)
@@ -70,6 +74,10 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str) -> tuple[object, list[str
             # docstring 의 약속(연결 실패 = BackendError)을 지킨다. CLI 와 서버가
             # 각자 다른 예외를 잡고 있으면 한쪽만 고쳐진다.
             raise BackendError(str(exc)) from exc
+        if cache and llm_cfg.get("cache_dir"):
+            from prova.llm.cache import CachedLLM
+
+            return CachedLLM(client, llm_cfg["cache_dir"], read=cache_read), []
         return client, []
 
     raise BackendError(f"지원하지 않는 백엔드: {backend} (vllm | mock)")

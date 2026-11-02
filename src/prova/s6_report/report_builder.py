@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import html
 import json
+import math
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -164,9 +166,21 @@ h1 { font-size:24px; margin:0 0 4px; }
 .card .n { font-size:26px; font-weight:700; }
 .card .k { color:var(--muted); font-size:12px; }
 .card.pass .n { color:var(--pass); } .card.fail .n { color:var(--fail); }
-.bar { height:8px; background:var(--fail-bg); border-radius:4px; overflow:hidden;
-       margin:16px 0 28px; }
-.bar > i { display:block; height:100%; background:var(--pass); }
+.chart { display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin:20px 0 24px; }
+.chart svg { flex:none; }
+.chart text { text-anchor:middle; fill:var(--text); }
+.chart .big { font-size:26px; font-weight:700; }
+.chart .small { font-size:11px; fill:var(--muted); }
+.chart .seg.pass { stroke:var(--chart-pass); } .chart .seg.weak { stroke:var(--chart-weak); }
+.chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
+.chart p { margin:10px 0 0; }
+.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.legend li { display:grid; grid-template-columns:12px 8em 3em 3em; gap:8px; align-items:center; }
+.legend b { text-align:right; font-variant-numeric:tabular-nums; }
+.legend .ms { text-align:right; }
+.swatch { width:12px; height:12px; border-radius:3px; }
+.swatch.pass { background:var(--chart-pass); } .swatch.weak { background:var(--chart-weak); }
+.swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
 h2 { font-size:17px; margin:28px 0 12px; }
 .case { background:var(--card); border:1px solid var(--line); border-radius:8px;
         margin-bottom:10px; overflow:hidden; }
@@ -293,6 +307,103 @@ def is_weak_pass(verdict: Verdict) -> bool:
 
     return (verdict.verdict == "PASS"
             and (verdict.evidence or {}).get("actual") == WEAK_PASS_REASON)
+
+
+@dataclass(frozen=True)
+class ChartSegment:
+    """원형차트 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
+
+    key: str
+    label: str
+    count: int
+
+
+def chart_segments(verdicts: list[Verdict]) -> list[ChartSegment]:
+    """판정을 네 조각으로 나눈다. 없는 조각은 뺀다.
+
+    통과·실패 두 조각이면 결함과 도구 실패가 한 색이 되고, 약한 확인이 강한 확인과
+    같은 색이 된다. 기획자가 차트만 보고 넘겨도 그 구분은 남아야 한다.
+    """
+    counts = {"pass": 0, "weak": 0, "defect": 0, "infra": 0}
+    for v in verdicts:
+        if v.verdict == "PASS":
+            counts["weak" if is_weak_pass(v) else "pass"] += 1
+        elif v.failure_category == "assertion_mismatch":
+            counts["defect"] += 1
+        else:
+            counts["infra"] += 1
+    labels = {"pass": "통과", "weak": "약한 확인", "defect": "기획서와 다름", "infra": "실행 문제"}
+    return [ChartSegment(k, labels[k], n) for k, n in counts.items() if n]
+
+
+def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int) -> str:
+    """도넛과 범례. 외부 라이브러리 없이 SVG 를 문서에 넣는다 (file:// 로 열린다).
+
+    색은 --chart-* 토큰이고 이름표가 늘 곁에 있다. 색만으로 뜻을 전하면 인쇄물과
+    색각 이상 독자에게 조각이 구별되지 않는다. 조각에 들어가지 않는 것(실행하지 않은
+    것)은 조각으로 만들지 않고 글로 쓴다 — 도넛의 합은 실행한 케이스뿐이어서, 이 줄이
+    없으면 온통 초록인 차트가 '전부 확인됨' 으로 읽힌다.
+    """
+    segments = chart_segments(verdicts)
+    if not segments:
+        return ""
+    total = sum(s.count for s in segments)
+    radius, width, gap = 54.0, 18.0, 2.0
+    length = 2 * math.pi * radius
+    arcs, legend, offset = [], [], 0.0
+    for s in segments:
+        share = s.count / total
+        arc = share * length
+        # 조각이 하나면 틈을 두지 않는다 — 끊긴 고리가 뭔가 빠진 것처럼 보인다.
+        drawn = arc if len(segments) == 1 else max(arc - gap, 0.5)
+        tip = f"{s.label} {s.count}건 ({share:.0%})"
+        arcs.append(
+            f"<circle class='seg {s.key}' cx='70' cy='70' r='{radius:g}' fill='none' "
+            f"stroke-width='{width:g}' stroke-dasharray='{drawn:.2f} {length - drawn:.2f}' "
+            f"stroke-dashoffset='{-offset:.2f}'><title>{_esc(tip)}</title></circle>"
+        )
+        legend.append(
+            f"<li><i class='swatch {s.key}'></i><span>{_esc(s.label)}</span>"
+            f"<b>{s.count}</b><span class='ms'>{share:.0%}</span></li>"
+        )
+        offset += arc
+    outside = []
+    if unchecked:
+        outside.append(f"기획서에 적혔으나 확인하지 않은 것 {unchecked}건")
+    if excluded:
+        outside.append(f"이번 실행에서 제외한 케이스 {excluded}건")
+    note = (f"<p class='ms'>차트에 없는 것: {_esc(' · '.join(outside))}</p>" if outside else "")
+    summary = ", ".join(f"{s.label} {s.count}건" for s in segments)
+    return (
+        "<div class='chart'>"
+        f"<svg viewBox='0 0 140 140' width='140' height='140' role='img' "
+        f"aria-label='전체 {total}건 — {_esc(summary)}'>"
+        f"<g transform='rotate(-90 70 70)'>{''.join(arcs)}</g>"
+        f"<text x='70' y='68' class='big'>{total}</text>"
+        "<text x='70' y='86' class='small'>케이스</text></svg>"
+        f"<div><ul class='legend'>{''.join(legend)}</ul>{note}</div></div>"
+    )
+
+
+def _history_html(history: dict) -> str:
+    """직전 실행과의 비교. 첫 실행이면 비교할 것이 없으니 그리지 않는다."""
+    if not history.get("previous_run"):
+        return ""
+    regressed, fixed = history.get("regressed") or [], history.get("fixed") or []
+    added, removed = history.get("added", 0), history.get("removed", 0)
+    rows = [f"<div>새로 실패 <b>{len(regressed)}건</b> · 해결 <b>{len(fixed)}건</b>"
+            + (f" · 새 케이스 {added}건" if added else "")
+            + (f" · 사라진 케이스 {removed}건" if removed else "") + "</div>"]
+    rows += [f"<div>· 새로 실패: {_esc(t)}</div>" for t in regressed]
+    rows += [f"<div>· 해결: {_esc(t)}</div>" for t in fixed]
+    if history.get("partial"):
+        rows.append("<div class='why'>둘 중 한쪽은 일부만 실행한 결과입니다 — 양쪽에 다 있는 "
+                    "케이스만 비교했고, 케이스 증감은 기획서 변화를 뜻하지 않습니다.</div>")
+    return (
+        f"<div class='gap'><b>{history.get('round', '?')}차 실행 — 직전 실행과 비교</b>"
+        f"<div class='why'>직전: <code>{_esc(history['previous_run'])}</code> "
+        f"{_esc(history.get('previous_at', ''))}</div>{''.join(rows)}</div>"
+    )
 
 
 def _case_html(verdict: Verdict, open_by_default: bool) -> str:
@@ -626,6 +737,20 @@ def render_html(report: TestReport) -> str:
             f"합니다.<ul>{items}</ul></div></div>"
         )
 
+    history = s.get("history") or {}
+    history_html = _history_html(history)
+    if s.get("project"):
+        build_meta += f" · 프로젝트 <code>{_esc(s['project'])}</code>"
+    if history.get("round"):
+        build_meta += f" · <b>{history['round']}차</b>"
+    if s.get("workers"):
+        build_meta += f" · 병렬 {_esc(s['workers'])}"
+    cache = s.get("llm_cache") or {}
+    if cache.get("hits"):
+        build_meta += (f" · 저장된 모델 응답 {_esc(cache['hits'])}건 재사용"
+                       f"(새 호출 {_esc(cache.get('misses', 0))}건)")
+    chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0)
+
     names = s.get("screen_names") or {}
     screens_html = _screens_html(s.get("by_screen") or {},
                                  s.get("by_flow") or {}, names)
@@ -656,14 +781,14 @@ def render_html(report: TestReport) -> str:
   {f"<br><b>{_esc(s['url_note'])}</b>" if s.get("url_note") else ""}
   <br>스크린샷은 이 파일 옆 폴더를 참조합니다 — 공유할 때는 결과 폴더째 보내세요.
 </div>
-{mock_warn}{filter_warn}{sel_html}{heal_html}{settle_html}{gap_html}{warn_html}
+{mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
   <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>
   <div class="card fail"><div class="n">{failed}</div><div class="k">실패</div></div>
   <div class="card"><div class="n">{rate}%</div><div class="k">통과율</div></div>
 </div>
-<div class="bar"><i style="width:{rate}%"></i></div>
+{chart_html}
 {breakdown}
 {screens_html}
 

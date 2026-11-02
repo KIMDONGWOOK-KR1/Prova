@@ -19,6 +19,7 @@ LangGraph 는 관통이 초록불이 된 뒤에 도입한다(계획서의 판단
 
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -39,7 +40,7 @@ from prova.s1_figma.extractor import extract_figma_document
 from prova.s1_merge import merge_documents
 from prova.s1_spec_extractor.extractor import extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
-from prova.s2_case_generator.generator import generate_cases, generate_flow_cases
+from prova.s2_case_generator.generator import ask_titles, generate_cases, generate_flow_cases
 from prova.s2_case_generator.precondition import login_screen
 from prova.s2_case_generator.selector import case_kind
 from prova.s2_case_generator.rule_expander import spec_defects
@@ -126,6 +127,8 @@ class AgentState:
     coverage_gaps: list[str] = field(default_factory=list)
     verdicts: list[Verdict] = field(default_factory=list)
     report: Optional[TestReport] = None
+    # 뒤에서 도는 제목 다듬기 (화면, 작업). finish_titles 가 거둔다.
+    title_jobs: list[tuple[ScreenSpec, Future]] = field(default_factory=list)
     # 자연어 요청으로 케이스를 골랐다면 그 내역. 요청이 없었으면 None 이다.
     selection: Optional[CaseSelection] = None
 
@@ -217,6 +220,48 @@ def extract_spec(state: AgentState) -> AgentState:
     return state
 
 
+def _start_titles(state: AgentState, groups: list[tuple[ScreenSpec, list[TestCase]]]) -> None:
+    """제목 다듬기를 화면마다 뒤에서 시작한다.
+
+    제목은 판정 근거가 아닌데 계획 시간의 35~43% 를 쓴다(2026-11-02 실측). 기다리지
+    않으면 그 시간이 브라우저 실행과 겹치고, 화면이 여럿이면 서로 겹친다. 답은 여기서
+    반영하지 않는다 — 실행 도중에 제목이 바뀌면 같은 케이스가 로그와 리포트에서 다른
+    이름이 되고, 사람이 승인한 목록과 어긋난다.
+    """
+    groups = [(screen, own) for screen, own in groups if own]
+    if not groups:
+        return
+    pool = ThreadPoolExecutor(max_workers=len(groups), thread_name_prefix="titles")
+    state.title_jobs = [(screen, pool.submit(ask_titles, own, screen, state.llm))
+                        for screen, own in groups]
+    pool.shutdown(wait=False)
+
+
+def finish_titles(state: AgentState) -> AgentState:
+    """뒤에서 돌던 제목 다듬기를 기다려 한 번에 반영한다. 두 번 불러도 된다.
+
+    읽는 필드: title_jobs
+    쓰는 필드: cases, all_cases, verdicts, selection (제목만), doc 의 화면 경고
+    """
+    jobs, state.title_jobs = state.title_jobs, []
+    titles: dict[str, str] = {}
+    for screen, job in jobs:
+        try:
+            found, warning = job.result()
+        except Exception as exc:  # 제목 때문에 다 돌린 실행의 리포트를 잃으면 안 된다
+            found, warning = {}, f"케이스 제목 다듬기를 건너뛰었습니다: {exc!r}"
+        titles.update(found)
+        if warning:
+            screen.warnings.append(warning)
+    for item in (*state.cases, *state.all_cases, *state.verdicts):
+        item.title = titles.get(item.case_id, item.title)
+    if state.selection is not None:
+        for case_id in state.selection.excluded_titles:
+            if case_id in titles:
+                state.selection.excluded_titles[case_id] = titles[case_id]
+    return state
+
+
 def generate_test_cases(state: AgentState) -> AgentState:
     """S2 — 화면마다 케이스를 전개하고, 흐름 케이스를 뒤에 붙인다.
 
@@ -230,8 +275,13 @@ def generate_test_cases(state: AgentState) -> AgentState:
     if state.doc is None:
         raise ValueError("generate_test_cases 전에 extract_spec 이 실행돼야 합니다")
     cases: list[TestCase] = []
+    groups: list[tuple[ScreenSpec, list[TestCase]]] = []
     for screen in state.doc.screens:
-        cases.extend(generate_cases(screen, llm=state.llm, doc=state.doc))
+        own = generate_cases(screen, doc=state.doc)
+        groups.append((screen, own))
+        cases.extend(own)
+    if state.llm is not None:
+        _start_titles(state, groups)
     # figma 단독 화면을 지나는 흐름은 generate_flow_cases 가 흐름 단위로
     # 거른다 — 병합 문서에서 document 화면만 지나는 흐름은 살아야 한다.
     cases.extend(generate_flow_cases(state.doc))
@@ -672,6 +722,7 @@ def build_final_report(state: AgentState) -> AgentState:
     읽는 필드: verdicts, doc, run_id, base_url, pdf_path, llm
     쓰는 필드: report
     """
+    finish_titles(state)
     state.report = build_report(
         run_id=state.run_id,
         target_url=state.base_url,

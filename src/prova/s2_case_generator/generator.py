@@ -323,6 +323,20 @@ def generate_cases(
     return cases
 
 
+def _repeated(steps: list[TestStep], times: int) -> list[TestStep]:
+    """스텝 묶음을 times 번 잇는다. 매번 화면을 새로 열어 앞 제출의 문구가 남지 않게 한다.
+
+    중간 제출의 결과는 확인하지 않는다 — 기획서가 말한 것은 마지막 제출 뒤의 화면이다.
+    """
+    if times <= 1:
+        return steps
+    out: list[TestStep] = []
+    for _ in range(times):
+        for step in steps:
+            out.append(step.model_copy(update={"seq": len(out) + 1}))
+    return out
+
+
 def _scenario_cases(
     spec: ScreenSpec, inputs: list[UIElement], start_seq: int
 ) -> list[TestCase]:
@@ -345,8 +359,10 @@ def _scenario_cases(
     cases: list[TestCase] = []
     for i, scenario in enumerate(spec.scenarios):
         values, _ = resolve_values(inputs, overrides=dict(scenario.given))
-        steps = _steps_for_case(spec, values)
+        steps = _repeated(_steps_for_case(spec, values), scenario.repeat)
         shown = ", ".join(f"{k}={v!r}" for k, v in scenario.given.items()) or "기본값"
+        if scenario.repeat > 1:
+            shown += f" {scenario.repeat}회 제출"
 
         # 건수만 적은 예시 표(demoqa '검색어 | 결과 건수')는 문구가 비어 있다. 빈 문구로
         # text_visible 을 만들면 무엇이든 통과한다 — 만들지 않는다.
@@ -851,13 +867,19 @@ _TITLE_SYSTEM = """\
 """
 
 
-def _polish_titles(cases: list[TestCase], spec: ScreenSpec, llm: LLMClient) -> None:
-    """LLM 으로 케이스 제목을 다듬는다. 실패하면 규칙 기반 제목을 유지한다.
+def ask_titles(cases: list[TestCase], spec: ScreenSpec,
+               llm: LLMClient) -> tuple[dict[str, str], Optional[str]]:
+    """LLM 에 다듬은 제목을 묻는다. 케이스를 건드리지 않고 답만 돌려준다.
 
     제목은 사람이 리포트를 읽는 편의를 위한 것이고 판정 근거가 아니다. 그래서
     여기서 예외가 나도 파이프라인을 세우지 않는다. 다만 조용히 넘기지는 않고
-    spec.warnings 에 남겨, 리포트를 보는 사람이 제목이 다듬어지지 않은 이유를
-    알 수 있게 한다.
+    경고를 돌려주어 spec.warnings 에 남긴다 — 리포트를 보는 사람이 제목이 다듬어지지
+    않은 이유를 알 수 있게 한다.
+
+    파이프라인은 이 함수를 뒤에서 돌린다 (nodes.finish_titles).
+
+    Returns:
+        ({case_id: 새 제목}, 경고 또는 None)
     """
     listing = "\n".join(f"- {c.case_id}: {c.title}" for c in cases)
     try:
@@ -868,20 +890,28 @@ def _polish_titles(cases: list[TestCase], spec: ScreenSpec, llm: LLMClient) -> N
             max_tokens=1024,
         )
     except LLMError as exc:
-        spec.warnings.append(f"케이스 제목 다듬기를 건너뛰었습니다: {exc}")
-        return
+        return {}, f"케이스 제목 다듬기를 건너뛰었습니다: {exc}"
 
     if not isinstance(raw, dict):
         # 스키마를 무시한 백엔드의 응답. 제목은 판정과 무관하므로 여기서 죽으면 안 된다.
-        spec.warnings.append("케이스 제목 다듬기를 건너뛰었습니다: 응답이 객체가 아닙니다")
-        return
+        return {}, "케이스 제목 다듬기를 건너뛰었습니다: 응답이 객체가 아닙니다"
 
-    by_id = {c.case_id: c for c in cases}
+    known = {c.case_id for c in cases}
+    titles = {}
     for item in raw.get("titles", []):
-        case = by_id.get(item.get("case_id", ""))
         new_title = (item.get("title") or "").strip()
-        if case and new_title:
-            case.title = new_title
+        if item.get("case_id") in known and new_title:
+            titles[item["case_id"]] = new_title
+    return titles, None
+
+
+def _polish_titles(cases: list[TestCase], spec: ScreenSpec, llm: LLMClient) -> None:
+    """제목을 그 자리에서 다듬는다. generate_cases 를 직접 부르는 쪽이 쓴다."""
+    titles, warning = ask_titles(cases, spec, llm)
+    if warning:
+        spec.warnings.append(warning)
+    for case in cases:
+        case.title = titles.get(case.case_id, case.title)
 
 
 # ---------------------------------------------------------------------------

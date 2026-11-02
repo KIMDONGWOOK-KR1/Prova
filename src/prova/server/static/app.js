@@ -122,6 +122,7 @@ function form() {
     request: $("request").value.trim() || null,
     backend: $("backend").value,
     figma: $("figma").value || null,
+    project: $("project").value.trim(),
   };
 }
 
@@ -650,7 +651,8 @@ async function loadRuns() {
     <button class="run ${r.fail ? "has-fail" : ""}" type="button"
             data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)}">
       <i class="led"></i>
-      <span class="who"><b>${esc(runLabel(r))}</b><span>${esc(runWhen(r))}</span></span>
+      <span class="who"><b>${esc(r.project || runLabel(r))}</b><span>${esc(
+        [r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
       <span class="score">${r.pass}/${r.total}</span>
     </button>`).join("");
 

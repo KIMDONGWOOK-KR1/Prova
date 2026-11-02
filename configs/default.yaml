@@ -13,6 +13,9 @@ llm:
   # serve_vllm.sh 의 --served-model-name. 같은 서버가 VLM(--vlm)도 맡는다.
   model: qwen3.5-4b-awq
   timeout: 180
+  # 모델 응답 캐시. 프롬프트·스키마·모델 이름이 같으면 다시 묻지 않는다. 비우면 끈다.
+  # 응답에 기획서 내용이 들어 있으니 저장소가 무시하는 곳에 둔다 (llm/cache.py).
+  cache_dir: runs/.llm-cache
 
 execution:
   headless: true
@@ -32,6 +35,10 @@ execution:
   settle_timeout_ms: 2000
   # 스텝마다 스크린샷과 DOM 스냅샷을 남긴다. 끄면 빨라지지만 실패 근거가 없어진다.
   screenshot_every_step: true
+  # 동시에 돌릴 브라우저 수. 시간의 대부분이 대기라 4~6 이면 3~4배 빨라진다(SUT 실측,
+  # 판정 차이 0). 기본이 1 인 이유: 케이스는 대상 서버를 공유한다 — 계정당 세션 하나만
+  # 허용하는 서비스 등에서는 동시 실행이 판정을 바꾼다. 대상마다 순차와 한 번 대조하고 올린다.
+  workers: 1
 
 grounding:
   # 2차 경로(화면 이미지로 요소 찾기)가 받아들일 최소 신뢰도.

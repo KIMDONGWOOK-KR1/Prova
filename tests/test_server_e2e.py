@@ -45,7 +45,7 @@ def selecting_llm(monkeypatch):
     """
     from prova.llm.mock_backend import MockLLM
 
-    def fake(backend, cfg, pdf):
+    def fake(backend, cfg, pdf, **_options):
         llm = MockLLM.for_spec(pdf)
         llm.register(
             "CaseSelection",

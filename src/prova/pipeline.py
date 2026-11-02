@@ -16,18 +16,25 @@ Playwright 는 컨텍스트 매니저로 열고 닫아야 프로세스가 남지
 from __future__ import annotations
 
 import time
+from concurrent.futures import ThreadPoolExecutor
+from contextlib import contextmanager
+from dataclasses import replace
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 from urllib.parse import urlsplit, urlunsplit
 
 from playwright.sync_api import sync_playwright
 
+from prova.history import attach_history
 from prova.llm.base import LLMClient
+from prova.llm.cache import CachedLLM
 from prova.models import TestReport
 from prova.nodes import (
     AgentState,
     build_final_report,
     extract_spec,
+    finish_titles,
     generate_test_cases,
     page_opener,
     run_cases,
@@ -67,6 +74,41 @@ def _quiet(_message: str) -> None:
     """진행 보고를 받을 곳이 없을 때 쓴다."""
 
 
+@contextmanager
+def _run_log(run_dir: Path, on_progress=None, fresh: bool = True):
+    """진행 메시지를 터미널·화면으로 보내면서 run_dir/run.log 에도 남긴다.
+
+    터미널 출력은 창을 닫으면 사라지고, 웹 UI 의 진행 줄은 다음 실행에 밀려난다.
+    '그때 무슨 일이 있었나' 를 나중에 물을 수 있어야 실행 기록이다. 그래서 한 줄씩
+    바로 쓴다 — 도중에 죽은 실행이야말로 로그가 필요한 실행이다. 같은 이유로 예외도
+    남기고 그대로 다시 던진다.
+
+    Args:
+        fresh: 같은 이름으로 다시 돌린 실행이면 옛 로그를 지운다. 재개(--resume)는
+            계획 단계의 로그에 이어 쓴다.
+    """
+    run_dir.mkdir(parents=True, exist_ok=True)
+    path = run_dir / "run.log"
+    if fresh:
+        path.write_text("", encoding="utf-8")
+
+    def write(message: str) -> None:
+        stamp = datetime.now().strftime("%H:%M:%S")
+        with path.open("a", encoding="utf-8") as out:
+            out.write(f"{stamp} {message}\n")
+
+    def progress(message: str) -> None:
+        write(message)
+        if on_progress:
+            on_progress(message)
+
+    try:
+        yield progress
+    except Exception as exc:
+        write(f"! 실행 실패 — {type(exc).__name__}: {exc}")
+        raise
+
+
 def execution_options(cfg: dict, *, headed: bool = False) -> dict:
     """설정 파일에서 실행 조건(S3~S5)을 읽는다. CLI 와 웹 UI 가 함께 쓴다.
 
@@ -84,6 +126,26 @@ def execution_options(cfg: dict, *, headed: bool = False) -> dict:
         max_heal=int(cfg.get("agent", {}).get("max_heal", 2)),
         min_confidence=float(cfg.get("grounding", {}).get("vlm_confidence_threshold", 0.5)),
     )
+
+
+def configured_workers(cfg: dict) -> int:
+    """설정의 병렬 수 (execution.workers). CLI 가 --workers 로 덮어쓴다."""
+    workers = int(cfg.get("execution", {}).get("workers", 1))
+    if workers < 1:
+        raise ValueError(f"execution.workers 는 1 이상이어야 합니다: {workers}")
+    return workers
+
+
+def _check_workers(workers: int, *, storage_state, hold_sec, slow_mo, headless) -> None:
+    """병렬과 함께 성립하지 않는 조건을 S1 을 쓰기 전에 막는다."""
+    if workers <= 1:
+        return
+    if storage_state:
+        raise ValueError("세션 파일 실행은 병렬로 돌 수 없습니다 — 한 작업자의 로그아웃 "
+                         "케이스가 다른 작업자가 쓰는 세션을 끊습니다.")
+    if hold_sec or slow_mo or not headless:
+        raise ValueError("hold·slow·headed 는 사람이 지켜보는 실행이라 병렬과 함께 쓸 수 "
+                         "없습니다.")
 
 
 def filter_cases(cases: list, pattern: Optional[str]) -> list:
@@ -244,11 +306,16 @@ def run_pipeline(
     screen_urls: Optional[dict[str, str]] = None,
     storage_state: Optional[str] = None,
     sut_build: str = "",
+    project: str = "",
+    workers: int = 1,
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
 
     Args:
+        workers: 동시에 돌릴 브라우저 수. 기본은 1 이다 (_run_parallel 참고).
+        project: 실행을 묶을 이름 (납품 건·외주사 등). 차수 계산의 기준이 된다
+            (prova.history 참고). 비우면 기획서와 대상 URL 로 묶는다.
         slow_mo: 동작 사이 지연(ms). 사람이 눈으로 따라가려면 400~600 정도가 적당하다.
         record_video: 실행 영상(webm) 녹화. run_dir/video/ 에 케이스마다 하나씩 저장된다
             (세션 모드의 메인 컨텍스트는 하나로 이어진다).
@@ -269,73 +336,64 @@ def run_pipeline(
     Returns:
         (TestReport, 리포트가 저장된 디렉터리)
     """
+    _check_workers(workers, storage_state=storage_state, hold_sec=hold_sec,
+                   slow_mo=slow_mo, headless=headless)
     run_dir = runs_root / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    progress = on_progress or _quiet
+    with _run_log(run_dir, on_progress) as progress:
+        state, n_all = build_plan(
+            pdf_path=pdf_path,
+            base_url=base_url,
+            llm=llm,
+            run_id=run_id,
+            run_dir=run_dir,
+            only=only,
+            request=request,
+            case_ids=case_ids,
+            reason=reason,
+            figma_json=figma_json,
+            screen_urls=screen_urls,
+            vlm=vlm,
+            step_timeout_ms=step_timeout_ms,
+            navigation_timeout_ms=navigation_timeout_ms,
+            settle_timeout_ms=settle_timeout_ms,
+            screenshot_every_step=screenshot_every_step,
+            max_heal=max_heal,
+            min_confidence=min_confidence,
+            sut_build=sut_build,
+            on_progress=progress,
+        )
 
-    state, n_all = build_plan(
-        pdf_path=pdf_path,
-        base_url=base_url,
-        llm=llm,
-        run_id=run_id,
-        run_dir=run_dir,
-        only=only,
-        request=request,
-        case_ids=case_ids,
-        reason=reason,
-        figma_json=figma_json,
-        screen_urls=screen_urls,
-        vlm=vlm,
-        step_timeout_ms=step_timeout_ms,
-        navigation_timeout_ms=navigation_timeout_ms,
-        settle_timeout_ms=settle_timeout_ms,
-        screenshot_every_step=screenshot_every_step,
-        max_heal=max_heal,
-        min_confidence=min_confidence,
-        sut_build=sut_build,
-        on_progress=on_progress,
-    )
-
-    return _execute(
-        state,
-        run_dir=run_dir,
-        n_all=n_all,
-        headless=headless,
-        viewport=viewport,
-        slow_mo=slow_mo,
-        record_video=record_video,
-        only=only,
-        hold_sec=hold_sec,
-        storage_state=storage_state,
-        on_progress=on_progress,
-    )
+        return _execute(
+            state,
+            run_dir=run_dir,
+            n_all=n_all,
+            headless=headless,
+            viewport=viewport,
+            slow_mo=slow_mo,
+            record_video=record_video,
+            only=only,
+            hold_sec=hold_sec,
+            storage_state=storage_state,
+            project=project,
+            workers=workers,
+            on_progress=progress,
+        )
 
 
-def _execute(
+def _browse(
     state: AgentState,
     *,
-    run_dir: Path,
-    n_all: int,
-    headless: bool = True,
-    viewport: Optional[dict] = None,
-    slow_mo: int = 0,
-    record_video: bool = False,
-    only: Optional[str] = None,
-    hold_sec: float = 0.0,
-    storage_state: Optional[str] = None,
-    on_progress=None,
-) -> tuple[TestReport, Path]:
-    """S3~S6 — 계획이 끝난 상태를 받아 브라우저 실행과 리포트를 수행한다.
-
-    run_pipeline(한 번에)과 resume_pipeline(저장된 계획 재개)이 공유한다.
-    두 경로가 같은 코드로 실행돼야 "재개한 실행이 한 번에 돌린 실행과 같다"
-    는 test_two_stage_e2e 의 계약이 코드 구조로 보장된다.
-    """
-    progress = on_progress or _quiet
-
-    progress("S3~S5 브라우저 실행 및 판정")
-    video_dir = run_dir / "video" if record_video else None
+    headless: bool,
+    viewport: Optional[dict],
+    slow_mo: int,
+    video_dir: Optional[Path],
+    hold_sec: float,
+    storage_state: Optional[str],
+    progress,
+) -> AgentState:
+    """브라우저 하나를 열어 state.cases 를 돌리고 닫는다."""
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
         # 케이스마다 새 컨텍스트를 연다(run_cases). 가드 케이스는 세션 모드에서도 이쪽이다.
@@ -360,6 +418,75 @@ def _execute(
                     opened.context.close()
             browser.close()
             state.page = state.guard_page = state.open_page = None
+    return state
+
+
+def _run_parallel(state: AgentState, workers: int, progress, **browser_options) -> AgentState:
+    """케이스를 나눠 브라우저 여러 개로 돌리고 판정을 원래 순서로 모은다.
+
+    ## 왜 스레드인가
+
+    실행 시간의 대부분(login bad 86%)이 화면을 기다리는 유휴 시간이라 GIL 이 걸리지
+    않는다. 프로세스로 가르면 VLM 클라이언트와 상태를 직렬화해야 한다. Playwright 의
+    sync API 는 스레드를 넘어 공유할 수 없으므로 스레드마다 자기 것을 연다.
+
+    ## 왜 기본이 1 인가
+
+    케이스는 브라우저 저장소가 격리돼 있어도 **대상 서버**를 공유한다. SUT 6조합에서는
+    판정 차이가 0 이었지만, 계정당 세션 하나만 허용하는 서비스나 장바구니처럼 서버에
+    쌓이는 화면은 동시 실행이 판정을 바꾼다. 대상의 성질은 도구가 알 수 없으므로 켜는
+    것은 사람이 고르고 리포트가 남긴다. 바꾼 대상에는 순차와 한 번 대조한 뒤 쓴다.
+    """
+    shards = [state.cases[i::workers] for i in range(workers)]
+
+    def work(index: int) -> list:
+        sub = replace(state, cases=shards[index], verdicts=[], page=None,
+                      guard_page=None, open_page=None)
+        tag = f"     [{index + 1}/{workers}]"
+        return _browse(sub, progress=lambda m: progress(f"{tag} {m.strip()}"),
+                       **browser_options).verdicts
+
+    progress(f"     병렬 {workers}개로 실행")
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        verdicts = [v for done in pool.map(work, range(workers)) for v in done]
+    order = {c.case_id: i for i, c in enumerate(state.cases)}
+    state.verdicts = sorted(verdicts, key=lambda v: order[v.case_id])
+    return state
+
+
+def _execute(
+    state: AgentState,
+    *,
+    run_dir: Path,
+    n_all: int,
+    headless: bool = True,
+    viewport: Optional[dict] = None,
+    slow_mo: int = 0,
+    record_video: bool = False,
+    only: Optional[str] = None,
+    hold_sec: float = 0.0,
+    storage_state: Optional[str] = None,
+    project: str = "",
+    workers: int = 1,
+    on_progress=None,
+) -> tuple[TestReport, Path]:
+    """S3~S6 — 계획이 끝난 상태를 받아 브라우저 실행과 리포트를 수행한다.
+
+    run_pipeline(한 번에)과 resume_pipeline(저장된 계획 재개)이 공유한다.
+    두 경로가 같은 코드로 실행돼야 "재개한 실행이 한 번에 돌린 실행과 같다"
+    는 test_two_stage_e2e 의 계약이 코드 구조로 보장된다.
+    """
+    progress = on_progress or _quiet
+
+    progress("S3~S5 브라우저 실행 및 판정")
+    video_dir = run_dir / "video" if record_video else None
+    workers = min(workers, len(state.cases))
+    options = dict(headless=headless, viewport=viewport, slow_mo=slow_mo, video_dir=video_dir,
+                   hold_sec=hold_sec, storage_state=storage_state)
+    if workers > 1:
+        state = _run_parallel(state, workers, progress, **options)
+    else:
+        state = _browse(state, progress=progress, **options)
 
     if video_dir:
         videos = list(video_dir.glob("*.webm"))
@@ -375,6 +502,17 @@ def _execute(
         # 부분 실행 결과를 전체 결과로 착각하지 않도록 리포트에 남긴다.
         state.report.summary["filtered_by"] = only
         state.report.summary["cases_available"] = n_all
+    if project:
+        state.report.summary["project"] = project
+    if workers > 1:
+        # 판정의 전제다 — 동시 실행이 판정을 바꿀 수 있다 (_run_parallel).
+        state.report.summary["workers"] = workers
+    if isinstance(state.llm, CachedLLM):
+        # 이번에 모델을 돌렸는가도 전제다 (llm/cache.py). 제목까지 거둔 뒤라야 수가 맞다.
+        state.report.summary["llm_cache"] = {"hits": state.llm.hits,
+                                             "misses": state.llm.misses}
+    # 저장하기 전에 붙인다 — 비교 결과도 이 실행의 기록이다 (prova.history).
+    attach_history(state.report, run_dir.parent)
     save_json(state.report, run_dir)
     save_html(state.report, run_dir)
 
@@ -402,21 +540,22 @@ def plan_pipeline(
         (계획이 끝난 상태, plan.json 경로)
     """
     run_dir = runs_root / run_id
-    state, n_all = build_plan(
-        pdf_path=pdf_path,
-        base_url=base_url,
-        llm=llm,
-        run_id=run_id,
-        run_dir=run_dir,
-        only=only,
-        request=request,
-        figma_json=figma_json,
-        screen_urls=screen_urls,
-        on_progress=on_progress,
-    )
-    plan_path = save_plan(state, n_all=n_all, only=only)
-    if on_progress:
-        on_progress(f"계획 저장: {plan_path}")
+    with _run_log(run_dir, on_progress) as progress:
+        state, n_all = build_plan(
+            pdf_path=pdf_path,
+            base_url=base_url,
+            llm=llm,
+            run_id=run_id,
+            run_dir=run_dir,
+            only=only,
+            request=request,
+            figma_json=figma_json,
+            screen_urls=screen_urls,
+            on_progress=progress,
+        )
+        finish_titles(state)  # 계획에는 다듬은 제목이 실려야 한다
+        plan_path = save_plan(state, n_all=n_all, only=only)
+        progress(f"계획 저장: {plan_path}")
     return state, plan_path
 
 
@@ -436,6 +575,8 @@ def resume_pipeline(
     hold_sec: float = 0.0,
     storage_state: Optional[str] = None,
     sut_build: str = "",
+    project: str = "",
+    workers: int = 1,
     on_progress=None,
 ) -> tuple[TestReport, Path]:
     """저장된 계획(plan.json)으로 S3~S6 을 이어 실행한다 (--resume).
@@ -447,57 +588,60 @@ def resume_pipeline(
     입력(pdf·URL·케이스 선택)은 전부 계획에서 온다. 실행 조건(vlm·타임아웃·
     세션 등)만 지금 받는다 — 계획 시점의 실행 조건은 의미가 없다.
     """
-    progress = on_progress or _quiet
-
+    _check_workers(workers, storage_state=storage_state, hold_sec=hold_sec,
+                   slow_mo=slow_mo, headless=headless)
     run_dir = Path(run_dir)
     plan = load_plan(run_dir)
-    warnings = plan_warnings(plan)
-    for w in warnings:
-        progress(f"! {w}")
+    with _run_log(run_dir, on_progress, fresh=False) as progress:
+        warnings = plan_warnings(plan)
+        for w in warnings:
+            progress(f"! {w}")
 
-    selected = set(plan.selected_case_ids)
-    state = AgentState(
-        pdf_path=plan.pdf_path,
-        base_url=plan.base_url,
-        run_id=run_dir.name,
-        run_dir=run_dir,
-        llm=None,
-        vlm=vlm,
-        figma_json=plan.figma_json,
-        screen_urls=dict(plan.screen_urls),
-        design_mismatches=list(plan.design_mismatches),
-        sut_build=sut_build,
-        doc=plan.doc,
-        # 본문은 all_cases 가 단일 진실이다 — 선택 목록은 id 로만 저장된다.
-        cases=[c for c in plan.all_cases if c.case_id in selected],
-        all_cases=list(plan.all_cases),
-        coverage_gaps=list(plan.coverage_gaps),
-        selection=plan.selection,
-        plan_meta={
-            "backend": plan.backend,
-            "created_at": plan.created_at,
-            "warnings": warnings,
-        },
-        max_heal=max_heal,
-        min_confidence=min_confidence,
-        step_timeout_ms=step_timeout_ms,
-        navigation_timeout_ms=navigation_timeout_ms,
-        settle_timeout_ms=settle_timeout_ms,
-        screenshot_every_step=screenshot_every_step,
-    )
-    progress(f"계획 복원: {run_dir / 'plan.json'} — 추출 {plan.backend or '?'} · "
-             f"케이스 {len(state.cases)}개")
+        selected = set(plan.selected_case_ids)
+        state = AgentState(
+            pdf_path=plan.pdf_path,
+            base_url=plan.base_url,
+            run_id=run_dir.name,
+            run_dir=run_dir,
+            llm=None,
+            vlm=vlm,
+            figma_json=plan.figma_json,
+            screen_urls=dict(plan.screen_urls),
+            design_mismatches=list(plan.design_mismatches),
+            sut_build=sut_build,
+            doc=plan.doc,
+            # 본문은 all_cases 가 단일 진실이다 — 선택 목록은 id 로만 저장된다.
+            cases=[c for c in plan.all_cases if c.case_id in selected],
+            all_cases=list(plan.all_cases),
+            coverage_gaps=list(plan.coverage_gaps),
+            selection=plan.selection,
+            plan_meta={
+                "backend": plan.backend,
+                "created_at": plan.created_at,
+                "warnings": warnings,
+            },
+            max_heal=max_heal,
+            min_confidence=min_confidence,
+            step_timeout_ms=step_timeout_ms,
+            navigation_timeout_ms=navigation_timeout_ms,
+            settle_timeout_ms=settle_timeout_ms,
+            screenshot_every_step=screenshot_every_step,
+        )
+        progress(f"계획 복원: {run_dir / 'plan.json'} — 추출 {plan.backend or '?'} · "
+                 f"케이스 {len(state.cases)}개")
 
-    return _execute(
-        state,
-        run_dir=run_dir,
-        n_all=plan.n_all,
-        headless=headless,
-        viewport=viewport,
-        slow_mo=slow_mo,
-        record_video=record_video,
-        only=plan.only,
-        hold_sec=hold_sec,
-        storage_state=storage_state,
-        on_progress=on_progress,
-    )
+        return _execute(
+            state,
+            run_dir=run_dir,
+            n_all=plan.n_all,
+            headless=headless,
+            viewport=viewport,
+            slow_mo=slow_mo,
+            record_video=record_video,
+            only=plan.only,
+            hold_sec=hold_sec,
+            storage_state=storage_state,
+            project=project,
+            workers=workers,
+            on_progress=progress,
+        )
