@@ -41,6 +41,7 @@ from prova.nodes import (
     build_final_report,
     extract_spec,
     generate_test_cases,
+    page_opener,
     run_cases,
 )
 from prova.s6_report.report_builder import save_html, save_json
@@ -113,12 +114,11 @@ def run_graph(
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless)
-        context = browser.new_context(viewport=viewport or {"width": 1280, "height": 800})
-        state.page = context.new_page()
+        state.open_page = page_opener(browser, viewport)
         try:
             result = app.invoke(state)
         finally:
-            context.close()
+            # 마지막 케이스의 컨텍스트까지 함께 닫힌다 — 앞 케이스 것은 run_cases 가 닫았다.
             browser.close()
 
     # LangGraph 는 상태를 dict 로 돌려준다. 노드가 같은 객체를 갱신했으므로

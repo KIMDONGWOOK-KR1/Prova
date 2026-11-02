@@ -37,8 +37,8 @@ test_pipeline_e2e.py 가 지킨다. 그래서 `run_pipeline` 을 `only="product"
 **이미 로그인된 상태로 열려** '비로그인 접근' 을 확인하지 못한 채 리다이렉트가
 없다는 이유로 FAIL — 올바른 구현을 오탐으로 지목하는 것이다.
 
-`nodes.run_cases` 가 케이스마다 실행 전에 쿠키를 지우도록 고친 뒤에는(케이스
-격리) 실행 순서·필터 여부와 무관하게 가드 케이스가 정직해진다. 이 테스트는
+`nodes.run_cases` 가 케이스마다 새 컨텍스트를 열도록 고친 뒤에는(케이스 격리,
+`test_case_isolation.py`) 실행 순서·필터 여부와 무관하게 가드 케이스가 정직해진다. 이 테스트는
 그 격리가 실제로 동작하는지, `only` 필터에 의존하지 않고도 오탐이 없는지를
 직접 확인한다 — 격리가 없으면 반드시 실패하는 시나리오다.
 """
@@ -146,7 +146,7 @@ class TestBad:
 class TestFullDocumentNoFilter:
     """`only` 필터 없이 문서 전체를 돌려도 오탐이 없다 — 케이스 격리의 증거.
 
-    격리(nodes.run_cases 의 clear_cookies)가 없으면 로그인 화면의 정상 케이스가
+    격리(nodes.run_cases 가 케이스마다 여는 새 컨텍스트)가 없으면 로그인 화면의 정상 케이스가
     남긴 세션 쿠키 때문에 product-precondition-guard-001 이 스푸리어스하게
     FAIL 한다. 이 테스트는 그 시나리오를 그대로 재현해, 격리가 실제로 막는지
     확인한다.
