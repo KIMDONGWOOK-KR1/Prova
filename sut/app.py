@@ -259,6 +259,11 @@ MSG_NO_ACCOUNT = "이메일 또는 비밀번호가 올바르지 않습니다."
 
 # bad 로그인의 B3 — 기획서와 다른 문구
 MSG_NO_ACCOUNT_WRONG = "로그인 정보를 확인해주세요."
+# 반복 실패 안내. 기획서가 예시 계정에 쓰는 'lock-' 접두어 계정만 센다 — 모든 계정을
+# 세면 같은 서버로 여러 번 돌린 테스트의 nobody@test.com 이 잠겨 판정이 바뀐다.
+MSG_LOCKED = "로그인 5회 실패로 계정이 잠겼습니다."
+LOCK_LIMIT = 5
+LOCK_PREFIX = "lock-"
 
 # 회원가입 기획서에 정의된 에러 메시지
 MSG_PASSWORD_MISMATCH = "비밀번호가 일치하지 않습니다."
@@ -520,6 +525,17 @@ def render_orders(
 # 그걸 여기 섞으면 이 함수가 '기획서를 지킨 검증' 이 아니게 된다.
 
 
+_failed_logins: dict[str, int] = {}
+
+
+def with_lockout(email: str, error: str | None) -> str | None:
+    """로그인 실패를 세어 한도에 닿으면 잠금 안내로 바꾼다 (기획서 lockout_spec §4)."""
+    if not error or not email.startswith(LOCK_PREFIX):
+        return error
+    _failed_logins[email] = _failed_logins.get(email, 0) + 1
+    return MSG_LOCKED if _failed_logins[email] >= LOCK_LIMIT else error
+
+
 def login_error(email: str, password: str) -> str | None:
     """로그인 검증. 통과하면 None, 아니면 화면에 노출할 문구.
 
@@ -616,7 +632,7 @@ def _register_login(variant: str, dashboard_inline: bool) -> None:
         email: str = Form(default=""),
         password: str = Form(default=""),
     ):
-        error = login_error(email, password)
+        error = with_lockout(email, login_error(email, password))
         if error:
             return render_login(request, variant, error)
         if dashboard_inline:
@@ -679,6 +695,7 @@ def bad_login_submit(
 
     if REGISTERED["bad"].get(email) != password:
         # B3: 기획서와 다른 문구를 쓴다
+        # B4: 반복 실패를 세지 않아 잠금 안내가 없다 (with_lockout 호출 누락)
         return render_login(request, "bad", MSG_NO_ACCOUNT_WRONG)
     resp = RedirectResponse("/bad/dashboard", status_code=303)
     # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기 때문이다.

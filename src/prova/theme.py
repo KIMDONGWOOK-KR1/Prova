@@ -129,6 +129,13 @@ TOKENS_CSS = """
   --note-fg: var(--violet-500);
   --note-bg: var(--violet-100);
 
+  /* 리포트 원형차트. 글자색(--pass-fg 등)을 그대로 쓰지 않는다 — 면으로 칠할 때의
+     명도·색각 대비는 글자일 때와 다르다. dataviz validate_palette 로 양쪽 모드 확인. */
+  --chart-pass:   #16875c;
+  --chart-weak:   #c08a1e;
+  --chart-defect: #c33a30;
+  --chart-infra:  #6a48ab;
+
   --shadow-sm: 0 1px 2px rgba(16, 20, 28, 0.05);
   --shadow-md: 0 2px 8px rgba(16, 20, 28, 0.07);
   --shadow-lg: 0 8px 28px rgba(16, 20, 28, 0.10);
@@ -169,6 +176,12 @@ TOKENS_CSS = """
     --info-bg: #1b2140;
     --note-fg: var(--violet-400);
     --note-bg: #221a35;
+
+    /* 황색↔적색의 색각 대비가 7.7 이라 이름표(범례)와 2px 틈을 함께 둔다 */
+    --chart-pass:   #1f9466;
+    --chart-weak:   #c08a1e;
+    --chart-defect: #d4493f;
+    --chart-infra:  #8b6fd4;
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);

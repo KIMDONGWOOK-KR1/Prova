@@ -95,6 +95,10 @@ _FORBIDDEN_HEADER_RE = re.compile(
     r"안\s*되는|안\s*됨|안돼|금지|노출되지|없어야|보이지\s*않"
 )
 
+# 같은 입력을 몇 번 제출하는가 (Scenario.repeat). 값이 정수라 건수 열과 모양이 같아
+# 헤더로 가른다. 못 찾으면 건수로 읽히는 쪽이라, 표현을 넉넉히 받는다.
+_REPEAT_HEADER_RE = re.compile(r"횟수|회수|반복|attempts?|tries", re.IGNORECASE)
+
 # 입력-결과 예시 표의 기대 결과 열을 알아보는 헤더 패턴 (unread_example_tables).
 _EXPECT_HEADER_RE = re.compile(r"문구|메시지")
 
@@ -1122,6 +1126,14 @@ class ParsedDocument:
             # 로 다르게 쓰고, 그러면 표현을 하나 놓칠 때마다 검증이 조용히
             # 빠진다. 값의 모양은 표현에 흔들리지 않는다. 그리고 '노출돼야 하는
             # 문구' 열의 값("검색 결과 3건")은 정수가 아니므로 섞이지 않는다.
+            #
+            # 시도 횟수 열은 값도 정수라서 제목으로 먼저 뺀다. 건수로 읽으면 '목록에
+            # 5건이 나와야 한다' 는, 기획서에 없는 기대가 된다.
+            repeat_col = next(
+                (i for i in other_cols if _REPEAT_HEADER_RE.search(header[i])
+                 and _is_integer_column(table.rows[1:], i)), None
+            )
+            other_cols = [i for i in other_cols if i != repeat_col]
             count_col = next(
                 (i for i in other_cols if _is_integer_column(table.rows[1:], i)), None
             )
@@ -1158,6 +1170,8 @@ class ParsedDocument:
                         "expect_text": expect_text,
                         "expect_count": _cell_int(row, count_col),
                         "expect_absent": absent or None,
+                        # 한 번이면 칸을 두지 않는다 — 기본값(1)과 같고, 표 모양이 그대로다.
+                        **({"repeat": n} if (n := _cell_int(row, repeat_col) or 1) > 1 else {}),
                     })
             return scenarios
         return []

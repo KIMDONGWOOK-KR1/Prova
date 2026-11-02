@@ -75,7 +75,7 @@ def _load_config(path: Path) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
-def _make_llm(backend: str, cfg: dict, pdf: Path):
+def _make_llm(backend: str, cfg: dict, pdf: Path, cache_read: bool = True):
     """설정에 맞는 LLM 백엔드를 만든다 (규칙은 llm/factory.py 가 갖는다).
 
     CLI 는 경고를 노란색으로 찍는 일만 한다. 웹 UI 는 같은 경고를 화면에 띄운다.
@@ -83,7 +83,7 @@ def _make_llm(backend: str, cfg: dict, pdf: Path):
     from prova.llm.factory import BackendError, make_llm
 
     try:
-        client, warnings = make_llm(backend, cfg, pdf)
+        client, warnings = make_llm(backend, cfg, pdf, cache=True, cache_read=cache_read)
     except BackendError as exc:
         # BadParameter 로 올리면 typer 가 "Usage ... Invalid value" 상자를 띄워
         # 옵션을 잘못 친 것처럼 보인다. 서버가 꺼진 건 옵션 문제가 아니다.
@@ -179,6 +179,17 @@ def run(
         None, "--resume", metavar="RUN_DIR",
         help="--plan-only 로 저장한 계획을 이어 실행한다 (S3~S6, LLM 불필요). "
              "입력은 전부 계획에서 오고, 실행 조건(--vlm·--session 등)만 지금 받는다"),
+    project: str = typer.Option(
+        "", "--project", metavar="이름",
+        help="실행을 묶을 이름 (납품 건 등). 같은 프로젝트·같은 기획서의 실행을 차수로 "
+             "잇고 직전 실행과 비교한다 — 대상 주소가 바뀌어도 이어진다"),
+    no_cache: bool = typer.Option(
+        False, "--no-cache",
+        help="저장된 모델 응답을 쓰지 않고 새로 묻는다 (답은 다시 저장한다)"),
+    workers: Optional[int] = typer.Option(
+        None, "--workers", metavar="N",
+        help="동시에 돌릴 브라우저 수 (기본: 설정의 execution.workers = 1). 대상 서버를 "
+             "공유하므로 새 대상은 순차와 한 번 대조한 뒤 올린다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
@@ -186,6 +197,28 @@ def run(
         _fail(f"--backend {backend} 은 없는 백엔드입니다 (vllm | mock)")
     if engine not in ("pipeline", "graph"):
         _fail(f"--engine {engine} 은 없는 엔진입니다 (pipeline | graph)")
+    if workers is not None:
+        if workers < 1:
+            _fail("--workers 는 1 이상이어야 합니다.")
+        clash = [name for name, value in [
+            ("--session", session), ("--headed", headed), ("--slow", slow), ("--hold", hold),
+            ("--plan-only", plan_only), ("--engine graph", engine == "graph"),
+        ] if value]
+        if clash and workers > 1:
+            _fail(f"--workers 는 {', '.join(clash)} 과 함께 쓸 수 없습니다.")
+
+    def worker_count(cfg: dict) -> int:
+        from prova.pipeline import configured_workers
+
+        if workers is not None:
+            return workers
+        if session or headed or slow or hold:
+            return 1  # 사람이 지켜보는 실행이면 설정의 병렬 값을 쓰지 않는다
+        try:
+            return configured_workers(cfg)
+        except ValueError as exc:
+            _fail(str(exc))
+
     # --- 재개 경로. 입력(pdf·URL·케이스 선택)은 전부 plan.json 에서 온다 ---
     if resume is not None:
         # 계획 시점 인자를 다시 받으면 승인된 계획과 다른 것이 돌 수 있다.
@@ -194,7 +227,7 @@ def run(
             ("--pdf", pdf), ("--figma-json", figma_json), ("--url", url),
             ("--screen-url", screen_url), ("--request", request),
             ("--only", only), ("--backend", backend), ("--run-id", run_id),
-            ("--plan-only", plan_only), ("--runs-root", runs_root),
+            ("--plan-only", plan_only), ("--runs-root", runs_root), ("--no-cache", no_cache),
         ] if value]
         if given:
             _fail(
@@ -239,6 +272,8 @@ def run(
             record_video=video,
             hold_sec=hold,
             storage_state=str(session) if session else None,
+            project=project.strip(),
+            workers=worker_count(cfg),
             on_progress=lambda m: typer.echo(f"  {m}"),
         )
         _print_summary(report, run_dir)
@@ -251,7 +286,7 @@ def run(
             ("--vlm", vlm_url), ("--vlm-model", vlm_model),
             ("--vlm-coords", vlm_coords if vlm_coords != "norm1000" else None),
             ("--session", session), ("--headed", headed), ("--slow", slow),
-            ("--video", video), ("--hold", hold),
+            ("--video", video), ("--hold", hold), ("--project", project),
         ] if value]
         if given:
             _fail(
@@ -295,8 +330,8 @@ def run(
     # 모델 서버·대상 확인(수 초)보다 먼저 본다.
     if engine == "graph" and vlm_url:
         _fail("--vlm 은 pipeline 엔진에서만 동작합니다 (graph 는 결과 동일성 대조용).")
-    if engine == "graph" and (slow or video or only or hold or request):
-        _fail("--slow / --video / --only / --hold / --request 는 pipeline 엔진에서만 "
+    if engine == "graph" and (slow or video or only or hold or request or project):
+        _fail("--slow / --video / --only / --hold / --request / --project 는 pipeline 엔진에서만 "
               "동작합니다 (graph 는 결과 동일성 대조용).")
 
     cfg = _load_config(config)
@@ -329,7 +364,7 @@ def run(
     if figma_json and not pdf:
         llm = None  # figma 단독 경로는 LLM 을 부르지 않는다 — 추출이 결정적이다
     else:
-        llm = _make_llm(backend, cfg, pdf)
+        llm = _make_llm(backend, cfg, pdf, cache_read=not no_cache)
 
     if plan_only:
         from prova.pipeline import plan_pipeline
@@ -393,6 +428,8 @@ def run(
                 figma_json=str(figma_json) if figma_json else None,
                 screen_urls=screen_urls or None,
                 storage_state=str(session) if session else None,
+                project=project.strip(),
+                workers=worker_count(cfg),
                 on_progress=lambda m: typer.echo(f"  {m}"),
             )
         except LLMError as exc:

@@ -143,6 +143,12 @@ class Scenario(BaseModel):
     # 않았습니다' 도 함께 떠 있는 화면이 가능하고, 그 화면은 요구를 어긴다.
     # 있어야 할 것과 없어야 할 것은 다른 확인이므로 필드도 다르다.
     expect_absent: Optional[str] = None
+    # 같은 입력을 제출하는 횟수. '5회 연속 실패하면 잠금 안내' 처럼 값이 아니라 **누적**에
+    # 대한 요구가 있다. 표의 '시도 횟수' 열에서 코드가 옮긴다 — 모델에게 묻지 않는다.
+    #
+    # 실제 계정을 잠글 수 있는 동작이라 기획서에 적혀 있을 때만 만든다. 기획서는 예시
+    # 계정에 {고유} 를 써서 테스트 계정을 잠그지 않게 한다 (unique_token).
+    repeat: SkipJsonSchema[int] = 1
 
 
 class Precondition(BaseModel):

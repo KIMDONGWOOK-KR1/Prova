@@ -178,6 +178,7 @@ torch 를 끌고 오는데, 아무도 설치하지 않는 것을 프로젝트 �
 | `build_iou_dataset.py` | — 탐지 시험지를 굳힌다 (`fixtures/iou`) | 불필요 |
 | `eval_vlm_iou.py` | 화면 이미지에서 요소를 찾는 정확도 (IoU·적중·오탐·속도) | 필요 |
 | `eval_selector_speed.py` | 같은 시험지를 1차 경로로 — §9 의 selector vs VLM 비교 | 불필요 (SUT 만) |
+| `score_truth.py` | 실물 기획서 추출 정확도 — 사람이 옮겨 적은 정답표와 대조(놓친 것·추출에만 있는 것). 정답표는 저장소 밖에만 둔다 | 필요 |
 | `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
 | `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
 
@@ -269,6 +270,18 @@ uv run prova run --resume runs/two-model --vlm http://localhost:8001/v1 --vlm-mo
 경로 없이 재개하면 1 PASS / 9 FAIL, 실물 VL 로 재개하면 **9 PASS / 1 FAIL**
 (이미지로 찾아 진행 8건)이고, 남은 FAIL 1건은 심어 둔 라벨 결함 그대로다.
 리포트는 재개 실행에 LLM 이 없는데도 추출 백엔드를 7B 로 기록한다 (노트 23).
+
+납품 차수마다 같은 기획서를 돌릴 때는 `--project` 로 묶는다. 리포트가 몇 차인지와 직전
+실행 대비 새로 실패·해결된 케이스를 보여 주고, 진행 로그는 `runs/<id>/run.log` 에 남는다.
+대상 서버가 동시 접속에 안전하면 `--workers 4` 로 브라우저를 여럿 띄운다(판단 26 — 새
+대상은 순차와 한 번 대조한 뒤). 같은 기획서를 다시 돌리면 저장된 모델 응답을 쓰고(리포트가
+건수를 말한다), `--no-cache` 로 새로 묻는다.
+
+```powershell
+uv run prova run --pdf 기획서.pdf --url http://staging/... --project "A사 2차 납품" --workers 4
+uv run python scripts/score_truth.py --template D:/private/truth.yaml   # 기획서만 보고 채운다
+uv run python scripts/score_truth.py --pdf uploads/기획서.pdf --truth D:/private/truth.yaml
+```
 
 실제 로컬 LLM으로 돌리려면 [docs/cheetah-setup.md](docs/cheetah-setup.md)를 따라
 CHEETAH에 vLLM을 올리고 `--backend` 없이 실행한다.

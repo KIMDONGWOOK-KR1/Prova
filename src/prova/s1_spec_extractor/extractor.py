@@ -625,6 +625,10 @@ def _apply_declared_scenarios(
     if declared is None:
         return
 
+    # 시도 횟수는 비교에서 뺀다 — 모델에게 묻지 않는 칸이라 다를 수밖에 없고, 매번 뜨는
+    # 경고가 된다. 값은 표에서 그대로 옮긴다.
+    repeats = [d.get("repeat") or 1 for d in declared]
+
     # 비교는 필드를 갖춘 형태로 맞춰서 한다. 표에서 읽은 dict 에 expect_count 가
     # 없고 모델 쪽에는 None 이 있으면, 값이 같은데도 다르다고 판정되어 매 실행마다
     # 경고가 뜬다. 매번 뜨는 경고는 정작 중요한 경고를 묻는다.
@@ -644,7 +648,8 @@ def _apply_declared_scenarios(
          **{k: getattr(s, k) for k in keys if k != "given"}}
         for s in spec.scenarios
     ]
-    spec.scenarios = [Scenario.model_validate(item) for item in declared]
+    spec.scenarios = [Scenario.model_validate({**item, "repeat": n})
+                      for item, n in zip(declared, repeats)]
 
     if llm_scenarios != declared:
         spec.warnings.append(

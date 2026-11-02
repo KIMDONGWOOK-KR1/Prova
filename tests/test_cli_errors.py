@@ -30,7 +30,7 @@ def fresh_target(monkeypatch):
 
 
 def test_모델_서버가_꺼져_있으면_mock_을_권한다(tmp_path, monkeypatch):
-    def down(backend, cfg, pdf):
+    def down(backend, cfg, pdf, **_options):
         raise BackendError("vLLM 서버에 연결할 수 없습니다 (http://localhost:8000/v1)")
 
     monkeypatch.setattr("prova.llm.factory.make_llm", down)
