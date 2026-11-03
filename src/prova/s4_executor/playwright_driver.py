@@ -93,6 +93,10 @@ class ExecutionContext:
     heal_count: int = 0
     #: 2차 경로가 받아들일 최소 신뢰도 (설정에서 온다)
     min_confidence: float = MIN_CONFIDENCE
+    # 문서의 모든 화면. 2차 경로의 정체 대조에만 쓴다 — 좌표 아래 요소가 **다른 화면**의
+    # 요소로 확인돼도 누르지 않기 위해서다(2026-11-03, 저장 대화상자의 'Save' 로 검색 화면의
+    # 'Saved Searches' 를 눌렀다). 힌트는 specs 에서만 찾는다 — 라벨이 겹치면 자기 화면 것.
+    doc_specs: list[ScreenSpec] = field(default_factory=list)
 
     @property
     def spec(self) -> ScreenSpec:
@@ -295,13 +299,28 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
     else:
         # Radix·shadcn Select 처럼 눌러서 role=listbox 를 여는 드롭다운. 요즘 React 앱의
         # 기본 부품이다(WebTestBench 시범 앱 셋 모두, 네이티브 select 0개).
-        trigger = None
-        if locator.evaluate("el => el.tagName.toLowerCase()") != "select":
-            trigger = dropdown_trigger(locator)
+        tag = locator.evaluate("el => el.tagName.toLowerCase()")
+        if tag == "select":
+            locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
+            return
+        trigger = dropdown_trigger(locator)
         if trigger is not None:
             select_from_listbox(ctx.page, trigger, step.value or "", ctx.step_timeout_ms)
-        else:
+            return
+        try:
+            # <label> 이면 Playwright 가 연결된 <select> 로 옮겨 고른다 — 그 경로를 살린다.
             locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
+        except PlaywrightError as exc:
+            if "not a <select>" not in str(exc):
+                raise
+            # 기획서는 선택 목록인데 찾은 것은 목록이 아니다 — 체크박스 묶음의 제목 글자
+            # 같은 것(0037 'Species', 2026-11-03). Playwright 원문만 남기면 무엇이 다른지
+            # 읽히지 않는다.
+            role = locator.get_attribute("role")
+            shape = f"<{tag}>" + (f" role={role}" if role else "")
+            raise ListboxError(
+                f"{step.target!r} 로 찾은 요소는 선택 목록이 아닙니다 ({shape}) — 화면에서는 "
+                f"체크박스·버튼 묶음 등 다른 형태로 구현됐을 수 있습니다") from exc
 
 
 class UnsupportedHealAction(RuntimeError):
@@ -415,7 +434,8 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
                     name = target.labels[0].textContent || "";
                 if (!name && ["BUTTON", "A"].includes(target.tagName))
                     name = target.textContent || "";
-                return { ok: true, name: name.trim() };
+                const placeholder = target.getAttribute("placeholder") || "";
+                return { ok: true, name: name.trim(), placeholder: placeholder.trim() };
             }""",
             [x, y, selector],
         )
@@ -440,24 +460,31 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
     # 다른 요소 라벨과 일치할 때. 이름이 없거나 모르는 텍스트면 통과한다:
     # 라벨 없는 아이콘 버튼이 2차 경로의 존재 이유이므로, 모른다고 막으면
     # nolabel 화면에서 보정이 통째로 죽는다.
+    # 문서의 모든 화면을 본다. 이 케이스의 화면만 보면 다른 화면의 버튼('Saved Searches')을
+    # 모르는 텍스트로 여겨 통과시킨다(2026-11-03).
+    elements = [e for spec in [*ctx.specs, *ctx.doc_specs] for e in spec.elements
+                if e.label != location.target]
     name = loosen(hit["name"])
+    other = None
     if name and name != loosen(location.target):
-        other = next(
-            (e.label for spec in ctx.specs for e in spec.elements
-             if e.label != location.target and loosen(e.label) == name),
-            None,
+        other = next((e.label for e in elements if loosen(e.label) == name), None)
+    # 이름 없는 입력란은 안내 문구가 근거다. 기획서의 다른 요소가 적은 안내 문구와 같고
+    # 찾던 요소의 안내 문구는 아니면, 그 다른 요소다(검색창을 '저장 이름' 칸으로 받았다).
+    placeholder = loosen(hit.get("placeholder") or "")
+    own = ctx.hint_for(location.target)
+    if other is None and placeholder and not (
+            own is not None and own.placeholder and loosen(own.placeholder) == placeholder):
+        other = next((e.label for e in elements
+                      if e.placeholder and loosen(e.placeholder) == placeholder), None)
+    if other is not None:
+        why = (f"좌표({round(x)},{round(y)}) 아래 요소는 {other!r} — "
+               f"찾던 {location.target!r} 이 아니라 기획서의 다른 요소여서 누르지 않았습니다")
+        raise GroundingError(
+            location.target,
+            # detail 에도 싣는다 — reason 은 detail 을 '2차 경로:' 뒤에 붙인다. 전략 이름에만
+            # 있으면 리포트에는 '일치하는 요소가 없음' 만 남는다.
+            [Attempt(strategy=f"vlm-{why}", count=0, detail=why)],
         )
-        if other is not None:
-            raise GroundingError(
-                location.target,
-                [Attempt(
-                    strategy=(
-                        f"vlm-좌표({round(x)},{round(y)}) 아래 요소는 {other!r} — "
-                        f"찾던 {location.target!r} 이 아니라 기획서의 다른 요소입니다"
-                    ),
-                    count=0,
-                )],
-            )
 
 
 def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
@@ -475,7 +502,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
             # 보인다(2026-11-03, 0037 B 상세 화면 전부). 열지 않고 확인 불가로 멈춘다.
             status, error_code = "error", "unverifiable"
             error_detail = (f"경로 {step.target!r} 에 채울 값이 없어 열지 않았습니다 — "
-                            f"기획서 화면 표에 '예시 경로'(예: /pets/luna)를 적어 주세요")
+                            f"기획서 화면 표에 '예시 경로'(예: /items/123)를 적어 주세요")
         elif step.action == "navigate":
             url = _resolve_url(ctx, step.target)
             response = ctx.page.goto(url, timeout=ctx.navigation_timeout_ms,

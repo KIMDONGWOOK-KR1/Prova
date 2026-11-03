@@ -376,6 +376,7 @@ def run_cases(state: AgentState) -> AgentState:
             page=page,
             base_url=state.base_url,
             specs=_specs_for(state, case),
+            doc_specs=list(state.doc.screens),
             run_dir=state.run_dir,
             case_id=case.case_id,
             step_timeout_ms=state.step_timeout_ms,
