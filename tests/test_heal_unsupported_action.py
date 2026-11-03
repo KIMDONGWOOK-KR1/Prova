@@ -50,7 +50,7 @@ class TestUnsupported:
     def test_스텝_결과는_input_error_이고_사유가_지원하지_않음이다(self, page, tmp_path, monkeypatch):
         import prova.s4_executor.playwright_driver as drv
 
-        monkeypatch.setattr(drv, "_locate", lambda ctx, target, hint: VLM_LOC)
+        monkeypatch.setattr(drv, "_locate", lambda ctx, target, hint, ordinal=None: VLM_LOC)
         page.set_content("<div>x</div>")
         ctx = ExecutionContext(page=page, base_url="http://x", specs=[], run_dir=tmp_path,
                                case_id="c", screenshot_every_step=False)

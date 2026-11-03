@@ -46,6 +46,7 @@ from prova.s3_grounder.dom_locator import (
     ground,
     heal_with_vlm,
     dropdown_trigger,
+    is_template,
     resolve_locator,
     select_from_listbox,
 )
@@ -97,6 +98,10 @@ class ExecutionContext:
     # 요소로 확인돼도 누르지 않기 위해서다(2026-11-03, 저장 대화상자의 'Save' 로 검색 화면의
     # 'Saved Searches' 를 눌렀다). 힌트는 specs 에서만 찾는다 — 라벨이 겹치면 자기 화면 것.
     doc_specs: list[ScreenSpec] = field(default_factory=list)
+    # (action, 틀 라벨) -> 이 케이스에서 성공한 횟수. k번째 조작은 k번째 항목이다
+    # (dom_locator.ground 의 ordinal). 두 번 체크하는 비교 흐름이 같은 체크박스를 두 번 눌러
+    # 끄지 않게 한다. uncheck 는 따로 세어 첫 uncheck 가 첫 항목을 되돌린다.
+    template_uses: dict = field(default_factory=dict)
 
     @property
     def spec(self) -> ScreenSpec:
@@ -241,7 +246,8 @@ def _resolve_url(ctx: ExecutionContext, target: str) -> str:
     return ctx.base_url.rstrip("/") + "/" + target.lstrip("/")
 
 
-def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
+def _locate(ctx: ExecutionContext, target: str, hint,
+            ordinal: int | None = None) -> ElementLocation:
     """접근성 속성으로 찾고, 실패하면 화면 이미지로 찾는다.
 
     ## 보정을 여기서 하는 이유
@@ -254,7 +260,7 @@ def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
     따로 보여줄 수 있다.
     """
     try:
-        return ground(ctx.page, target, hint)
+        return ground(ctx.page, target, hint, ordinal)
     except GroundingError as first:
         if ctx.vlm is None or ctx.heal_count >= ctx.max_heal:
             raise
@@ -268,7 +274,7 @@ def _locate(ctx: ExecutionContext, target: str, hint) -> ElementLocation:
                         "화면 이미지로도 정할 수 없습니다"))]) from first
         try:
             location = heal_with_vlm(ctx.page, target, ctx.vlm, hint,
-                                     ctx.min_confidence)
+                                     ctx.min_confidence, ordinal)
         except GroundingError as second:
             # 1차 시도를 버리지 않는다. "후보 2개" 가 개발자가 고칠 사실인데,
             # 2차 예외만 던지면 그 진단이 "요소 없음" 으로 덮인다.
@@ -445,13 +451,18 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
         return
 
     if hit is None or not hit["ok"]:
+        why = f"좌표({round(x)},{round(y)})에 조작 가능한 요소가 없어 누르지 않았습니다"
         raise GroundingError(
             location.target,
+            # detail 에도 싣는다 — 전략 이름에만 있으면 리포트에는 '일치하는 요소가 없음' 만 남는다.
             [Attempt(strategy=f"vlm-좌표({round(x)},{round(y)})에 조작 가능한 요소 없음",
-                     count=0)],
+                     count=0, detail=why)],
         )
 
-    # 정체 대조 — 좌표 아래 요소가 기획서의 **다른** 요소로 확인되면 누르지
+    if location.nth is not None:
+        _require_nth_item(ctx, location, selector, x, y)
+
+    # 정체 대조 —좌표 아래 요소가 기획서의 **다른** 요소로 확인되면 누르지
     # 않는다. 실측 오탐 7/10(2026-08-22)의 모양이 정확히 이것이었다: VLM 이
     # 엉뚱한 요소의 좌표를 줘도 '조작 가능한 무언가' 이기만 하면 눌렀고, 그
     # 결과를 판정이 구현 결함으로 읽었다.
@@ -485,6 +496,60 @@ def _require_actionable(ctx: ExecutionContext, location: ElementLocation,
             # 있으면 리포트에는 '일치하는 요소가 없음' 만 남는다.
             [Attempt(strategy=f"vlm-{why}", count=0, detail=why)],
         )
+
+
+def _item_index(page, selector: str, x: float, y: float) -> tuple[int | None, bool]:
+    """좌표 아래 조작 요소가 반복되는 항목 중 몇 번째(0부터)인가 + 반복 항목 안에 있는가.
+
+    조작 요소에서 위로 올라가며, 같은 부모 아래에 **같은 모양의 형제**(같은 태그·class 이고
+    조작 요소를 품은 것)가 둘 이상인 첫 층을 항목 목록으로 본다. 끝까지 없으면 반복되지 않는
+    요소라 (0, False). 못 정하면 (None, False).
+    """
+    try:
+        got = page.evaluate(
+            """([x, y, sel]) => {
+                const el = document.elementFromPoint(x, y);
+                const t = el && el.closest(sel);
+                if (!t) return null;
+                for (let a = t; a.parentElement && a !== document.body; a = a.parentElement) {
+                    const items = [...a.parentElement.children].filter(s =>
+                        s.tagName === a.tagName && s.className === a.className &&
+                        (s.matches(sel) || s.querySelector(sel)));
+                    if (items.length >= 2) return [items.indexOf(a), true];
+                }
+                return [0, false];
+            }""",
+            [x, y, selector],
+        )
+    except Exception:
+        return None, False
+    return (got[0], got[1]) if got else (None, False)
+
+
+def _require_nth_item(ctx: ExecutionContext, location: ElementLocation, selector: str,
+                      x: float, y: float) -> None:
+    """틀 라벨의 k번째 항목을 찾으라 했는데 좌표가 다른 항목이면 누르지 않는다.
+
+    모델의 순서 세기를 믿지 않는다 — 이미 체크한 첫 카드를 또 가리키면, 누른 순간 그 체크가
+    꺼지고 비교 흐름의 판정이 근거를 잃는다. 몇 번째인지 못 정하면 막는다: 순번이 이 경로를
+    여는 조건이므로, 확인할 수 없으면 연 근거도 없다.
+    """
+    got, repeated = _item_index(ctx.page, selector, x, y)
+    # 모델이 자신 없다고 한 상자(heal_with_vlm 은 틀 라벨만 신뢰도로 거르지 않는다)는 반복
+    # 항목 안에 있을 때만 받는다 — 화면에 하나뿐인 체크박스('Remember me')를 0번째로 받지 않는다.
+    unsure = location.confidence < ctx.min_confidence
+    if got == location.nth and (repeated or not unsure):
+        return
+    if got is None:
+        where = "몇 번째 항목인지 정할 수 없어"
+    elif got == location.nth:
+        where = "반복되는 항목 안에 있지 않고 모델도 자신 없다고 해"
+    else:
+        where = f"{got + 1}번째 항목이어서"
+    why = (f"좌표({round(x)},{round(y)}) 아래 요소는 {where} 누르지 않았습니다 — "
+           f"찾던 것은 {location.nth + 1}번째 항목의 {location.target!r}")
+    raise GroundingError(location.target,
+                         [Attempt(strategy=f"vlm-{why}", count=0, detail=why)])
 
 
 def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
@@ -530,11 +595,15 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
 
         elif step.action in ("fill", "click", "select", "check", "uncheck"):
             hint = ctx.hint_for(step.target)
-            location = _locate(ctx, step.target, hint)
+            key = (step.action, step.target)
+            ordinal = ctx.template_uses.get(key, 0) if is_template(step.target) else None
+            location = _locate(ctx, step.target, hint, ordinal)
             if location.method == "vlm":
                 _act_by_coords(ctx, location, step)
             else:
                 _act_by_locator(ctx, location, hint, step)
+            if ordinal is not None:
+                ctx.template_uses[key] = ordinal + 1
 
         elif step.action == "assert":
             # 흐름의 중간 도착 확인. 여기서 끊기면 그 화면이 지목되고, 마지막

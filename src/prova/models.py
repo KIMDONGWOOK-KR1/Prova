@@ -597,6 +597,9 @@ class ElementLocation(BaseModel):
     # 기획서 라벨의 모양(토글·틀·괄호 설명)으로 찾았을 때 그 이름 패턴. 되살릴 때 쓴다
     # (dom_locator.label_variants). 정확한 라벨로 찾았으면 None.
     name_pattern: Optional[str] = None
+    # 틀 라벨('Select {Job title} for comparison')로 찾은 요소가 몇 번째 항목의 것인가
+    # (0부터). 틀 라벨이 아니면 None.
+    nth: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
