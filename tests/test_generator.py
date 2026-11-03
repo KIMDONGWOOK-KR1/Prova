@@ -698,6 +698,27 @@ class TestPlaceholderCase:
                     if c.expected.type == "placeholders_match")
         assert [s.action for s in case.steps] == ["navigate"]
 
+    def test_입력란이_아닌_요소의_안내_문구는_대조하지_않는다(self):
+        """2026-11-04 WebTestBench 0051 B: 기획서 '안내 문구' 열에 탭의 빈 상태 문구
+        ('No reviews yet.')·아이콘 버튼의 설명이 적혀 있었다. 탭에는 placeholder 가 없으니
+        화면 '' 와 대조해 '문구가 다름' 오탐이 났다. placeholder 는 입력란의 속성이다."""
+        spec = ScreenSpec(screen_id="d", screen_name="대시보드", url_path="/d", elements=[
+            UIElement(element_id="tab", type="select", label="My Reviews",
+                      placeholder="No reviews yet."),
+            UIElement(element_id="bar", type="button", label="Bar chart",
+                      placeholder="Rating Distribution"),
+            UIElement(element_id="q", type="input", label="Search", placeholder="Search..."),
+            UIElement(element_id="d", type="date", label="From", placeholder="YYYY-MM-DD"),
+        ])
+        case = next(c for c in generate_cases(spec) if c.expected.type == "placeholders_match")
+        assert case.expected.placeholders == {"Search": "Search...", "From": "YYYY-MM-DD"}
+
+    def test_입력란이_아닌_요소뿐이면_케이스도_없다(self):
+        spec = ScreenSpec(screen_id="d", screen_name="대시보드", url_path="/d", elements=[
+            UIElement(element_id="tab", type="select", label="My Reviews",
+                      placeholder="No reviews yet.")])
+        assert not any(c.expected.type == "placeholders_match" for c in generate_cases(spec))
+
     def test_안내_문구가_없으면_케이스도_없다(self):
         """기획서가 적지 않은 것을 확인한다고 하면 억측이 된다."""
         spec = minimal_spec()

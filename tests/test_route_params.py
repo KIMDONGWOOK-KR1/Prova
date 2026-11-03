@@ -172,6 +172,31 @@ class TestExecutionGuard:
         assert "예시 경로" in (result.error_detail or "")
         assert page.url == before  # 열지 않았다
 
+    def test_경로가_아닌_문장은_열지_않고_확인_불가다(self, page, tmp_path):
+        # 2026-11-04 0051 B: 공통 화면의 경로 칸이 '모든 서비스 경로에 공통 적용'. 그 문장을 주소로
+        # 열자 앱이 '없는 페이지' 를 그렸고, 헤더의 'Write Review' 가 없다는 오탐이 났다.
+        page.set_content("<p>start</p>")
+        before = page.url
+        ctx = ExecutionContext(page=page, base_url="http://127.0.0.1:1", specs=[],
+                               run_dir=tmp_path, case_id="c", screenshot_every_step=False)
+        result = execute_step(ctx, TestStep(seq=1, action="navigate",
+                                            target="모든 서비스 경로에 공통 적용"))
+        assert result.error_code == "unverifiable"
+        assert "경로" in (result.error_detail or "")
+        assert page.url == before
+
+    @pytest.mark.parametrize("target", ["/", "/books", "books", "/search?q=x", "http://h:1/a"])
+    def test_경로_모양이면_경로다(self, target):
+        # 'books' 처럼 앞 슬래시가 없는 상대 경로도 기준 주소에 붙여 연다(_resolve_url).
+        from prova.route_params import is_route
+        assert is_route(target)
+
+    @pytest.mark.parametrize("target", ["모든 서비스 경로에 공통 적용", "/a, /b",
+                                        "새 작성 /topics/new", "https://h/a b", ""])
+    def test_문장이나_여러_경로는_경로가_아니다(self, target):
+        from prova.route_params import is_route
+        assert not is_route(target)
+
     def test_판정도_확인_불가다(self):
         case = TestCase(case_id="c", screen_id="s", title="t", type="positive",
                         steps=[TestStep(seq=1, action="navigate", target="/pets/:petId")],
