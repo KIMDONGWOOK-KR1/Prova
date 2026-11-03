@@ -50,7 +50,7 @@ from prova.s3_grounder.dom_locator import (
     resolve_locator,
     select_from_listbox,
 )
-from prova.route_params import has_placeholder
+from prova.route_params import has_placeholder, is_route
 from prova.text_utils import contains_loose, loosen
 
 
@@ -568,6 +568,12 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
             status, error_code = "error", "unverifiable"
             error_detail = (f"경로 {step.target!r} 에 채울 값이 없어 열지 않았습니다 — "
                             f"기획서 화면 표에 '예시 경로'(예: /items/123)를 적어 주세요")
+        elif step.action == "navigate" and not is_route(step.target):
+            # 경로 칸에 문장·경로 여럿이 들어온 경우. 그대로 열면 '없는 페이지' 에서 요소를
+            # 찾고, 라벨이 없다는 오탐이 난다(2026-11-04, 0051 B 공통 화면).
+            status, error_code = "error", "unverifiable"
+            error_detail = (f"{step.target!r} 는 열 수 있는 주소 하나가 아니어서 열지 않았습니다 — "
+                            f"기획서 화면 표의 경로 칸에 경로 하나(예: /items/123)를 적어 주세요")
         elif step.action == "navigate":
             url = _resolve_url(ctx, step.target)
             response = ctx.page.goto(url, timeout=ctx.navigation_timeout_ms,

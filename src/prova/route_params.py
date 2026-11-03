@@ -27,6 +27,15 @@ def _segments(path: str) -> list[str]:
     return _path_part(path).strip("/").split("/")
 
 
+def is_route(target: str) -> bool:
+    """열 수 있는 주소 하나인가. 공백·쉼표가 들어 있으면 문장이거나 경로 여럿이다.
+
+    2026-11-04 0051 B: 공통 화면의 경로 칸이 '모든 서비스 경로에 공통 적용' 이었다. 그대로
+    열자 앱이 '없는 페이지' 를 그렸고, 헤더 버튼이 없다는 오탐이 났다.
+    """
+    return bool(target) and not re.search(r"[\s,]", target)
+
+
 def has_placeholder(path: str) -> bool:
     """경로에 값을 채워야 하는 조각이 있는가."""
     return any(_SEGMENT.match(seg) for seg in _segments(path))

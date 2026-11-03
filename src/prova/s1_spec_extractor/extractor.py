@@ -319,6 +319,77 @@ def _extraction_schema() -> dict:
 # 오류가 그대로 올라온다.
 S1_RETRY_MAX_TOKENS = 6144
 
+# 다시 부를 때 거는 문자열 길이 상한.
+#
+# 잘림의 원인이 '출력이 길어서' 가 아니라 **반복 루프**일 수 있다(2026-11-04, 0051 B
+# review_versions: constraints.pattern 에 `\b` 를 9000 토큰까지 썼다). constraints 는 자유
+# 딕셔너리라 길이 제한이 없다. 상한을 두면 vLLM 정형 출력이 그 자리에서 문자열을 닫게 하고,
+# 같은 화면이 973 토큰에 끝났다. 처음 호출에는 걸지 않는다 — 캐시 키가 바뀐다.
+#
+# 값: 문서 문구(성공 조건 문장 등)는 길어도 수백 자, 정규식·형식 값은 수십 자다. 상한에 딱
+# 걸린 값은 잘린 것으로 본다(_drop_capped).
+S1_STRING_CAP = 1000
+S1_CONSTRAINT_CAP = 200
+
+
+def _capped_schema(schema: dict) -> dict:
+    """모든 문자열 칸에 S1_STRING_CAP, 제약 딕셔너리의 문자열 값에 S1_CONSTRAINT_CAP."""
+    import copy
+
+    def walk(node):
+        if isinstance(node, dict):
+            for v in node.values():
+                walk(v)
+            if node.get("type") == "string" and "maxLength" not in node:
+                node["maxLength"] = S1_STRING_CAP
+            if node.get("title") == "Constraints" and node.get("type") == "object":
+                node["additionalProperties"] = {"anyOf": [
+                    {"type": "integer"}, {"type": "number"}, {"type": "boolean"},
+                    {"type": "string", "maxLength": S1_CONSTRAINT_CAP}]}
+        elif isinstance(node, list):
+            for v in node:
+                walk(v)
+
+    capped = copy.deepcopy(schema)
+    walk(capped)
+    return capped
+
+
+def _drop_capped(raw: dict) -> list[str]:
+    """상한에 딱 걸린 값을 처리한다. 제약은 버리고 경고 문장을, 다른 칸은 예외를 낸다.
+
+    잘린 정규식으로 위반 케이스를 만들면 올바른 구현을 FAIL 로 보고한다. 라벨·문구가 잘렸다면
+    무엇을 찾아야 하는지부터 틀리므로 고쳐 쓸 방법이 없다 — 실패를 그대로 올린다.
+    """
+    warnings: list[str] = []
+    for element in raw.get("elements") or []:
+        constraints = element.get("constraints") or {}
+        for key in [k for k, v in constraints.items()
+                    if isinstance(v, str) and len(v) >= S1_CONSTRAINT_CAP]:
+            del constraints[key]
+            warnings.append(
+                f"'{element.get('label')}' 의 제약 {key!r} 는 모델이 같은 글자를 반복하다 길이 상한"
+                f"({S1_CONSTRAINT_CAP}자)에서 잘려 버렸습니다. 이 제약의 위반 케이스는 만들지 "
+                f"않습니다.")
+
+    def long_string(node, path):
+        if isinstance(node, str):
+            return path if len(node) >= S1_STRING_CAP else None
+        items = node.items() if isinstance(node, dict) else enumerate(node) \
+            if isinstance(node, list) else ()
+        for k, v in items:
+            found = long_string(v, f"{path}.{k}")
+            if found:
+                return found
+        return None
+
+    where = long_string(raw, "")
+    if where:
+        raise LLMError(
+            f"모델 출력의 {where.lstrip('.')} 가 길이 상한({S1_STRING_CAP}자)에 걸렸습니다 — "
+            f"같은 글자를 반복하다 잘린 것으로 보여 이 화면을 읽지 않았습니다.")
+    return warnings
+
 
 def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3072) -> ScreenSpec:
     """추출된 문서 텍스트에서 ScreenSpec 을 만든다."""
@@ -339,19 +410,24 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
         ),
         schema=_extraction_schema(),
     )
+    capped_warnings: list[str] = []
     try:
         raw = llm.complete_json(**request, max_tokens=max_tokens)
     except OutputTruncated:
         if max_tokens >= S1_RETRY_MAX_TOKENS:
             raise
-        # 요소가 많은 화면. 한 번만 더 큰 한도로 부르고, 그래도 잘리면 그대로 올린다.
+        # 요소가 많은 화면이거나 반복 루프. 한 번만 더 큰 한도·문자열 상한으로 부르고,
+        # 그래도 잘리면 그대로 올린다.
+        request["schema"] = _capped_schema(request["schema"])
         raw = llm.complete_json(**request, max_tokens=S1_RETRY_MAX_TOKENS)
+        capped_warnings = _drop_capped(raw)
     spec = ScreenSpec.model_validate(raw)
     spec.source_kind = "document"  # LLM 이 무엇을 냈든 이 경로의 출처는 문서다
     spec.example_path = doc.declared_example_path()
     # 이 시점의 warnings 는 전부 모델이 쓴 것이다. 아래에서 코드가 붙이는 경고와
     # 섞이기 전에 출처를 단다.
     _label_model_warnings(spec, doc_text)
+    spec.warnings.extend(capped_warnings)
 
     _normalize_element_ids(spec)
     _backfill_declared_elements(spec, doc)

@@ -1093,6 +1093,10 @@ def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
     return cases
 
 
+#: placeholder 속성을 가질 수 있는 요소 유형.
+_PLACEHOLDER_TYPES = ("input", "date")
+
+
 def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
     """입력 안내 문구가 기획서와 같은지 확인하는 케이스. 화면당 한 건.
 
@@ -1112,7 +1116,11 @@ def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
     스텝은 navigate 하나뿐이다 — 안내 문구는 입력 전에 보이는 글자이므로 채우고
     제출할 이유가 없다. 오히려 값을 채우면 placeholder 가 가려진다.
     """
-    declared = {e.label: e.placeholder for e in spec.elements if e.placeholder}
+    # placeholder 는 입력란의 속성이다. 기획서의 '안내 문구' 열에 탭의 빈 상태 문구·아이콘
+    # 버튼 설명이 적히기도 하는데(2026-11-04 WebTestBench 0051 B), 그 요소에는 placeholder 가
+    # 없어 화면 '' 와 대조하면 '문구가 다름' 오탐이 난다.
+    declared = {e.label: e.placeholder for e in spec.elements
+                if e.placeholder and e.type in _PLACEHOLDER_TYPES}
     if not declared:
         return []
     return [TestCase(
