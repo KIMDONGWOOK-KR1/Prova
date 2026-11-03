@@ -169,3 +169,36 @@ class TestUnreadOptionsVerdict:
         assert v.verdict == "FAIL"
         assert v.failure_category == "unverifiable"
         assert "읽지 못했습니다" in v.failure_detail
+
+
+class TestNotADropdown:
+    """기획서는 선택 목록인데 화면은 다른 형태(체크박스 묶음 등)일 때, 사유가 그 사실을 말한다.
+
+    2026-11-03 0037 A: 'Species' 는 체크박스 묶음의 제목 <label> 이었다. Playwright 의 원문
+    `Element is not a <select> element` 만 남아, 읽는 사람이 무엇이 다른지 알 수 없었다.
+    """
+
+    def test_선택_목록이_아니라는_사실과_실제_모양을_말한다(self, page, tmp_path):
+        page.set_content('<label>Species</label>'
+                         '<button role="checkbox" aria-label="Dogs"></button>')
+        ctx = ExecutionContext(page=page, base_url="http://x", specs=[], run_dir=tmp_path,
+                               case_id="c", screenshot_every_step=False)
+        result = execute_step(ctx, TestStep(seq=1, action="select", target="Species",
+                                            value="Dogs"))
+        assert result.status == "error"
+        assert result.error_code == "input_error"
+        assert "선택 목록이 아닙니다" in (result.error_detail or "")
+        assert "<label>" in (result.error_detail or "")
+
+    def test_라벨_글자로_찾혀도_연결된_select_는_고른다(self, page, tmp_path):
+        # Playwright 는 <label> 에서 연결된 <select> 로 옮겨 고른다. 그 경로를 막지 않는다.
+        page.set_content('<label for="s">Species</label>'
+                         '<select id="s"><option>Dogs</option><option>Cats</option></select>')
+        ctx = ExecutionContext(page=page, base_url="http://x", specs=[], run_dir=tmp_path,
+                               case_id="c", screenshot_every_step=False)
+        from prova.models import ElementLocation
+        from prova.s4_executor.playwright_driver import _act_by_locator
+        loc = ElementLocation(target="Species", strategy="text", selector="text='Species'")
+        _act_by_locator(ctx, loc, None, TestStep(seq=1, action="select", target="Species",
+                                                 value="Cats"))
+        assert page.locator("#s").input_value() == "Cats"

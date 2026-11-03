@@ -105,3 +105,77 @@ class TestIdentityCheck:
         page.set_content(HTML.replace(' aria-label="로그인"', ""))
         x, y = _center(page, "button:has-text('들어가기')")
         _require_actionable(_ctx(page, tmp_path), _loc("검색"), _click("검색"), x, y)
+
+
+# 2026-11-03 WebTestBench(0094 B) 에서 2차 경로가 만든 오탐의 두 모양.
+#
+# 저장 대화상자 화면의 'Search name' 을 찾으랬더니 VLM 이 검색 화면의 검색창을, 'Save' 를
+# 찾으랬더니 상단의 'Saved Searches' 버튼을 줬다. 둘 다 눌렸고, 열린 다른 화면에 에러 문구가
+# 없자 판정은 '필수 검증이 구현되지 않았다' 고 보고했다 — 없는 결함이다.
+#   1) 'Saved Searches' 는 기획서에 있는 라벨이지만 **다른 화면**의 요소라 대조에 쓰이지 않았다.
+#   2) 검색창은 이름이 없고, 안내 문구가 기획서의 다른 요소 안내 문구와 똑같았다.
+
+DIALOG = ScreenSpec(
+    screen_id="save_search", screen_name="저장", url_path="/",
+    elements=[UIElement(element_id="name", type="input", label="Search name",
+                        placeholder="e.g., Remote Technology Jobs"),
+              UIElement(element_id="save", type="button", label="Save")],
+)
+SEARCH = ScreenSpec(
+    screen_id="job_search", screen_name="검색", url_path="/",
+    elements=[UIElement(element_id="query", type="input", label="Search jobs",
+                        placeholder="Search jobs, companies, or keywords..."),
+              UIElement(element_id="saved", type="button", label="Saved Searches")],
+)
+JOBS_HTML = """
+<button style="position:absolute;left:900px;top:40px;width:160px;height:40px">Saved Searches</button>
+<input placeholder="Search jobs, companies, or keywords..."
+       style="position:absolute;left:40px;top:300px;width:600px;height:40px">
+<input placeholder="Something else" id="other"
+       style="position:absolute;left:40px;top:400px;width:600px;height:40px">
+"""
+
+
+def _doc_ctx(page, tmp_path):
+    return ExecutionContext(page=page, base_url="http://x", specs=[DIALOG],
+                            run_dir=tmp_path, case_id="t", doc_specs=[DIALOG, SEARCH])
+
+
+class TestIdentityAcrossScreens:
+    def test_다른_화면의_라벨이어도_누르지_않는다(self, page, tmp_path):
+        page.set_content(JOBS_HTML)
+        x, y = _center(page, "button")
+        with pytest.raises(GroundingError) as exc:
+            _require_actionable(_doc_ctx(page, tmp_path), _loc("Save"), _click("Save"), x, y)
+        assert "Saved Searches" in exc.value.attempts[0].strategy
+
+    def test_안내_문구가_다른_요소의_것이면_입력하지_않는다(self, page, tmp_path):
+        page.set_content(JOBS_HTML)
+        x, y = _center(page, "input[placeholder^=Search]")
+        step = TestStep(seq=1, action="fill", target="Search name", value="")
+        with pytest.raises(GroundingError) as exc:
+            _require_actionable(_doc_ctx(page, tmp_path), _loc("Search name"), step, x, y)
+        assert "Search jobs" in exc.value.attempts[0].strategy
+
+    def test_이름도_안내_문구도_모르면_막지_않는다(self, page, tmp_path):
+        # 라벨 없는 입력란이 2차 경로의 존재 이유다 — 모른다고 막지 않는다.
+        page.set_content(JOBS_HTML)
+        x, y = _center(page, "#other")
+        step = TestStep(seq=1, action="fill", target="Search name", value="x")
+        _require_actionable(_doc_ctx(page, tmp_path), _loc("Search name"), step, x, y)
+
+    def test_자기_안내_문구면_막지_않는다(self, page, tmp_path):
+        page.set_content('<input placeholder="e.g., Remote Technology Jobs" '
+                         'style="position:absolute;left:40px;top:300px;width:600px;height:40px">')
+        x, y = _center(page, "input")
+        step = TestStep(seq=1, action="fill", target="Search name", value="x")
+        _require_actionable(_doc_ctx(page, tmp_path), _loc("Search name"), step, x, y)
+
+
+def test_막은_사유가_리포트_문장에_나온다(page, tmp_path):
+    # 사유가 전략 이름에만 있으면 리포트에는 '일치하는 요소가 없음' 만 남는다.
+    page.set_content(JOBS_HTML)
+    x, y = _center(page, "button")
+    with pytest.raises(GroundingError) as exc:
+        _require_actionable(_doc_ctx(page, tmp_path), _loc("Save"), _click("Save"), x, y)
+    assert "Saved Searches" in exc.value.reason

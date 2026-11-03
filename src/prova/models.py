@@ -594,6 +594,9 @@ class ElementLocation(BaseModel):
     confidence: float = 1.0
     healed: bool = False
     strategy: Optional[str] = None  # 어느 탐지 전략이 적중했는지 (평가용)
+    # 기획서 라벨의 모양(토글·틀·괄호 설명)으로 찾았을 때 그 이름 패턴. 되살릴 때 쓴다
+    # (dom_locator.label_variants). 정확한 라벨로 찾았으면 None.
+    name_pattern: Optional[str] = None
 
 
 # ---------------------------------------------------------------------------

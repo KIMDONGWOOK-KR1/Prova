@@ -131,6 +131,37 @@ def _role_name(target: str) -> "re.Pattern[str]":
     return re.compile(f"^{_ICON_OR_SPACE}{re.escape(target)}{_ICON_OR_SPACE}$")
 
 
+# 한국어 기획서가 영어 화면 이름 뒤에 붙인 설명: 'Sort pets (접근성 이름)'.
+# 괄호 안에 한글이 있을 때만 설명으로 본다 — 'Price (USD)'·'Topics (3)' 은 화면 글자다.
+_KO_NOTE = re.compile(r"\s*\([^()]*[가-힣][^()]*\)\s*$")
+# 항목마다 이름이 들어가는 틀: 'Remove {pet.name} from favorites'.
+_TEMPLATE_SLOT = re.compile(r"\{[^{}]+\}")
+# 상태에 따라 글자가 바뀌는 토글: 'Like / Liked'. 띄어쓴 슬래시만 — 'and/or' 는 이름이다.
+_TOGGLE_SEP = " / "
+
+
+def label_variants(target: str) -> list["re.Pattern[str]"]:
+    """기획서 라벨이 화면 이름의 '모양' 을 적었을 때, 화면 이름과 맞춰 볼 패턴들.
+
+    모양이 없는 라벨은 빈 목록이다. 패턴은 이름 전체와 맞아야 한다(앞뒤 아이콘 글자·공백만
+    허용) — 부분 일치로 넓히면 'Like' 가 'Like this review' 를 잡는다.
+
+    틀만으로 된 라벨('{pet.name}')은 아무 이름이나 맞으므로 만들지 않는다.
+    """
+    alts = target.split(_TOGGLE_SEP) if _TOGGLE_SEP in target else [target]
+    out: list[re.Pattern[str]] = []
+    for alt in (a.strip() for a in alts):
+        alt = _KO_NOTE.sub("", alt).strip()
+        parts = _TEMPLATE_SLOT.split(alt)
+        if alt == target and len(parts) == 1:
+            continue  # 모양이 없다 — 정확한 라벨 조회가 이미 본 것이다
+        if not "".join(parts).strip():
+            continue
+        body = r".+?".join(re.escape(p) for p in parts)
+        out.append(re.compile(f"^{_ICON_OR_SPACE}{body}{_ICON_OR_SPACE}$"))
+    return out
+
+
 # 버튼·링크에는 <label> 도 placeholder 도 없다. 그런데 label 전략을 먼저 돌리면
 # 같은 이름의 **다른 것**을 잡는다 — saucedemo 의 `<form aria-label="Login">` 이
 # 그랬다. 폼을 눌러도 제출은 안 되므로 필수·시나리오 케이스가 전부 '구현이
@@ -169,19 +200,30 @@ def _table_label_locator(page, target: str):
         f"xpath=//{cell}/following-sibling::*[self::td or self::th][1]//{field}")
 
 
-def _try_strategies(page, target: str, hint: UIElement | None):
+def _try_strategies(page, target: str, hint: UIElement | None,
+                    pattern: "re.Pattern[str] | None" = None):
     """전략을 순서대로 시도하고 (locator, strategy, attempts) 를 돌려준다.
 
     Playwright 의 get_by_* 는 호출 자체로는 DOM 을 건드리지 않는다(지연 평가).
     count() 를 부르는 시점에 조회가 일어난다.
+
+    pattern 이 있으면 target 글자 대신 그 패턴(label_variants)으로 이름을 맞춘다.
     """
     attempts: list[Attempt] = []
-    candidates = [
-        ("label", lambda: page.get_by_label(target, exact=True)),
-        ("placeholder", lambda: page.get_by_placeholder(target, exact=True)),
-        ("role", lambda: page.get_by_role(_role_for(hint), name=_role_name(target))),
-        ("text", lambda: page.get_by_text(target, exact=True)),
-    ]
+    if pattern is not None:
+        candidates = [
+            ("label", lambda: page.get_by_label(pattern)),
+            ("placeholder", lambda: page.get_by_placeholder(pattern)),
+            ("role", lambda: page.get_by_role(_role_for(hint), name=pattern)),
+            ("text", lambda: page.get_by_text(pattern)),
+        ]
+    else:
+        candidates = [
+            ("label", lambda: page.get_by_label(target, exact=True)),
+            ("placeholder", lambda: page.get_by_placeholder(target, exact=True)),
+            ("role", lambda: page.get_by_role(_role_for(hint), name=_role_name(target))),
+            ("text", lambda: page.get_by_text(target, exact=True)),
+        ]
 
     # 힌트로 placeholder 를 알고 있으면 그 값으로도 시도한다. 기획서가 라벨과
     # placeholder 를 따로 적어 둔 경우에 대응한다. 전략 이름을 'placeholder' 와
@@ -189,7 +231,7 @@ def _try_strategies(page, target: str, hint: UIElement | None):
     # 같은 이름으로 기록하면 resolve_locator 가 라벨로 다시 찾아 0개가 되고,
     # 탐지는 성공했는데 조작만 실패하는 — 구현 결함처럼 보이는 — 상태가 된다
     # (2026-08-22 까지 그랬다).
-    if hint and hint.placeholder:
+    if hint and hint.placeholder and pattern is None:
         candidates.insert(
             2, ("placeholder_hint",
                 lambda: page.get_by_placeholder(hint.placeholder, exact=True))
@@ -201,8 +243,9 @@ def _try_strategies(page, target: str, hint: UIElement | None):
         # 접근성 연결(label·placeholder)이 없을 때만 쓴다 — role 보다는 앞이다.
         # 입력란의 role 이름은 대개 비어 있고, text 전략은 입력란이 아니라 라벨 글자를
         # 잡는다(parabank 의 `<b>Username</b>`).
-        at = next(i for i, c in enumerate(candidates) if c[0] == "role")
-        candidates.insert(at, ("table_label", lambda: _table_label_locator(page, target)))
+        if pattern is None:
+            at = next(i for i, c in enumerate(candidates) if c[0] == "role")
+            candidates.insert(at, ("table_label", lambda: _table_label_locator(page, target)))
 
     for strategy, build in candidates:
         try:
@@ -227,7 +270,8 @@ def _try_strategies(page, target: str, hint: UIElement | None):
 
 #: 요소 자체를 정확한 이름으로 찾는 전략. text 는 빠진다 — 요소가 아니라 글자를
 #: 잡으므로(제목·라벨 글자), 여러 개여도 '같은 이름의 요소가 여럿' 이라는 뜻이 아니다.
-_ELEMENT_STRATEGIES = ("label", "placeholder", "placeholder_hint", "table_label", "role")
+_ELEMENT_STRATEGIES = ("label", "placeholder", "placeholder_hint", "table_label", "role",
+                       "label_shape")
 
 
 def ambiguous_count(attempts: list[Attempt]) -> int:
@@ -315,7 +359,8 @@ class SpecTypeMismatch(RuntimeError):
         )
 
 
-def _check_declared_role(page, target: str, hint: UIElement | None) -> None:
+def _check_declared_role(page, target: str, hint: UIElement | None,
+                         pattern: "re.Pattern[str] | None" = None) -> None:
     """기획서가 선언한 유형대로 구현됐는지 본다. 아니면 예외를 던진다.
 
     role 로 찾히면 통과다. 탐지 자체는 다른 전략(텍스트 일치 등)으로 성공할 수
@@ -329,7 +374,7 @@ def _check_declared_role(page, target: str, hint: UIElement | None) -> None:
         return
     role = _role_for(hint)
     try:
-        found = page.get_by_role(role, name=_role_name(target)).count()
+        found = page.get_by_role(role, name=pattern or _role_name(target)).count()
     except Exception:
         return
     if found == 0:
@@ -349,20 +394,36 @@ def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
         SpecTypeMismatch: 찾았지만 기획서가 적은 유형이 아니다 (기획-구현 불일치).
     """
     locator, strategy, attempts = _try_strategies(page, target, hint)
+    pattern = None
     if locator is None:
-        raise GroundingError(target, attempts)
+        # 라벨이 화면 이름의 모양을 적은 경우(토글·틀·괄호 설명). 정확한 라벨로 못 찾을
+        # 때만 본다 — 지금 찾히는 요소는 이 경로를 타지 않는다.
+        hits = []
+        for candidate in label_variants(target):
+            loc, strat, tried = _try_strategies(page, target, hint, candidate)
+            attempts.extend(tried)
+            if loc is not None:
+                hits.append((loc, strat, candidate))
+        if len(hits) != 1:
+            if len(hits) > 1:
+                # 토글의 두 이름이 동시에 보인다(카드가 여럿). 어느 것인지 모른다.
+                attempts.append(Attempt(strategy="label_shape", count=len(hits)))
+            raise GroundingError(target, attempts)
+        locator, strategy, pattern = hits[0]
 
     # 탐지 뒤에 본다. 먼저 보면 요소가 아예 없는 경우까지 '유형 불일치' 로
     # 보고하게 되는데, 그 둘은 개발자가 할 일이 다르다.
-    _check_declared_role(page, target, hint)
+    _check_declared_role(page, target, hint, pattern)
 
     return ElementLocation(
         target=target,
         method="selector",
-        selector=_describe(locator, strategy, _value_for(strategy, target, hint)),
+        selector=_describe(locator, strategy,
+                           pattern.pattern if pattern else _value_for(strategy, target, hint)),
         confidence=1.0,
         healed=False,
         strategy=strategy,
+        name_pattern=pattern.pattern if pattern else None,
     )
 
 
@@ -375,6 +436,17 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
     """
     strategy = location.strategy
     target = location.target
+    if location.name_pattern:
+        pattern = re.compile(location.name_pattern)
+        builders = {
+            "label": lambda: page.get_by_label(pattern),
+            "placeholder": lambda: page.get_by_placeholder(pattern),
+            "role": lambda: page.get_by_role(_role_for(hint), name=pattern),
+            "text": lambda: page.get_by_text(pattern),
+        }
+        if strategy in builders:
+            return builders[strategy]()
+        raise GroundingError(target, [Attempt(strategy=str(strategy), count=0)])
     if strategy == "label":
         return page.get_by_label(target, exact=True)
     if strategy == "placeholder":
@@ -1393,5 +1465,22 @@ def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[s
         except SpecTypeMismatch:
             result[label] = ""
         except GroundingError as exc:
-            result[label] = exc.reason
+            # 틀 라벨('Remove {pet.name}')은 항목마다 하나씩이라 여럿이 정상이다. 이 검사가
+            # 묻는 것은 '있는가' 이므로, 모양에 맞는 요소가 하나라도 있으면 있다.
+            result[label] = "" if _shape_present(page, label, by_label.get(label)) else exc.reason
     return result
+
+
+def _shape_present(page, target: str, hint: UIElement | None) -> bool:
+    """label_variants 중 하나라도 접근성 이름(라벨·role)으로 화면에 있는가.
+
+    글자(text) 일치는 넣지 않는다 — 이 검사는 라벨이 요소와 이어져 있는지를 본다.
+    """
+    for pattern in label_variants(target):
+        try:
+            if (page.get_by_label(pattern).count()
+                    or page.get_by_role(_role_for(hint), name=pattern).count()):
+                return True
+        except Exception:
+            continue
+    return False
