@@ -54,7 +54,8 @@
       "seed_rows": [],
       "date_filter": null,
       "status_filter": null,
-      "source_kind": "figma"
+      "source_kind": "figma",
+      "example_path": null
     },
     {
       "screen_id": "회원가입",
@@ -159,7 +160,8 @@
       "seed_rows": [],
       "date_filter": null,
       "status_filter": null,
-      "source_kind": "figma"
+      "source_kind": "figma",
+      "example_path": null
     }
   ],
   "flows": [

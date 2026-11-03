@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import json
 
-from prova.llm.base import LLMError
+from prova.llm.base import LLMError, OutputTruncated
 
 DEFAULT_BASE_URL = "http://localhost:8000/v1"
 # serve_vllm.sh 의 --served-model-name 과 같아야 한다 (health() 가 이름을 확인한다).
@@ -146,6 +146,13 @@ class VLLMClient:
             raise LLMError(f"vLLM 호출 실패: {exc}") from exc
 
         content = (resp.choices[0].message.content or "").strip()
+        if getattr(resp.choices[0], "finish_reason", None) == "length":
+            # 정형 출력이 걸려 있어도 한도에서 끊기면 JSON 이 닫히지 않는다. 아래의
+            # 'guided_json 미적용' 진단은 거짓이 된다 (2026-11-03, S1 3072 에서 잘림).
+            raise OutputTruncated(
+                f"모델 출력이 max_tokens({max_tokens})에서 잘렸습니다. 출력 한도를 올리거나 "
+                f"입력을 나눠야 합니다 (응답 {len(content)}자)."
+            )
         if not content:
             raise LLMError(
                 "vLLM 이 빈 응답을 반환했습니다. max_tokens 가 너무 작아 생성이 "

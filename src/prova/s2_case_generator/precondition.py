@@ -6,6 +6,7 @@
 from __future__ import annotations
 import re
 from typing import Optional
+from prova.route_params import entry_path
 from prova.models import (Expectation, Precondition, ScreenSpec,
                           SpecDocument, TestCase, TestStep)
 
@@ -140,6 +141,6 @@ def guard_case(
         screen_id=spec.screen_id,
         title="비로그인 접근 시 로그인 화면으로 이동하는지 확인",
         type="negative",
-        steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+        steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
         expected=Expectation(type="redirect", url_contains=login.url_path),
     )

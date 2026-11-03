@@ -31,6 +31,7 @@ from datetime import date, timedelta
 from typing import Optional
 
 from prova.llm.base import LLMClient, LLMError
+from prova.route_params import arrival_fragment, entry_path
 from prova.text_utils import find_quoted
 from prova.models import (
     Expectation,
@@ -184,7 +185,7 @@ def _steps_for_case(
 
     target 은 selector 가 아니라 라벨이다. 실제 요소로 바꾸는 일은 S3 가 한다.
     """
-    steps = [TestStep(seq=1, action="navigate", target=spec.url_path)]
+    steps = [TestStep(seq=1, action="navigate", target=entry_path(spec))]
     seq = 2
     for element in _fillable_inputs(spec):
         steps.append(_input_step(seq, element, values.get(element.element_id, "")))
@@ -497,7 +498,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             screen_id=spec.screen_id,
             title=f"{date_label} 이 최신순으로 정렬되는지 확인",
             type="positive",
-            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
             expected=Expectation(type="sorted_desc", order_target=date_label),
         ))
         seq += 1
@@ -527,7 +528,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             screen_id=spec.screen_id,
             title=f"{amount_label} 합이 {total_element.label} 과 일치하는지 확인",
             type="positive",
-            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
             expected=Expectation(
                 type="sum_matches",
                 sum_row_target=amount_label,
@@ -565,7 +566,7 @@ def _seed_row_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             screen_id=spec.screen_id,
             title=f"시드 {n}건이 모두 표시되는지 확인",
             type="positive",
-            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
             expected=Expectation(
                 type="result_count", count=n, count_target=collection.label,
             ),
@@ -638,7 +639,7 @@ def _filter_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
     in_rows = [r for d in dates if start <= d <= end for r in by_date[d]]
 
     def _steps(fills: list[tuple[str, str]]) -> list[TestStep]:
-        steps = [TestStep(seq=1, action="navigate", target=spec.url_path)]
+        steps = [TestStep(seq=1, action="navigate", target=entry_path(spec))]
         for i, (label, value) in enumerate(fills, start=2):
             steps.append(TestStep(seq=i, action="fill", target=label, value=value))
         steps.append(TestStep(seq=len(steps) + 1, action="click", target=f.submit_label))
@@ -777,7 +778,7 @@ def _status_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
 
     def steps(value: str) -> list[TestStep]:
         return [
-            TestStep(seq=1, action="navigate", target=spec.url_path),
+            TestStep(seq=1, action="navigate", target=entry_path(spec)),
             TestStep(seq=2, action="select", target=f.status_label, value=value),
             TestStep(seq=3, action="click", target=f.submit_label),
         ]
@@ -985,12 +986,12 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
                     seq=seq, action="assert",
                     target=f"{screen.screen_id} 도착",
                     expected=Expectation(type="redirect",
-                                         url_contains=screen.url_path),
+                                         url_contains=arrival_fragment(screen.url_path)),
                 ))
                 seq += 1
             else:
                 steps.append(TestStep(seq=seq, action="navigate",
-                                      target=screen.url_path))
+                                      target=entry_path(screen)))
                 seq += 1
 
         inputs = _fillable_inputs(screen)
@@ -1003,7 +1004,7 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
         values, _ = resolve_values(inputs, overrides=overrides)
 
         if i == 0:
-            steps.append(TestStep(seq=seq, action="navigate", target=screen.url_path))
+            steps.append(TestStep(seq=seq, action="navigate", target=entry_path(screen)))
             seq += 1
         for element in inputs:
             steps.append(_input_step(seq, element, values.get(element.element_id, "")))
@@ -1082,7 +1083,7 @@ def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             title=f"{element.label} 선택 목록이 기획서와 같은지 확인",
             type="positive",
             target_element=element.element_id,
-            steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+            steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
             expected=Expectation(
                 type="options_present",
                 options=list(element.options),
@@ -1119,7 +1120,7 @@ def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
         screen_id=spec.screen_id,
         title="입력 안내 문구가 기획서와 같은지 확인",
         type="positive",
-        steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+        steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
         expected=Expectation(type="placeholders_match", placeholders=declared),
     )]
 
@@ -1162,6 +1163,6 @@ def _label_case(spec: ScreenSpec) -> list[TestCase]:
         screen_id=spec.screen_id,
         title="기획서의 라벨로 요소를 찾을 수 있는지 확인",
         type="positive",
-        steps=[TestStep(seq=1, action="navigate", target=spec.url_path)],
+        steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
         expected=Expectation(type="labels_findable", labels=labels),
     )]

@@ -29,6 +29,14 @@ class LLMError(RuntimeError):
     """LLM 호출 실패. 재시도로 해결되지 않는 상태."""
 
 
+class OutputTruncated(LLMError):
+    """모델 출력이 max_tokens 에서 잘렸다 (finish_reason == "length").
+
+    JSON 파싱 실패와 가른다. 잘린 출력도 파싱에 실패하지만, 고칠 것은 서버 설정이 아니라
+    출력 한도다 — 같은 문구로 접으면 엉뚱한 곳을 보게 된다(2026-11-03).
+    """
+
+
 @runtime_checkable
 class LLMClient(Protocol):
     """스키마를 강제해 JSON 한 건을 생성하는 능력."""

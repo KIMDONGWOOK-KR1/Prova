@@ -360,6 +360,23 @@ class ParsedDocument:
                     meta.setdefault("url_path", value)
         return meta
 
+    def declared_example_path(self) -> Optional[str]:
+        """화면 개요 표의 '예시 경로'. 경로에 자리표시자가 있는 화면을 열 때 쓴다.
+
+        모델에게 맡기지 않고 코드가 읽는다. 모델 출력 스키마에 칸을 두면 캐시가 전부
+        빗나가고, 기획서에 없는 값을 지어낼 자리가 생긴다 (route_params 참고).
+        """
+        for table in self.all_tables:
+            if len(table.header) != 2:
+                continue
+            for row in table.rows[1:]:
+                if len(row) < 2:
+                    continue
+                key, value = normalize_ws(row[0]), row[1].strip().strip("`").strip()
+                if value and "예시" in key and ("경로" in key or "URL" in key.upper()):
+                    return value
+        return None
+
     def declared_sample_values(self) -> dict[str, str]:
         """예시 데이터 표에서 '라벨 -> 예시값' 을 읽는다. 라벨 -> 값 이다.
 
