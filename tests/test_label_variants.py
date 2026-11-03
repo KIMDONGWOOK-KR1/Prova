@@ -128,6 +128,36 @@ class TestFindable:
                          '<button>Remove Milo from favorites</button>')
         assert check_findable(page, [hint], [hint.label]) == {hint.label: ""}
 
+    def test_같은_이름이_여럿이어도_있다(self, page):
+        # 2026-11-04 WebTestBench 0051 B 대시보드: 'Saved' 탭과 리뷰 카드의 'Saved' 버튼이
+        # 같은 이름이라 '후보 여러 개' → '기획서와 다름' 이 났다. 탭은 화면에 있다.
+        hint = UIElement(element_id="saved", type="button", label="Saved")
+        page.set_content('<button>Saved</button><button>Saved</button>')
+        assert check_findable(page, [hint], [hint.label]) == {hint.label: ""}
+
+    def test_기획서와_다른_형태라도_같은_이름의_조작_요소가_있으면_있다(self, page):
+        # 실측(0051 B): 기획서는 'Saved' 를 선택 목록으로 적었고 앱은 탭이었다. 선택 목록으로는
+        # 0개, 라벨로는 숨은 탭 패널, 글자로는 3개 → '후보 여러 개' 로 '기획서와 다름'.
+        # 형태 차이는 조작 케이스가 따로 보고한다. 이 검사는 '그 이름의 요소가 있는가' 다.
+        hint = UIElement(element_id="saved", type="select", label="Saved")
+        page.set_content(
+            '<div role="tablist"><button role="tab" id="t1">My Reviews</button>'
+            '<button role="tab" id="t2">Saved</button></div>'
+            '<div role="tabpanel" aria-labelledby="t2" hidden>x</div>'
+            '<button>Saved</button><span>Saved</span>')
+        assert check_findable(page, [hint], [hint.label]) == {hint.label: ""}
+
+    def test_글자만_있고_조작_요소가_없으면_없다(self, page):
+        hint = UIElement(element_id="saved", type="select", label="Saved")
+        page.set_content('<h2>Saved</h2><p>Saved</p>')
+        assert check_findable(page, [hint], [hint.label])[hint.label] != ""
+
+    def test_같은_이름이_여럿이어도_조작은_고르지_않는다(self, page):
+        hint = UIElement(element_id="saved", type="button", label="Saved")
+        page.set_content('<button>Saved</button><button>Saved</button>')
+        with pytest.raises(GroundingError):
+            ground(page, hint.label, hint)
+
     def test_어느_모양으로도_없으면_없다(self, page):
         page.set_content('<button>Add</button>')
         result = check_findable(page, [BTN], [BTN.label])

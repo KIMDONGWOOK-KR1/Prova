@@ -1540,10 +1540,38 @@ def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[s
         except SpecTypeMismatch:
             result[label] = ""
         except GroundingError as exc:
-            # 틀 라벨('Remove {pet.name}')은 항목마다 하나씩이라 여럿이 정상이다. 이 검사가
-            # 묻는 것은 '있는가' 이므로, 모양에 맞는 요소가 하나라도 있으면 있다.
-            result[label] = "" if _shape_present(page, label, by_label.get(label)) else exc.reason
+            # 이 검사가 묻는 것은 '있는가' 다. 둘 다 '하나로 못 정함' 일 뿐 요소는 있다:
+            # - 틀 라벨('Remove {pet.name}')은 항목마다 하나씩이라 여럿이 정상이다.
+            # - 같은 이름의 요소가 여럿. 요소 전략이 둘 이상을 봤으면 있다 — 글자(text)만 여럿인
+            #   것은 아니다.
+            # - 기획서와 다른 형태로 구현된 같은 이름의 조작 요소(0051 B 대시보드: 기획서는 'Saved'
+            #   를 선택 목록으로, 앱은 탭으로, 2026-11-04). 형태 차이는 조작 케이스가 따로 보고한다.
+            # 조작 단계는 여전히 고르지 않는다(ground 가 예외를 낸다).
+            present = (ambiguous_count(exc.attempts) > 0
+                       or _shape_present(page, label, by_label.get(label))
+                       or _named_control_present(page, label))
+            result[label] = "" if present else exc.reason
     return result
+
+
+# 이름을 가진 조작 요소의 role. 라벨 확인에서 '그 이름의 요소가 있는가' 를 볼 때 쓴다.
+_NAMED_CONTROL_ROLES = ("button", "link", "tab", "checkbox", "radio", "switch", "menuitem",
+                        "option", "textbox", "combobox", "searchbox", "spinbutton", "slider")
+
+
+def _named_control_present(page, target: str) -> bool:
+    """접근성 이름이 target 과 정확히 같은 조작 요소가 하나라도 있는가 (role 은 묻지 않는다).
+
+    글자(text)·제목은 넣지 않는다 — 이 검사는 라벨이 **요소**의 이름인지를 본다.
+    """
+    name = _role_name(target)
+    for role in _NAMED_CONTROL_ROLES:
+        try:
+            if page.get_by_role(role, name=name).count():
+                return True
+        except Exception:
+            continue
+    return False
 
 
 def _shape_present(page, target: str, hint: UIElement | None) -> bool:
