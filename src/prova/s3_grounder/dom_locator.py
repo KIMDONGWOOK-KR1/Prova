@@ -162,6 +162,44 @@ def label_variants(target: str) -> list["re.Pattern[str]"]:
     return out
 
 
+def is_template(target: str) -> bool:
+    """항목마다 하나씩 있는 요소의 틀 라벨인가('Remove {pet.name} from favorites').
+
+    틀만으로 된 라벨('{pet.name}')은 아니다 — 아무 이름이나 맞으므로 label_variants 가
+    패턴을 만들지 않는다.
+    """
+    return bool(_TEMPLATE_SLOT.search(target)) and bool(label_variants(target))
+
+
+def _nth_of_template(page, target: str, hint: UIElement | None, ordinal: int):
+    """틀 라벨에 맞는 요소들 중 ordinal 번째(문서 순서)를 고른다.
+
+    (locator, strategy, pattern, attempts) 를 돌려준다. 요소 전략(label·placeholder·role)만
+    쓴다 — 글자(text)는 요소가 아니라 라벨 글자를 잡으므로 순서가 항목 순서라는 보장이 없다.
+    """
+    attempts: list[Attempt] = []
+    for pattern in label_variants(target):
+        builders = [
+            ("label", lambda p=pattern: page.get_by_label(p)),
+            ("placeholder", lambda p=pattern: page.get_by_placeholder(p)),
+            ("role", lambda p=pattern: page.get_by_role(_role_for(hint), name=p)),
+        ]
+        if hint and hint.type in _CLICKABLE_TYPES:
+            builders = [b for b in builders if b[0] == "role"]
+        for strategy, build in builders:
+            try:
+                locator = build()
+                count = locator.count()
+            except Exception:
+                continue
+            if count > ordinal:
+                picked = locator.nth(ordinal)
+                if picked.is_visible():
+                    return picked, strategy, pattern, attempts
+            attempts.append(Attempt(strategy=f"label_shape#{ordinal + 1}", count=count))
+    return None, None, None, attempts
+
+
 # 버튼·링크에는 <label> 도 placeholder 도 없다. 그런데 label 전략을 먼저 돌리면
 # 같은 이름의 **다른 것**을 잡는다 — saucedemo 의 `<form aria-label="Login">` 이
 # 그랬다. 폼을 눌러도 제출은 안 되므로 필수·시나리오 케이스가 전부 '구현이
@@ -381,13 +419,17 @@ def _check_declared_role(page, target: str, hint: UIElement | None,
         raise SpecTypeMismatch(target, hint.type, role)
 
 
-def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
+def ground(page, target: str, hint: UIElement | None = None,
+           ordinal: int | None = None) -> ElementLocation:
     """target 라벨에 해당하는 요소를 확정한다.
 
     Args:
         page: Playwright Page
         target: 기획서의 자연어 라벨 (예: "이메일", "로그인")
         hint: 해당 UIElement. type 으로 role 을 좁히고 placeholder 를 활용한다.
+        ordinal: 틀 라벨일 때 몇 번째 항목의 것인가(0부터) — 케이스 안에서 같은 틀 라벨을
+            몇 번째로 조작하는지다(S4 가 센다). 틀 라벨이 아니면 무시한다: 여럿이면 고르지
+            않는다는 계약은 그대로다.
 
     Raises:
         GroundingError: 확정 실패. 2차에서 self-heal 트리거가 된다.
@@ -395,7 +437,15 @@ def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
     """
     locator, strategy, attempts = _try_strategies(page, target, hint)
     pattern = None
-    if locator is None:
+    nth = None
+    if locator is None and ordinal is not None and is_template(target):
+        # 틀 라벨은 항목마다 하나씩이다 — 여럿이 정상이고, k번째 조작은 k번째 항목이다.
+        locator, strategy, pattern, tried = _nth_of_template(page, target, hint, ordinal)
+        attempts.extend(tried)
+        if locator is None:
+            raise GroundingError(target, attempts)
+        nth = ordinal
+    elif locator is None:
         # 라벨이 화면 이름의 모양을 적은 경우(토글·틀·괄호 설명). 정확한 라벨로 못 찾을
         # 때만 본다 — 지금 찾히는 요소는 이 경로를 타지 않는다.
         hits = []
@@ -424,6 +474,7 @@ def ground(page, target: str, hint: UIElement | None = None) -> ElementLocation:
         healed=False,
         strategy=strategy,
         name_pattern=pattern.pattern if pattern else None,
+        nth=nth,
     )
 
 
@@ -445,7 +496,8 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
             "text": lambda: page.get_by_text(pattern),
         }
         if strategy in builders:
-            return builders[strategy]()
+            found = builders[strategy]()
+            return found.nth(location.nth) if location.nth is not None else found
         raise GroundingError(target, [Attempt(strategy=str(strategy), count=0)])
     if strategy == "label":
         return page.get_by_label(target, exact=True)
@@ -1378,8 +1430,23 @@ VLM_HINTS = {
 }
 
 
+def _vlm_hint(target: str, hint: UIElement | None, ordinal: int | None) -> str:
+    """VLM 에 줄 좁히는 말. 틀 라벨이면 '항목마다 반복되는 요소의 몇 번째' 를 말한다.
+
+    중괄호가 든 글자를 그대로 주면 4B 모델은 화면에서 그 글자를 찾다가 신뢰도 0 을 낸다
+    (2026-11-03, 0094 B 비교 체크박스).
+    """
+    word = VLM_HINTS.get(hint.type, "") if hint else ""
+    if ordinal is None or not is_template(target):
+        return word
+    note = (f"목록의 항목마다 하나씩 있는 요소, 중괄호 자리는 항목의 이름 — "
+            f"위에서부터 {ordinal + 1}번째 항목의 것")
+    return f"{word}; {note}" if word else note
+
+
 def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None,
-                  min_confidence: float = MIN_CONFIDENCE) -> ElementLocation:
+                  min_confidence: float = MIN_CONFIDENCE,
+                  ordinal: int | None = None) -> ElementLocation:
     """화면 이미지로 요소의 위치를 찾는다. 실패하면 GroundingError 를 던진다.
 
     돌려주는 ElementLocation 은 selector 가 없고 bbox 만 있다. 조작은 좌표로 해야
@@ -1405,11 +1472,16 @@ def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None,
 
     try:
         found = vlm.locate(image_png=shot, target=target,
-                           hint=VLM_HINTS.get(hint.type, "") if hint else "")
+                           hint=_vlm_hint(target, hint, ordinal))
     except VLMError as exc:
         raise fail(f"도구 오류 — VL 서버 호출 실패 ({exc}); 구현 결함이 아닙니다") from exc
 
-    if found.confidence < min_confidence:
+    template = ordinal is not None and is_template(target)
+    # 틀 라벨은 신뢰도로 거르지 않는다. 실측(2026-11-03, 0094 비교 체크박스)에서 Qwen3.5-4B 는
+    # 같은 체크박스에 **맞는 상자**를 주면서 신뢰도를 0 과 0.95 사이로 오갔다. 관문은 S4 의
+    # DOM 확인이다 — 반복 항목 안의 n번째이고 조작 가능한 요소일 때만 누른다
+    # (playwright_driver._require_nth_item). 신뢰도가 낮으면 그 확인을 더 엄격히 한다.
+    if found.confidence < min_confidence and not template:
         raise fail(f"신뢰도 {found.confidence:.2f} < 문턱값 {min_confidence:.2f}")
     if not found.is_sane():
         raise fail(f"좌표 비정상 {tuple(round(v, 2) for v in found.bbox)}")
@@ -1422,6 +1494,9 @@ def heal_with_vlm(page, target: str, vlm, hint: UIElement | None = None,
         confidence=found.confidence,
         healed=True,
         strategy="vlm",
+        # 틀 라벨이면 몇 번째 항목을 찾으라 했는지 남긴다 — S4 가 누르기 전에 좌표 아래
+        # 요소가 정말 그 번째인지 확인한다(_require_actionable).
+        nth=ordinal if template else None,
     )
 
 
