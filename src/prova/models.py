@@ -258,6 +258,7 @@ class ScreenSpec(BaseModel):
     # 정적 대조(라벨·안내 문구·선택 항목)만 만든다. 근거 없이 만들면 구현이
     # 옳아도 FAIL 이 나는 오탐이 된다 (specs/2026-08-25).
     source_kind: Literal["document", "figma"] = "document"
+    example_path: SkipJsonSchema[Optional[str]] = None
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
         return next((e for e in self.elements if e.element_id == element_id), None)

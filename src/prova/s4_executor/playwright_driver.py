@@ -39,13 +39,17 @@ from prova.s3_grounder.dom_locator import (
     MIN_CONFIDENCE,
     Attempt,
     GroundingError,
+    ListboxError,
     SpecTypeMismatch,
     ambiguous_count,
     bbox_center,
     ground,
     heal_with_vlm,
+    dropdown_trigger,
     resolve_locator,
+    select_from_listbox,
 )
+from prova.route_params import has_placeholder
 from prova.text_utils import contains_loose, loosen
 
 
@@ -289,7 +293,15 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
         # 무엇을 확인했는지 나중에 알 수 없다.
         locator.uncheck(timeout=ctx.step_timeout_ms)
     else:
-        locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
+        # Radix·shadcn Select 처럼 눌러서 role=listbox 를 여는 드롭다운. 요즘 React 앱의
+        # 기본 부품이다(WebTestBench 시범 앱 셋 모두, 네이티브 select 0개).
+        trigger = None
+        if locator.evaluate("el => el.tagName.toLowerCase()") != "select":
+            trigger = dropdown_trigger(locator)
+        if trigger is not None:
+            select_from_listbox(ctx.page, trigger, step.value or "", ctx.step_timeout_ms)
+        else:
+            locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
 
 
 class UnsupportedHealAction(RuntimeError):
@@ -457,7 +469,14 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     http_status: int | None = None
 
     try:
-        if step.action == "navigate":
+        if step.action == "navigate" and has_placeholder(step.target):
+            # 채우지 못한 자리표시자('/pets/:petId'). 글자 그대로 열면 SPA 가 '없는 항목'
+            # 화면을 그리고, 이후 요소는 전부 '못 찾음' 이 된다 — 라벨이 틀린 것처럼
+            # 보인다(2026-11-03, 0037 B 상세 화면 전부). 열지 않고 확인 불가로 멈춘다.
+            status, error_code = "error", "unverifiable"
+            error_detail = (f"경로 {step.target!r} 에 채울 값이 없어 열지 않았습니다 — "
+                            f"기획서 화면 표에 '예시 경로'(예: /pets/luna)를 적어 주세요")
+        elif step.action == "navigate":
             url = _resolve_url(ctx, step.target)
             response = ctx.page.goto(url, timeout=ctx.navigation_timeout_ms,
                                      wait_until="domcontentloaded")
@@ -508,6 +527,10 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         status, error_code, error_detail = "error", "assertion_mismatch", exc.reason
     except GroundingError as exc:
         status, error_code, error_detail = "error", "element_not_found", exc.reason
+    except ListboxError as exc:
+        # 드롭다운은 찾았는데 고르지 못했다. 항목 누락이 결함인지는 선택 항목 확인
+        # 케이스가 판정한다 — 여기서는 조작 실패로만 남긴다.
+        status, error_code, error_detail = "error", "input_error", str(exc)
     except UnsupportedHealAction as exc:
         # 요소는 (2차 경로로) 찾았고 구현이 틀린 것도 아니다 — 도구가 이 동작을
         # 못 한다. input_error 로 두고 사유에 그 사실을 그대로 적는다.

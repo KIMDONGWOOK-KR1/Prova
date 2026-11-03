@@ -882,6 +882,10 @@ def _classify(case: TestCase, state: PageState) -> str:
             return "element_not_found"
         if counted.status == "absent" and counted.lookalikes:
             return "element_not_found"
+    if expected.type == "options_present" and state.options is None:
+        # 선택 항목을 읽지 못한 것은 확인하지 못한 것이다. 화면의 드롭다운이 도구가 모르는
+        # 모양이면(2026-11-03 Radix Select, 7건) '기획서와 다름' 으로 보고하는 오탐이 됐다.
+        return "unverifiable"
     if expected.type == "placeholders_match" and state.placeholders is not None:
         want = expected.placeholders or {}
         found = [label for label in want if label in state.placeholders]

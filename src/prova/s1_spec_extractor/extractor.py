@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from prova.llm.base import LLMClient, LLMError
+from prova.llm.base import LLMClient, LLMError, OutputTruncated
 from prova.models import (DateFilter, Flow, Precondition, Scenario, ScreenSpec,
                           SpecDocument, StatusFilter, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
@@ -309,6 +309,17 @@ def _extraction_schema() -> dict:
     return schema
 
 
+# 출력이 잘렸을 때 한 번 더 부를 한도.
+#
+# 처음부터 올리지 않는 이유: LLM 캐시 키에 한도가 들어 있어, 올리면 지금까지 잘 읽던
+# 화면의 캐시가 전부 빗나간다. 잘린 화면만 다시 부른다.
+#
+# 6144 인 이유: 서버 문맥 16384 에서 가장 긴 화면 입력(GPT 기획서 약 9,300 토큰,
+# 2026-11-03)과 합쳐 넘지 않는다. 문맥 8192 서버에서는 vLLM 이 요청을 거절하고, 그
+# 오류가 그대로 올라온다.
+S1_RETRY_MAX_TOKENS = 6144
+
+
 def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3072) -> ScreenSpec:
     """추출된 문서 텍스트에서 ScreenSpec 을 만든다."""
     doc_text = doc.to_llm_text()
@@ -317,7 +328,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
 
     declared_scenarios = doc.declared_scenarios()
 
-    raw = llm.complete_json(
+    request = dict(
         system=SYSTEM_PROMPT,
         user=build_user_prompt(
             doc_text,
@@ -327,10 +338,17 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
             declared_scenarios,
         ),
         schema=_extraction_schema(),
-        max_tokens=max_tokens,
     )
+    try:
+        raw = llm.complete_json(**request, max_tokens=max_tokens)
+    except OutputTruncated:
+        if max_tokens >= S1_RETRY_MAX_TOKENS:
+            raise
+        # 요소가 많은 화면. 한 번만 더 큰 한도로 부르고, 그래도 잘리면 그대로 올린다.
+        raw = llm.complete_json(**request, max_tokens=S1_RETRY_MAX_TOKENS)
     spec = ScreenSpec.model_validate(raw)
     spec.source_kind = "document"  # LLM 이 무엇을 냈든 이 경로의 출처는 문서다
+    spec.example_path = doc.declared_example_path()
     # 이 시점의 warnings 는 전부 모델이 쓴 것이다. 아래에서 코드가 붙이는 경고와
     # 섞이기 전에 출처를 단다.
     _label_model_warnings(spec, doc_text)

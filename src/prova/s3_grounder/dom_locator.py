@@ -1126,17 +1126,114 @@ def read_options(page, target: str, hint: UIElement | None = None) -> list[str] 
             role = _role_for(hint) if hint else "combobox"
             locator = page.get_by_role(role, name=_role_name(target))
             if locator.count() != 1:
-                return None
-        # <option> 은 네이티브 <select> 에만 있다. div 기반 커스텀 combobox 에서
-        # 같은 조회를 하면 예외 없이 빈 목록이 나와 '항목 0개' 로 보고된다 —
-        # 못 읽은 것을 구현 결함으로 말하는 것이므로, <select> 가 아니면 None.
+                # ARIA 에서 combobox 는 자기 글자를 이름으로 갖지 않는다. 라벨 없는
+                # 트리거('All Types')는 글자로만 찾힌다 — 아래에서 드롭다운 안의 글자일
+                # 때만 받아들인다.
+                locator = page.get_by_text(target, exact=True)
+                if locator.count() != 1:
+                    return None
+        # <option> 은 네이티브 <select> 에만 있다. 커스텀 combobox 에서 같은 조회를
+        # 하면 예외 없이 빈 목록이 나와 '항목 0개' 로 보고된다 — 못 읽은 것을 구현
+        # 결함으로 말하게 된다. 커스텀 드롭다운이면 목록을 열어 role=option 을 읽고,
+        # 드롭다운이 아니거나 목록이 안 뜨면 None 이다.
         tag = locator.evaluate("el => el.tagName.toLowerCase()")
         if tag != "select":
-            return None
+            trigger = dropdown_trigger(locator)
+            if trigger is None:
+                return None
+            listbox = open_listbox(page, trigger)
+            if listbox is None:
+                return None
+            try:
+                texts = listbox.get_by_role("option").all_inner_texts()
+            finally:
+                close_listbox(page, trigger)
+            return [normalize_ws(t) for t in texts]
         texts = locator.locator("option").all_text_contents()
     except Exception:
         return None
     return [t.strip() for t in texts]
+
+
+class ListboxError(RuntimeError):
+    """커스텀 드롭다운을 다루지 못했다. 목록이 안 열렸거나 고를 항목이 없다.
+
+    어느 쪽이든 구현 결함으로 단정하지 않는다 — 항목 누락은 선택 항목 확인 케이스가
+    따로 판정한다. 여기서 결함이라 하면 같은 사실을 두 번, 덜 정확하게 보고한다.
+    """
+
+
+_DROPDOWN = '[role="combobox"], [aria-haspopup="listbox"]'
+
+
+def dropdown_trigger(locator):
+    """찾은 요소가 커스텀 드롭다운(또는 그 안의 글자)이면 트리거의 ElementHandle. 아니면 None.
+
+    ## 왜 조상까지 보는가
+
+    라벨 없는 트리거는 글자로 찾히고, 그때 찾힌 것은 버튼이 아니라 안의 `<span>` 이다
+    (0094 필터 'All Types', 2026-11-03). 가장 가까운 드롭다운 조상으로 올라간다.
+
+    ## 왜 Locator 가 아니라 ElementHandle 인가
+
+    Radix 는 목록이 열린 동안 목록 밖에 aria-hidden 을 건다. role·라벨로 만든 Locator 는
+    조회할 때마다 다시 찾으므로, 열린 뒤에는 트리거를 못 찾고 시간 초과까지 기다린다.
+
+    드롭다운이 아닌 요소는 누르지 않는다 — 항목을 읽으려고 버튼·링크를 누르면 화면이 바뀐다.
+    """
+    handle = locator.element_handle()
+    trigger = handle.evaluate_handle(f"el => el.closest('{_DROPDOWN}')").as_element()
+    return trigger
+
+
+_LISTBOX_POLL_MS = 100
+
+
+def open_listbox(page, trigger, timeout_ms: int = 2000):
+    """커스텀 드롭다운(Radix·shadcn Select 등)을 눌러 열린 role=listbox 를 돌려준다.
+
+    ## 왜 트리거 안이 아니라 페이지에서 찾는가
+
+    Radix 는 목록을 트리거 밖, body 끝(portal)에 붙인다. 트리거의 aria-controls 가
+    가리키는 id 로 찾고, 없으면 화면에 열린 listbox 가 **하나뿐일 때만** 그것을 쓴다 —
+    둘 이상이면 어느 것이 이 트리거의 목록인지 추측해야 하므로 None.
+    """
+    if trigger.get_attribute("aria-expanded") != "true":
+        trigger.click(timeout=timeout_ms)
+    for _ in range(max(1, timeout_ms // _LISTBOX_POLL_MS)):
+        controls = trigger.get_attribute("aria-controls")
+        if controls:
+            box = page.locator(f'[id="{controls}"][role="listbox"]')
+            if box.count() == 1 and box.is_visible():
+                return box
+        boxes = page.locator('[role="listbox"]:visible')
+        if boxes.count() == 1:
+            return boxes.first
+        page.wait_for_timeout(_LISTBOX_POLL_MS)
+    close_listbox(page, trigger)
+    return None
+
+
+def close_listbox(page, trigger) -> None:
+    """열린 목록을 닫는다. 열어 둔 목록은 다음 스텝의 클릭을 가린다."""
+    try:
+        if trigger.get_attribute("aria-expanded") == "true":
+            page.keyboard.press("Escape")
+    except Exception:
+        pass
+
+
+def select_from_listbox(page, trigger, value: str, timeout_ms: int = 2000) -> None:
+    """커스텀 드롭다운에서 이름이 정확히 `value` 인 항목을 고른다. 못 고르면 ListboxError."""
+    listbox = open_listbox(page, trigger, timeout_ms)
+    if listbox is None:
+        raise ListboxError("드롭다운을 눌렀지만 선택 목록(role=listbox)이 열리지 않았습니다")
+    option = listbox.get_by_role("option", name=value, exact=True)
+    if option.count() != 1:
+        seen = [normalize_ws(t) for t in listbox.get_by_role("option").all_inner_texts()]
+        close_listbox(page, trigger)
+        raise ListboxError(f"선택 목록에서 {value!r} 항목을 찾지 못했습니다 (화면의 항목: {seen})")
+    option.click(timeout=timeout_ms)
 
 
 def read_placeholders(page, labels: list[str]) -> dict[str, str]:
