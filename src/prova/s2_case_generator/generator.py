@@ -957,6 +957,48 @@ def generate_flow_cases(doc: SpecDocument) -> list[TestCase]:
     return cases
 
 
+_DIRECT_WORDS = re.compile(r"직접|주소|URL|url|접속|진입")
+_ROUTE_IN_TEXT = re.compile(r"(?<![\w/])/[^\s,]*")
+
+# 흐름 이동 방법의 끝말이 이것이면 누를 이름이 아니라 일어나는 일·동작을 적은 것으로 본다.
+# 두 낱말 이상일 때만 — '검색' 하나는 버튼 이름일 수 있다.
+_EVENT_ENDINGS = ("성공", "실패", "완료", "수신", "재시작", "새로고침", "변경", "전환",
+                  "접속", "진입", "입력", "선택", "클릭", "검색")
+
+
+def via_phrase_reason(via: str) -> Optional[str]:
+    """흐름 이동 방법이 누를 이름이 아니라 문장으로 보이면 그 사유, 아니면 None.
+
+    2026-11-04 WebTestBench: GPT 기획서가 이동 방법 칸에 '검색 성공', '입력 후 저장 완료'
+    같은 것을 적었다. 버튼 이름으로 찾다가 VLM 까지 불러 '요소 못 찾음' 이 났다.
+    사유를 달아도 실행기는 먼저 그 이름을 화면에서 정확히 찾는다 — 진짜 버튼일 수 있다.
+    """
+    words = via.split()
+    if " 후 " in f" {via} ":
+        return "여러 동작을 한 문장으로 적은 것"
+    if len(words) >= 2 and words[-1] in _EVENT_ENDINGS:
+        return f"누를 요소의 이름이 아니라 일어나는 일('{words[-1]}')을 적은 것"
+    return None
+
+
+def _direct_entry_path(via: str, screen: ScreenSpec) -> Optional[str]:
+    """'/pets/luna 직접 접속' 처럼 주소로 들어간다는 이동 방법이면 열 경로.
+
+    적힌 경로가 다음 화면의 모양이면 그 경로, 아니면 다음 화면의 경로(entry_path).
+    경로가 없으면('조건 URL 직접 접속') None — 무엇을 열지 모른다.
+    """
+    if not _DIRECT_WORDS.search(via):
+        return None
+    found = _ROUTE_IN_TEXT.findall(via)
+    if len(found) != 1:
+        return None
+    path = found[0]
+    probe = screen.model_copy(update={"example_path": path})
+    if path == screen.url_path or entry_path(probe) == path:
+        return path
+    return entry_path(screen)
+
+
 def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
     steps: list[TestStep] = []
     seq = 1
@@ -975,8 +1017,14 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
             # 화면을 잇는 요소가 검증되지 않는다 — 도구가 스스로 주소를 치므로
             # 완료 화면의 링크가 엉뚱한 곳을 가리켜도 흐름은 통과한다.
             via = flow.via[i - 1] if i - 1 < len(flow.via) else ""
-            if via:
-                steps.append(TestStep(seq=seq, action="click", target=via))
+            direct = _direct_entry_path(via, screen) if via else None
+            if direct:
+                # '/pets/luna 직접 접속' — 기획서가 주소로 들어간다고 적었다. 누를 것이 없다.
+                steps.append(TestStep(seq=seq, action="navigate", target=direct))
+                seq += 1
+            elif via:
+                steps.append(TestStep(seq=seq, action="click", target=via,
+                                      via_phrase=via_phrase_reason(via)))
                 seq += 1
                 # 눌렀더니 정말 그 화면에 왔는지 본다. 링크가 엉뚱한 경로를
                 # 가리키면 여기서 걸린다. 문구가 아니라 경로만 보는 이유: 도착
@@ -1040,7 +1088,9 @@ def _flow_case(flow: Flow, screens: list[ScreenSpec]) -> TestCase:
     # 있어서 어느 한쪽으로 적으면 절반이 거짓이 된다. 전이가 하나뿐인 흐름의
     # 제목은 예전과 글자까지 같다.
     moves = [flow.via[i] if i < len(flow.via) else "" for i in range(len(screens) - 1)]
-    how = " → ".join(f"'{m}' 를 눌러 이동" if m else "주소로 이동" for m in moves)
+    how = " → ".join(
+        f"'{m}' 를 눌러 이동" if m and not _direct_entry_path(m, screens[i + 1])
+        else "주소로 이동" for i, m in enumerate(moves))
 
     return TestCase(
         case_id=f"flow-{_slug(flow.flow_id)}-001",

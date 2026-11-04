@@ -60,6 +60,90 @@ class TestEntryPath:
         assert entry_path(_spec("/pets/:petId")) == "/pets/:petId"
 
 
+class TestQueryPlaceholder:
+    """2026-11-04: 쿼리의 자리표시자(`/search?q={keyword}`)는 경로 조각만 보던 검사를 빠져나갔다.
+    글자 그대로 열면 '{keyword}' 로 검색한 화면에서 요소를 찾는다."""
+
+    @pytest.mark.parametrize("path", ["/search?q={keyword}", "/s?page=1&q=:term",
+                                      "/s?q=[term]"])
+    def test_쿼리_값_자리표시자를_알아본다(self, path):
+        assert has_placeholder(path)
+
+    @pytest.mark.parametrize("path", ["/search?q=dog", "/search?q=a:b", "/s?q={a}x"])
+    def test_보통_쿼리값은_아니다(self, path):
+        assert not has_placeholder(path)
+
+    def test_예시_경로로_채운다(self):
+        assert entry_path(_spec("/search?q={keyword}", "/search?q=dog")) == "/search?q=dog"
+
+    def test_예시가_없으면_그_쿼리만_빼고_연다(self):
+        # 2026-11-04 0051 A: '/dashboard?tab={tab}&period={period}' 처럼 필터용 선택 값이다.
+        # 열지 않으면 그 화면의 케이스 전부가 확인 불가가 된다(65건). 값을 빼면 기본 화면이다.
+        assert entry_path(_spec("/search?q={keyword}&type={type}")) == "/search"
+        assert entry_path(_spec("/s?q={keyword}&sort=new")) == "/s?sort=new"
+
+    def test_예시에_그_쿼리가_없으면_예시를_쓰지_않는다(self):
+        assert entry_path(_spec("/search?q={keyword}", "/search?x=1")) == "/search"
+
+    def test_경로_조각_자리표시자는_빼지_않는다(self):
+        assert entry_path(_spec("/topics/{id}?page={page}")) == "/topics/{id}?page={page}"
+
+    def test_도착_확인은_경로까지만_본다(self):
+        # '/search/' 를 찾으면 /search?q=dog 에 제대로 와도 '기획서와 다름' 이다.
+        assert arrival_fragment("/search?q={keyword}") == "/search"
+
+
+class TestSeveralPaths:
+    """2026-11-04 0051 B: 경로 칸에 '/reviews/new, /reviews/new?itemId={itemId}' 처럼 경로가
+    여럿이면 아예 열지 않았다. 모두 경로이면 자리표시자 없는 첫 경로로 연다."""
+
+    def test_깨끗한_첫_경로로_연다(self):
+        spec = _spec("/reviews/new, /reviews/new?itemId={itemId}")
+        assert entry_path(spec) == "/reviews/new"
+
+    def test_자리표시자_없는_경로를_먼저_고른다(self):
+        assert entry_path(_spec("/items/:id, /items")) == "/items"
+
+    def test_모두_자리표시자면_예시가_맞는_것으로(self):
+        assert entry_path(_spec("/a/:id, /b/:id", "/b/7")) == "/b/7"
+
+    def test_모두_자리표시자이고_예시가_없으면_열지_못하는_값이다(self):
+        from prova.route_params import is_route
+        target = entry_path(_spec("/a/:id, /b/:id"))
+        assert has_placeholder(target) or not is_route(target)
+
+    def test_세미콜론_뒤는_설명이다(self):
+        # 0094 A: '/jobs; 예: /jobs?type=full-time&city=...' 를 통째로 열지 않아 30건이 확인 불가.
+        assert entry_path(_spec("/jobs; 예: /jobs?type=full-time&page=1")) == "/jobs"
+        assert entry_path(_spec("/jobs/compare?ids=j101,j104; 2~4 개 ID 를 쉼표 구분")) \
+            == "/jobs/compare?ids=j101,j104"
+
+    def test_및_도_경로를_나눈다(self):
+        assert entry_path(_spec("/ 및 /?type={type}&page={page}")) == "/"
+
+    def test_등호_주변_공백을_지운다(self):
+        # S1 이 옮기며 넣은 공백('chart ={chart}', '& page=').
+        assert entry_path(_spec("/dashboard?tab={tab}&chart ={chart}& page= {page}")) \
+            == "/dashboard"
+
+    def test_세미콜론_앞이_문장이면_그대로다(self):
+        url = "마지막 성공한 검색 URL 뒤 #save-search; 예: /jobs?type=a"
+        assert entry_path(_spec(url)) == url
+
+    @pytest.mark.parametrize("url_path", ["모든 서비스 경로에 공통 적용",
+                                          "새 작성 /topics/new, 수정 /topics/1/edit"])
+    def test_문장은_그대로_둔다(self, url_path):
+        # 문장 안의 경로를 골라 열면 기획서가 그 화면이라고 하지 않은 곳일 수 있다.
+        assert entry_path(_spec(url_path)) == url_path
+
+    def test_도착_확인은_모든_경로에_맞는_앞부분이다(self):
+        frag = arrival_fragment("/reviews/new, /reviews/new?itemId={itemId}")
+        assert frag == "/reviews/new"
+        frag = arrival_fragment("/items, /search?q={keyword}")
+        for url in ("/items", "/search?q=dog"):
+            assert frag in url
+
+
 class TestArrivalFragment:
     """흐름의 도착 확인은 주소에 이 글자가 들어 있는지 본다."""
 
@@ -185,17 +269,28 @@ class TestExecutionGuard:
         assert "경로" in (result.error_detail or "")
         assert page.url == before
 
-    @pytest.mark.parametrize("target", ["/", "/books", "books", "/search?q=x", "http://h:1/a"])
+    @pytest.mark.parametrize("target", ["/", "/books", "books", "/search?q=x", "http://h:1/a",
+                                        "/compare?ids=a,b"])
     def test_경로_모양이면_경로다(self, target):
         # 'books' 처럼 앞 슬래시가 없는 상대 경로도 기준 주소에 붙여 연다(_resolve_url).
         from prova.route_params import is_route
         assert is_route(target)
 
-    @pytest.mark.parametrize("target", ["모든 서비스 경로에 공통 적용", "/a, /b",
+    @pytest.mark.parametrize("target", ["모든 서비스 경로에 공통 적용", "/a, /b", "/a,/b",
                                         "새 작성 /topics/new", "https://h/a b", ""])
     def test_문장이나_여러_경로는_경로가_아니다(self, target):
         from prova.route_params import is_route
         assert not is_route(target)
+
+    def test_쿼리_자리표시자도_열지_않는다(self, page, tmp_path):
+        page.set_content("<p>start</p>")
+        before = page.url
+        ctx = ExecutionContext(page=page, base_url="http://127.0.0.1:1", specs=[],
+                               run_dir=tmp_path, case_id="c", screenshot_every_step=False)
+        result = execute_step(ctx, TestStep(seq=1, action="navigate",
+                                            target="/search?q={keyword}"))
+        assert result.error_code == "unverifiable"
+        assert page.url == before
 
     def test_판정도_확인_불가다(self):
         case = TestCase(case_id="c", screen_id="s", title="t", type="positive",
