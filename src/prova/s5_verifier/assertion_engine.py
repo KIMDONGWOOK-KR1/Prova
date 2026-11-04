@@ -685,10 +685,14 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
 
     # 404 를 받았지만 앱이 화면을 그려 계속한 스텝 (SPA 호스팅, playwright_driver 참고).
     # 응답 코드로는 정상 경로와 없는 경로를 못 가르므로, 그 뒤의 결과로 가른다.
-    soft404 = next((r for r in step_results if r.http_status == 404 and r.status == "ok"),
-                   None)
-    note404 = (f" (스텝 {soft404.seq} 의 '{soft404.target}' 은 HTTP 404 였지만 화면이 떠서 "
-               f"계속했습니다)") if soft404 else ""
+    soft404 = next((r for r in step_results
+                    if (r.http_status == 404 or r.not_found_page) and r.status == "ok"), None)
+    if soft404 is not None and soft404.not_found_page:
+        note404 = (f" (스텝 {soft404.seq} 의 '{soft404.target}' 에서 앱이 '페이지 없음' 화면을 "
+                   f"그렸습니다 — 기획서의 경로가 앱에 없을 수 있습니다)")
+    else:
+        note404 = (f" (스텝 {soft404.seq} 의 '{soft404.target}' 은 HTTP 404 였지만 화면이 떠서 "
+                   f"계속했습니다)") if soft404 else ""
 
     failed_step = next((r for r in step_results if r.status == "error"), None)
     if failed_step is not None:
@@ -760,13 +764,17 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         }
 
     if soft404 is not None:
-        evidence["http_status"] = 404
+        if soft404.not_found_page:
+            evidence["not_found_page"] = True
+        else:
+            evidence["http_status"] = 404
+        where404 = "'페이지 없음' 화면" if soft404.not_found_page else "HTTP 404 를 받은 화면"
         # '에러 없음'·'문구 없음' 은 망가진 경로에서도 참이다 — 빈 통과로 두지 않는다.
         if passed and (reason == WEAK_PASS_REASON or case.expected.type == "text_absent"):
             return Verdict(
                 **base, verdict="FAIL", failure_category="page_error",
                 failure_detail=(
-                    f"HTTP 404 를 받은 화면에서 '{reason}' 만 확인했습니다 — 화면이 제대로 "
+                    f"{where404}에서 '{reason}' 만 확인했습니다 — 화면이 제대로 "
                     f"떴는지 알 수 없습니다{note404}"),
                 evidence=evidence,
             )

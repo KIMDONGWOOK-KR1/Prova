@@ -26,6 +26,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -559,6 +560,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     status = "ok"
     error_code = error_detail = None
     http_status: int | None = None
+    not_found_page = False
 
     try:
         if step.action == "navigate" and has_placeholder(step.target):
@@ -595,9 +597,28 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
                 error_detail = f"HTTP {http_status} — {url}"
                 if http_status == 404:
                     error_detail += " (본문이 비어 있습니다)"
+            elif _is_html(response) and _renders_text(ctx.page):
+                # 200 인데 앱이 '페이지 없음' 을 그렸다(2026-11-04, 0051 B /reviews/new).
+                # 서버 404 와 같은 길로 보낸다 — 계속하고, 그 뒤의 실패를 페이지 오류로 본다.
+                not_found_page = looks_not_found(_visible_text(ctx.page))
 
         elif step.action == "wait":
             ctx.page.wait_for_timeout(int(step.value or 500))
+
+        elif step.action == "click" and step.via_phrase:
+            # 흐름의 이동 방법이 문장('검색 성공')으로 보인다. 그 이름의 요소가 화면에 정확히
+            # 있으면 누르고, 없으면 VLM 을 부르지 않는다 — 문장과 비슷한 버튼을 골라 누르면
+            # 그 뒤의 판정이 엉뚱한 화면의 것이 된다(2026-11-04, 0094 B 흐름 9건).
+            hint = ctx.hint_for(step.target)
+            try:
+                location = ground(ctx.page, step.target, hint)
+            except GroundingError:
+                status, error_code = "error", "unverifiable"
+                error_detail = (f"흐름의 이동 방법 {step.target!r} 는 {step.via_phrase}으로 보이고 "
+                                f"화면에 그 이름의 요소도 없어 누르지 않았습니다 — 기획서 흐름 표의 "
+                                f"이동 방법 칸에 누를 버튼·링크 이름이나 '주소로 /경로' 를 적어 주세요")
+            else:
+                _act_by_locator(ctx, location, hint, step)
 
         elif step.action in ("fill", "click", "select", "check", "uncheck"):
             hint = ctx.hint_for(step.target)
@@ -654,7 +675,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         status=status, elapsed_ms=elapsed_ms,
         screenshot=shot, dom_snapshot=dom,
         error_code=error_code, error_detail=error_detail,
-        location=location, http_status=http_status,
+        location=location, http_status=http_status, not_found_page=not_found_page,
     )
 
 
@@ -664,7 +685,26 @@ _SPA_RENDER_WAIT_MS = 2000
 
 
 def _is_html(response) -> bool:
-    return "html" in (response.headers.get("content-type") or "").lower()
+    return response is not None and "html" in (response.headers.get("content-type") or "").lower()
+
+
+# '페이지 없음' 화면은 짧다. 긴 화면의 '404' 는 본문 일부(주문 번호·안내)일 수 있다.
+_NOT_FOUND_MAX_CHARS = 400
+_NOT_FOUND_WORDS = re.compile(r"not\s*found|찾을 수 없|존재하지 않", re.I)
+
+
+def looks_not_found(text: str) -> bool:
+    """앱이 그린 '페이지 없음' 화면인가 — 짧고, '404' 와 '없음' 말이 함께 있다."""
+    text = " ".join((text or "").split())
+    return (len(text) <= _NOT_FOUND_MAX_CHARS and bool(re.search(r"\b404\b", text))
+            and bool(_NOT_FOUND_WORDS.search(text)))
+
+
+def _visible_text(page: Page) -> str:
+    try:
+        return page.inner_text("body", timeout=1000)
+    except PlaywrightError:
+        return ""
 
 
 def _renders_text(page: Page) -> bool:

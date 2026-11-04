@@ -450,6 +450,9 @@ class TestStep(BaseModel):
     target: str = ""
     value: Optional[str] = None
     expected: Optional[Expectation] = None
+    # 흐름의 이동 방법이 누를 이름이 아니라 일어나는 일('검색 성공')처럼 보일 때 그 사유.
+    # 실행기는 그 이름을 화면에서 정확히 찾을 때만 누르고, 없으면 VLM 없이 확인 불가로 멈춘다.
+    via_phrase: Optional[str] = None
 
 
 class TestCase(BaseModel):
@@ -625,6 +628,8 @@ class StepResult(BaseModel):
     # navigate 가 받은 HTTP 상태. 404 인데 앱이 화면을 그려 계속한 경우(SPA)에 판정이
     # 그 사실을 근거로 쓴다 (playwright_driver.execute_step·assertion_engine.verify).
     http_status: Optional[int] = None
+    # navigate 가 200 을 받았는데 앱이 '페이지 없음' 화면을 그렸다. 판정은 404 와 같이 다룬다.
+    not_found_page: bool = False
 
 
 # ---------------------------------------------------------------------------
