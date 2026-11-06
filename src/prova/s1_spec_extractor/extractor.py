@@ -553,6 +553,38 @@ def _backfill_figure_menu(spec: ScreenSpec, figure_text: str) -> None:
                              + ", ".join(repr(n) for n in added))
 
 
+# 파일 칸 옆 고르기 버튼의 이름. 그림 속 다른 글자(안내 문구·작성자 메모)와 가르려고
+# 이름 목록으로 좁힌다.
+_FILE_PICKER = re.compile(r"^(?:찾아보기|파일\s*(?:선택|찾기|첨부)|업로드|첨부하기|browse|choose file)$",
+                          re.IGNORECASE)
+
+
+def _attach_file_picker(spec: ScreenSpec, figure_text: str) -> None:
+    """그림에서 파일 칸과 같은 줄에 있는 고르기 버튼 이름을 파일 칸에 붙인다.
+
+    모델은 '파일첨부 | … | 찾아보기' 줄에서 칸만 뽑고 버튼은 뽑지 않았다. 안내 단락으로
+    버튼을 뽑게 하자 이번엔 칸을 잃었다(2026-11-07 실물). 화면은 그 버튼을 다른 이름으로
+    달아 차이 하나를 못 잡았다.
+    """
+    from prova.s2_case_generator.rule_expander import is_file_field
+
+    rows = [[n.strip() for n in line.split(" | ") if n.strip()]
+            for line in figure_text.split("\n")]
+    for e in spec.elements:
+        if not e.label or not is_file_field(e):
+            continue
+        key = _FIGURE_NOISE.sub("", e.label).lower()
+        for row in rows:
+            if not any(_FIGURE_NOISE.sub("", n).lower() == key for n in row):
+                continue
+            # 칸 이름 자신('파일 첨부')은 버튼이 아니다
+            pickers = [n for n in row if _FILE_PICKER.match(n)
+                       and _FIGURE_NOISE.sub("", n).lower() != key]
+            if len(pickers) == 1:
+                e.picker_label = pickers[0]
+                break
+
+
 def page_screen_id(page_name: str) -> str:
     """페이지명으로 만든 화면 ID. case_id 접두사이자 스크린샷 파일 이름에 들어가므로
     글자·숫자(한글 포함) 밖의 문자는 '_' 로 바꾼다. 같은 페이지명은 split_screens 가
@@ -622,6 +654,7 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
         if figure is not None:
             _check_against_figure(spec, figure)
             _backfill_figure_menu(spec, figure)
+            _attach_file_picker(spec, figure)
         if spec.url_path and not _path_declared(doc_text, spec.url_path):
             # 이 꼴의 기획서는 경로를 적지 않는다. 모델이 지은 '/support' 로 열면 없는
             # 페이지라 멀쩡한 화면이 실패로 보인다 — Figma 경로처럼 추측하지 않는다.
