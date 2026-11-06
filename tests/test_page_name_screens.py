@@ -200,3 +200,21 @@ def test_화면_그림의_설명_제목은_요소에서_뺀다():
     spec = extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), _Regions())
     assert [e.label for e in spec.elements] == ["ABOUT"]
     assert any("설명 제목" in w for w in spec.warnings)
+
+
+class _Banner(_Fixed):
+    def complete_json(self, **kw):
+        out = super().complete_json(**kw)
+        out["elements"] = [
+            {"element_id": "c", "type": "link", "label": "빠르고, 정확한 서비스"},
+            {"element_id": "d", "type": "link", "label": "새로운 내일을 함께 합니다."},
+            {"element_id": "m", "type": "link", "label": "Contact Us"},
+        ]
+        return out
+
+
+def test_그림_속_문장은_링크가_아니라_표시_글자로_둔다():
+    spec = extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), _Banner())
+    assert [(e.label, e.type) for e in spec.elements] == [
+        ("빠르고, 정확한 서비스", "text"), ("새로운 내일을 함께 합니다.", "text"),
+        ("Contact Us", "link")]

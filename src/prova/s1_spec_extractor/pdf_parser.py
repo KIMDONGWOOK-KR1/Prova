@@ -1344,6 +1344,16 @@ def _clean_cell(cell: str | None) -> str:
     return normalize_ws(cell)
 
 
+# 쪽 넓이 대비 이보다 큰 칸은 데이터 표의 칸이 아니라 화면 틀이다(Figma 출력의 머리말
+# 표가 화면 그림·설명 패널 전체를 한 칸으로 감쌌다, 2026-11-06 실물).
+_FRAME_CELL_AREA = 0.3
+
+
+def _is_frame_cell(cell, page) -> bool:
+    x0, top, x1, bottom = cell
+    return (x1 - x0) * (bottom - top) > _FRAME_CELL_AREA * page.width * page.height
+
+
 def _extract_tables(page) -> list[ParsedTable]:
     """find_tables() 로 표를 잡는다. bbox 의 top 을 같이 남긴다.
 
@@ -1357,6 +1367,12 @@ def _extract_tables(page) -> list[ParsedTable]:
     tables: list[ParsedTable] = []
     for t in page.find_tables():
         rows = [[_clean_cell(c) for c in row] for row in t.extract()]
+        # 화면 틀 칸(쪽 대부분을 덮는 칸)이 든 행은 표가 아니라 화면 그림이다 — 본문이
+        # 그림·설명으로 나눠 읽는다(_extract_body_lines). 여기 두면 같은 글자가 한 칸에
+        # 뒤섞여 한 번 더 들어간다.
+        frame_rows = {i for i, row in enumerate(t.rows)
+                      if any(c is not None and _is_frame_cell(c, page) for c in row.cells)}
+        rows = [r for i, r in enumerate(rows) if i not in frame_rows]
         # 완전히 빈 행은 버린다 (괘선만 있는 행이 잡히는 경우)
         rows = [r for r in rows if any(r)]
         if rows:
@@ -1377,7 +1393,9 @@ def _extract_body_lines(page) -> list[tuple[str, float]]:
     # 실물 화면기획서(Figma 출력)의 머리말 표가 화면 그림·설명 패널까지 감쌌고,
     # 장바구니 설명 전체와 완료 문구가 그렇게 사라졌다(2026-11-06). 칸이 영역을
     # 다 덮는 보통 표에서는 결과가 같다.
-    cell_boxes = [cell for t in page.find_tables() for cell in t.cells]
+    # 화면 틀 칸은 빼지 않는다 — 그 안의 글자가 화면 그림과 설명이다.
+    cell_boxes = [cell for t in page.find_tables() for cell in t.cells
+                  if not _is_frame_cell(cell, page)]
 
     def outside_tables(obj) -> bool:
         cx = (obj["x0"] + obj["x1"]) / 2
@@ -1386,9 +1404,81 @@ def _extract_body_lines(page) -> list[tuple[str, float]]:
                        for x0, top, x1, bottom in cell_boxes)
 
     target = page.filter(outside_tables) if cell_boxes else page
+    panel_x = _description_panel_x(target, page.width)
+    if panel_x is not None:
+        return _figure_and_panel_lines(target, panel_x)
     lines = target.extract_text_lines() or []
     out = [(normalize_ws(ln["text"]), ln["top"]) for ln in lines]
     return [(text, top) for text, top in out if text]
+
+
+# 화면기획서(Figma 출력)의 오른쪽 설명 패널 제목. 패널은 쪽 오른쪽에 세로로 붙는다.
+_PANEL_TITLE = "화면상세설명"
+_PANEL_MIN_X = 0.55   # 쪽 너비 대비 — 패널 제목이 이보다 오른쪽에 있을 때만 패널로 본다
+_PANEL_MARGIN = 15.0  # 패널 제목 왼쪽 끝에서 이만큼 더 왼쪽까지 패널이다
+_FIGURE_GAP = 3.0     # 그림 안에서 이보다 벌어진 글자는 다른 이름이다(pdfplumber x_tolerance)
+_LINE_TOL = 4.0       # 같은 줄로 볼 세로 위치 차이
+
+
+def figure_heading() -> str:
+    return "[화면 그림 — 화면에 보이는 글자, ' | ' 는 서로 떨어진 이름]"
+
+
+def panel_heading() -> str:
+    return "[화면 상세 설명]"
+
+
+def _description_panel_x(target, width: float) -> Optional[float]:
+    """쪽 오른쪽에 '화면상세설명' 패널이 있으면 그 왼쪽 경계 x. 없으면 None."""
+    try:
+        words = target.extract_words(keep_blank_chars=False)
+    except Exception:
+        return None
+    xs = [w["x0"] for w in words
+          if w["text"].replace(" ", "") == _PANEL_TITLE and w["x0"] > width * _PANEL_MIN_X]
+    return min(xs) - _PANEL_MARGIN if xs else None
+
+
+def _figure_and_panel_lines(target, panel_x: float) -> list[tuple[str, float]]:
+    """화면 그림과 설명 패널을 따로 읽는다 (2026-11-06 실물 화면기획서).
+
+    줄 단위로 읽으면 같은 높이의 그림 글자와 설명 문장이 한 줄로 섞인다 — 전체 메뉴
+    화면에서 '회사 소개 Alpha Box Alpha Box' 옆에 닫기 버튼 설명이 붙어, 모델이
+    메뉴 이름을 하나도 뽑지 못했다. 그림 쪽은 서로 떨어진 이름을 ' | ' 로 나눈다 —
+    메뉴 세 열이 한 줄에 있어도 '회사 소개 | Alpha Box' 로 읽힌다.
+
+    줄 위치(top)는 그림 → 패널 순서라 쪽 안에서 한 번 되돌아간다. 이 꼴의 기획서에는
+    절 제목과 표 위치를 비교하는 규칙 표가 없다.
+    """
+    def center_x(obj) -> float:
+        return (obj["x0"] + obj["x1"]) / 2
+
+    figure = target.filter(lambda o: center_x(o) < panel_x)
+    panel = target.filter(lambda o: center_x(o) >= panel_x)
+
+    words = figure.extract_words(keep_blank_chars=True, x_tolerance=_FIGURE_GAP)
+    rows: list[list[dict]] = []
+    for w in sorted(words, key=lambda w: (w["top"], w["x0"])):
+        if rows and abs(rows[-1][0]["top"] - w["top"]) <= _LINE_TOL:
+            rows[-1].append(w)
+        else:
+            rows.append([w])
+    out: list[tuple[str, float]] = []
+    for row in rows:
+        names = [normalize_ws(w["text"]) for w in sorted(row, key=lambda w: w["x0"])]
+        text = " | ".join(n for n in names if n)
+        if text:
+            out.append((text, row[0]["top"]))
+    if out:
+        out.insert(0, (figure_heading(), out[0][1]))
+
+    panel_lines = [(normalize_ws(ln["text"]), ln["top"])
+                   for ln in (panel.extract_text_lines() or [])]
+    panel_lines = [(t, top) for t, top in panel_lines if t]
+    if panel_lines:
+        out.append((panel_heading(), panel_lines[0][1]))
+        out.extend(panel_lines)
+    return out
 
 
 def parse_pdf(path: str | Path) -> ParsedDocument:
