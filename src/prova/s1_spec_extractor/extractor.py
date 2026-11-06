@@ -304,6 +304,8 @@ FIGURE_SPEC_HINT = """
 ## 이 기획서는 요소 표가 없는 화면 그림입니다
 
 요소 표 대신 화면 그림에 보이는 글자와 번호별 설명('1 Tracking 상단 영역 - …')이 있습니다.
+'[화면 그림 …]' 아래 줄이 화면에 보이는 글자이고, ' | ' 는 서로 떨어진 이름입니다.
+'[화면 상세 설명]' 아래는 설명입니다.
 - 요소는 **화면에 이름이 보이는** 링크·버튼·입력란입니다. 설명의 제목('○○ 영역',
   '상단 메뉴', '하단 정보')은 요소가 아닙니다 — 넣지 마세요.
 - 설명에 'A / B / C 메뉴 구성', 'A, B 버튼 제공', 'A 클릭 시 이동' 처럼 이름이 나오면
@@ -460,6 +462,8 @@ def _path_declared(doc_text: str, path: str) -> bool:
 
 # '○○ 영역' — 화면기획서 설명 번호의 제목. 화면 글자가 아니다.
 _REGION_LABEL = re.compile(r"\s*영역$")
+# 문장 꼴 — 쉼표가 있거나, 마침표로 끝나거나, 30자를 넘는다. 메뉴·버튼 이름이 아니다.
+_SENTENCE_LABEL = re.compile(r",|[.。]$|^.{31,}$")
 
 
 def page_screen_id(page_name: str) -> str:
@@ -516,6 +520,11 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
         spec.screen_id = page_screen_id(page_name)
         # 설명의 제목('회사 로고 영역')은 화면에 보이는 이름이 아니다. 안내 단락으로 막아도
         # 모델이 남겼고, 라벨 확인이 '없다' 로 보고했다(2026-11-06 7차 실행).
+        # 그림 속 배너 문구('빠르고, 정확한 서비스' 같은 카피)를 링크로 뽑았다 — 메뉴·버튼 이름은
+        # 문장이 아니다. 지우지 않고 표시 글자(text)로 돌린다(라벨 확인 대상에서 빠진다).
+        for e in spec.elements:
+            if e.type in ("link", "button") and _SENTENCE_LABEL.search(e.label or ""):
+                e.type = "text"
         regions = [e for e in spec.elements if _REGION_LABEL.search(e.label or "")]
         if regions:
             spec.elements = [e for e in spec.elements if e not in regions]

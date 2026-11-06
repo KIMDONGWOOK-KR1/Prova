@@ -1912,11 +1912,14 @@ def _named_control_present(page, target: str) -> bool:
     """접근성 이름이 target 과 정확히 같은 조작 요소가 하나라도 있는가 (role 은 묻지 않는다).
 
     글자(text)·제목은 넣지 않는다 — 이 검사는 라벨이 **요소**의 이름인지를 본다.
+
+    숨은 요소도 센다. 닫힌 메뉴 안의 '닫기' 를 '없다' 로 보고했다(2026-11-06 실물). 이
+    검사가 묻는 것은 이름으로 지목할 수 있는가다 — 보이는지는 조작 단계가 본다.
     """
     name = _role_name(target)
     for role in _NAMED_CONTROL_ROLES:
         try:
-            if page.get_by_role(role, name=name).count():
+            if page.get_by_role(role, name=name, include_hidden=True).count():
                 return True
         except Exception:
             continue

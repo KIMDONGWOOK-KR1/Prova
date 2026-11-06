@@ -817,3 +817,56 @@ class TestDeclaredOptions:
     def test_가운뎃점과_중간_공백을_견딘다(self):
         got = self._doc("선택 목록 : 검색 · 지인 추천 · 광고").declared_options()
         assert got == {"상태": ["검색", "지인 추천", "광고"]}
+
+
+def _figure_pdf(tmp_path):
+    """화면기획서(Figma 출력) 꼴: 머리말 표 아래 큰 칸 하나가 화면 그림과 오른쪽 설명 패널을 감싼다."""
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.cidfonts import UnicodeCIDFont
+    from reportlab.pdfgen import canvas
+
+    pdfmetrics.registerFont(UnicodeCIDFont("HYSMyeongJo-Medium"))
+    pdf = tmp_path / "figure.pdf"
+    c = canvas.Canvas(str(pdf), pagesize=(1000, 700))
+    c.setFont("HYSMyeongJo-Medium", 12)
+    # 머리말 두 줄 + 그 아래 쪽 대부분을 덮는 칸 하나
+    for x0, y0, x1, y1 in [(20, 680, 980, 680), (20, 655, 980, 655), (20, 630, 980, 630),
+                           (20, 20, 980, 20), (20, 680, 20, 20), (980, 680, 980, 20),
+                           (200, 680, 200, 630)]:
+        c.line(x0, y0, x1, y1)
+    c.drawString(30, 662, "프로젝트")
+    c.drawString(210, 662, "OO 홈페이지 개발 작성자 홍길동")
+    c.drawString(30, 637, "페이지명")
+    c.drawString(210, 637, "전체메뉴 페이지 사용자")
+    # 그림: 메뉴 두 열이 같은 높이에 있다
+    c.drawString(60, 500, "회사 소개")
+    c.drawString(300, 500, "Alpha Box")
+    c.drawString(60, 470, "오시는 길")
+    c.drawString(300, 470, "Beta Pole")
+    # 설명 패널: 같은 높이에 문장이 있다 — 줄 단위로 읽으면 메뉴 이름과 섞인다
+    c.drawString(700, 560, "화면상세설명")
+    c.drawString(700, 500, "닫기 버튼 영역")
+    c.drawString(700, 470, "- 클릭 시 메뉴를 닫는다")
+    c.showPage()
+    c.save()
+    return pdf
+
+
+class TestFigureAndPanel:
+    """2026-11-06 실물 화면기획서: 그림 글자와 설명 문장이 한 줄로 섞여 메뉴 이름을 하나도 못 뽑았다."""
+
+    def test_그림과_설명을_따로_읽고_떨어진_이름을_나눈다(self, tmp_path):
+        from prova.s1_spec_extractor.pdf_parser import figure_heading, panel_heading
+
+        text = parse_pdf(_figure_pdf(tmp_path)).to_llm_text()
+        assert "회사 소개 | Alpha Box" in text
+        assert "오시는 길 | Beta Pole" in text
+        assert text.index(figure_heading()) < text.index("회사 소개") < text.index(panel_heading())
+        assert text.index(panel_heading()) < text.index("닫기 버튼 영역")
+        assert "Alpha Box 닫기" not in text and "Beta Pole -" not in text
+
+    def test_화면_틀_칸은_표로_다시_넣지_않고_머리말은_남긴다(self, tmp_path):
+        doc = parse_pdf(_figure_pdf(tmp_path))
+        cells = " ".join(c for t in doc.pages[0].tables for r in t.rows for c in r)
+        assert "Alpha Box" not in cells          # 그림 글자가 표 칸에 한 번 더 들어가지 않는다
+        assert doc.declared_page_name() == "전체메뉴"  # 머리말 행은 그대로다

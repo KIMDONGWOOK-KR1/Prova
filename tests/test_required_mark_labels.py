@@ -117,3 +117,13 @@ def test_대소문자만_다른_이름은_기록에서_되살려도_같은_요�
     loc = ground(page, "Top 버튼", hint)
     again = resolve_locator(page, loc, hint)
     assert again.count() == 1 and again.get_attribute("id") == "t"
+
+
+def test_숨어_있는_같은_이름의_요소도_라벨_확인에서는_있다(page):
+    """닫힌 메뉴 안의 '닫기' 를 '없다' 로 보고했다 (2026-11-06). 조작은 여전히 하지 않는다."""
+    page.set_content('<nav hidden><button>닫기</button></nav><a href="#">소개</a>')
+    hint = UIElement(element_id="x", type="button", label="닫기")
+    assert check_findable(page, [hint], ["닫기"]) == {"닫기": ""}
+    with pytest.raises(GroundingError):
+        ground(page, "닫기", hint)
+    assert check_findable(page, [], ["없는 버튼"])["없는 버튼"] != ""
