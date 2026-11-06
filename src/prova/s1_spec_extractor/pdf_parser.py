@@ -797,6 +797,26 @@ class ParsedDocument:
         return [next((n.replace(" ", "") for n in self._page_names(p)), None)
                 for p in self.pages]
 
+    def figure_text(self) -> Optional[str]:
+        """화면 그림에 보이는 글자만 모은 것. 화면 그림이 없는 문서는 None.
+
+        화면기획서에서 모델은 선택지·체크박스 이름을 그림이 아니라 설명 문단에서 옮겼다
+        (그림은 영어 이름, 설명은 한글 이름 — 2026-11-07 실물). 추출 뒤 코드가 이 글자와
+        대조한다(extractor._check_against_figure).
+        """
+        parts: list[str] = []
+        found = False
+        for page in self.pages:
+            inside = False
+            for text, _ in page.body_lines:
+                if text == figure_heading():
+                    inside = found = True
+                elif text == panel_heading():
+                    inside = False
+                elif inside:
+                    parts.append(text)
+        return "\n".join(parts) if found else None
+
     def declared_page_name(self) -> Optional[str]:
         """이 문서(화면)의 첫 '페이지명'. 화면 ID 개요 표가 있는 기획서에서는 None —
         그쪽은 개요 표가 화면을 정한다."""

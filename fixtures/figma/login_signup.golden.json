@@ -16,7 +16,8 @@
           "required_message": null,
           "placeholder": "이메일을 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_81",
@@ -28,7 +29,8 @@
           "required_message": null,
           "placeholder": "비밀번호를 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_85",
@@ -40,7 +42,8 @@
           "required_message": null,
           "placeholder": null,
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         }
       ],
       "scenarios": [],
@@ -72,7 +75,8 @@
           "required_message": null,
           "placeholder": "이메일을 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_96",
@@ -84,7 +88,8 @@
           "required_message": null,
           "placeholder": "비밀번호를 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_100",
@@ -96,7 +101,8 @@
           "required_message": null,
           "placeholder": "비밀번호를 다시 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_104",
@@ -108,7 +114,8 @@
           "required_message": null,
           "placeholder": "닉네임을 입력하세요",
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_108",
@@ -124,7 +131,8 @@
             "지인 추천",
             "광고"
           ],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_114",
@@ -136,7 +144,8 @@
           "required_message": null,
           "placeholder": null,
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         },
         {
           "element_id": "n2_117",
@@ -148,7 +157,8 @@
           "required_message": null,
           "placeholder": null,
           "options": [],
-          "sample_value": null
+          "sample_value": null,
+          "figure_unseen": false
         }
       ],
       "scenarios": [],

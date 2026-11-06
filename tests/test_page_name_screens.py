@@ -192,13 +192,15 @@ class _Regions(_Fixed):
         out["elements"] = [
             {"element_id": "logo", "type": "link", "label": "회사 로고 영역"},
             {"element_id": "about", "type": "link", "label": "ABOUT"},
+            {"element_id": "biz", "type": "link", "label": "운영영역"},
         ]
         return out
 
 
 def test_화면_그림의_설명_제목은_요소에서_뺀다():
     spec = extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), _Regions())
-    assert [e.label for e in spec.elements] == ["ABOUT"]
+    # 붙여 쓴 '운영영역' 은 메뉴 이름일 수 있다 — 띄어 쓴 '○○ 영역' 만 설명 제목이다
+    assert [e.label for e in spec.elements] == ["ABOUT", "운영영역"]
     assert any("설명 제목" in w for w in spec.warnings)
 
 
@@ -218,3 +220,129 @@ def test_그림_속_문장은_링크가_아니라_표시_글자로_둔다():
     assert [(e.label, e.type) for e in spec.elements] == [
         ("빠르고, 정확한 서비스", "text"), ("새로운 내일을 함께 합니다.", "text"),
         ("Contact Us", "link")]
+
+
+def _figure_doc():
+    """화면 그림이 있는 화면기획서 — 그림에는 영어 선택지와 동의 문장이 보인다."""
+    from prova.s1_spec_extractor.pdf_parser import figure_heading, panel_heading
+
+    lines = [figure_heading(), "Alpha Box", "Beta Pole", "기타 문의",
+             "*분류 | 분류를 선택해주세요.", "(필수) 개인정보 수집·이용에 동의합니다.", "등록",
+             panel_heading(), "- Alpha Box/상자, 베타 폴, 기타문의 구분", "개인정보 수집·이용 동의"]
+    doc = _doc(["페이지명", "SUPPORT", "페이지", "사용자"])
+    doc.pages[0].body_lines = [(t, float(i)) for i, t in enumerate(lines)]
+    doc.pages[0].body_text = "\n".join(lines)
+    return doc
+
+
+class _PanelValues(_Fixed):
+    def complete_json(self, **kw):
+        out = super().complete_json(**kw)
+        out["elements"] = [
+            {"element_id": "cat", "type": "select", "label": "분류",
+             "options": ["Alpha Box/상자", "베타 폴", "기타문의"]},
+            {"element_id": "agree", "type": "checkbox", "label": "개인정보 수집·이용 동의"},
+            {"element_id": "ok", "type": "button", "label": "등록"},
+        ]
+        return out
+
+
+def test_그림에_없는_선택지는_설명에서_옮긴_값이라_뺀다():
+    spec = extract_screen_spec(_figure_doc(), _PanelValues())
+    cat = next(e for e in spec.elements if e.element_id == "cat")
+    assert cat.options == ["기타문의"]       # 띄어쓰기만 다른 것은 그림에 있다고 본다
+    assert any("선택 항목" in w for w in spec.warnings)
+
+
+def test_그림에_없는_이름은_라벨_확인에서_뺀다():
+    spec = extract_screen_spec(_figure_doc(), _PanelValues())
+    by_id = {e.element_id: e for e in spec.elements}
+    assert by_id["agree"].figure_unseen is True     # 요소는 남는다 — 조작은 한다
+    assert by_id["ok"].figure_unseen is False
+    assert by_id["cat"].figure_unseen is False      # '*분류' 처럼 필수 표시가 붙어도 있다
+
+
+def test_그림이_없는_화면은_건드리지_않는다():
+    spec = extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), _PanelValues())
+    cat = next(e for e in spec.elements if e.element_id == "cat")
+    assert cat.options == ["Alpha Box/상자", "베타 폴", "기타문의"]
+    assert not any(e.figure_unseen for e in spec.elements)
+
+
+def test_그림에_없는_이름은_라벨_확인_케이스에_넣지_않는다():
+    from prova.s2_case_generator.generator import generate_cases
+
+    spec = extract_screen_spec(_figure_doc(), _PanelValues())
+    spec.url_path = "/support"
+    labels = [c for c in generate_cases(spec) if c.expected.type == "labels_findable"]
+    assert len(labels) == 1
+    assert "개인정보 수집·이용 동의" not in labels[0].expected.labels
+    assert "분류" in labels[0].expected.labels and "등록" in labels[0].expected.labels
+
+
+def _menu_doc(extra_after=()):
+    """전체 메뉴 그림 — 세 열이 줄마다 섞여 읽힌다. 첫 열 이름 일부를 모델이 빠뜨린다."""
+    from prova.s1_spec_extractor.pdf_parser import figure_heading, panel_heading
+
+    lines = [figure_heading(), "1", "회사 | 제품 | 사례 | 문의", "2",
+             "회사 소개 | Alpha Box | Alpha Box", "오시는 길",
+             "소식 | Beta Pole | Beta Pole", "채용 | Gamma | Gamma",
+             "새로운 내일을, 함께 | 기타", *extra_after,
+             panel_heading(), "닫기 버튼 영역", "- 각 세부 메뉴 클릭 시 해당 페이지 이동"]
+    doc = _doc(["페이지명", "전체메뉴", "페이지", "사용자"])
+    doc.pages[0].tables[0].rows.pop()   # 입력 칸 행 없음 — 내비게이션 화면
+    doc.pages[0].body_lines = [(t, float(i)) for i, t in enumerate(lines)]
+    doc.pages[0].body_text = "\n".join(lines)
+    return doc
+
+
+class _MenuMissing(_Fixed):
+    def __init__(self, elements=None):
+        self.elements = elements
+
+    def complete_json(self, **kw):
+        out = super().complete_json(**kw)
+        out["elements"] = self.elements or [
+            {"element_id": f"m{i}", "type": "link", "label": name}
+            for i, name in enumerate(["회사", "제품", "사례", "문의", "회사 소개",
+                                      "Alpha Box", "Beta Pole", "Gamma", "기타"])]
+        return out
+
+
+def test_메뉴_화면에서_모델이_빠뜨린_그림_속_메뉴_이름을_링크로_채운다():
+    spec = extract_screen_spec(_menu_doc(), _MenuMissing())
+    added = [e.label for e in spec.elements][9:]
+    assert added == ["오시는 길", "소식", "채용"]
+    assert all(e.type == "link" for e in spec.elements)
+    assert any("빠뜨린" in w for w in spec.warnings)
+
+
+def test_메뉴가_아닌_칸과_같은_줄이거나_숫자가_든_이름은_채우지_않는다():
+    # 제품 상세 그림: 번호 표시 옆 제목, 해상도 값 — 메뉴 줄 범위 안에 있어도 메뉴가 아니다
+    doc = _menu_doc()
+    lines = [t for t, _ in doc.pages[0].body_lines]
+    at = lines.index("채용 | Gamma | Gamma")
+    lines[at:at] = ["4 | 제품 사양", "Alpha Box | 1920 x 1080"]
+    doc.pages[0].body_lines = [(t, float(i)) for i, t in enumerate(lines)]
+    labels = [e.label for e in extract_screen_spec(doc, _MenuMissing()).elements]
+    assert "제품 사양" not in labels and "1920 x 1080" not in labels
+    assert "채용" in labels
+
+
+def test_메뉴_줄_범위_밖의_글자와_문장은_채우지_않는다():
+    spec = extract_screen_spec(_menu_doc(extra_after=("자료 필요",)), _MenuMissing())
+    labels = [e.label for e in spec.elements]
+    assert "자료 필요" not in labels                # 마지막 메뉴 줄보다 아래
+    assert "1" not in labels and "2" not in labels    # 번호 표시
+    assert "새로운 내일을, 함께" not in labels         # 문장
+
+
+def test_입력란이_있는_화면이나_링크가_적은_화면은_채우지_않는다():
+    form = [{"element_id": "q", "type": "input", "label": "회사"},
+            *[{"element_id": f"m{i}", "type": "link", "label": n}
+              for i, n in enumerate(["제품", "사례", "문의", "Alpha Box", "Gamma"])]]
+    few = [{"element_id": f"m{i}", "type": "link", "label": n}
+           for i, n in enumerate(["회사", "기타"])]
+    for elements in (form, few):
+        spec = extract_screen_spec(_menu_doc(), _MenuMissing(elements))
+        assert len(spec.elements) == len(elements)

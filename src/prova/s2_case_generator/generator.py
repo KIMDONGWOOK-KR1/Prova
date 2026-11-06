@@ -1224,16 +1224,17 @@ def _label_case(spec: ScreenSpec) -> list[TestCase]:
 
     확인할 수 없는 것을 확인한다고 하지 않는 것이 이 도구에서 지키는 선이다.
     """
-    labels = [e.label for e in _fillable_inputs(spec) if e.label]
+    labels = [e.label for e in _fillable_inputs(spec) if e.label and not e.figure_unseen]
     submit = _submit_element(spec)
-    if submit and submit.label:
+    if submit and submit.label and not submit.figure_unseen:
         labels.append(submit.label)
     if not _fillable_inputs(spec):
         # 입력란이 없는 화면(메인·전체 메뉴 같은 내비게이션 화면)은 링크가 곧 화면의 내용이다.
         # 위의 '완료 화면 링크' 사정은 폼 화면의 것이다 — 여기서 빼면 메뉴 이름이 기획서와
         # 달라도 아무 케이스도 보지 않는다(2026-11-06 실물: 메인 링크 10개 중 0개 검사).
         labels += [e.label for e in spec.elements
-                   if e.type == "link" and e.label and e.label not in labels]
+                   if e.type == "link" and e.label and not e.figure_unseen
+                   and e.label not in labels]
     # 아이콘을 묘사한 이름('햄버거 메뉴', '검색 아이콘')은 화면 글자가 아니다 — 화면은 그
     # 버튼을 '사이트맵' 처럼 다르게 부르거나 이름이 없다. '없다' 로 보고하면 기획서가 정하지
     # 않은 이름을 결함으로 센다(2026-11-06 7차 실행).
