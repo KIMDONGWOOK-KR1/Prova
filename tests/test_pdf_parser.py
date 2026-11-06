@@ -870,3 +870,16 @@ class TestFigureAndPanel:
         cells = " ".join(c for t in doc.pages[0].tables for r in t.rows for c in r)
         assert "Alpha Box" not in cells          # 그림 글자가 표 칸에 한 번 더 들어가지 않는다
         assert doc.declared_page_name() == "전체메뉴"  # 머리말 행은 그대로다
+
+    def test_그림_글자만_따로_돌려준다(self, tmp_path):
+        doc = parse_pdf(_figure_pdf(tmp_path))
+        figure = doc.figure_text()
+        assert "Alpha Box" in figure and "오시는 길" in figure
+        assert "닫기 버튼 영역" not in figure    # 설명 패널은 그림이 아니다
+
+    def test_그림이_없는_기획서는_None(self, tmp_path):
+        from prova.s1_spec_extractor.pdf_parser import ParsedDocument
+
+        doc = ParsedDocument(source="x", pages=[ParsedPage(page_no=1, body_text="본문",
+                                                           body_lines=[("본문", 10.0)])])
+        assert doc.figure_text() is None

@@ -84,6 +84,11 @@ class UIElement(BaseModel):
     # 기획서에 테스트 계정·예시 데이터가 있으면 S1 이 여기에 담고, 정상 케이스는
     # 그 값을 쓴다.
     sample_value: Optional[str] = None
+    # 화면 그림 기획서에서 이 라벨이 그림에 보이지 않는다 — 모델이 설명 문단의 제목을
+    # 이름으로 옮긴 것이다(그림: '(필수) …에 동의합니다.', 설명: '… 동의'). 요소는 남겨
+    # 조작하되 '그 이름이 화면에 있는가' 는 묻지 않는다 — 기획서가 화면 이름으로 정한
+    # 글자가 아니다. 코드만 채운다(extractor._check_against_figure).
+    figure_unseen: SkipJsonSchema[bool] = False
 
 
 class Scenario(BaseModel):

@@ -460,10 +460,97 @@ def _path_declared(doc_text: str, path: str) -> bool:
     return re.search(rf"(?<![\w/]){re.escape(path)}(?![\w/])", doc_text) is not None
 
 
-# '○○ 영역' — 화면기획서 설명 번호의 제목. 화면 글자가 아니다.
-_REGION_LABEL = re.compile(r"\s*영역$")
+# '○○ 영역' — 화면기획서 설명 번호의 제목. 화면 글자가 아니다. 띄어 쓴 것만 본다 —
+# 붙여 쓴 '○○영역' 꼴 메뉴 이름이 있었다(2026-11-07 실물, 차이 하나를 놓쳤다).
+_REGION_LABEL = re.compile(r"\s+영역$")
 # 문장 꼴 — 쉼표가 있거나, 마침표로 끝나거나, 30자를 넘는다. 메뉴·버튼 이름이 아니다.
 _SENTENCE_LABEL = re.compile(r",|[.。]$|^.{31,}$")
+
+
+# 그림 글자와 대조할 때 무시하는 것 — 공백, 그림에서 떨어진 이름 구분자, 필수 표시.
+_FIGURE_NOISE = re.compile(r"[\s|*＊]")
+
+
+def _in_figure(value: str, figure: str) -> bool:
+    return _FIGURE_NOISE.sub("", value).lower() in figure
+
+
+def _check_against_figure(spec: ScreenSpec, figure_text: str) -> None:
+    """화면 그림에 없는 선택지는 빼고, 그림에 없는 이름은 라벨 확인에서 뺀다.
+
+    모델은 '그림 글자가 맞다' 는 안내에도 설명 문단의 값을 옮겼다 — 그림의 선택지는
+    'Alpha Box' 인데 설명의 'Alpha Box/상자' 를, 그림의 '(필수) …에 동의합니다.' 대신 설명
+    제목 '… 동의' 를 썼다. 화면은 그림대로라 둘 다 '기획서와 다르다' 로 보고됐다(오탐 2건
+    전부, 2026-11-07 실물). 값을 그림 쪽으로 고쳐 쓸 근거는 없으니 확인 범위만 줄인다 —
+    더 적게 검사하는 쪽으로만 넘어진다.
+    """
+    figure = _FIGURE_NOISE.sub("", figure_text).lower()
+    dropped: list[str] = []
+    unseen: list[str] = []
+    for e in spec.elements:
+        if e.options:
+            kept = [o for o in e.options if _in_figure(o, figure)]
+            dropped += [o for o in e.options if o not in kept]
+            e.options = kept
+        if e.label and not _in_figure(e.label, figure):
+            e.figure_unseen = True
+            unseen.append(e.label)
+    if dropped:
+        spec.warnings.append("화면 그림에 없는 선택 항목을 뺐습니다(설명 문단에서 옮긴 값): "
+                             + ", ".join(repr(o) for o in dropped))
+    if unseen:
+        spec.warnings.append("화면 그림에 없는 이름은 라벨 확인에서 뺐습니다: "
+                             + ", ".join(repr(u) for u in unseen))
+
+
+# 메뉴 화면으로 볼 최소 링크 수, 채울 이름의 최대 길이.
+_MENU_MIN_LINKS = 5
+_MENU_NAME_MAX = 20
+_INPUT_TYPES = ("input", "select", "checkbox", "date")
+
+
+def _backfill_figure_menu(spec: ScreenSpec, figure_text: str) -> None:
+    """메뉴 화면에서 모델이 빠뜨린 그림 속 메뉴 이름을 링크로 채운다.
+
+    전체 메뉴 그림은 세 열이 줄마다 섞여 읽힌다('소식 | Beta Pole | Beta Pole'). 모델은
+    둘째·셋째 열은 다 뽑고 첫 열 이름 넷을 빠뜨렸다 — 안내 단락과 열 순서로 다시 줘도
+    하나는 끝내 빠졌다(2026-11-07 실물). 빠진 이름이 하필 화면과 다른 메뉴라 차이 둘을
+    못 잡았다.
+
+    조건을 좁게 둔다 — 입력란이 없고 모델이 이미 링크를 여럿 뽑은 화면(메뉴 화면)에서,
+    모델이 뽑은 링크가 있는 그림 줄 사이에 끼어 있고, 같은 줄의 다른 이름이 모두 그
+    링크인 짧은 이름만. 숫자가 든 것과 문장은 넣지 않는다. 더한 이름은 화면에서 글자로만 있어도 라벨 확인을 통과한다.
+    """
+    if any(e.type in _INPUT_TYPES for e in spec.elements):
+        return
+    links = {_FIGURE_NOISE.sub("", e.label).lower()
+             for e in spec.elements if e.type == "link" and e.label}
+    if len(links) < _MENU_MIN_LINKS:
+        return
+    rows = [[n.strip() for n in line.split(" | ") if n.strip()]
+            for line in figure_text.split("\n")]
+    keyed = [[_FIGURE_NOISE.sub("", n).lower() for n in row] for row in rows]
+    link_rows = [i for i, row in enumerate(keyed) if any(k in links for k in row)]
+    if not link_rows:
+        return
+    known = {_FIGURE_NOISE.sub("", e.label).lower() for e in spec.elements if e.label}
+    added: list[str] = []
+    for i in range(link_rows[0], link_rows[-1] + 1):
+        for name, key in zip(rows[i], keyed[i]):
+            # 같은 줄의 다른 이름이 모두 이미 뽑힌 링크여야 메뉴 열이다 — '4 | 제품 사양' 의
+            # 번호 표시 옆 제목은 아니다. 숫자가 든 것은 값('1920 x 1080')이다.
+            others_are_links = all(k in links for k in keyed[i] if k != key)
+            if (key in known or not others_are_links or len(name) > _MENU_NAME_MAX
+                    or re.search(r"\d", name) or not re.search(r"[^\W_]", name)
+                    or _SENTENCE_LABEL.search(name) or _REGION_LABEL.search(name)):
+                continue
+            known.add(key)
+            added.append(name)
+            spec.elements.append(UIElement(element_id=f"figure_menu_{len(added)}",
+                                           type="link", label=name))
+    if added:
+        spec.warnings.append("모델이 빠뜨린 화면 그림의 메뉴 이름을 링크로 채웠습니다: "
+                             + ", ".join(repr(n) for n in added))
 
 
 def page_screen_id(page_name: str) -> str:
@@ -531,6 +618,10 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
             spec.warnings.append(
                 "화면 그림의 설명 제목으로 보이는 항목을 요소에서 뺐습니다: "
                 + ", ".join(repr(e.label) for e in regions))
+        figure = doc.figure_text()
+        if figure is not None:
+            _check_against_figure(spec, figure)
+            _backfill_figure_menu(spec, figure)
         if spec.url_path and not _path_declared(doc_text, spec.url_path):
             # 이 꼴의 기획서는 경로를 적지 않는다. 모델이 지은 '/support' 로 열면 없는
             # 페이지라 멀쩡한 화면이 실패로 보인다 — Figma 경로처럼 추측하지 않는다.
