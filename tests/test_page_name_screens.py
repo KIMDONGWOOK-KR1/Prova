@@ -159,3 +159,44 @@ def test_경로라고_적힌_루트는_받는다():
     doc = _doc(["페이지명", "메인화면", "페이지", "사용자"])
     doc.pages[0].body_text = "화면 경로: /"
     assert extract_screen_spec(doc, _RootPath()).url_path == "/"
+
+
+class _Captures(_Fixed):
+    def __init__(self):
+        self.users = []
+
+    def complete_json(self, *, system, user, schema, max_tokens=2048, temperature=0.0):
+        self.users.append(user)
+        return super().complete_json(system=system, user=user, schema=schema)
+
+
+def test_화면_그림_기획서에만_그림용_안내를_붙인다():
+    """요소 표 없는 화면 그림에서 모델이 설명 제목('○○ 영역')만 뽑았다 (2026-11-06 실물)."""
+    from prova.s1_spec_extractor.extractor import FIGURE_SPEC_HINT
+
+    llm = _Captures()
+    extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), llm)
+    assert FIGURE_SPEC_HINT in llm.users[0]
+
+    llm = _Captures()
+    extract_screen_spec(ParsedDocument(source="x", pages=[ParsedPage(page_no=1, tables=[
+        ParsedTable(rows=[["항목", "내용"], ["화면 ID", "login"]]),
+        ParsedTable(rows=[["페이지명", "로그인", "페이지", "사용자"]]),
+    ])]), llm)
+    assert FIGURE_SPEC_HINT not in llm.users[0]  # 화면 ID 표가 있는 기획서는 예전 프롬프트
+
+
+class _Regions(_Fixed):
+    def complete_json(self, **kw):
+        out = super().complete_json(**kw)
+        out["elements"] = [
+            {"element_id": "logo", "type": "link", "label": "회사 로고 영역"},
+            {"element_id": "about", "type": "link", "label": "ABOUT"},
+        ]
+        return out
+
+
+def test_화면_그림의_설명_제목은_요소에서_뺀다():
+    spec = extract_screen_spec(_doc(["페이지명", "SUPPORT", "페이지", "사용자"]), _Regions())
+    assert [e.label for e in spec.elements] == ["ABOUT"]
+    assert any("설명 제목" in w for w in spec.warnings)

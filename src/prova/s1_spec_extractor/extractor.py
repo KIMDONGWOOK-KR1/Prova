@@ -221,6 +221,7 @@ def build_user_prompt(
     screen_meta: dict[str, str] | None = None,
     sample_values: dict[str, str] | None = None,
     scenarios: list[dict] | None = None,
+    figure_spec: bool = False,
 ) -> str:
     """LLM 에 넘길 프롬프트. 결정적으로 알아낸 사실은 직접 알려 준다.
 
@@ -291,8 +292,27 @@ def build_user_prompt(
     )
     return (
         f"{FEW_SHOT}\n## 실제 기획서\n\n기획서 텍스트:\n{doc_text}\n"
-        f"{hint}{precondition_hint}\n출력 JSON:"
+        f"{hint}{precondition_hint}{FIGURE_SPEC_HINT if figure_spec else ''}\n출력 JSON:"
     )
+
+
+# 요소 표 없이 화면 그림과 번호별 설명(Tracking)으로 된 화면기획서(Figma 출력)에만 붙인다.
+# 모델은 설명의 제목('회사 로고 영역', '헤더 메뉴')을 요소로 뽑고 화면의 링크·버튼 이름은
+# 하나도 뽑지 않았다 — 메인·전체 메뉴 화면 정답 19개 중 0개(2026-11-06 실물). 요소 표가 있는
+# 기획서에는 붙이지 않는다 — 골든 기획서의 판정을 바꾸지 않는다.
+FIGURE_SPEC_HINT = """
+## 이 기획서는 요소 표가 없는 화면 그림입니다
+
+요소 표 대신 화면 그림에 보이는 글자와 번호별 설명('1 Tracking 상단 영역 - …')이 있습니다.
+- 요소는 **화면에 이름이 보이는** 링크·버튼·입력란입니다. 설명의 제목('○○ 영역',
+  '상단 메뉴', '하단 정보')은 요소가 아닙니다 — 넣지 마세요.
+- 설명에 'A / B / C 메뉴 구성', 'A, B 버튼 제공', 'A 클릭 시 이동' 처럼 이름이 나오면
+  그 이름 하나하나가 요소입니다. 메뉴 항목은 "link", 버튼은 "button" 으로 넣으세요.
+- 그림에만 있고 설명에 없는 메뉴 이름도 화면에 보이는 링크면 넣으세요.
+- 라벨은 화면 그림에 보이는 글자 그대로 쓰세요. 설명에서 다르게 부르면 그림 쪽이 맞습니다.
+- 같은 이름이 그림에 여러 번 보여도 한 번만 넣으세요. 제품 소개 문장·연혁 같은 본문은
+  요소가 아닙니다.
+"""
 
 
 # 모델이 생략하지 못하게 하는 키. ScreenSpec 에서는 기본값이 있어 선택이지만, 정형
@@ -331,6 +351,13 @@ S1_RETRY_MAX_TOKENS = 6144
 S1_STRING_CAP = 1000
 S1_CONSTRAINT_CAP = 200
 
+# 다시 부를 때 거는 배열 길이 상한 (2026-11-06 실물 화면기획서).
+#
+# 문자열이 아니라 **목록이** 반복되는 루프도 있다. 사례 목록 화면 둘에서 모델이 예시 항목을
+# 요소로 끝없이 적어 6144 토큰에서 잘렸다(응답 17,733·20,478자). vLLM 정형 출력은 maxItems 를
+# 지킨다(같은 화면, 상한 5 → 561 토큰에 끝). 골든·외부 기획서의 화면당 요소는 많아야 8개다.
+S1_ARRAY_CAP = 40
+
 
 def _capped_schema(schema: dict) -> dict:
     """모든 문자열 칸에 S1_STRING_CAP, 제약 딕셔너리의 문자열 값에 S1_CONSTRAINT_CAP."""
@@ -342,6 +369,8 @@ def _capped_schema(schema: dict) -> dict:
                 walk(v)
             if node.get("type") == "string" and "maxLength" not in node:
                 node["maxLength"] = S1_STRING_CAP
+            if node.get("type") == "array" and "maxItems" not in node:
+                node["maxItems"] = S1_ARRAY_CAP
             if node.get("title") == "Constraints" and node.get("type") == "object":
                 node["additionalProperties"] = {"anyOf": [
                     {"type": "integer"}, {"type": "number"}, {"type": "boolean"},
@@ -383,6 +412,25 @@ def _drop_capped(raw: dict) -> list[str]:
                 return found
         return None
 
+    elements = raw.get("elements") or []
+    seen: set[tuple] = set()
+    kept = []
+    for element in elements:
+        key = (element.get("type"), element.get("label"))
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(element)
+    if len(kept) < len(elements):
+        raw["elements"] = kept
+        warnings.append(
+            f"모델이 같은 요소를 반복해 적었습니다 — 겹친 {len(elements) - len(kept)}개를 "
+            f"빼고 {len(kept)}개만 씁니다.")
+    if len(elements) >= S1_ARRAY_CAP:
+        warnings.append(
+            f"요소 목록이 상한({S1_ARRAY_CAP}개)에 걸렸습니다 — 모델이 반복하다 끊긴 것으로 "
+            f"보이며, 상한 뒤에 적혔어야 할 요소는 빠졌을 수 있습니다.")
+
     where = long_string(raw, "")
     if where:
         raise LLMError(
@@ -410,6 +458,10 @@ def _path_declared(doc_text: str, path: str) -> bool:
     return re.search(rf"(?<![\w/]){re.escape(path)}(?![\w/])", doc_text) is not None
 
 
+# '○○ 영역' — 화면기획서 설명 번호의 제목. 화면 글자가 아니다.
+_REGION_LABEL = re.compile(r"\s*영역$")
+
+
 def page_screen_id(page_name: str) -> str:
     """페이지명으로 만든 화면 ID. case_id 접두사이자 스크린샷 파일 이름에 들어가므로
     글자·숫자(한글 포함) 밖의 문자는 '_' 로 바꾼다. 같은 페이지명은 split_screens 가
@@ -433,6 +485,8 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
             doc.declared_screen_meta(),
             doc.declared_sample_values(),
             declared_scenarios,
+            # 화면 ID 개요 표 없이 페이지명으로 나뉜 화면 = 화면 그림 기획서(Figma 출력).
+            figure_spec=doc.declared_page_name() is not None,
         ),
         schema=_extraction_schema(),
     )
@@ -460,6 +514,14 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
         # (product_detail 네 번, 2026-11-06 실물). 개요 표의 화면 ID 처럼 코드가 쓴다.
         spec.screen_name = page_name
         spec.screen_id = page_screen_id(page_name)
+        # 설명의 제목('회사 로고 영역')은 화면에 보이는 이름이 아니다. 안내 단락으로 막아도
+        # 모델이 남겼고, 라벨 확인이 '없다' 로 보고했다(2026-11-06 7차 실행).
+        regions = [e for e in spec.elements if _REGION_LABEL.search(e.label or "")]
+        if regions:
+            spec.elements = [e for e in spec.elements if e not in regions]
+            spec.warnings.append(
+                "화면 그림의 설명 제목으로 보이는 항목을 요소에서 뺐습니다: "
+                + ", ".join(repr(e.label) for e in regions))
         if spec.url_path and not _path_declared(doc_text, spec.url_path):
             # 이 꼴의 기획서는 경로를 적지 않는다. 모델이 지은 '/support' 로 열면 없는
             # 페이지라 멀쩡한 화면이 실패로 보인다 — Figma 경로처럼 추측하지 않는다.
