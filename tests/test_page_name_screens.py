@@ -346,3 +346,47 @@ def test_입력란이_있는_화면이나_링크가_적은_화면은_채우지_�
     for elements in (form, few):
         spec = extract_screen_spec(_menu_doc(), _MenuMissing(elements))
         assert len(spec.elements) == len(elements)
+
+
+class _FileForm(_Fixed):
+    def complete_json(self, **kw):
+        out = super().complete_json(**kw)
+        out["elements"] = [
+            {"element_id": "name", "type": "input", "label": "성명", "required": True},
+            {"element_id": "file", "type": "input", "label": "파일첨부"},
+            {"element_id": "ok", "type": "button", "label": "등록"},
+        ]
+        return out
+
+
+def _file_doc(row):
+    from prova.s1_spec_extractor.pdf_parser import figure_heading, panel_heading
+
+    lines = [figure_heading(), "*성명 | 성명을 입력하세요.", row, "등록",
+             panel_heading(), "- 관련 자료 업로드 기능 제공"]
+    doc = _doc(["페이지명", "SUPPORT", "페이지", "사용자"])
+    doc.pages[0].body_lines = [(t, float(i)) for i, t in enumerate(lines)]
+    return doc
+
+
+def test_파일_칸_줄의_고르기_버튼_이름을_파일_칸에_붙인다():
+    spec = extract_screen_spec(
+        _file_doc("파일첨부 | 10MB 이하만 가능합니다. | 찾아보기 | 크기 지정 필요"), _FileForm())
+    by_id = {e.element_id: e for e in spec.elements}
+    assert by_id["file"].picker_label == "찾아보기"
+    assert by_id["name"].picker_label is None
+    assert [e.label for e in spec.elements if e.type == "button"] == ["등록"]  # 제출 버튼은 그대로
+
+
+def test_고르기_버튼이_아닌_글자는_붙이지_않는다():
+    spec = extract_screen_spec(_file_doc("파일첨부 | 크기 지정 필요"), _FileForm())
+    assert all(e.picker_label is None for e in spec.elements)
+
+
+def test_고르기_버튼_이름도_라벨_확인에_넣는다():
+    from prova.s2_case_generator.generator import generate_cases
+
+    spec = extract_screen_spec(_file_doc("파일첨부 | 찾아보기"), _FileForm())
+    spec.url_path = "/support"
+    labels = next(c for c in generate_cases(spec) if c.expected.type == "labels_findable")
+    assert "찾아보기" in labels.expected.labels and "파일첨부" in labels.expected.labels

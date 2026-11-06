@@ -89,6 +89,11 @@ class UIElement(BaseModel):
     # 조작하되 '그 이름이 화면에 있는가' 는 묻지 않는다 — 기획서가 화면 이름으로 정한
     # 글자가 아니다. 코드만 채운다(extractor._check_against_figure).
     figure_unseen: SkipJsonSchema[bool] = False
+    # 파일 칸을 고르는 버튼의 이름('찾아보기'). 실제 파일 입력은 숨어 있고 사용자는 이
+    # 버튼 글자로 칸을 알아본다 — 화면의 파일 칸 이름이다. 버튼 요소로 따로 넣지 않는다:
+    # 첫 버튼이 제출 버튼으로 쓰인다(generator._submit_element). 코드만 채운다
+    # (extractor._attach_file_picker), 라벨 확인이 함께 본다.
+    picker_label: SkipJsonSchema[Optional[str]] = None
 
 
 class Scenario(BaseModel):

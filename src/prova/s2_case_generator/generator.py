@@ -1225,6 +1225,9 @@ def _label_case(spec: ScreenSpec) -> list[TestCase]:
     확인할 수 없는 것을 확인한다고 하지 않는 것이 이 도구에서 지키는 선이다.
     """
     labels = [e.label for e in _fillable_inputs(spec) if e.label and not e.figure_unseen]
+    # 파일 칸의 고르기 버튼 이름 — 숨은 파일 입력 대신 사용자가 보는 그 칸의 이름이다.
+    labels += [e.picker_label for e in _fillable_inputs(spec)
+               if e.picker_label and e.picker_label not in labels]
     submit = _submit_element(spec)
     if submit and submit.label and not submit.figure_unseen:
         labels.append(submit.label)
