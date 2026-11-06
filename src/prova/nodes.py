@@ -38,7 +38,7 @@ from prova.models import (
 )
 from prova.s1_figma.extractor import extract_figma_document
 from prova.s1_merge import merge_documents
-from prova.s1_spec_extractor.extractor import extract_document
+from prova.s1_spec_extractor.extractor import NO_PATH_WARNING, extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import ask_titles, generate_cases, generate_flow_cases
 from prova.s2_case_generator.precondition import login_screen
@@ -56,7 +56,7 @@ from prova.s3_grounder.dom_locator import (
 from prova.s4_executor.playwright_driver import ExecutionContext, execute_case_steps
 from prova.s5_verifier.assertion_engine import capture_page_state, verify
 from prova.s6_report.report_builder import build_report
-from prova.text_utils import normalize_ws
+from prova.text_utils import loosen, normalize_ws
 from prova.unique_token import fill_unique
 
 
@@ -211,6 +211,8 @@ def extract_spec(state: AgentState) -> AgentState:
         raise ValueError("extract_spec 에는 LLM 백엔드가 필요합니다")
 
     state.doc = extract_document(state.pdf_path, state.llm)
+    if state.screen_urls:
+        apply_screen_urls(state.doc, state.screen_urls)
 
     # 기획서 내부 모순을 여기서 걸러 리포트로 올린다. 구현 결함이 아니라 기획
     # 결함이므로, 케이스 FAIL 이 아니라 경고로 알리는 것이 맞다.
@@ -218,6 +220,30 @@ def extract_spec(state: AgentState) -> AgentState:
     for screen in state.doc.screens:
         screen.warnings.extend(spec_defects(screen))
     return state
+
+
+def apply_screen_urls(doc: SpecDocument, screen_urls: dict[str, str]) -> None:
+    """사용자가 준 화면↔경로(--screen-url)를 기획서 추출 결과에 붙인다.
+
+    경로를 적지 않는 화면기획서가 있다(2026-11-06 실물 — 페이지명만 있고 URL 이
+    없다). 그런 화면은 추출기가 경로를 비우고 실행하지 않는데, 기획자는 사이트
+    주소를 안다. 화면 이름(띄어쓰기 무시) 또는 화면 ID 로 찾는다. 기획서에 경로가
+    있어도 사용자가 주면 사용자 쪽이 이긴다 — 명시한 값이다.
+    """
+    used: set[str] = set()
+    for screen in doc.screens:
+        key = next((k for k in screen_urls
+                    if k == screen.screen_id or loosen(k) == loosen(screen.screen_name)), None)
+        if key is None:
+            continue
+        used.add(key)
+        screen.url_path = screen_urls[key]
+        screen.warnings = [w for w in screen.warnings if not w.startswith(NO_PATH_WARNING)]
+    for key in screen_urls:
+        if key not in used:
+            doc.warnings.append(
+                f"--screen-url 의 화면 {key!r} 를 기획서에서 찾지 못했습니다 — 화면 이름이나 "
+                f"화면 ID 를 리포트의 화면 목록과 같게 적어 주세요.")
 
 
 def _start_titles(state: AgentState, groups: list[tuple[ScreenSpec, list[TestCase]]]) -> None:

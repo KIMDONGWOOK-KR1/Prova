@@ -231,6 +231,10 @@ def generate_cases(
     없으므로 이 단계를 건너뛴다 — 흐름 케이스가 이미 doc 을 받는 것과 같은
     이유다.
     """
+    if not spec.url_path:
+        # 열 경로가 없는 화면 — Figma 매핑 누락, 또는 경로를 적지 않은 기획서에서
+        # 모델이 지은 경로를 버린 화면(extractor.NO_PATH_WARNING). 경고는 추출기가 남겼다.
+        return []
     if spec.source_kind == "figma":
         # figma 스펙에는 valid·위반 케이스의 근거(성공 조건·규칙·계정)가 없다.
         # 경로 매핑이 없는 화면은 navigate 대상이 없으므로 아무것도 만들지
