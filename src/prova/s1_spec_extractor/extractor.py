@@ -391,6 +391,32 @@ def _drop_capped(raw: dict) -> list[str]:
     return warnings
 
 
+# 경로가 기획서에 없는 화면의 경고 머리. 사용자가 --screen-url 로 경로를 주면
+# nodes.apply_screen_urls 가 이 경고를 거둔다.
+NO_PATH_WARNING = "화면 경로가 기획서에 없어 실행하지 않습니다"
+
+
+def _path_declared(doc_text: str, path: str) -> bool:
+    """경로가 기획서 본문에 경로로 적혀 있는가.
+
+    글자 포함만 보면 안 된다 — 'ABOUT / SHOP' 의 구분 기호 때문에 모델이 지은 루트 '/'
+    가 기획서 값으로 통과했다(2026-11-06). 앞뒤가 경로 글자가 아닌 낱말로 있어야 하고,
+    루트 '/' 는 '경로'·'URL'·'주소' 바로 뒤에 적혔을 때만 받는다.
+    """
+    path = path.strip()
+    if path.strip("/") == "":
+        return re.search(r"(?:경로|URL|주소)\s*[:：|]?\s*/(?![\w/])", doc_text,
+                         re.IGNORECASE) is not None
+    return re.search(rf"(?<![\w/]){re.escape(path)}(?![\w/])", doc_text) is not None
+
+
+def page_screen_id(page_name: str) -> str:
+    """페이지명으로 만든 화면 ID. case_id 접두사이자 스크린샷 파일 이름에 들어가므로
+    글자·숫자(한글 포함) 밖의 문자는 '_' 로 바꾼다. 같은 페이지명은 split_screens 가
+    한 화면으로 묶으므로 다른 화면이 같은 ID 를 얻지 않는다."""
+    return re.sub(r"[^\w]+", "_", page_name).strip("_").lower()
+
+
 def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3072) -> ScreenSpec:
     """추출된 문서 텍스트에서 ScreenSpec 을 만든다."""
     doc_text = doc.to_llm_text()
@@ -427,6 +453,21 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     # 이 시점의 warnings 는 전부 모델이 쓴 것이다. 아래에서 코드가 붙이는 경고와
     # 섞이기 전에 출처를 단다.
     _label_model_warnings(spec, doc_text)
+    page_name = doc.declared_page_name()
+    if page_name:
+        # 화면 ID 개요 표가 없는 화면기획서 — 머리말의 '페이지명' 이 화면 이름이다.
+        # 모델은 이름을 바꿔 부르고('SUPPORT' → '고객 지원') ID 를 겹쳐 지었다
+        # (product_detail 네 번, 2026-11-06 실물). 개요 표의 화면 ID 처럼 코드가 쓴다.
+        spec.screen_name = page_name
+        spec.screen_id = page_screen_id(page_name)
+        if spec.url_path and not _path_declared(doc_text, spec.url_path):
+            # 이 꼴의 기획서는 경로를 적지 않는다. 모델이 지은 '/support' 로 열면 없는
+            # 페이지라 멀쩡한 화면이 실패로 보인다 — Figma 경로처럼 추측하지 않는다.
+            spec.warnings.append(
+                f"{NO_PATH_WARNING} — 모델이 {spec.url_path!r} 를 지었지만 쓰지 않습니다. "
+                f"--screen-url '{page_name}=/경로' 로 알려 주면 실행합니다."
+            )
+            spec.url_path = ""
     spec.warnings.extend(capped_warnings)
 
     _normalize_element_ids(spec)
@@ -1204,15 +1245,41 @@ def extract_document(
     doc = parse_pdf(pdf_path)
     screen_docs, warnings = doc.split_screens()
 
-    screens = [
-        extract_screen_spec(sub, llm, max_tokens=max_tokens) for sub in screen_docs
-    ]
+    screens: list[ScreenSpec] = []
+    failures: list[LLMError] = []
+    for i, sub in enumerate(screen_docs, 1):
+        try:
+            screens.append(extract_screen_spec(sub, llm, max_tokens=max_tokens))
+        except LLMError as exc:
+            # 실패 격리 — 한 화면이 흔들려도 다른 화면을 살린다. 실물 21화면 중 한 화면
+            # (예시 사례가 다섯 번 반복되는 목록)이 모델 반복 루프로 잘렸고, 그 예외가
+            # 나머지 20화면까지 죽였다(2026-11-06). 실패한 화면은 조용히 빼지 않는다 —
+            # 이름을 남기고 경로를 비워 실행하지 않으며, 왜 빠졌는지 경고로 올린다.
+            if len(screen_docs) == 1:
+                raise
+            failures.append(exc)
+            screens.append(_failed_screen(sub, i, exc))
+            warnings.append(f"화면 {screens[-1].screen_name!r} 은 추출에 실패해 검사하지 "
+                            f"않았습니다 — {exc}")
+    if failures and len(failures) == len(screen_docs):
+        raise failures[0]
     flows = [Flow.model_validate(f) for f in doc.declared_flows()]
 
     result = SpecDocument(source=str(pdf_path), screens=screens, flows=flows,
                           warnings=warnings)
     result.warnings.extend(_document_warnings(result))
     return result
+
+
+def _failed_screen(sub: ParsedDocument, index: int, exc: LLMError) -> ScreenSpec:
+    """추출에 실패한 화면의 자리. 요소·경로가 없어 케이스가 만들어지지 않는다."""
+    name = (sub.declared_page_name() or sub.declared_screen_meta().get("screen_id")
+            or f"화면 {index}")
+    return ScreenSpec(
+        screen_id=sub.declared_screen_meta().get("screen_id") or page_screen_id(name),
+        screen_name=name, url_path="", source_kind="document",
+        warnings=[f"이 화면은 추출에 실패해 검사하지 않았습니다 — {exc}"],
+    )
 
 
 def _document_warnings(doc: SpecDocument) -> list[str]:

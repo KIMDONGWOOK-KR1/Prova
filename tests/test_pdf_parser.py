@@ -385,6 +385,125 @@ class TestSplitScreens:
         assert warns and "2개" in warns[0]
 
 
+def test_표_영역_안이라도_칸_밖의_글자는_본문으로_남긴다(tmp_path):
+    """실물 기획서(Figma 출력)는 머리말 표가 화면 그림·설명 패널까지 감싸는데 칸이
+    그 영역을 다 덮지 않는다. 표 영역 전체를 본문에서 빼면 칸 밖 글자가 어디에도
+    남지 않는다 — 장바구니 설명 전체와 '등록이 완료되었습니다.' 가 사라졌다
+    (2026-11-06)."""
+    from reportlab.pdfgen import canvas
+
+    pdf = tmp_path / "orphan.pdf"
+    c = canvas.Canvas(str(pdf), pagesize=(500, 400))
+    # 위 줄은 칸 둘, 아래 줄은 왼쪽 칸 하나. 오른쪽 아래는 표 영역이지만 칸이 아니다.
+    for x0, y0, x1, y1 in [(50, 350, 450, 350), (50, 300, 450, 300), (50, 250, 250, 250),
+                           (50, 350, 50, 250), (250, 350, 250, 250), (450, 350, 450, 300)]:
+        c.line(x0, y0, x1, y1)
+    c.drawString(60, 320, "A1")
+    c.drawString(260, 320, "B1")
+    c.drawString(60, 270, "A2")
+    c.drawString(300, 270, "ORPHAN")
+    c.save()
+
+    page = parse_pdf(pdf).pages[0]
+    assert "ORPHAN" in page.body_text
+    assert "A1" not in page.body_text  # 칸 안 글자는 표로만 — 두 번 넣지 않는다
+    assert page.tables[0].rows[0] == ["A1", "B1"]
+
+
+def _page_header(*cells):
+    """실물 화면기획서(Figma 출력, 2026-11-06)의 머리말 표 모양. 칸 경계가 글자 중간에
+    떨어지기도 한다 — '페이지명 장' | '바구니'."""
+    return [["프로젝트", "OO 홈페이지 개발", "작성자", "홍길동"], list(cells)]
+
+
+class TestSplitScreensByPageName:
+    """화면 ID 개요 표가 없는 기획서 — 머리말의 '페이지명' 칸이 화면 경계다.
+
+    실물 기획서 31쪽이 경계를 하나도 못 찾아 한 화면으로 묶였고, 입력이 13k 토큰이라
+    16k 문맥을 넘겨 문서 전체 추출이 죽었다(2026-11-06)."""
+
+    def test_페이지명이_바뀌면_새_화면이다(self):
+        doc = _doc([_page_header("페이지명", "메인화면", "페이지", "사용자")],
+                   [_page_header("페이지명", "SUPPORT", "페이지", "사용자")])
+        docs, warns = doc.split_screens()
+        assert [[p.page_no for p in d.pages] for d in docs] == [[1], [2]]
+        assert warns == []
+
+    def test_칸이_글자_중간에서_갈려도_읽는다(self):
+        doc = _doc([_page_header("페이지명 장", "바구니", "페이지", "사용자")],
+                   [_page_header("페이지명 SHOP > B", "ook List > 자세히보기 페이지", "사용자")],
+                   [_page_header("페이지명 장바구니", "페이지 사용자")])
+        assert doc.page_screen_names() == ["장바구니", "SHOP>BookList>자세히보기", "장바구니"]
+
+    def test_같은_페이지명은_한_화면으로_묶는다(self):
+        """같은 화면의 상태 변형(안내창이 뜬 모습 등)을 따로 그린 쪽이다. 따로 두면 같은
+        화면이 둘이 되어 케이스가 겹치고 화면 ID 가 충돌한다."""
+        doc = _doc([_page_header("페이지명", "SUPPORT", "페이지", "사용자")],
+                   [_page_header("페이지명", "SUPPORT", "페이지", "사용자")],
+                   [_page_header("페이지명", "메인화면", "페이지", "사용자")])
+        docs, _ = doc.split_screens()
+        assert [[p.page_no for p in d.pages] for d in docs] == [[1, 2], [3]]
+
+    def test_떨어져_있어도_같은_페이지명이면_묶고_뒤따르는_쪽도_따라간다(self):
+        doc = _doc([_page_header("페이지명", "SHOP > A", "페이지", "사용자")],
+                   [_page_header("페이지명", "SUPPORT", "페이지", "사용자")],
+                   [_page_header("페이지명", "SHOP > A", "페이지", "사용자")],
+                   [])
+        docs, _ = doc.split_screens()
+        assert [[p.page_no for p in d.pages] for d in docs] == [[1, 3, 4], [2]]
+
+    def test_표지와_구분_쪽은_앞_화면에_붙는다(self):
+        doc = _doc([[["화면기획서 v0.2"]]],
+                   [_page_header("페이지명", "메인화면", "페이지", "사용자")],
+                   [[["상세 화면"]]],
+                   [_page_header("페이지명", "SUPPORT", "페이지", "사용자")])
+        docs, _ = doc.split_screens()
+        assert [[p.page_no for p in d.pages] for d in docs] == [[1, 2, 3], [4]]
+
+    def test_화면_ID_개요_표가_있으면_그것이_우선이다(self):
+        doc = _doc([_overview("login"), _page_header("페이지명", "로그인", "페이지", "사용자")],
+                   [_overview("signup"), _page_header("페이지명", "로그인", "페이지", "사용자")])
+        docs, _ = doc.split_screens()
+        assert [d.declared_screen_meta()["screen_id"] for d in docs] == ["login", "signup"]
+
+    def test_한_페이지에_페이지명이_둘이면_경고하고_앞의_것을_쓴다(self):
+        doc = _doc([_page_header("페이지명 About > ABOUT COMPANY", "페이지 사용자"),
+                    _page_header("페이지명 ABOUT", "페이지 사용자")],
+                   [_page_header("페이지명", "SUPPORT", "페이지", "사용자")])
+        docs, warns = doc.split_screens()
+        assert len(docs) == 2
+        assert warns and "2개" in warns[0]
+
+    def test_보여줄_이름은_띄어쓰기를_살리고_갈린_글자는_잇는다(self):
+        doc = _doc([_page_header("페이지명 SHOP > B", "ook Detail > 자세히보기 페이지", "사용자")],
+                   [_page_header("페이지명 SHOP >", "Gift Card > 자세히보기", "페이지 사용자")],
+                   [_page_header("페이지명 장", "바구니", "페이지", "사", "용자")])
+        assert [d.declared_page_name() for d in doc.split_screens()[0]] == [
+            "SHOP > Book Detail > 자세히보기",
+            "SHOP > Gift Card > 자세히보기",
+            "장바구니"]
+
+    def test_이름에_든_페이지는_남긴다(self):
+        doc = _doc([_page_header("페이지명", "마이 페이지", "페이지", "사용자")])
+        assert doc.declared_page_name() == "마이 페이지"
+
+    def test_머리말_행은_모델_입력에서_뺀다(self):
+        """머리말 칸(프로젝트·작성자·페이지명)을 모델이 화면 요소로 뽑았다(실물 21화면 중
+        8화면). 실행하면 '페이지명' 이라는 요소가 화면에 없다는 가짜 '다름' 이 된다."""
+        doc = _doc([[["프로젝트", "OO 홈페이지 개발", "작성자", "홍길동"],
+                     ["페이지명", "SUPPORT", "페이지", "사용자"],
+                     ["*성명", "성명을 입력하세요.", "", ""]]])
+        text = doc.to_llm_text()
+        assert "작성자" not in text and "페이지명" not in text
+        assert "성명을 입력하세요." in text
+
+    def test_페이지명_뒤가_비었거나_본문이면_경계로_보지_않는다(self):
+        """'페이지명' 이 본문 문장 속에 나온 것을 경계로 잡으면 화면이 쪼개진다."""
+        long_text = "페이지명 " + "가" * 100
+        doc = _doc([[["페이지명", "", "페이지"]]], [[[long_text]]])
+        assert doc.page_screen_names() == [None, None]
+
+
 class TestDeclaredFlows:
     def test_흐름_표를_읽는다(self):
         doc = _doc([[["흐름 ID", "화면 순서"], ["signup_then_login", "signup → login"]]])

@@ -162,6 +162,34 @@ def label_variants(target: str) -> list["re.Pattern[str]"]:
     return out
 
 
+# 라벨 앞뒤에 붙는 필수 표시 낱말. 화면에는 별표·빨간 점으로 보이지만 접근성 이름에는
+# 글자로 남는다: `성명<i class="required">필수</i>` → '성명 필수'.
+# 정규식은 Playwright 가 JS RegExp 로 넘기므로 파이썬 전용 문법((?i:…))을 쓰지 않는다.
+_REQUIRED_MARK = r"(?:\(\s*필수\s*\)|필수|\*|\(?(?:required|Required|REQUIRED)\)?)"
+
+
+# 기획서 라벨 끝의 역할 설명 낱말. 화면 이름이 아니라 무엇인지를 덧붙인 말이다.
+_ROLE_SUFFIX = re.compile(r"\s+(?:버튼|링크|탭|아이콘)$")
+
+
+def marked_variant(target: str) -> "re.Pattern[str]":
+    """필수 표시와 띄어쓰기만 무시하고 target 과 같은 이름 (2026-11-06 실물 사이트).
+
+    `<label>성명<i class="required">필수</i></label>` 의 이름은 '성명 필수' 라 기획서 라벨
+    '성명' 으로는 못 찾았다. 기획서 '회사/기관명' 과 화면 '회사 / 기관명' 처럼 띄어쓰기만
+    다른 것도 같다. 끝의 역할 낱말('Top 버튼' ↔ 'TOP'), 영문 대소문자, 가운뎃점·마침표
+    ('수집·이용에 동의합니다' ↔ '수집 이용에 동의합니다.')도 같은 이유로 무시한다.
+    이름 전체와 맞아야 한다 — '성명' 은 '성명 확인' 을 잡지 않는다.
+    """
+    # 기획서가 설명으로 붙인 끝의 역할 낱말('Top 버튼')은 화면 이름에 없다.
+    target = _ROLE_SUFFIX.sub("", target).strip() or target
+    gap = r"[\s·ㆍ.]*"  # 띄어쓰기·가운뎃점·마침표 — '수집·이용' ↔ '수집 이용', 끝의 '.'
+    body = gap.join(re.escape(ch) for ch in target if not (ch.isspace() or ch in "·ㆍ."))
+    # 영문 대소문자는 무시한다 — 'Top' ↔ 'TOP'. 디자인이 대문자로 쓰는 일이 흔하다.
+    return re.compile(rf"^{_ICON_OR_SPACE}(?:{_REQUIRED_MARK}\s*)?{body}{gap}"
+                      rf"(?:{_REQUIRED_MARK})?{_ICON_OR_SPACE}$", re.IGNORECASE)
+
+
 def is_template(target: str) -> bool:
     """항목마다 하나씩 있는 요소의 틀 라벨인가('Remove {pet.name} from favorites').
 
@@ -450,6 +478,13 @@ def ground(page, target: str, hint: UIElement | None = None,
         # 때만 본다 — 지금 찾히는 요소는 이 경로를 타지 않는다.
         hits = []
         for candidate in label_variants(target):
+            loc, strat, tried = _try_strategies(page, target, hint, candidate)
+            attempts.extend(tried)
+            if loc is not None:
+                hits.append((loc, strat, candidate))
+        if not hits:
+            # 마지막으로 라벨 앞뒤의 필수 표시·띄어쓰기 차이만 무시한다 (marked_variant).
+            candidate = marked_variant(target)
             loc, strat, tried = _try_strategies(page, target, hint, candidate)
             attempts.extend(tried)
             if loc is not None:
@@ -1579,7 +1614,7 @@ def _shape_present(page, target: str, hint: UIElement | None) -> bool:
 
     글자(text) 일치는 넣지 않는다 — 이 검사는 라벨이 요소와 이어져 있는지를 본다.
     """
-    for pattern in label_variants(target):
+    for pattern in [*label_variants(target), marked_variant(target)]:
         try:
             if (page.get_by_label(pattern).count()
                     or page.get_by_role(_role_for(hint), name=pattern).count()):

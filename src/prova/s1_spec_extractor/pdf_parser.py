@@ -105,6 +105,40 @@ _EXPECT_HEADER_RE = re.compile(r"문구|메시지")
 # '전제' 절 제목 줄 — 번호 + '전제' 뿐인 줄. 문장 속 낱말('...를 전제한다')은 아니다.
 _PRECONDITION_HEADING_RE = re.compile(r"^\s*[\d.\-]*\s*전제\s*$")
 
+# 화면기획서 머리말의 '페이지명 | <이름> | 페이지 | 사용자' 줄 (split_screens 참고).
+# 끝의 '페이지 <구분>' 을 떼어 낸다. 칸을 이을 때 '페이지' 와 '사용자' 가 붙을 수 있어
+# ('자세히보기 페이지' | '사용자') 구분 낱말은 붙어 있어도 된다. (.*) 를 탐욕으로 두어
+# '마이 페이지 | 페이지 | 사용자' 처럼 이름에 든 '페이지' 는 남긴다.
+_PAGE_NAME_TAIL_RE = re.compile(r"^(.*)\s페이지\s*(?:\S{1,4})?\s*$")
+# '페이지명' 다음에 오는 머리말 칸 '페이지' (뒤에 구분이 붙기도 한다: '페이지 사').
+_PAGE_LABEL_CELL_RE = re.compile(r"^페이지(?:\s|$)")
+# 이보다 길면 머리말 칸이 아니라 본문 문장이다.
+_PAGE_NAME_MAX = 60
+
+
+def _same_script(a: str, b: str) -> bool:
+    """두 글자가 같은 종류(한글끼리·영숫자끼리)인가. 글자 중간에서 갈린 칸을 이을 때
+    붙일지 정한다 — 'B'+'ook', '장'+'바구니' 는 붙이고 'COMPANY'+'페이지' 는 띄운다."""
+    def kind(ch: str) -> str:
+        if "가" <= ch <= "힣":
+            return "hangul"
+        if ch.isascii() and ch.isalnum():
+            return "ascii"
+        return ""
+    return kind(a) != "" and kind(a) == kind(b)
+
+
+def _is_page_header_row(row: list[str]) -> bool:
+    """화면기획서 머리말 행인가 — '프로젝트 … 작성자 …' 또는 '페이지명 …'.
+
+    문서 관리용 칸이라 화면 요소가 아니다. 모델에 넣으면 '페이지명'·'작성자' 를
+    요소로 뽑는다(실물 21화면 중 8화면, 2026-11-06).
+    """
+    cells = [normalize_ws(c) for c in row]
+    if any(c.startswith("페이지명") for c in cells):
+        return True
+    return any(c.startswith("프로젝트") for c in cells) and any("작성자" in c for c in cells)
+
 
 def _same_table(table, element_table) -> bool:
     """요소 표(또는 그 페이지 조각)인가. _element_table() 이 이어 붙인 사본을 돌려주므로
@@ -705,7 +739,7 @@ class ParsedDocument:
             starts.append(ids[0] if ids else None)
 
         if not any(starts):
-            return [self], warnings
+            return self._split_by_page_name(warnings)
 
         # 첫 개요 표 앞의 페이지(표지·문서 정보)는 첫 화면에 붙인다.
         #
@@ -725,6 +759,93 @@ class ParsedDocument:
             else:
                 front.append(page)
         return docs, warnings
+
+    @staticmethod
+    def _page_names(page: ParsedPage) -> list[str]:
+        """그 페이지 머리말 표의 '페이지명' — 사람에게 보여줄 이름.
+
+        칸 경계가 글자 중간에 떨어지기도 한다('페이지명 장' | '바구니'). 칸을 이을 때
+        양쪽 끝이 글자·숫자면 붙이고('장'+'바구니'), 아니면 띄운다('>'+'Gift').
+        경계와 묶음은 공백을 뺀 이름으로 정한다(page_screen_names) — 띄어쓰기는
+        이 추정이 틀려도 같은 화면이 다른 이름이 되지 않게.
+        """
+        found: list[str] = []
+        for table in page.tables:
+            for row in table.rows:
+                cells = [normalize_ws(c) for c in row]
+                at = next((i for i, c in enumerate(cells) if c.startswith("페이지명")), None)
+                if at is None:
+                    continue
+                joined, labelled = "", False
+                for cell in (c for c in cells[at:] if c):
+                    if joined and _PAGE_LABEL_CELL_RE.match(cell):
+                        labelled = True  # 다음 머리말 칸('페이지 | 사용자')에서 멈춘다
+                        break
+                    glue = joined and _same_script(joined[-1], cell[0])
+                    joined += cell if (glue or not joined) else " " + cell
+                rest = joined[len("페이지명"):].strip()
+                # 구분 칸이 이름 칸에 섞여 들어온 경우('자세히보기 페이지' | '사용자')만 뗀다.
+                # 따로 있었으면 이름에 든 '페이지' 는 이름이다('마이 페이지').
+                m = None if labelled else _PAGE_NAME_TAIL_RE.match(" " + rest)
+                name = (m.group(1) if m else rest).strip()
+                if name and len(name) <= _PAGE_NAME_MAX:
+                    found.append(name)
+        return found
+
+    def page_screen_names(self) -> list[Optional[str]]:
+        """페이지마다 머리말의 '페이지명' 을 공백 없이 (없으면 None). 여럿이면 앞의 것."""
+        return [next((n.replace(" ", "") for n in self._page_names(p)), None)
+                for p in self.pages]
+
+    def declared_page_name(self) -> Optional[str]:
+        """이 문서(화면)의 첫 '페이지명'. 화면 ID 개요 표가 있는 기획서에서는 None —
+        그쪽은 개요 표가 화면을 정한다."""
+        if self.declared_screen_meta().get("screen_id"):
+            return None
+        return next((n for p in self.pages for n in self._page_names(p)), None)
+
+    def _split_by_page_name(
+        self, warnings: list[str]
+    ) -> tuple[list["ParsedDocument"], list[str]]:
+        """화면 ID 개요 표가 없을 때 — 머리말의 '페이지명' 으로 나눈다.
+
+        실물 화면기획서(Figma 출력, 2026-11-06)는 쪽마다 '프로젝트 | 작성자 / 페이지명 |
+        페이지 구분' 머리말을 두고 화면 ID 표가 없었다. 경계를 못 찾아 31쪽이 한
+        화면으로 묶였고, 입력 13k 토큰이 16k 문맥을 넘겨 문서 전체 추출이 죽었다.
+
+        같은 페이지명은 떨어져 있어도 한 화면으로 묶는다. 같은 화면의 상태 변형
+        (안내창이 뜬 모습 등)을 따로 그린 쪽이라, 나누면 같은 화면이 둘 생겨 케이스가
+        겹친다. 페이지명이 없는 쪽(구분 쪽·팝업 그림)은 바로 앞 쪽의 화면에 붙고,
+        첫 페이지명 앞의 쪽(표지)은 첫 화면에 붙는다 — 개요 표 경로와 같은 규칙이다.
+        """
+        names: list[Optional[str]] = []
+        for page in self.pages:
+            found = self._page_names(page)
+            if len(set(found)) > 1:
+                warnings.append(
+                    f"{page.page_no}페이지에 페이지명이 {len(set(found))}개 있습니다 "
+                    f"({', '.join(dict.fromkeys(found))}). 페이지 단위로는 가를 수 없어 "
+                    f"앞의 것으로 묶었습니다 — 화면마다 페이지를 새로 시작하세요."
+                )
+            names.append(found[0] if found else None)
+
+        if not any(names):
+            return [self], warnings
+
+        groups: dict[str, ParsedDocument] = {}
+        front: list[ParsedPage] = []
+        current: Optional[ParsedDocument] = None
+        for page, name in zip(self.pages, names):
+            if name is not None:
+                if name not in groups:
+                    groups[name] = ParsedDocument(source=self.source, pages=list(front))
+                    front = []
+                current = groups[name]
+            if current is not None:
+                current.pages.append(page)
+            else:
+                front.append(page)
+        return list(groups.values()), warnings
 
     def declared_precondition_account(self) -> Optional[list[list[str]]]:
         """'전제' 절 아래에서 계정 표(헤더 '이메일|비밀번호')를 찾는다.
@@ -1205,6 +1326,9 @@ class ParsedDocument:
             if page.body_text:
                 chunks.append(page.body_text)
             for i, table in enumerate(page.tables, 1):
+                rows = [r for r in table.rows if not _is_page_header_row(r)]
+                if len(rows) != len(table.rows):
+                    table = ParsedTable(rows=rows, top=table.top)
                 chunks.append(f"[표 {page.page_no}-{i}]")
                 chunks.append(table.to_markdown())
         return "\n\n".join(c for c in chunks if c)
@@ -1248,15 +1372,20 @@ def _extract_body_lines(page) -> list[tuple[str, float]]:
     하기 때문이다(ParsedTable.top 설명 참고) — 한 페이지에 여러 절이 있을 때
     제목보다 위에 있는(먼저 나오는 다른 절의) 표를 걸러내는 근거가 된다.
     """
-    table_boxes = [t.bbox for t in page.find_tables()]
+    # 표 영역(bbox) 전체가 아니라 **칸** 을 뺀다. 칸이 표 영역을 다 덮지 않으면 칸 밖
+    # 글자는 Table.extract() 에도 안 들어간다 — 영역째 빼면 어디에도 남지 않는다.
+    # 실물 화면기획서(Figma 출력)의 머리말 표가 화면 그림·설명 패널까지 감쌌고,
+    # 장바구니 설명 전체와 완료 문구가 그렇게 사라졌다(2026-11-06). 칸이 영역을
+    # 다 덮는 보통 표에서는 결과가 같다.
+    cell_boxes = [cell for t in page.find_tables() for cell in t.cells]
 
     def outside_tables(obj) -> bool:
         cx = (obj["x0"] + obj["x1"]) / 2
         cy = (obj["top"] + obj["bottom"]) / 2
         return not any(x0 <= cx <= x1 and top <= cy <= bottom
-                       for x0, top, x1, bottom in table_boxes)
+                       for x0, top, x1, bottom in cell_boxes)
 
-    target = page.filter(outside_tables) if table_boxes else page
+    target = page.filter(outside_tables) if cell_boxes else page
     lines = target.extract_text_lines() or []
     out = [(normalize_ws(ln["text"]), ln["top"]) for ln in lines]
     return [(text, top) for text, top in out if text]
