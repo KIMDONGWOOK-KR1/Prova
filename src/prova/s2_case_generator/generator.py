@@ -45,6 +45,7 @@ from prova.models import (
 from prova.s2_case_generator.precondition import expand_precondition, guard_case
 from prova.s2_case_generator.rule_expander import (
     RULE_LABELS,
+    is_file_field,
     resolve_values,
     violations_for_element,
 )
@@ -188,7 +189,13 @@ def _steps_for_case(
     steps = [TestStep(seq=1, action="navigate", target=entry_path(spec))]
     seq = 2
     for element in _fillable_inputs(spec):
-        steps.append(_input_step(seq, element, values.get(element.element_id, "")))
+        value = values.get(element.element_id, "")
+        if not value and is_file_field(element):
+            # 비워 둘 파일 칸은 건드릴 것이 없다 — 처음 상태가 '첨부 없음' 이다. 스텝을
+            # 만들면 그 칸을 찾지 못했을 때(라벨 어순이 다른 '파일 첨부'↔'첨부파일') 케이스
+            # 전체가 멈춘다(2026-11-06 5차 실행, 문의 폼 6건).
+            continue
+        steps.append(_input_step(seq, element, value))
         seq += 1
     submit = _submit_element(spec)
     if submit:
@@ -1187,6 +1194,9 @@ def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
     )]
 
 
+_ICON_LABEL = re.compile(r"햄버거|아이콘|icon", re.IGNORECASE)
+
+
 def _label_case(spec: ScreenSpec) -> list[TestCase]:
     """기획서의 라벨로 요소를 찾을 수 있는지 확인하는 케이스. 화면당 한 건.
 
@@ -1218,6 +1228,16 @@ def _label_case(spec: ScreenSpec) -> list[TestCase]:
     submit = _submit_element(spec)
     if submit and submit.label:
         labels.append(submit.label)
+    if not _fillable_inputs(spec):
+        # 입력란이 없는 화면(메인·전체 메뉴 같은 내비게이션 화면)은 링크가 곧 화면의 내용이다.
+        # 위의 '완료 화면 링크' 사정은 폼 화면의 것이다 — 여기서 빼면 메뉴 이름이 기획서와
+        # 달라도 아무 케이스도 보지 않는다(2026-11-06 실물: 메인 링크 10개 중 0개 검사).
+        labels += [e.label for e in spec.elements
+                   if e.type == "link" and e.label and e.label not in labels]
+    # 아이콘을 묘사한 이름('햄버거 메뉴', '검색 아이콘')은 화면 글자가 아니다 — 화면은 그
+    # 버튼을 '사이트맵' 처럼 다르게 부르거나 이름이 없다. '없다' 로 보고하면 기획서가 정하지
+    # 않은 이름을 결함으로 센다(2026-11-06 7차 실행).
+    labels = [label for label in labels if not _ICON_LABEL.search(label)]
     if not labels:
         return []
     return [TestCase(

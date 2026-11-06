@@ -184,10 +184,93 @@ def marked_variant(target: str) -> "re.Pattern[str]":
     # 기획서가 설명으로 붙인 끝의 역할 낱말('Top 버튼')은 화면 이름에 없다.
     target = _ROLE_SUFFIX.sub("", target).strip() or target
     gap = r"[\s·ㆍ.]*"  # 띄어쓰기·가운뎃점·마침표 — '수집·이용' ↔ '수집 이용', 끝의 '.'
-    body = gap.join(re.escape(ch) for ch in target if not (ch.isspace() or ch in "·ㆍ."))
-    # 영문 대소문자는 무시한다 — 'Top' ↔ 'TOP'. 디자인이 대문자로 쓰는 일이 흔하다.
+    body = _loose_body(target, gap)
     return re.compile(rf"^{_ICON_OR_SPACE}(?:{_REQUIRED_MARK}\s*)?{body}{gap}"
-                      rf"(?:{_REQUIRED_MARK})?{_ICON_OR_SPACE}$", re.IGNORECASE)
+                      rf"(?:{_REQUIRED_MARK})?{_ICON_OR_SPACE}$")
+
+
+def _caseless(ch: str) -> str:
+    """영문 대소문자를 패턴 **안에** 적는다 — 'Top' ↔ 'TOP'. 디자인이 대문자로 쓰는 일이 흔하다.
+
+    re.IGNORECASE 로 하면 안 된다: 찾은 위치는 패턴 문자열만 기록되고(ElementLocation.
+    name_pattern) 조작할 때 다시 compile 하면서 플래그가 빠진다. 'Top' 으로 'TOP' 을 찾아 놓고
+    누를 때는 0개라 시간 초과가 났다(2026-11-06 4차 실행).
+    """
+    lo, up = ch.lower(), ch.upper()
+    if lo != up and len(lo) == len(up) == 1 and ch.isascii():
+        return f"[{lo}{up}]"
+    return re.escape(ch)
+
+
+def _loose_body(target: str, gap: str) -> str:
+    return gap.join(_caseless(ch) for ch in target if not (ch.isspace() or ch in "·ㆍ."))
+
+
+# 한국어 입력 안내 문구의 꼬리: '문의 카테고리를 선택해주세요.', '이메일을 입력하세요'.
+_PROMPT_TAIL = r"\s*(?:을|를)\s*(?:선택|입력)[^\n]*"
+
+
+def prompt_variant(target: str) -> "re.Pattern[str]":
+    """'{target}을/를 선택·입력…' 안내 문구를 이름이나 placeholder 로 가진 조작 요소 (2026-11-06).
+
+    커스텀 드롭다운의 트리거 버튼은 라벨과 이어져 있지 않고 자기 안내 문구를 이름으로
+    갖는다: `<button>문의 카테고리를 선택해주세요.</button>`. 기획서 라벨 '문의 카테고리' 로는
+    라벨·role 어느 쪽으로도 찾지 못했다. 안내 문구가 이름을 대는 요소는 그 이름의 입력이다.
+
+    문구 전체와 맞아야 하고(앞에 다른 낱말이 오면 안 된다), 조사 '을/를' 바로 뒤에 '선택'
+    이나 '입력' 이 와야 한다 — 설명 문장('카테고리를 바꾸면 목록이 바뀝니다')은 잡지 않는다.
+    """
+    target = _ROLE_SUFFIX.sub("", target).strip() or target
+    body = _loose_body(target, r"[\s·ㆍ.]*")
+    return re.compile(rf"^{_ICON_OR_SPACE}{body}{_PROMPT_TAIL}$")
+
+
+def _prompt_control(page, pattern: "re.Pattern[str]"):
+    """prompt_variant 이름을 가진 버튼·콤보박스. placeholder 는 따로 본다."""
+    return page.get_by_role("button", name=pattern).or_(
+        page.get_by_role("combobox", name=pattern))
+
+
+# 정의 목록 라벨이 가리키는 조작 요소. 숨은 라디오 묶음은 visible 필터가 거른다.
+_DL_CONTROL = ("xpath=following-sibling::dd[1]//*[self::input[not(@type='hidden')] "
+               "or self::select or self::textarea or self::button]")
+
+
+_DL_FILE = "xpath=following-sibling::dd[1]//input[@type='file']"
+
+
+def _dl_label_locator(page, target: str):
+    """정의 목록 라벨로 찾는다 — `<dt>카테고리<i>필수</i></dt><dd><input></dd>` 모양 (2026-11-06).
+
+    표 칸 라벨(_table_label_locator)과 같은 이유다: 글자는 보이지만 `<label for>` 로 이어져
+    있지 않다. 라벨 칸 **바로 다음** `<dd>` 안의 **보이는** 입력·선택·버튼만 본다. dt 글자는
+    marked_variant 로 맞춘다 — 필수 표시가 dt 안에 붙어 있다.
+
+    맞는 dt 가 여럿이면 각각의 요소를 모두 담는다 — 개수 확인(정확히 1개)은 부르는 쪽이
+    한다. 하나로 줄여 고르지 않는다.
+    """
+    pattern = marked_variant(target)
+    dts = page.locator("dt")
+    try:
+        texts = dts.all_inner_texts()
+    except Exception:
+        texts = []
+    hits = [i for i, t in enumerate(texts) if pattern.search(normalize_ws(t))]
+    if not hits:
+        return page.locator("xpath=//dt[false()]")
+
+    def control(i):
+        # 파일 칸은 진짜 입력(input[type=file])을 숨기고 읽기 전용 글자칸·'업로드' 라벨을
+        # 보인다. 칸이 가리키는 것은 숨은 파일 입력이다 — 보이는 글자칸에 넣으면 막힌다.
+        dd_file = dts.nth(i).locator(_DL_FILE)
+        if dd_file.count():
+            return dd_file
+        return dts.nth(i).locator(_DL_CONTROL).filter(visible=True)
+
+    found = control(hits[0])
+    for i in hits[1:]:
+        found = found.or_(control(i))
+    return found
 
 
 def is_template(target: str) -> bool:
@@ -312,6 +395,11 @@ def _try_strategies(page, target: str, hint: UIElement | None,
         if pattern is None:
             at = next(i for i, c in enumerate(candidates) if c[0] == "role")
             candidates.insert(at, ("table_label", lambda: _table_label_locator(page, target)))
+            # 정의 목록 라벨은 글자(text) 바로 앞이다. text 는 입력란이 아니라 `<dt>` 의 라벨
+            # 글자를 잡는다(2026-11-06 '첨부파일': fill 이 글자에 떨어졌다). 앞의 접근성
+            # 전략이 찾는 화면에서는 판정을 바꾸지 않는다.
+            at = next(i for i, c in enumerate(candidates) if c[0] == "text")
+            candidates.insert(at, ("dl_label", lambda: _dl_label_locator(page, target)))
 
     for strategy, build in candidates:
         try:
@@ -326,7 +414,9 @@ def _try_strategies(page, target: str, hint: UIElement | None,
         if count == 1:
             visible = locator.is_visible()
             attempts.append(Attempt(strategy=strategy, count=1, visible=visible))
-            if visible:
+            # 파일 입력은 숨겨 두고 '업로드' 라벨·글자칸을 보이는 것이 보통이다(2026-11-06).
+            # 숨어 있어도 그 칸의 입력이다 — 조작은 S4 가 파일 칸으로 따로 다룬다.
+            if visible or _is_hidden_file_input(locator):
                 return locator, strategy, attempts
         else:
             attempts.append(Attempt(strategy=strategy, count=count))
@@ -337,7 +427,41 @@ def _try_strategies(page, target: str, hint: UIElement | None,
 #: 요소 자체를 정확한 이름으로 찾는 전략. text 는 빠진다 — 요소가 아니라 글자를
 #: 잡으므로(제목·라벨 글자), 여러 개여도 '같은 이름의 요소가 여럿' 이라는 뜻이 아니다.
 _ELEMENT_STRATEGIES = ("label", "placeholder", "placeholder_hint", "table_label", "role",
-                       "label_shape")
+                       "label_shape", "dl_label", "prompt_control")
+
+
+def _try_prompt(page, target: str):
+    """prompt_variant 로 placeholder·버튼·콤보박스를 찾는다. (locator, strategy, pattern, attempts).
+
+    두 전략을 합쳐 정확히 1개여야 한다 — placeholder 와 버튼이 같은 문구를 하나씩 가지면
+    어느 것인지 모르므로 찾지 못한 것으로 둔다.
+    """
+    pattern = prompt_variant(target)
+    attempts: list[Attempt] = []
+    found = []
+    for strategy, build in (("placeholder", lambda: page.get_by_placeholder(pattern)),
+                            ("prompt_control", lambda: _prompt_control(page, pattern))):
+        try:
+            locator = build()
+            count = locator.count()
+        except Exception:
+            attempts.append(Attempt(strategy=strategy, count=0))
+            continue
+        visible = locator.is_visible() if count == 1 else False
+        attempts.append(Attempt(strategy=strategy, count=count, visible=visible))
+        if count:
+            found.append((locator, strategy, count, visible))
+    if len(found) == 1 and found[0][2] == 1 and found[0][3]:
+        return found[0][0], found[0][1], pattern, attempts
+    return None, None, None, attempts
+
+
+def _is_hidden_file_input(locator) -> bool:
+    try:
+        return bool(locator.evaluate(
+            "el => el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'file'"))
+    except Exception:
+        return False
 
 
 def ambiguous_count(attempts: list[Attempt]) -> int:
@@ -466,6 +590,17 @@ def ground(page, target: str, hint: UIElement | None = None,
     locator, strategy, attempts = _try_strategies(page, target, hint)
     pattern = None
     nth = None
+    if strategy in ("dl_label", "text") and hint and hint.type in _FILLABLE_TYPES:
+        # 라벨이 `<label for>` 로 이어져 있고 필수 표시만 붙었다면('성명 필수') 그 연결이
+        # 먼저다. 정의 목록·글자로 찾았다고 하면 '라벨이 연결되지 않았다' 고 잘못 보고한다
+        # (2026-11-06 4차 실행, 문의 폼 5칸).
+        candidate = marked_variant(target)
+        try:
+            linked = page.get_by_label(candidate)
+            if linked.count() == 1 and linked.is_visible():
+                locator, strategy, pattern = linked, "label", candidate
+        except Exception:
+            pass
     if locator is None and ordinal is not None and is_template(target):
         # 틀 라벨은 항목마다 하나씩이다 — 여럿이 정상이고, k번째 조작은 k번째 항목이다.
         locator, strategy, pattern, tried = _nth_of_template(page, target, hint, ordinal)
@@ -486,6 +621,12 @@ def ground(page, target: str, hint: UIElement | None = None,
             # 마지막으로 라벨 앞뒤의 필수 표시·띄어쓰기 차이만 무시한다 (marked_variant).
             candidate = marked_variant(target)
             loc, strat, tried = _try_strategies(page, target, hint, candidate)
+            attempts.extend(tried)
+            if loc is not None:
+                hits.append((loc, strat, candidate))
+        if not hits:
+            # 그래도 없으면 안내 문구가 이 이름을 대는 입력('○○을 선택해주세요')을 본다.
+            loc, strat, candidate, tried = _try_prompt(page, target)
             attempts.extend(tried)
             if loc is not None:
                 hits.append((loc, strat, candidate))
@@ -529,6 +670,7 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
             "placeholder": lambda: page.get_by_placeholder(pattern),
             "role": lambda: page.get_by_role(_role_for(hint), name=pattern),
             "text": lambda: page.get_by_text(pattern),
+            "prompt_control": lambda: _prompt_control(page, pattern),
         }
         if strategy in builders:
             found = builders[strategy]()
@@ -546,6 +688,8 @@ def resolve_locator(page, location: ElementLocation, hint: UIElement | None = No
         return page.get_by_placeholder(hint.placeholder, exact=True)
     if strategy == "table_label":
         return _table_label_locator(page, target)
+    if strategy == "dl_label":
+        return _dl_label_locator(page, target)
     if strategy == "role":
         return page.get_by_role(_role_for(hint), name=_role_name(target))
     if strategy == "text":
@@ -1290,13 +1434,20 @@ def read_options(page, target: str, hint: UIElement | None = None) -> list[str] 
                 # 때만 받아들인다.
                 locator = page.get_by_text(target, exact=True)
                 if locator.count() != 1:
-                    return None
+                    # 마지막으로 ground() 의 나머지 경로(필수 표시·정의 목록·안내 문구)를
+                    # 쓴다. 조작 스텝이 찾는 요소와 같은 요소의 항목을 읽어야 한다.
+                    locator = resolve_locator(page, ground(page, target, hint), hint)
+                    if locator.count() != 1:
+                        return None
         # <option> 은 네이티브 <select> 에만 있다. 커스텀 combobox 에서 같은 조회를
         # 하면 예외 없이 빈 목록이 나와 '항목 0개' 로 보고된다 — 못 읽은 것을 구현
         # 결함으로 말하게 된다. 커스텀 드롭다운이면 목록을 열어 role=option 을 읽고,
         # 드롭다운이 아니거나 목록이 안 뜨면 None 이다.
         tag = locator.evaluate("el => el.tagName.toLowerCase()")
         if tag != "select":
+            disclosure = disclosure_trigger(locator)
+            if disclosure is not None:
+                return disclosure_options(disclosure)
             trigger = dropdown_trigger(locator)
             if trigger is None:
                 return None
@@ -1395,6 +1546,159 @@ def select_from_listbox(page, trigger, value: str, timeout_ms: int = 2000) -> No
     option.click(timeout=timeout_ms)
 
 
+# ---------------------------------------------------------------------------
+# 버튼 + 숨은 라디오 묶음 선택 (2026-11-06 실물 사이트)
+# ---------------------------------------------------------------------------
+#
+# `<button class=selBtn>…선택해주세요.</button><div><ul><li><input type=radio id=a>
+# <label for=a>A</label>…` — 버튼을 누르면 옆의 목록이 펼쳐지고 라벨을 눌러 고른다.
+# role=combobox·listbox 가 없어 위의 드롭다운 경로가 못 다룬다. jQuery 사이트에 흔하다.
+
+_DISCLOSURE_TRIGGER_JS = """el => {
+    const b = el.closest('button, [role="button"]');
+    if (!b || !b.parentElement) return null;
+    for (const sib of b.parentElement.children) {
+        if (sib !== b && sib.querySelector('input[type="radio"]')) return b;
+    }
+    return null;
+}"""
+
+_DISCLOSURE_OPTIONS_JS = """b => {
+    const out = [];
+    for (const sib of b.parentElement.children) {
+        if (sib === b) continue;
+        for (const r of sib.querySelectorAll('input[type="radio"]')) {
+            const lab = (r.id && sib.querySelector('label[for="' + CSS.escape(r.id) + '"]'))
+                        || r.closest('label');
+            out.push(lab ? lab.innerText : (r.value || ''));
+        }
+    }
+    return out;
+}"""
+
+
+def disclosure_trigger(locator):
+    """찾은 요소가 '버튼 + 옆의 숨은 라디오 묶음' 선택의 버튼(또는 그 안 글자)이면 버튼 handle.
+
+    아니면 None. 형제 요소 안에 라디오가 있을 때만 본다 — 아무 버튼이나 누르지 않는다.
+    """
+    handle = locator.element_handle()
+    return handle.evaluate_handle(_DISCLOSURE_TRIGGER_JS).as_element()
+
+
+def disclosure_options(trigger) -> list[str]:
+    """그 선택의 항목 글자. 펼치지 않아도 읽힌다(숨은 라디오의 라벨)."""
+    return [normalize_ws(t) for t in trigger.evaluate(_DISCLOSURE_OPTIONS_JS)]
+
+
+def _pick_option(options: list[str], value: str) -> int | None:
+    """value 에 해당하는 항목의 번호. 정확히 같은 것 → 띄어쓰기·대소문자만 다른 것 →
+    기획서 값이 'A/B'·'A (B)' 처럼 두 표기를 함께 적었을 때 A 와 같은 것 순이다.
+
+    각 단계에서 **하나뿐일 때만** 고른다. 이 값은 다른 칸을 검사하려고 채우는 값이다 —
+    항목이 기획서와 같은지는 선택 항목 확인 케이스가 따로, 정확히 대조한다.
+    """
+    norm = normalize_ws(value)
+    exact = [i for i, o in enumerate(options) if o == norm]
+    if len(exact) == 1:
+        return exact[0]
+    loose = marked_variant(norm)
+    same = [i for i, o in enumerate(options) if loose.search(o)]
+    if len(same) == 1:
+        return same[0]
+    head = re.split(r"\s*[/(]", norm, maxsplit=1)[0].strip()
+    if head and head != norm:
+        first = marked_variant(head)
+        heads = [i for i, o in enumerate(options) if first.search(o)]
+        if len(heads) == 1:
+            return heads[0]
+    return None
+
+
+_DISCLOSURE_POLL_MS = 100
+_DISCLOSURE_WAIT_MS = 1500
+
+
+def _disclosure_label(page, trigger, index: int):
+    """index 번째 항목의 누를 곳(라벨, 없으면 라디오)의 handle."""
+    return trigger.evaluate_handle(
+        """(b, k) => {
+            const rs = [];
+            for (const sib of b.parentElement.children) {
+                if (sib === b) continue;
+                rs.push(...sib.querySelectorAll('input[type="radio"]'));
+            }
+            const r = rs[k];
+            if (!r) return null;
+            const box = r.closest('ul, ol, div') || b.parentElement;
+            return (r.id && box.querySelector('label[for="' + CSS.escape(r.id) + '"]'))
+                   || r.closest('label') || r;
+        }""", index).as_element()
+
+
+def _radio_checked(trigger, index: int) -> bool:
+    return bool(trigger.evaluate(
+        """(b, k) => {
+            const rs = [];
+            for (const sib of b.parentElement.children) {
+                if (sib === b) continue;
+                rs.push(...sib.querySelectorAll('input[type="radio"]'));
+            }
+            return !!(rs[k] && rs[k].checked);
+        }""", index))
+
+
+def _center_and_hover(page, handle) -> None:
+    """요소를 화면 가운데로 올리고 마우스를 그 위에 둔다.
+
+    고정 머리말이 있는 사이트에서 스크롤 뒤 마우스가 머리말 위에 남으면 호버 메뉴가 펼쳐져
+    목록 항목을 덮는다 — 누르기가 가려져 시간 초과가 났다(2026-11-06 5차 실행). 가운데로
+    올리면 머리말 밖이고, 마우스를 옮기면 호버가 풀린다. 실패해도 누르기는 그대로 시도한다.
+    """
+    try:
+        handle.evaluate("e => e.scrollIntoView({block: 'center', inline: 'nearest'})")
+        page.wait_for_timeout(200)  # 부드러운 스크롤이 자리 잡을 시간
+        box = handle.bounding_box()
+        if box:
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            page.wait_for_timeout(100)
+    except Exception:
+        pass
+
+
+def select_from_disclosure(page, trigger, value: str, timeout_ms: int = 2000) -> None:
+    """버튼을 눌러 목록을 펼치고 value 항목의 라벨을 누른다. 못 고르면 ListboxError.
+
+    ## 왜 두 번까지 누르는가
+
+    부드러운 스크롤(GSAP ScrollSmoother) 사이트에서는 스크롤 직후 버튼이 아직 움직이는
+    중이라 첫 클릭이 다른 요소에 떨어진다(2026-11-06, 첫 클릭은 DIV, 두 번째에 열림).
+    펼쳐지지 않았을 때만 한 번 더 누른다 — 펼쳐졌는데 또 누르면 닫힌다.
+    """
+    options = disclosure_options(trigger)
+    index = _pick_option(options, value)
+    if index is None:
+        raise ListboxError(f"선택 목록에서 {value!r} 항목을 찾지 못했습니다 (화면의 항목: {options})")
+    target = _disclosure_label(page, trigger, index)
+    if target is None:
+        raise ListboxError(f"선택 목록의 {value!r} 항목을 누를 곳을 찾지 못했습니다")
+    for _ in range(2):
+        if target.is_visible():
+            break
+        _center_and_hover(page, trigger)
+        trigger.click(timeout=timeout_ms)
+        for _ in range(_DISCLOSURE_WAIT_MS // _DISCLOSURE_POLL_MS):
+            if target.is_visible():
+                break
+            page.wait_for_timeout(_DISCLOSURE_POLL_MS)
+    if not target.is_visible():
+        raise ListboxError("선택 버튼을 눌렀지만 항목 목록이 펼쳐지지 않았습니다")
+    _center_and_hover(page, target)
+    target.click(timeout=timeout_ms)
+    if not _radio_checked(trigger, index):
+        raise ListboxError(f"{options[index]!r} 항목을 눌렀지만 선택되지 않았습니다")
+
+
 def read_placeholders(page, labels: list[str]) -> dict[str, str]:
     """라벨별로 화면의 입력 안내 문구(placeholder)를 읽는다.
 
@@ -1415,7 +1719,14 @@ def read_placeholders(page, labels: list[str]) -> dict[str, str]:
         try:
             locator = page.get_by_label(label, exact=True)
             if locator.count() != 1:
-                continue
+                # 조작 스텝이 쓰는 나머지 경로(필수 표시가 붙은 라벨·정의 목록)로도 본다.
+                # 같은 칸을 조작은 하면서 안내 문구만 '요소 없음' 이라 하면 안 된다
+                # (2026-11-06 5차 실행, '성명 필수' 라벨 4칸).
+                hint = UIElement(element_id="_placeholder", type="input", label=label)
+                locator = resolve_locator(page, ground(page, label, hint), hint)
+                if locator.count() != 1 or not locator.evaluate(
+                        "e => ['INPUT', 'TEXTAREA'].includes(e.tagName)"):
+                    continue
             found[label] = locator.get_attribute("placeholder") or ""
         except Exception:
             continue
@@ -1572,6 +1883,9 @@ def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[s
                 "라벨이 요소와 연결되지 않았습니다 — 같은 표 행의 글자로만 찾았습니다 "
                 "(<label for> 로 잇거나 aria-label 을 달아 주세요)"
                 if location.strategy == "table_label" else "")
+            # 정의 목록(<dt>→<dd>)은 표 칸과 달리 HTML 이 정한 '용어 ↔ 설명' 짝이다. 연결이
+            # 없다고 보고하면 기획서와 다르지 않은 칸을 '찾을 수 없음' 으로 센다(2026-11-06
+            # 실물, 문의 폼). 표 칸 라벨의 판정은 그대로다.
         except SpecTypeMismatch:
             result[label] = ""
         except GroundingError as exc:

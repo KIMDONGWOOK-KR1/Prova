@@ -130,3 +130,51 @@ def test_다시_부르는_한도는_그대로다():
     llm.complete_json = spy
     extract_screen_spec(_doc(), llm)
     assert budgets == [3072, S1_RETRY_MAX_TOKENS]
+
+
+def _arrays(node, out):
+    if isinstance(node, dict):
+        if node.get("type") == "array":
+            out.append(node)
+        for v in node.values():
+            _arrays(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            _arrays(v, out)
+    return out
+
+
+class TestArrayCap:
+    """2026-11-06 실물 화면기획서: 목록 화면 둘에서 모델이 예시 항목을 요소로 끝없이 적었다."""
+
+    def test_다시_부를_때만_배열_상한을_건다(self):
+        from prova.s1_spec_extractor.extractor import S1_ARRAY_CAP
+
+        llm = _LoopsThenCapped(_spec([]))
+        extract_screen_spec(_doc(), llm)
+        first, retry = llm.schemas
+        assert not any("maxItems" in a for a in _arrays(first, []))
+        assert _arrays(retry, []) and all(a["maxItems"] == S1_ARRAY_CAP
+                                          for a in _arrays(retry, []))
+
+    def test_반복한_요소는_한_번만_쓰고_알린다(self):
+        els = [_el("a", "사업명"), _el("b", "사업명"), _el("c", "기간"), _el("d", "사업명")]
+        spec = extract_screen_spec(_doc(), _LoopsThenCapped(_spec(els)))
+        assert [e.label for e in spec.elements] == ["사업명", "기간"]
+        assert any("반복해 적었습니다" in w for w in spec.warnings)
+
+    def test_상한에_걸리면_빠졌을_수_있다고_알린다(self):
+        from prova.s1_spec_extractor.extractor import S1_ARRAY_CAP
+
+        els = [_el(f"e{i}", f"항목{i}") for i in range(S1_ARRAY_CAP)]
+        spec = extract_screen_spec(_doc(), _LoopsThenCapped(_spec(els)))
+        assert len(spec.elements) == S1_ARRAY_CAP
+        assert any("상한" in w and "빠졌을 수" in w for w in spec.warnings)
+
+    def test_잘리지_않으면_같은_이름도_그대로다(self):
+        class _Once:
+            def complete_json(self, **kw):
+                return _spec([_el("a", "사업명"), _el("b", "사업명")])
+
+        spec = extract_screen_spec(_doc(), _Once())
+        assert len(spec.elements) == 2

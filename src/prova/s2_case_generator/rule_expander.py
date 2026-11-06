@@ -88,6 +88,20 @@ RULE_LABELS = {
 # 검증할 수 있는 것은 '선택/체크하지 않았을 때' 뿐이다.
 NON_TEXT_TYPES = ("checkbox", "select")
 
+# 파일 첨부 칸. 유형은 input 으로 나오지만 글자를 넣을 수 없다 — 모델은 '300MB 이하' 를
+# max_length 300 으로 옮겼고, S2 는 300자 넘는 글자를 넣는 위반 케이스를 만들었다
+# (2026-11-06 실물). 파일 크기·종류 규칙은 지금 전개하지 않는다: 값은 비워 두고(선택 칸이면
+# 그대로 정상 입력이다) 글자 규칙도 만들지 않는다.
+_FILE_LABEL = re.compile(r"첨부|attach|upload", re.IGNORECASE)
+
+
+def is_file_field(element: UIElement) -> bool:
+    """파일 첨부 칸인가 — 모델이 형식을 'file' 로 적었거나 라벨이 첨부를 말한다."""
+    if element.type != "input":
+        return False
+    return (str(element.constraints.get("format", "")).lower() == "file"
+            or bool(_FILE_LABEL.search(element.label or "")))
+
 
 @dataclass(frozen=True)
 class Violation:
@@ -202,6 +216,9 @@ def valid_value_for(element: UIElement, ref_value: Optional[str] = None) -> str:
 
     if element.type == "checkbox":
         return CHECKED
+
+    if is_file_field(element):
+        return ""
 
     if element.type == "select":
         # 선택지가 없으면 무엇을 골라야 할지 알 수 없다. 빈 값을 넣어 실행은
@@ -400,8 +417,8 @@ def violations_for_element(
             description=_required_description(element),
         ))
 
-    if element.type in NON_TEXT_TYPES:
-        # 선택·체크 요소에는 문자 규칙을 전개하지 않는다 (NON_TEXT_TYPES 설명 참고).
+    if element.type in NON_TEXT_TYPES or is_file_field(element):
+        # 선택·체크·파일 요소에는 문자 규칙을 전개하지 않는다 (NON_TEXT_TYPES 설명 참고).
         return violations
 
     for rule in element.constraints:

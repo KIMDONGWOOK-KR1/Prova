@@ -50,6 +50,8 @@ from prova.s3_grounder.dom_locator import (
     is_template,
     resolve_locator,
     select_from_listbox,
+    disclosure_trigger,
+    select_from_disclosure,
 )
 from prova.route_params import has_placeholder, is_route
 from prova.text_utils import contains_loose, loosen
@@ -290,6 +292,15 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
     locator = resolve_locator(ctx.page, location, hint)
 
     if step.action == "fill":
+        if _is_file_input(locator):
+            # 파일 첨부 칸에는 글자를 넣을 수 없다. 빈 값은 '첨부하지 않음' 이고 그것이
+            # 칸의 처음 상태다. 글자 값은 도구가 파일 칸을 검사하지 못한다는 뜻이다 — 구현
+            # 결함으로 보고하지 않는다 (2026-11-06 실물).
+            if step.value:
+                raise FileInputUnsupported(
+                    f"{step.target!r} 는 파일 첨부 칸이라 글자를 넣을 수 없습니다 — 파일 칸 "
+                    f"검사는 아직 지원하지 않습니다")
+            return
         # 빈 값도 명시적으로 채운다. required 위반 케이스는 '비워 두는
         # 것' 자체가 검증 대상이므로 건너뛰면 안 된다.
         locator.fill(step.value or "", timeout=ctx.step_timeout_ms)
@@ -314,6 +325,13 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
         if trigger is not None:
             select_from_listbox(ctx.page, trigger, step.value or "", ctx.step_timeout_ms)
             return
+        disclosure = disclosure_trigger(locator)
+        if disclosure is not None:
+            # 버튼을 누르면 숨은 라디오 묶음이 펼쳐지는 선택. 빈 값은 '고르지 않음' 이다
+            # (필수 선택 위반 케이스) — 펼치지도 않는다.
+            if step.value:
+                select_from_disclosure(ctx.page, disclosure, step.value, ctx.step_timeout_ms)
+            return
         try:
             # <label> 이면 Playwright 가 연결된 <select> 로 옮겨 고른다 — 그 경로를 살린다.
             locator.select_option(step.value or "", timeout=ctx.step_timeout_ms)
@@ -328,6 +346,18 @@ def _act_by_locator(ctx: ExecutionContext, location: ElementLocation, hint,
             raise ListboxError(
                 f"{step.target!r} 로 찾은 요소는 선택 목록이 아닙니다 ({shape}) — 화면에서는 "
                 f"체크박스·버튼 묶음 등 다른 형태로 구현됐을 수 있습니다") from exc
+
+
+class FileInputUnsupported(RuntimeError):
+    """파일 첨부 칸에 글자 값을 넣으라는 스텝. 도구의 한계이고 구현 결함이 아니다."""
+
+
+def _is_file_input(locator) -> bool:
+    try:
+        return locator.evaluate(
+            "el => el.tagName === 'INPUT' && (el.type || '').toLowerCase() === 'file'")
+    except Exception:
+        return False
 
 
 class UnsupportedHealAction(RuntimeError):
@@ -653,6 +683,8 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     except ListboxError as exc:
         # 드롭다운은 찾았는데 고르지 못했다. 항목 누락이 결함인지는 선택 항목 확인
         # 케이스가 판정한다 — 여기서는 조작 실패로만 남긴다.
+        status, error_code, error_detail = "error", "input_error", str(exc)
+    except FileInputUnsupported as exc:
         status, error_code, error_detail = "error", "input_error", str(exc)
     except UnsupportedHealAction as exc:
         # 요소는 (2차 경로로) 찾았고 구현이 틀린 것도 아니다 — 도구가 이 동작을

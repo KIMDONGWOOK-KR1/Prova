@@ -105,3 +105,15 @@ class TestGround:
     def test_없는_라벨은_여전히_없다(self, page):
         page.set_content(_FORM)
         assert check_findable(page, [], ["이메일"])["이메일"] != ""
+
+
+def test_대소문자만_다른_이름은_기록에서_되살려도_같은_요소다(page):
+    """찾을 때는 'Top'↔'TOP' 을 같다고 보고, 누를 때 0개가 되어 시간 초과가 났다 (2026-11-06).
+
+    위치 기록에는 패턴 문자열만 남는다 — 대소문자 무시가 플래그에 있으면 되살릴 때 빠진다.
+    """
+    page.set_content('<button id="t">TOP</button>')
+    hint = UIElement(element_id="top", type="button", label="Top 버튼")
+    loc = ground(page, "Top 버튼", hint)
+    again = resolve_locator(page, loc, hint)
+    assert again.count() == 1 and again.get_attribute("id") == "t"
