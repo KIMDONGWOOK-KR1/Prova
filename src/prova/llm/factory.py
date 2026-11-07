@@ -59,6 +59,12 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str, cache: bool = False,
             "mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다."
         ]
 
+    if backend == "replay":
+        return _replay(llm_cfg), [
+            "replay 백엔드로 실행합니다 — 모델 서버 없이, 전에 실모델이 낸 응답(캐시)을 다시 "
+            "씁니다. 저장된 응답이 없는 기획서·프롬프트는 실패합니다."
+        ]
+
     if backend == "vllm":
         from prova.llm.base import LLMError
         from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL, VLLMClient
@@ -80,4 +86,40 @@ def make_llm(backend: str, cfg: dict, pdf: Path | str, cache: bool = False,
             return CachedLLM(client, llm_cfg["cache_dir"], read=cache_read), []
         return client, []
 
-    raise BackendError(f"지원하지 않는 백엔드: {backend} (vllm | mock)")
+    raise BackendError(f"지원하지 않는 백엔드: {backend} (vllm | mock | replay)")
+
+
+class _NoServer:
+    """replay 의 안쪽 — 모델 서버가 없다. 캐시에 없는 질문은 여기서 실패한다."""
+
+    def __init__(self, model: str) -> None:
+        self.model = model
+        # 캐시 키가 이 이름을 쓴다(cache.py) — vllm 백엔드와 같아야 그 답을 찾는다.
+        self.name = f"vllm:{model}"
+        self.base_url = ""
+
+    def complete_json(self, **request) -> dict:
+        from prova.llm.base import LLMError
+
+        raise LLMError(
+            "저장된 모델 응답이 없습니다 — replay 는 모델 서버 없이 전에 받은 응답만 씁니다. "
+            "이 기획서를 GPU 가 있을 때 vllm 백엔드로 한 번 돌려 두어야 합니다(기획서나 "
+            "추출 프롬프트가 그 뒤 바뀌었어도 다시 돌려야 합니다)."
+        )
+
+
+def _replay(llm_cfg: dict):
+    """모델 서버 없이 캐시만으로 도는 백엔드 — GPU 반납 뒤 시연·재현용 (2026-11-13).
+
+    vllm 백엔드와 같은 키로 캐시를 찾으므로 그때 받은 답이 글자 그대로 쓰인다. 리포트의
+    백엔드 이름은 'replay:' 로 시작해, 이번 실행이 모델을 부르지 않았다는 사실을 남긴다.
+    """
+    from prova.llm.cache import CachedLLM
+    from prova.llm.vllm_backend import DEFAULT_MODEL
+
+    if not llm_cfg.get("cache_dir"):
+        raise BackendError("replay 는 llm.cache_dir 에 저장된 응답이 필요합니다 — 설정에 없습니다.")
+    inner = _NoServer(llm_cfg.get("model", DEFAULT_MODEL))
+    cached = CachedLLM(inner, llm_cfg["cache_dir"], read=True)
+    cached.name = f"replay:{inner.name}"
+    return cached

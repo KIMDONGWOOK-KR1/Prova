@@ -131,8 +131,9 @@ def run(
              "사용자가 준다. 반복 지정."),
     backend: Optional[str] = typer.Option(
         None, "--backend",
-        help="vllm | mock. 생략하면 설정 파일 값(기본 vllm — GPU 서버 필요). "
-             "mock 은 GPU 없이 도는 연습용이고 fixtures/specs/ 의 기획서에서만 동작한다"),
+        help="vllm | mock | replay. 생략하면 설정 파일 값(기본 vllm — GPU 서버 필요). "
+             "mock 은 GPU 없이 도는 연습용이고 fixtures/specs/ 의 기획서에서만 동작한다. "
+             "replay 는 모델 서버 없이 전에 vllm 으로 받은 응답(캐시)을 다시 쓴다"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", help="설정 파일 경로"),
     run_id: Optional[str] = typer.Option(
         None, "--run-id", help="결과 폴더 이름 (생략하면 시각으로 만든다). "
@@ -197,8 +198,8 @@ def run(
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
-    if backend not in (None, "vllm", "mock"):
-        _fail(f"--backend {backend} 은 없는 백엔드입니다 (vllm | mock)")
+    if backend not in (None, "vllm", "mock", "replay"):
+        _fail(f"--backend {backend} 은 없는 백엔드입니다 (vllm | mock | replay)")
     from prova.nodes import DEVICES
 
     if device is not None and device not in DEVICES:
