@@ -36,6 +36,7 @@ from prova.nodes import (
     extract_spec,
     finish_titles,
     generate_test_cases,
+    note_viewport,
     page_opener,
     run_cases,
 )
@@ -507,6 +508,7 @@ def _execute(
     if workers > 1:
         # 판정의 전제다 — 동시 실행이 판정을 바꿀 수 있다 (_run_parallel).
         state.report.summary["workers"] = workers
+    note_viewport(state.report.summary, viewport)
     if isinstance(state.llm, CachedLLM):
         # 이번에 모델을 돌렸는가도 전제다 (llm/cache.py). 제목까지 거둔 뒤라야 수가 맞다.
         state.report.summary["llm_cache"] = {"hits": state.llm.hits,

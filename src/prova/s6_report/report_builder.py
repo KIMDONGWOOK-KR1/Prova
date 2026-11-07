@@ -691,6 +691,9 @@ def render_html(report: TestReport) -> str:
     if "vlm" in s:
         state = f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"
         build_meta += f" · 2차 경로 <code>{_esc(state)}</code>"
+    # 기본(데스크톱)이 아닌 화면 크기 — 판정의 전제라 머리말에 둔다 (nodes.note_viewport).
+    if s.get("viewport"):
+        build_meta += f" · 화면 크기 <code>{_esc(s['viewport'])}</code>"
 
     backend = s.get("llm_backend", "")
     mock_warn = ""

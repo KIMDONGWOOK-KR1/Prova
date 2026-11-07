@@ -160,6 +160,24 @@ class AgentState:
     on_progress: Optional[Callable[[str], None]] = None
 
 
+DEFAULT_VIEWPORT = {"width": 1280, "height": 800}
+#: --device mobile 의 화면 크기. 흔한 휴대폰 세로 화면(CSS 픽셀)이다. 반응형 사이트는
+#: 이 폭에서 메뉴를 햄버거 버튼 뒤로 숨기므로, 데스크톱에서만 돌리면 모바일에서만
+#: 생기는 결함(안 열리는 메뉴, 가려지는 버튼)을 볼 수 없다.
+MOBILE_VIEWPORT = {"width": 390, "height": 844}
+DEVICES = {"desktop": DEFAULT_VIEWPORT, "mobile": MOBILE_VIEWPORT}
+
+
+def note_viewport(summary: dict, viewport: Optional[dict]) -> None:
+    """기본(데스크톱)이 아닌 화면 크기로 돌렸으면 리포트에 남긴다.
+
+    판정의 전제다 — 같은 기획서·같은 대상이라도 모바일 크기에서는 다른 요소가 보인다.
+    기본 크기면 칸을 만들지 않는다(예전 리포트와 같은 모양).
+    """
+    if viewport and viewport != DEFAULT_VIEWPORT:
+        summary["viewport"] = f"{viewport['width']}x{viewport['height']}"
+
+
 def page_opener(browser, viewport: Optional[dict] = None,
                 video_dir: Optional[Path] = None) -> Callable[..., Page]:
     """부를 때마다 새 컨텍스트의 새 페이지를 여는 함수를 돌려준다.
@@ -170,7 +188,7 @@ def page_opener(browser, viewport: Optional[dict] = None,
     def open_page(storage_state: Optional[str] = None) -> Page:
         context = browser.new_context(
             storage_state=storage_state,
-            viewport=viewport or {"width": 1280, "height": 800},
+            viewport=viewport or DEFAULT_VIEWPORT,
             # 녹화 크기를 뷰포트보다 작게 잡는다. 1280x800 으로 녹화하면 webm 이 커지고
             # GIF 로 변환한 뒤 용량이 감당되지 않는다.
             record_video_dir=str(video_dir) if video_dir else None,

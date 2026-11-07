@@ -190,11 +190,27 @@ def run(
         None, "--workers", metavar="N",
         help="동시에 돌릴 브라우저 수 (기본: 설정의 execution.workers = 1). 대상 서버를 "
              "공유하므로 새 대상은 순차와 한 번 대조한 뒤 올린다"),
+    device: Optional[str] = typer.Option(
+        None, "--device", metavar="기기",
+        help="desktop | mobile. mobile 은 휴대폰 화면 크기(390x844)로 실행한다 — 반응형 "
+             "사이트에서 모바일에만 생기는 결함을 본다. 생략하면 설정의 viewport"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
     if backend not in (None, "vllm", "mock"):
         _fail(f"--backend {backend} 은 없는 백엔드입니다 (vllm | mock)")
+    from prova.nodes import DEVICES
+
+    if device is not None and device not in DEVICES:
+        _fail(f"--device {device} 은 없는 기기입니다 ({' | '.join(DEVICES)})")
+
+    def exec_options(cfg: dict) -> dict:
+        from prova.pipeline import execution_options
+
+        options = execution_options(cfg, headed=headed)
+        if device is not None:
+            options["viewport"] = dict(DEVICES[device])
+        return options
     if engine not in ("pipeline", "graph"):
         _fail(f"--engine {engine} 은 없는 엔진입니다 (pipeline | graph)")
     if workers is not None:
@@ -257,7 +273,7 @@ def run(
             typer.echo(f"  2차 경로  : {vlm.name} @ {vlm_url} ({vlm.model})")
         typer.echo("")
 
-        from prova.pipeline import execution_options, resume_pipeline
+        from prova.pipeline import resume_pipeline
 
         # 재개는 '서버를 교체한 뒤' 도는 실행이다 — 교체한 그 서버가 낡았을
         # 자리가 오히려 여기다.
@@ -267,7 +283,7 @@ def run(
             resume,
             vlm=vlm,
             sut_build=build_state,
-            **execution_options(cfg, headed=headed),
+            **exec_options(cfg),
             slow_mo=slow,
             record_video=video,
             hold_sec=hold,
@@ -286,7 +302,7 @@ def run(
             ("--vlm", vlm_url), ("--vlm-model", vlm_model),
             ("--vlm-coords", vlm_coords if vlm_coords != "norm1000" else None),
             ("--session", session), ("--headed", headed), ("--slow", slow),
-            ("--video", video), ("--hold", hold), ("--project", project),
+            ("--video", video), ("--hold", hold), ("--project", project), ("--device", device),
         ] if value]
         if given:
             _fail(
@@ -394,8 +410,6 @@ def run(
     # 여기부터는 실제로 대상을 상대로 실행한다 (--plan-only 는 위에서 끝났다).
     build_state = _verify_sut_build(url)
 
-    from prova.pipeline import execution_options
-
     common = dict(
         pdf_path=str(pdf) if pdf else "",
         base_url=url,
@@ -403,7 +417,7 @@ def run(
         llm=llm,
         run_id=rid,
         runs_root=runs_root,
-        **execution_options(cfg, headed=headed),
+        **exec_options(cfg),
     )
 
     if engine == "graph":

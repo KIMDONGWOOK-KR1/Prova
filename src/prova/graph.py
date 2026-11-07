@@ -41,6 +41,7 @@ from prova.nodes import (
     build_final_report,
     extract_spec,
     generate_test_cases,
+    note_viewport,
     page_opener,
     run_cases,
 )
@@ -127,6 +128,7 @@ def run_graph(
     if report is None:
         raise RuntimeError("그래프 실행이 리포트를 만들지 못했습니다")
 
+    note_viewport(report.summary, viewport)
     save_json(report, run_dir)
     save_html(report, run_dir)
     return report, run_dir

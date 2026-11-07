@@ -92,6 +92,10 @@ def _same_series(summary: dict, spec: str, target: str, data: dict) -> bool:
         return False
     if _is_mock(summary) != _is_mock(other):
         return False
+    # 모바일 실행을 데스크톱 실행의 다음 차수로 비교하면 보이는 요소가 달라 '바뀐 판정' 이
+    # 결함 수정·회귀처럼 읽힌다. 화면 크기가 다르면 다른 줄기다(칸 없음 = 데스크톱).
+    if summary.get("viewport", "") != other.get("viewport", ""):
+        return False
     if spec != Path(data.get("spec_source", "")).name:
         return False
     return bool(project) or target == data.get("target_url", "")
