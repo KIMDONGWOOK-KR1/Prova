@@ -29,7 +29,8 @@ from playwright.sync_api import sync_playwright
 from prova.history import attach_history
 from prova.llm.base import LLMClient
 from prova.llm.cache import CachedLLM
-from prova.models import TestReport
+from prova.models import SpecDocument, TestReport
+from prova.spec_edits import settle
 from prova.nodes import (
     AgentState,
     build_final_report,
@@ -183,6 +184,7 @@ def build_plan(
     figma_json: Optional[str] = None,
     screen_urls: Optional[dict[str, str]] = None,
     on_progress=None,
+    doc: Optional[SpecDocument] = None,
     **state_kwargs,
 ) -> tuple[AgentState, int]:
     """브라우저를 열지 않고 S1~S2 와 케이스 선택까지만 수행한다.
@@ -201,6 +203,8 @@ def build_plan(
             승인 시점과 실행 시점 사이에 모델의 답이 달라지면 승인한 것과
             다른 것이 돌게 된다.
         reason: 계획 단계에서 모델이 밝힌 근거. case_ids 와 함께 넘겨 리포트에 남긴다.
+        doc: 사람이 계획 화면에서 고친 추출 결과(prova.spec_edits). 주면 S1 을 건너뛰고
+            이 문서로 S2 부터 돈다 — 기획서를 다시 읽으면 고친 것이 사라진다.
 
     Returns:
         (선택까지 끝난 상태, 선택 전 전체 케이스 수)
@@ -219,8 +223,12 @@ def build_plan(
     )
 
     # --- S1: 설계 문서 -> ScreenSpec (브라우저 없이 가능) ---
-    progress("S1 설계 문서 추출")
-    state = extract_spec(state)
+    if doc is not None:
+        progress("S1 사람이 고친 추출 결과를 씁니다 (기획서를 다시 읽지 않음)")
+        state.doc = settle(doc.model_copy(deep=True))
+    else:
+        progress("S1 설계 문서 추출")
+        state = extract_spec(state)
     for screen in state.doc.screens:
         progress(f"     화면 '{screen.screen_name}' · 요소 {len(screen.elements)}개")
     if state.doc.flows:
@@ -310,10 +318,14 @@ def run_pipeline(
     project: str = "",
     workers: int = 1,
     on_progress=None,
+    doc: Optional[SpecDocument] = None,
+    spec_edits: Optional[list[str]] = None,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
 
     Args:
+        doc: 사람이 고친 추출 결과 (build_plan 참고). 주면 S1 을 건너뛴다.
+        spec_edits: 그 문서가 원래 추출과 다른 점(prova.spec_edits.diff_docs). 리포트에 남는다.
         workers: 동시에 돌릴 브라우저 수. 기본은 1 이다 (_run_parallel 참고).
         project: 실행을 묶을 이름 (납품 건·외주사 등). 차수 계산의 기준이 된다
             (prova.history 참고). 비우면 기획서와 대상 URL 로 묶는다.
@@ -355,6 +367,7 @@ def run_pipeline(
             reason=reason,
             figma_json=figma_json,
             screen_urls=screen_urls,
+            doc=doc,
             vlm=vlm,
             step_timeout_ms=step_timeout_ms,
             navigation_timeout_ms=navigation_timeout_ms,
@@ -380,6 +393,7 @@ def run_pipeline(
             project=project,
             workers=workers,
             on_progress=progress,
+            spec_edits=spec_edits,
         )
 
 
@@ -470,6 +484,7 @@ def _execute(
     project: str = "",
     workers: int = 1,
     on_progress=None,
+    spec_edits: Optional[list[str]] = None,
 ) -> tuple[TestReport, Path]:
     """S3~S6 — 계획이 끝난 상태를 받아 브라우저 실행과 리포트를 수행한다.
 
@@ -509,6 +524,9 @@ def _execute(
         # 판정의 전제다 — 동시 실행이 판정을 바꿀 수 있다 (_run_parallel).
         state.report.summary["workers"] = workers
     note_viewport(state.report.summary, viewport)
+    if spec_edits:
+        # 판정 근거의 일부가 기획서가 아니라 사람이 적은 값이다 (prova.spec_edits).
+        state.report.summary["spec_edits"] = list(spec_edits)
     if isinstance(state.llm, CachedLLM):
         # 이번에 모델을 돌렸는가도 전제다 (llm/cache.py). 제목까지 거둔 뒤라야 수가 맞다.
         state.report.summary["llm_cache"] = {"hits": state.llm.hits,

@@ -31,7 +31,9 @@ from pydantic import BaseModel
 
 from prova.history import list_runs
 from prova.llm.factory import BackendError, make_llm
-from prova.nodes import finish_titles
+from prova.models import SpecDocument
+from prova.nodes import AgentState, extract_spec, finish_titles
+from prova.spec_edits import diff_docs
 from prova.pipeline import build_plan, configured_workers, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
@@ -104,6 +106,9 @@ class PlanRequest(BaseModel):
     #: 기본값을 두지 않는다 — 요청이 빠뜨리면 조용히 mock 이 되는데, "mock 은
     #: 사용자가 직접 고를 때만" 이 이 도구의 규칙이다. 화면은 항상 보낸다.
     backend: str
+    #: 사람이 계획 화면에서 고친 추출 결과(SpecDocument). 주면 기획서를 다시 읽지 않고 이
+    #: 문서로 케이스를 만든다. 원래 추출과 다른 점은 리포트에 남는다 (prova.spec_edits).
+    doc: Optional[dict] = None
 
 
 class RunRequest(PlanRequest):
@@ -179,8 +184,11 @@ def plan(body: PlanRequest) -> dict:
     figma = _safe_figma(body.figma) if body.figma else None
     cfg = _config()
 
+    edited = _edited_doc(body)
+
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
+        edits = _spec_edits(edited, pdf, figma, llm)
         state, n_all = build_plan(
             pdf_path=str(pdf),
             base_url=body.url,
@@ -188,6 +196,7 @@ def plan(body: PlanRequest) -> dict:
             request=body.request,
             figma_json=str(figma) if figma else None,
             on_progress=report,
+            doc=edited,
         )
         finish_titles(state)  # 사람이 승인하는 자리라 다듬은 제목을 보여 준다
         sel = state.selection
@@ -223,6 +232,9 @@ def plan(body: PlanRequest) -> dict:
             "design_mismatches": state.design_mismatches,
             # 대상 URL 에 화면 경로가 붙어 있어 뗐다면 그 사실 (pipeline.strip_screen_path)
             "url_note": state.url_note,
+            # 기획서에서 읽은 내용 — 사람이 보고 고치는 자리 (prova.spec_edits).
+            "doc": state.doc.model_dump(mode="json"),
+            "spec_edits": edits,
         }
 
     return _submit("plan", work)
@@ -254,9 +266,11 @@ def run(body: RunRequest) -> dict:
     # 같은 이유로 작업을 띄우기 전에 확인한다. 켰는데 서버가 없으면 locate 마다
     # 실패가 탐지 실패로 되돌아가, '보정을 켠' 실행이 조용히 1차 경로만 돈다.
     vlm = _make_vlm(cfg) if body.vlm else None
+    edited = _edited_doc(body)
 
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
+        edits = _spec_edits(edited, pdf, figma, llm)
         run_id = "ui-" + datetime.now().strftime("%Y%m%d-%H%M%S")
         test_report, run_dir = run_pipeline(
             pdf_path=str(pdf),
@@ -274,6 +288,8 @@ def run(body: RunRequest) -> dict:
             project=body.project.strip(),
             workers=configured_workers(cfg),
             on_progress=report,
+            doc=edited,
+            spec_edits=edits,
         )
         return {
             "run_id": run_id,
@@ -288,6 +304,28 @@ def run(body: RunRequest) -> dict:
 # ---------------------------------------------------------------------------
 # 공통
 # ---------------------------------------------------------------------------
+
+
+def _edited_doc(body: PlanRequest) -> Optional[SpecDocument]:
+    """화면이 보낸 고친 추출 결과를 검사한다. 모양이 틀리면 작업을 띄우기 전에 400."""
+    if body.doc is None:
+        return None
+    try:
+        return SpecDocument.model_validate(body.doc)
+    except ValueError as exc:
+        raise HTTPException(400, f"고친 추출 결과를 읽을 수 없습니다: {exc}") from exc
+
+
+def _spec_edits(edited: Optional[SpecDocument], pdf: Path, figma: Optional[Path],
+                llm) -> list[str]:
+    """원래 추출과 비교한 수정 목록. 원래 추출은 다시 읽어 얻는다 — 같은 모델 응답이
+    저장돼 있어(llm/cache.py) 모델을 다시 부르지 않는다. 화면이 보낸 '원본' 은 믿지 않는다."""
+    if edited is None:
+        return []
+    original = extract_spec(AgentState(
+        pdf_path=str(pdf), base_url="", run_id="edits", run_dir=RUNS / "edits",
+        llm=llm, figma_json=str(figma) if figma else None)).doc
+    return diff_docs(original, edited)
 
 
 def _backend(name: str, cfg: dict, pdf: Path, report):

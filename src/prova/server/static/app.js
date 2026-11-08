@@ -340,6 +340,7 @@ function showPlan() {
         : "요청이 없어 전체 케이스를 골랐습니다"}</div>
     </div>
     <div id="planNotes"></div>
+    <details class="spec" id="specPanel"></details>
     <div class="toolbar">
       <div class="count" id="count"></div>
       <button class="btn ghost quiet" id="allBtn" type="button">전체</button>
@@ -384,7 +385,144 @@ function showPlan() {
   });
   $("runBtn").addEventListener("click", startRun);
 
+  state.draft = JSON.parse(JSON.stringify(p.doc || { screens: [] }));
+  state.dirty = false;
+  renderSpec();
   renderPlanBody();
+}
+
+// ── 기획서에서 읽은 내용 — 사람이 보고 고친다 (prova/spec_edits.py) ─────────
+//
+// 실물 기획서에서 S1 은 82% 를 맞게 읽었다. 남은 틀린 칸은 실행 전에 사람이 고치는 것이
+// 모델을 더 짜내는 것보다 싸고 확실하다. 고친 값은 리포트에 '사람이 고친 것' 으로 남는다.
+
+const EL_FIELDS = [
+  ["label", "라벨"], ["required", "필수"], ["placeholder", "안내 문구"],
+  ["error_message", "오류 문구"], ["required_message", "빈 칸 문구"], ["options", "선택 항목"],
+];
+const SCREEN_FIELDS = [
+  ["url_path", "경로"], ["success_condition", "성공 조건"], ["required_message", "필수 공통 문구"],
+];
+// 빈 칸으로 두면 '없음'(null) 이 되는 칸. 라벨·경로·성공 조건은 빈 글자 그대로 둔다.
+const NULLABLE = new Set(["placeholder", "error_message", "required_message"]);
+const CHOICE_TYPES = new Set(["select", "radio", "checkbox"]);
+
+function specInput(path, key, value) {
+  const id = `${path}.${key}`;
+  if (key === "required") {
+    return `<input type="checkbox" data-spec="${esc(id)}" ${value ? "checked" : ""}
+                   aria-label="필수">`;
+  }
+  if (key === "options") {
+    return `<textarea data-spec="${esc(id)}" rows="${Math.max(1, (value || []).length)}"
+                      placeholder="한 줄에 하나" spellcheck="false">${esc((value || []).join("\n"))}</textarea>`;
+  }
+  return `<input type="text" data-spec="${esc(id)}" value="${esc(value ?? "")}" spellcheck="false">`;
+}
+
+function renderSpec() {
+  const p = state.plan;
+  const d = state.draft;
+  const edits = p.spec_edits || [];
+  const head = `<summary><b>기획서에서 읽은 내용</b>
+    <span class="hint">${edits.length
+      ? `사람이 고친 값 ${edits.length}건으로 만든 케이스입니다`
+      : "틀린 칸이 있으면 고친 뒤 [다시 만들기] — 기획서 문구 그대로 적어 주세요"}</span></summary>`;
+  const screens = d.screens.map((sc, si) => {
+    const meta = SCREEN_FIELDS.map(([k, name]) =>
+      `<label class="spec-meta"><span>${name}</span>${specInput(`s${si}`, k, sc[k])}</label>`).join("");
+    const rows = sc.elements.map((e, ei) => {
+      // 선택 항목은 고를 수 있는 요소에만 있다 — 입력칸·버튼에 빈 상자를 두면 표가 어수선하다.
+      const cells = EL_FIELDS.map(([k]) => k === "options" && !CHOICE_TYPES.has(e.type)
+        ? `<td class="id">—</td>`
+        : `<td>${specInput(`s${si}.e${ei}`, k, e[k])}</td>`).join("");
+      return `<tr class="${e._removed ? "off" : ""}"><td class="id">${esc(e.type)}<br>${esc(e.element_id)}</td>${cells}
+        <td><label class="check"><input type="checkbox" data-remove="s${si}.e${ei}"
+            ${e._removed ? "checked" : ""}> 뺌</label></td></tr>`;
+    }).join("");
+    return `<section class="group spec-screen">
+      <header><h3>${esc(sc.screen_name)}</h3></header>
+      <div class="spec-metas">${meta}</div>
+      <div class="spec-scroll"><table class="spec-table">
+        <thead><tr><th>요소</th>${EL_FIELDS.map(([, n]) => `<th>${n}</th>`).join("")}<th></th></tr></thead>
+        <tbody>${rows}</tbody></table></div>
+    </section>`;
+  }).join("");
+  const list = edits.length
+    ? `<ul class="spec-edits">${edits.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
+  $("specPanel").innerHTML = head + list + screens + `
+    <div class="runbar"><button class="btn ghost" id="replanBtn" type="button" disabled>
+      고친 내용으로 케이스 다시 만들기</button>
+      <span class="hint" id="specHint"></span></div>`;
+  if (edits.length) $("specPanel").open = true;
+
+  $("specPanel").querySelectorAll("[data-spec]").forEach((el) => {
+    el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
+      const [path, key] = splitPath(el.dataset.spec);
+      const target = specTarget(path);
+      if (el.type === "checkbox") target[key] = el.checked;
+      else if (key === "options") target[key] = el.value.split("\n").map((x) => x.trim()).filter(Boolean);
+      else target[key] = el.value === "" && NULLABLE.has(key) ? null : el.value;
+      markDirty();
+    });
+  });
+  $("specPanel").querySelectorAll("[data-remove]").forEach((el) => {
+    el.addEventListener("change", () => {
+      specTarget(el.dataset.remove)._removed = el.checked;
+      el.closest("tr").classList.toggle("off", el.checked);
+      markDirty();
+    });
+  });
+  $("replanBtn").addEventListener("click", replan);
+}
+
+function splitPath(id) {
+  const i = id.lastIndexOf(".");
+  return [id.slice(0, i), id.slice(i + 1)];
+}
+
+function specTarget(path) {
+  const [s, e] = path.split(".");
+  const screen = state.draft.screens[Number(s.slice(1))];
+  return e ? screen.elements[Number(e.slice(1))] : screen;
+}
+
+// 고친 뒤 다시 만들지 않고 실행하면 화면의 케이스와 문서가 어긋난다 — 실행을 막는다.
+function markDirty() {
+  state.dirty = true;
+  $("replanBtn").disabled = false;
+  $("specHint").textContent = "고친 내용은 [다시 만들기] 를 눌러야 케이스에 반영됩니다";
+  renderCount();
+}
+
+function draftDoc() {
+  const d = JSON.parse(JSON.stringify(state.draft));
+  for (const sc of d.screens) {
+    sc.elements = sc.elements.filter((e) => !e._removed);
+  }
+  return d;
+}
+
+async function replan() {
+  const doc = draftDoc();
+  showProgress("고친 내용으로 케이스를 다시 만드는 중", []);
+  state.busy = true;
+  renderChrome();
+  try {
+    const { job_id } = await api("/api/plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...form(), doc }),
+    });
+    state.plan = await follow(job_id, pushProgress);
+    state.filter = ""; state.onlyOff = false;
+    showPlan();
+  } catch (err) {
+    showError("케이스를 다시 만들지 못했습니다", err.message);
+  } finally {
+    state.busy = false;
+    renderChrome();
+  }
 }
 
 function renderPlanBody() {
@@ -483,9 +621,10 @@ function renderCount() {
     `<b>${n}</b>건 실행 <span class="off">· ${all - n}건 제외</span>`;
   // 0건 실행은 "전체 0건, 통과율 100%" 리포트가 된다. 누를 수 없게 막는다.
   const run = $("runBtn");
-  run.disabled = n === 0;
+  run.disabled = n === 0 || state.dirty;
   $("runHint").textContent = n === 0
-    ? "0건은 실행할 수 없습니다 — 통과율 100% 리포트가 됩니다" : "";
+    ? "0건은 실행할 수 없습니다 — 통과율 100% 리포트가 됩니다"
+    : state.dirty ? "기획서 내용을 고쳤습니다 — 먼저 [다시 만들기]" : "";
 }
 
 // ── 실행 ───────────────────────────────────────────────────────────────────
@@ -502,7 +641,9 @@ async function startRun() {
       // 2차 경로는 실행에만 쓰인다. 저장하지 않는다 — 지난번에 켠 채로 모르고
       // 계속 도는 일이 없게, 페이지를 열 때마다 꺼진 상태로 시작한다.
       body: JSON.stringify({ ...form(), case_ids: ids, reason: state.plan.reason || "",
-                             vlm: $("vlm").checked }),
+                             vlm: $("vlm").checked,
+                             // 고친 추출 결과로 만든 계획이면 그 문서로 실행한다 (spec_edits)
+                             doc: (state.plan.spec_edits || []).length ? state.plan.doc : null }),
     });
     const out = await follow(job_id, pushProgress);
     finishProgress();

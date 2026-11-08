@@ -669,3 +669,22 @@ details.raw[open] > summary::before { content: "▾ "; }
 
 .head .elapsed { font-size: var(--tx-sm); color: var(--fg-muted); margin-left: 8px;
                  font-variant-numeric: tabular-nums; }
+
+/* ── 기획서에서 읽은 내용 (계획 화면, spec_edits) ───────────────────────── */
+.spec { border: 1px solid var(--border-subtle); border-radius: 8px; padding: var(--sp-2) var(--sp-3);
+        margin-bottom: var(--sp-3); background: var(--bg-canvas); }
+.spec > summary { cursor: pointer; display: flex; gap: var(--sp-2); align-items: baseline; flex-wrap: wrap; }
+.spec-screen { margin-top: var(--sp-3); }
+.spec-metas { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: var(--sp-2);
+              margin: var(--sp-2) 0; }
+.spec-meta { display: flex; flex-direction: column; gap: 2px; font-size: var(--tx-sm); color: var(--fg-muted); }
+.spec-scroll { overflow-x: auto; }
+.spec-table { border-collapse: collapse; width: 100%; font-size: var(--tx-sm); }
+.spec-table th { text-align: left; color: var(--fg-muted); font-weight: 500; padding: 4px; white-space: nowrap; }
+.spec-table td { padding: 3px 4px; vertical-align: top; border-top: 1px solid var(--border-subtle); }
+.spec-table td.id { color: var(--fg-muted); white-space: nowrap; }
+.spec-table input[type=text], .spec-table textarea, .spec-meta input {
+  width: 100%; min-width: 110px; font: inherit; padding: 3px 6px; border: 1px solid var(--border-default);
+  border-radius: 4px; background: var(--bg-surface, transparent); color: inherit; }
+.spec-table tr.off td { opacity: .45; }
+.spec-edits { margin: var(--sp-2) 0 0; padding-left: 1.2em; font-size: var(--tx-sm); }

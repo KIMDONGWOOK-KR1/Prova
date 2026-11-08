@@ -739,6 +739,15 @@ def render_html(report: TestReport) -> str:
             f"<div>구현을 고치기 전에 두 입력 중 어느 쪽이 맞는지부터 정해야 "
             f"합니다.<ul>{items}</ul></div></div>"
         )
+    edits = s.get("spec_edits") or []
+    if edits:
+        # 판정 근거의 일부가 기획서가 아니라 사람이 계획 화면에서 적은 값이다 (prova.spec_edits).
+        items = "".join(f"<li>{_esc(m)}</li>" for m in edits)
+        mock_warn += (
+            f"<div class='warn'><b>사람이 고친 추출 결과로 실행 — {len(edits)}건</b>"
+            "<div>아래 값은 기획서에서 읽은 것이 아니라 실행 전에 사람이 고친 것입니다. "
+            f"이 값에 기댄 판정은 그 수정이 맞을 때만 유효합니다.<ul>{items}</ul></div></div>"
+        )
 
     history = s.get("history") or {}
     history_html = _history_html(history)
