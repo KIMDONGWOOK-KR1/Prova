@@ -214,7 +214,7 @@ uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:810
 uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:8100/bad  --backend mock
 
 # 4-1. GPU 를 반납한 뒤(2026-11-13~) 실모델 결과를 다시 보려면 --backend replay.
-#      mock(정답표)과 달리 그때 실모델이 실제로 낸 응답(runs/.llm-cache)을 그대로 쓴다.
+#      mock(정답표)과 달리 그때 실모델이 실제로 낸 응답을 그대로 쓴다(fixtures/replay-cache).
 #      픽스처·외부 기획서 26개와 시연 요청은 11-07 에 채워 두었다. 2차 경로(VLM)는 재생되지 않는다.
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/bad  --backend replay
 

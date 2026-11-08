@@ -33,14 +33,18 @@ from pathlib import Path
 class CachedLLM:
     """LLMClient 를 감싸 complete_json 의 성공 응답을 파일로 남긴다."""
 
-    def __init__(self, inner, directory: Path | str, read: bool = True) -> None:
+    def __init__(self, inner, directory: Path | str, read: bool = True,
+                 also_read: tuple[Path | str, ...] = ()) -> None:
         """
         Args:
             read: False 면 저장된 답을 쓰지 않고 새로 물어 덮어쓴다 (--no-cache).
+            also_read: directory 에 없을 때 더 찾아볼 폴더(읽기만). 저장소에 넣어 둔
+                시연용 응답(fixtures/replay-cache)이 여기다 — GPU 반납 뒤 replay 용.
         """
         self.inner = inner
         self.directory = Path(directory)
         self.read = read
+        self.also_read = tuple(Path(d) for d in also_read)
         self.hits = 0
         self.misses = 0
         # 제목 다듬기가 다른 스레드에서 돈다 (nodes.finish_titles)
@@ -58,10 +62,12 @@ class CachedLLM:
     def _load(self, path: Path):
         if not self.read:
             return None
-        try:
-            return json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            return None  # 없거나 깨졌으면 새로 묻는다
+        for candidate in (path, *(d / path.name for d in self.also_read)):
+            try:
+                return json.loads(candidate.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue  # 없거나 깨졌으면 다음 곳, 끝까지 없으면 새로 묻는다
+        return None
 
     def complete_json(self, *, system: str, user: str, schema: dict,
                       max_tokens: int = 2048, temperature: float = 0.0) -> dict:

@@ -1,0 +1,1 @@
+{"titles": [{"case_id": "pta_login-valid-001", "title": "입력 규칙 충족 시 정상 로그인"}, {"case_id": "pta_login-labels-001", "title": "기획서 라벨로 요소 검색"}, {"case_id": "pta_login-scenario-002", "title": "잘못된 사용자명 알림 확인"}, {"case_id": "pta_login-scenario-003", "title": "잘못된 비밀번호 알림 확인"}]}

@@ -108,18 +108,24 @@ class _NoServer:
         )
 
 
+#: 저장소에 넣어 둔 시연용 응답 — 픽스처·외부 기획서 26개와 시연 요청을 2026-11-07 에
+#: 실모델(qwen3.5-4b-awq)로 받아 둔 것. 기획서 내용이 공개 자료뿐이라 저장소에 둔다
+#: (실물 기획서의 응답은 절대 넣지 않는다 — 그것은 저장소 밖 캐시에만 있다).
+REPLAY_DIR = Path(__file__).resolve().parents[3] / "fixtures" / "replay-cache"
+
+
 def _replay(llm_cfg: dict):
     """모델 서버 없이 캐시만으로 도는 백엔드 — GPU 반납 뒤 시연·재현용 (2026-11-13).
 
     vllm 백엔드와 같은 키로 캐시를 찾으므로 그때 받은 답이 글자 그대로 쓰인다. 리포트의
     백엔드 이름은 'replay:' 로 시작해, 이번 실행이 모델을 부르지 않았다는 사실을 남긴다.
+    먼저 설정의 llm.cache_dir 를, 없으면 저장소의 REPLAY_DIR 를 본다.
     """
     from prova.llm.cache import CachedLLM
     from prova.llm.vllm_backend import DEFAULT_MODEL
 
-    if not llm_cfg.get("cache_dir"):
-        raise BackendError("replay 는 llm.cache_dir 에 저장된 응답이 필요합니다 — 설정에 없습니다.")
+    directory = llm_cfg.get("cache_dir") or REPLAY_DIR
     inner = _NoServer(llm_cfg.get("model", DEFAULT_MODEL))
-    cached = CachedLLM(inner, llm_cfg["cache_dir"], read=True)
+    cached = CachedLLM(inner, directory, read=True, also_read=(REPLAY_DIR,))
     cached.name = f"replay:{inner.name}"
     return cached

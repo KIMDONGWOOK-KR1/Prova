@@ -10,7 +10,7 @@ import pytest
 
 from prova.llm.base import LLMError
 from prova.llm.cache import CachedLLM
-from prova.llm.factory import BackendError, make_llm
+from prova.llm.factory import make_llm
 
 
 class _FakeServer:
@@ -52,9 +52,30 @@ def test_리포트에는_replay_로_남는다(tmp_path):
     assert llm.name == "replay:vllm:m"
 
 
-def test_캐시_폴더_설정이_없으면_멈춘다():
-    with pytest.raises(BackendError, match="cache_dir"):
-        make_llm("replay", {"llm": {"model": "m"}}, "x.pdf")
+def test_캐시_폴더_설정이_없으면_저장소에_넣어_둔_응답을_본다():
+    from prova.llm.factory import REPLAY_DIR
+
+    llm, _ = make_llm("replay", {"llm": {"model": "m"}}, "x.pdf")
+    assert llm.directory == REPLAY_DIR
+
+
+@pytest.mark.parametrize("spec", ["login_spec", "signup_spec", "multi_spec"])
+def test_저장소의_시연용_응답으로_픽스처_기획서가_서버_없이_재생된다(tmp_path, spec):
+    """동결(2026-11-07)의 계약. 이 테스트가 깨지면 S1·S2 의 프롬프트나 스키마가 동결 뒤에
+    바뀐 것이다 — GPU 가 없으니 응답을 다시 받을 수 없고, 시연이 깨진다."""
+    from typer.testing import CliRunner
+
+    from prova.cli import app
+
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("llm:\n  model: qwen3.5-4b-awq\n", encoding="utf-8")
+    result = CliRunner().invoke(app, [
+        "run", "--pdf", f"fixtures/specs/{spec}.pdf", "--backend", "replay",
+        "--url", "http://127.0.0.1:9/good", "--config", str(cfg), "--plan-only",
+        "--runs-root", str(tmp_path / "runs"),
+    ])
+    assert "저장된 모델 응답이 없습니다" not in result.output
+    assert result.exit_code == 0, result.output
 
 
 def test_CLI_가_replay_를_받는다(tmp_path):
