@@ -1876,7 +1876,15 @@ def check_findable(page, elements: list[UIElement], labels: list[str]) -> dict[s
     result: dict[str, str] = {}
     for label in labels:
         try:
-            location = ground(page, label, by_label.get(label))
+            hint = by_label.get(label)
+            location = ground(page, label, hint)
+            if location.strategy == "placeholder_hint":
+                # 기획서의 안내 문구로 찾았다 — 라벨 글자로 찾은 것이 아니다. 조작에는 충분하지만
+                # 이 검사가 묻는 '기획서의 라벨이 화면에 있는가' 의 답은 아니다. 라벨을 바꾼
+                # 기획서(변이 시험 2026-11-07, saucedemo)와 사람이 라벨을 잘못 고친 문서가
+                # 그대로 통과했다. 안내 문구를 빼고 라벨로만 다시 찾는다 — 연결 없이 글자로만
+                # 있는 라벨(정의 목록·글자)은 지금처럼 다음 전략이 판정한다.
+                location = ground(page, label, hint.model_copy(update={"placeholder": None}))
             # 표 칸 라벨로만 찾았다면 도구는 조작할 수 있어도 라벨이 요소와 이어져 있지는
             # 않다 — 스크린리더는 그 칸의 이름을 읽지 못한다. 이 검사가 보는 것은 그 연결이다.
             result[label] = (
