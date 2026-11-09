@@ -602,6 +602,23 @@ def serve(
     uvicorn.run("prova.server.app:app", host=bind, port=where, log_level="warning")
 
 
+@app.command("export-xlsx")
+def export_xlsx(
+    run_dir: Path = typer.Argument(..., help="실행 결과 폴더 (report.json 이 있는 곳, 예: runs/20261109-101500)"),
+) -> None:
+    """끝난 실행의 리포트를 엑셀(report.xlsx)로 내보낸다.
+
+    새 실행은 report.html 옆에 report.xlsx 를 함께 만든다 — 이 명령은 그 전에 돈
+    실행용이다.
+    """
+    from prova.s6_report.xlsx_export import export_run_dir
+
+    if not (run_dir / "report.json").exists():
+        _fail(f"{run_dir} 에 report.json 이 없습니다 — 실행 결과 폴더를 주세요.")
+    path = export_run_dir(run_dir)
+    typer.secho(f"엑셀: {path}", fg=typer.colors.GREEN)
+
+
 @app.command()
 def check(config: Path = typer.Option(DEFAULT_CONFIG, "--config")) -> None:
     """vLLM 서버 연결과 모델 적재 상태를 확인한다."""

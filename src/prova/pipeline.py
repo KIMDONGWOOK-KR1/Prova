@@ -44,6 +44,7 @@ from prova.nodes import (
 from prova.plan_store import load_plan, plan_warnings, save_plan
 from prova.s2_case_generator.selector import select_by_ids, select_cases
 from prova.s6_report.report_builder import save_html, save_json
+from prova.s6_report.xlsx_export import save_xlsx
 
 
 def strip_screen_path(base_url: str, doc) -> tuple[str, Optional[str]]:
@@ -535,6 +536,7 @@ def _execute(
     attach_history(state.report, run_dir.parent)
     save_json(state.report, run_dir)
     save_html(state.report, run_dir)
+    save_xlsx(state.report, run_dir)
 
     return state.report, run_dir
 

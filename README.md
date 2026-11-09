@@ -218,8 +218,11 @@ uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:810
 #      픽스처·외부 기획서 26개와 시연 요청은 11-07 에 채워 두었다. 2차 경로(VLM)는 재생되지 않는다.
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/bad  --backend replay
 
-# 5. 리포트 열기
+# 5. 리포트 열기 — 옆에 report.xlsx(요약·케이스·기획서와 다름 시트)도 생긴다
 start runs/<run-id>/report.html
+
+# 5-1. 엑셀이 없는 예전 실행은 report.json 으로 다시 만든다
+uv run prova export-xlsx runs/<run-id>
 ```
 
 SUT 는 `--reload` 로 띄운다. **`sut/` 를 고치고 재시작을 잊으면 옛 코드를 상대로

@@ -46,6 +46,7 @@ from prova.nodes import (
     run_cases,
 )
 from prova.s6_report.report_builder import save_html, save_json
+from prova.s6_report.xlsx_export import save_xlsx
 
 
 def build_graph():
@@ -131,4 +132,5 @@ def run_graph(
     note_viewport(report.summary, viewport)
     save_json(report, run_dir)
     save_html(report, run_dir)
+    save_xlsx(report, run_dir)
     return report, run_dir
