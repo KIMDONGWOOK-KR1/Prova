@@ -94,3 +94,40 @@ def test_CLI_가_replay_를_받는다(tmp_path):
     # 서버 확인 단계에서 막히지 않고 S1 까지 가서, 저장된 응답이 없다고 말한다
     assert "없는 백엔드" not in result.output
     assert "저장된 모델 응답이 없습니다" in result.output
+
+
+def _replay_cfg(tmp_path):
+    cfg = tmp_path / "c.yaml"
+    cfg.write_text("llm:\n  model: qwen3.5-4b-awq\n", encoding="utf-8")
+    return str(cfg)
+
+
+V1, V2 = "fixtures/specs/login_spec.pdf", "fixtures/specs/revisions/login_spec_v2.pdf"
+
+
+def test_개정판_비교_시연이_서버_없이_재생된다(tmp_path):
+    """11-09 실모델이 읽은 v2 응답을 넣어 두었다 — GPU 반납 뒤의 개정판 비교 시연용."""
+    from typer.testing import CliRunner
+
+    from prova.cli import app
+
+    result = CliRunner().invoke(app, ["diff-spec", "--old", V1, "--new", V2,
+                                      "--backend", "replay", "--config", _replay_cfg(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "바뀐 것 2건" in result.output
+    assert "'비밀번호' 안내 문구: '비밀번호를 입력하세요' → '8자 이상 입력하세요'" in result.output
+    assert "'로그인' 라벨: '로그인' → '로그인하기'" in result.output
+
+
+def test_개정판을_SUT_에_돌리면_반영_안_된_두_곳을_기획서와_다름으로_잡는다(sut_base, tmp_path):
+    from prova.llm.factory import make_llm
+    from prova.pipeline import run_pipeline
+    from prova.s1_spec_extractor.extractor import extract_document
+
+    cfg = {"llm": {"model": "qwen3.5-4b-awq"}}
+    since = extract_document(V1, make_llm("replay", cfg, V1)[0])
+    report, _ = run_pipeline(pdf_path=V2, base_url=f"{sut_base}/good",
+                             llm=make_llm("replay", cfg, V2)[0], run_id="rev",
+                             runs_root=tmp_path, since_doc=since, changed_only=True)
+    defects = [v.case_id for v in report.cases if v.failure_category == "assertion_mismatch"]
+    assert sorted(defects) == ["login-labels-001", "login-placeholders-001"]

@@ -217,6 +217,9 @@ uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:810
 #      mock(정답표)과 달리 그때 실모델이 실제로 낸 응답을 그대로 쓴다(fixtures/replay-cache).
 #      픽스처·외부 기획서 26개와 시연 요청은 11-07 에 채워 두었다. 2차 경로(VLM)는 재생되지 않는다.
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/bad  --backend replay
+#      개정판 비교 시연(11-09 응답): login_spec 의 v2 는 비밀번호 안내 문구와 로그인 버튼 이름이 다르다
+uv run prova diff-spec --old fixtures/specs/login_spec.pdf --new fixtures/specs/revisions/login_spec_v2.pdf --backend replay
+uv run prova run --pdf fixtures/specs/revisions/login_spec_v2.pdf --since fixtures/specs/login_spec.pdf --changed-only --url http://localhost:8100/good --backend replay
 
 # 5. 리포트 열기 — 옆에 report.xlsx(요약·케이스·기획서와 다름 시트)도 생긴다
 start runs/<run-id>/report.html
