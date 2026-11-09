@@ -165,6 +165,12 @@ def _summary_sheet(ws, report: TestReport) -> None:
              "먼저 확인하세요. 약한 확인은 성공 조건이 없어 '에러 없음' 만 본 통과입니다."),
     ]
     warnings: list[str] = []
+    dry = s.get("dry_run")
+    if dry:
+        warnings.append(
+            f"dry-run — 쓰기 요청을 막고 실행했습니다. 막은 요청 {dry.get('requests_blocked')}건, "
+            f"그 때문에 확인 불가가 된 케이스 {dry.get('cases_blocked')}개, 통과시킨 전제(로그인) 요청 "
+            f"{dry.get('setup_allowed')}건. {dry.get('limits')}")
     if backend.startswith("mock"):
         warnings.append("mock 백엔드로 실행된 리포트입니다 — 실제 모델의 결과가 아닙니다.")
     edits = s.get("spec_edits") or []

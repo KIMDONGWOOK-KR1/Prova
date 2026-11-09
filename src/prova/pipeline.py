@@ -32,6 +32,7 @@ from prova.llm.cache import CachedLLM
 from prova.models import SpecDocument, TestReport
 from prova.spec_edits import settle
 from prova.spec_revision import diff_revisions, revision_summary, touched_cases
+from prova.dry_run import WriteGuard, dry_run_summary
 from prova.nodes import (
     AgentState,
     build_final_report,
@@ -357,6 +358,7 @@ def run_pipeline(
     spec_edits: Optional[list[str]] = None,
     since_doc: Optional[SpecDocument] = None,
     changed_only: bool = False,
+    dry_run: bool = False,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
 
@@ -407,6 +409,7 @@ def run_pipeline(
             doc=doc,
             since_doc=since_doc,
             changed_only=changed_only,
+            dry_run=dry_run,
             vlm=vlm,
             step_timeout_ms=step_timeout_ms,
             navigation_timeout_ms=navigation_timeout_ms,
@@ -451,7 +454,10 @@ def _browse(
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=headless, slow_mo=slow_mo)
         # 케이스마다 새 컨텍스트를 연다(run_cases). 가드 케이스는 세션 모드에서도 이쪽이다.
-        state.open_page = page_opener(browser, viewport, video_dir)
+        if state.dry_run:
+            # 브라우저마다 따로 만든다 — 병렬 실행에서 기록이 섞이지 않게 (prova.dry_run).
+            state.write_guard = WriteGuard()
+        state.open_page = page_opener(browser, viewport, video_dir, state.write_guard)
         if storage_state:
             # 로그인 세션 재사용(--session). 세션이 기준 상태라 이 컨텍스트 하나를 유지한다.
             state.page = state.open_page(storage_state)
@@ -569,6 +575,9 @@ def _execute(
     if state.revision:
         # 기획서끼리의 차이 — 판정이 아니다 (prova.spec_revision).
         state.report.summary["revision"] = state.revision
+    if state.dry_run:
+        # 판정의 전제다 — 쓰기 요청을 막은 케이스는 '확인 불가' 다 (prova.dry_run).
+        state.report.summary["dry_run"] = dry_run_summary(state.report.cases)
     if isinstance(state.llm, CachedLLM):
         # 이번에 모델을 돌렸는가도 전제다 (llm/cache.py). 제목까지 거둔 뒤라야 수가 맞다.
         state.report.summary["llm_cache"] = {"hits": state.llm.hits,

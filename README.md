@@ -229,6 +229,11 @@ uv run prova diff-spec --old 기획서_v0.2.pdf --new 기획서_v0.3.pdf
 #    바뀐 것이 사이트에 반영됐나 — 리포트·엑셀에 '바뀐 것' 상자와 케이스별 '개정' 표시.
 #    --changed-only 를 붙이면 바뀐 것을 건드리는 케이스만 돈다
 uv run prova run --pdf 기획서_v0.3.pdf --since 기획서_v0.2.pdf --url <대상> [--changed-only]
+
+# 7. 실제 접수·가입이 일어나면 안 되는 사이트 — 쓰기 요청(POST·PUT·PATCH·DELETE)을 막고 실행.
+#    막은 요청이 있는 케이스는 서버 응답을 못 봐 '확인 불가', 전제(로그인) 요청만 통과시킨다.
+#    GET 으로 데이터를 바꾸는 주소와 웹소켓은 막지 못한다. 우리 SUT 로만 검증했다(tests/test_dry_run.py)
+uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend mock --dry-run
 ```
 
 SUT 는 `--reload` 로 띄운다. **`sut/` 를 고치고 재시작을 잊으면 옛 코드를 상대로

@@ -26,6 +26,7 @@ from typing import Callable, Optional
 
 from playwright.sync_api import Page
 
+from prova.dry_run import WriteGuard, context_options, mark_unverifiable
 from prova.llm.base import LLMClient
 from prova.models import (
     CaseSelection,
@@ -133,6 +134,9 @@ class AgentState:
     selection: Optional[CaseSelection] = None
     # 이전 판 기획서와 비교한 결과 (prova.spec_revision.revision_summary). 비교하지 않았으면 None.
     revision: Optional[dict] = None
+    # 쓰기 요청을 막고 실행하는가 (prova.dry_run). 막는 장치는 브라우저마다 _browse 가 만든다.
+    dry_run: bool = False
+    write_guard: Optional["WriteGuard"] = None
 
     # 2차 경로(화면 이미지로 요소 찾기) 제어.
     #
@@ -181,10 +185,13 @@ def note_viewport(summary: dict, viewport: Optional[dict]) -> None:
 
 
 def page_opener(browser, viewport: Optional[dict] = None,
-                video_dir: Optional[Path] = None) -> Callable[..., Page]:
+                video_dir: Optional[Path] = None,
+                guard: Optional["WriteGuard"] = None) -> Callable[..., Page]:
     """부를 때마다 새 컨텍스트의 새 페이지를 여는 함수를 돌려준다.
 
     인자 storage_state 를 주면 그 세션을 싣고 연다(--session). 없으면 깨끗한 상태다.
+    guard 를 주면(dry-run) **모든** 컨텍스트에 쓰기 요청 차단을 페이지를 열기 전에 건다 —
+    가드 케이스의 새 컨텍스트나 새 창도 빠지지 않는다 (prova.dry_run).
     """
 
     def open_page(storage_state: Optional[str] = None) -> Page:
@@ -195,7 +202,10 @@ def page_opener(browser, viewport: Optional[dict] = None,
             # GIF 로 변환한 뒤 용량이 감당되지 않는다.
             record_video_dir=str(video_dir) if video_dir else None,
             record_video_size={"width": 960, "height": 600} if video_dir else None,
+            **context_options(guard is not None),
         )
+        if guard is not None:
+            guard.install(context)
         return context.new_page()
 
     return open_page
@@ -432,10 +442,15 @@ def run_cases(state: AgentState) -> AgentState:
             max_heal=state.max_heal,
             min_confidence=state.min_confidence,
         )
-        step_results, baseline = _run_case_steps(ctx, case)
-        state.verdicts.append(
-            _verify_when_ready(state, case, step_results, console_errors,
-                               page=page, baseline=baseline))
+        guard = state.write_guard
+        if guard is not None:
+            guard.start_case()
+        step_results, baseline = _run_case_steps(ctx, case, guard)
+        verdict = _verify_when_ready(state, case, step_results, console_errors,
+                                     page=page, baseline=baseline)
+        if guard is not None:
+            mark_unverifiable(verdict, guard)
+        state.verdicts.append(verdict)
 
     return state
 
@@ -506,7 +521,8 @@ def _steps_with_baseline(ctx: ExecutionContext, steps: list) -> tuple[list, Opti
     return first + execute_case_steps(ctx, steps[lead:]), baseline
 
 
-def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> tuple[list[StepResult], Optional[tuple]]:
+def _run_case_steps(ctx: ExecutionContext, case: TestCase,
+                    guard: Optional["WriteGuard"] = None) -> tuple[list[StepResult], Optional[tuple]]:
     """전제(setup_steps)를 먼저 세운 뒤 본 스텝(steps)을 실행한다 (명세서 §3-6).
 
     같은 ExecutionContext 를 그대로 이어 쓴다 — 로그인 같은 전제는 브라우저의
@@ -536,10 +552,14 @@ def _run_case_steps(ctx: ExecutionContext, case: TestCase) -> tuple[list[StepRes
 
     original_case_id = ctx.case_id
     ctx.case_id = f"{original_case_id}__setup"
+    if guard is not None:
+        guard.phase = "setup"  # 전제(로그인) 요청은 통과시킨다 (prova.dry_run)
     try:
         setup_results = execute_case_steps(ctx, case.setup_steps)
     finally:
         ctx.case_id = original_case_id
+        if guard is not None:
+            guard.phase = "test"
     for r in setup_results:
         r.phase = "setup"
 

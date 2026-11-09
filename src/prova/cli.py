@@ -202,6 +202,10 @@ def run(
     changed_only: bool = typer.Option(
         False, "--changed-only",
         help="--since 와 함께 — 바뀐 것을 건드리는 케이스만 실행한다"),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="쓰기 요청(POST·PUT·PATCH·DELETE)을 전부 막고 실행한다 — 실제 접수·가입이 일어나지 "
+             "않는다. 막은 요청이 있는 케이스는 '확인 불가'. 전제(로그인) 요청만 통과시킨다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
@@ -252,7 +256,7 @@ def run(
             ("--screen-url", screen_url), ("--request", request),
             ("--only", only), ("--backend", backend), ("--run-id", run_id),
             ("--plan-only", plan_only), ("--runs-root", runs_root), ("--no-cache", no_cache),
-            ("--since", since), ("--changed-only", changed_only),
+            ("--since", since), ("--changed-only", changed_only), ("--dry-run", dry_run),
         ] if value]
         if given:
             _fail(
@@ -344,6 +348,9 @@ def run(
 
     if pdf and not pdf.exists():
         _fail(f"설계 문서를 찾을 수 없습니다: {pdf}")
+    if dry_run and (engine == "graph" or plan_only):
+        _fail("--dry-run 은 pipeline 엔진의 한 번에 실행에서만 동작합니다 "
+              "(--plan-only·graph 와 함께 쓸 수 없습니다).")
     if changed_only and not since:
         _fail("--changed-only 는 --since(이전 판 기획서)와 함께 씁니다.")
     if since:
@@ -391,6 +398,8 @@ def run(
     if since:
         typer.echo(f"  이전 판   : {since}" + (" (바뀐 것만 실행)" if changed_only else ""))
     typer.echo(f"  대상 URL  : {url}")
+    if dry_run:
+        typer.secho("  dry-run   : 쓰기 요청을 막습니다 (전제 로그인만 통과)", fg=typer.colors.YELLOW)
     if pdf:
         typer.echo(f"  백엔드    : {backend}")
     typer.echo(f"  실행 엔진 : {engine}")
@@ -469,6 +478,7 @@ def run(
                 on_progress=lambda m: typer.echo(f"  {m}"),
                 since_doc=since_doc,
                 changed_only=changed_only,
+                dry_run=dry_run,
             )
         except LLMError as exc:
             _s1_failed(exc, llm)

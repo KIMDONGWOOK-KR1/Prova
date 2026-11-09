@@ -447,6 +447,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         rows.append(("실패 분류", _category_html(verdict)))
     if ev.get("error_texts"):
         rows.append(("화면 에러", _esc(" / ".join(ev["error_texts"]))))
+    if ev.get("dry_run_blocked"):
+        rows.append(("dry-run 으로 막은 요청", _esc(" / ".join(ev["dry_run_blocked"]))
+                     + f" (막지 않았다면 판정: {_esc(ev.get('dry_run_original'))} — 참고용)"))
 
     kv = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
 
@@ -756,6 +759,17 @@ def render_html(report: TestReport) -> str:
             f"<div class='warn'><b>사람이 고친 추출 결과로 실행 — {len(edits)}건</b>"
             "<div>아래 값은 기획서에서 읽은 것이 아니라 실행 전에 사람이 고친 것입니다. "
             f"이 값에 기댄 판정은 그 수정이 맞을 때만 유효합니다.<ul>{items}</ul></div></div>"
+        )
+
+    dry = s.get("dry_run")
+    if dry:
+        # 판정의 전제 — 쓰기 요청을 막은 케이스는 제출 뒤를 보지 못했다 (prova.dry_run).
+        mock_warn += (
+            "<div class='warn'><b>dry-run — 쓰기 요청을 막고 실행했습니다</b>"
+            f"<div>막은 요청 {_esc(dry.get('requests_blocked'))}건 · 그 때문에 확인 불가가 된 케이스 "
+            f"{_esc(dry.get('cases_blocked'))}개 · 통과시킨 전제(로그인) 요청 "
+            f"{_esc(dry.get('setup_allowed'))}건. 막은 요청이 있는 케이스는 서버 응답을 보지 못해 "
+            f"'확인 불가' 로 두었습니다. {_esc(dry.get('limits'))}</div></div>"
         )
 
     rev = s.get("revision") or {}
