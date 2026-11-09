@@ -195,6 +195,13 @@ def run(
         None, "--device", metavar="기기",
         help="desktop | mobile. mobile 은 휴대폰 화면 크기(390x844)로 실행한다 — 반응형 "
              "사이트에서 모바일에만 생기는 결함을 본다. 생략하면 설정의 viewport"),
+    since: Optional[Path] = typer.Option(
+        None, "--since", metavar="이전판.pdf",
+        help="이전 판 기획서. 이번 판(--pdf)과 비교해 바뀐 것을 리포트에 남기고, 바뀐 것을 "
+             "건드리는 케이스에 '개정' 표시를 단다"),
+    changed_only: bool = typer.Option(
+        False, "--changed-only",
+        help="--since 와 함께 — 바뀐 것을 건드리는 케이스만 실행한다"),
 ) -> None:
     """설계 문서로 대상 URL 을 검증하고 리포트를 만든다."""
     # 선택지 오타는 모델 서버·대상 확인(수 초)보다 먼저 잡는다.
@@ -245,6 +252,7 @@ def run(
             ("--screen-url", screen_url), ("--request", request),
             ("--only", only), ("--backend", backend), ("--run-id", run_id),
             ("--plan-only", plan_only), ("--runs-root", runs_root), ("--no-cache", no_cache),
+            ("--since", since), ("--changed-only", changed_only),
         ] if value]
         if given:
             _fail(
@@ -336,6 +344,16 @@ def run(
 
     if pdf and not pdf.exists():
         _fail(f"설계 문서를 찾을 수 없습니다: {pdf}")
+    if changed_only and not since:
+        _fail("--changed-only 는 --since(이전 판 기획서)와 함께 씁니다.")
+    if since:
+        if not pdf:
+            _fail("--since 는 --pdf(이번 판 기획서)와 함께 씁니다.")
+        if not since.exists():
+            _fail(f"이전 판 기획서를 찾을 수 없습니다: {since}")
+        if engine == "graph" or plan_only:
+            _fail("--since 는 pipeline 엔진의 한 번에 실행에서만 동작합니다 "
+                  "(--plan-only·graph 와 함께 쓸 수 없습니다).")
     if session and not session.exists():
         _fail(f"세션 파일을 찾을 수 없습니다: {session} — "
               "prova login 으로 먼저 만드세요.")
@@ -370,6 +388,8 @@ def run(
         typer.echo(f"  Figma 응답: {figma_json} (LLM 미사용 — 정적 대조만)")
     else:
         typer.echo(f"  설계 문서 : {pdf}")
+    if since:
+        typer.echo(f"  이전 판   : {since}" + (" (바뀐 것만 실행)" if changed_only else ""))
     typer.echo(f"  대상 URL  : {url}")
     if pdf:
         typer.echo(f"  백엔드    : {backend}")
@@ -431,6 +451,7 @@ def run(
     elif engine == "pipeline":
         from prova.pipeline import run_pipeline
 
+        since_doc = _read_spec(since, backend, cfg, no_cache, "이전 판") if since else None
         try:
             report, run_dir = run_pipeline(
                 **common,
@@ -446,6 +467,8 @@ def run(
                 project=project.strip(),
                 workers=worker_count(cfg),
                 on_progress=lambda m: typer.echo(f"  {m}"),
+                since_doc=since_doc,
+                changed_only=changed_only,
             )
         except LLMError as exc:
             _s1_failed(exc, llm)
@@ -600,6 +623,53 @@ def serve(
     typer.secho(f"Prova 웹 UI  http://{bind}:{where}", bold=True)
     typer.echo("  종료하려면 Ctrl+C")
     uvicorn.run("prova.server.app:app", host=bind, port=where, log_level="warning")
+
+
+def _read_spec(pdf: Path, backend: str, cfg: dict, no_cache: bool, what: str):
+    """기획서 하나를 읽어 추출 결과를 돌려준다 (개정판 비교용)."""
+    from prova.s1_spec_extractor.extractor import extract_document
+
+    typer.echo(f"  {what} 기획서 읽기: {pdf}")
+    llm = _make_llm(backend, cfg, pdf, cache_read=not no_cache)
+    try:
+        return extract_document(str(pdf), llm)
+    except LLMError as exc:
+        _s1_failed(exc, llm)
+
+
+@app.command("diff-spec")
+def diff_spec(
+    old: Path = typer.Option(..., "--old", metavar="이전판.pdf", help="이전 판 기획서"),
+    new: Path = typer.Option(..., "--new", metavar="이번판.pdf", help="이번 판 기획서"),
+    backend: Optional[str] = typer.Option(None, "--backend", help="vllm | mock | replay"),
+    config: Path = typer.Option(DEFAULT_CONFIG, "--config", help="설정 파일 경로"),
+    no_cache: bool = typer.Option(False, "--no-cache", help="저장된 모델 응답을 쓰지 않는다"),
+) -> None:
+    """기획서 두 판을 읽어 무엇이 바뀌었는지 보여 준다 (사이트는 열지 않는다).
+
+    바뀐 것이 사이트에 반영됐는지는 prova run --pdf 이번판 --since 이전판 으로 확인한다.
+    """
+    from prova.spec_revision import diff_revisions
+
+    for path in (old, new):
+        if not path.exists():
+            _fail(f"기획서를 찾을 수 없습니다: {path}")
+    cfg = _load_config(config)
+    backend = backend or cfg.get("llm", {}).get("backend", "vllm")
+    before = _read_spec(old, backend, cfg, no_cache, "이전 판")
+    after = _read_spec(new, backend, cfg, no_cache, "이번 판")
+    changes = diff_revisions(before, after)
+    typer.echo("")
+    if not changes:
+        typer.secho("바뀐 것이 없습니다 (추출 결과 기준).", fg=typer.colors.GREEN)
+        return
+    typer.secho(f"바뀐 것 {len(changes)}건", bold=True)
+    for ch in changes:
+        typer.echo(f"  {ch.text}")
+    typer.echo("")
+    typer.echo("  모델이 읽은 결과끼리의 비교입니다 — 같은 문장을 다르게 읽은 것도 차이로 보일 수 "
+               "있으니 원문과 대조하세요.")
+    typer.echo(f"  사이트 반영 확인: prova run --pdf {new} --since {old} --url <대상> [--changed-only]")
 
 
 @app.command("export-xlsx")

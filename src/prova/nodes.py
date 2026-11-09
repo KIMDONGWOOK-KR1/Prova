@@ -131,6 +131,8 @@ class AgentState:
     title_jobs: list[tuple[ScreenSpec, Future]] = field(default_factory=list)
     # 자연어 요청으로 케이스를 골랐다면 그 내역. 요청이 없었으면 None 이다.
     selection: Optional[CaseSelection] = None
+    # 이전 판 기획서와 비교한 결과 (prova.spec_revision.revision_summary). 비교하지 않았으면 None.
+    revision: Optional[dict] = None
 
     # 2차 경로(화면 이미지로 요소 찾기) 제어.
     #

@@ -44,12 +44,12 @@ _KIND_FILL = {
 }
 
 CASE_COLUMNS = ["번호", "화면", "케이스 ID", "제목", "유형", "판정", "구분", "실패 원인",
-                "기대", "실제", "상세", "URL", "스크린샷", "시간(초)"]
+                "기대", "실제", "상세", "URL", "스크린샷", "시간(초)", "개정"]
 DEFECT_COLUMNS = ["번호", "화면", "케이스 ID", "제목", "기획서 기대", "실제 화면", "상세",
                   "URL", "스크린샷"]
 _WIDTHS = {"번호": 6, "화면": 16, "케이스 ID": 30, "제목": 36, "유형": 10, "판정": 7,
            "구분": 13, "실패 원인": 13, "기대": 40, "실제": 40, "기획서 기대": 40,
-           "실제 화면": 40, "상세": 50, "URL": 36, "스크린샷": 28, "시간(초)": 9}
+           "실제 화면": 40, "상세": 50, "URL": 36, "스크린샷": 28, "시간(초)": 9, "개정": 40}
 _TYPE_LABELS = {"positive": "정상", "negative": "위반"}
 
 
@@ -101,6 +101,8 @@ def _table(ws, columns: list[str], rows: list[list]) -> None:
 
 
 def _case_rows(report: TestReport, names: dict) -> list[list]:
+    # 이전 판과 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라 표시다.
+    revised = ((report.summary or {}).get("revision") or {}).get("touched") or {}
     rows = []
     for i, v in enumerate(report.cases, 1):
         ev = v.evidence or {}
@@ -112,6 +114,7 @@ def _case_rows(report: TestReport, names: dict) -> list[list]:
             str(ev.get("expected") or ""), str(ev.get("actual") or ""), _detail(v),
             str(ev.get("url") or ""), str(ev.get("screenshot") or ""),
             round(v.elapsed_ms / 1000, 1),
+            " / ".join(revised.get(v.case_id) or []),
         ])
     return rows
 
@@ -169,6 +172,17 @@ def _summary_sheet(ws, report: TestReport) -> None:
         warnings.append(f"사람이 고친 추출 결과로 실행했습니다({len(edits)}건) — 이 값에 기댄 "
                         "판정은 그 수정이 맞을 때만 유효합니다.")
         warnings += [f"  · {m}" for m in edits]
+    rev = s.get("revision") or {}
+    if rev:
+        changes = rev.get("changes") or []
+        touched = len(rev.get("touched") or {})
+        warnings.append(f"이전 판 기획서 {rev.get('since')} 과 비교 — 바뀐 것 {len(changes)}건"
+                        " (기획서끼리의 차이이며 결함이 아닙니다).")
+        warnings.append(
+            f"  바뀐 것을 건드리는 케이스 {touched}개만 실행했습니다 (전체 {rev.get('cases_available')}개)."
+            if rev.get("changed_only") else
+            f"  바뀐 것을 건드리는 케이스 {touched}개는 케이스 시트의 '개정' 칸에 표시했습니다.")
+        warnings += [f"  · {m}" for m in changes]
     for gap in s.get("coverage_gaps") or []:
         warnings.append(f"확인하지 않은 것: {gap}")
     if warnings:

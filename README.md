@@ -223,6 +223,12 @@ start runs/<run-id>/report.html
 
 # 5-1. 엑셀이 없는 예전 실행은 report.json 으로 다시 만든다
 uv run prova export-xlsx runs/<run-id>
+
+# 6. 기획서 개정판 — 무엇이 바뀌었나(사이트는 열지 않는다)
+uv run prova diff-spec --old 기획서_v0.2.pdf --new 기획서_v0.3.pdf
+#    바뀐 것이 사이트에 반영됐나 — 리포트·엑셀에 '바뀐 것' 상자와 케이스별 '개정' 표시.
+#    --changed-only 를 붙이면 바뀐 것을 건드리는 케이스만 돈다
+uv run prova run --pdf 기획서_v0.3.pdf --since 기획서_v0.2.pdf --url <대상> [--changed-only]
 ```
 
 SUT 는 `--reload` 로 띄운다. **`sut/` 를 고치고 재시작을 잊으면 옛 코드를 상대로

@@ -195,6 +195,7 @@ h2 { font-size:17px; margin:28px 0 12px; }
 .tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
 .tag.cat.infra { background:var(--warn-bg); color:var(--warn-fg); }
 .tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
+.tag.revised { background:var(--accent-bg); color:var(--accent-fg); }
 .breakdown { color:var(--muted); font-size:13px; margin:-8px 0 16px; }
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; }
@@ -406,8 +407,14 @@ def _history_html(history: dict) -> str:
     )
 
 
-def _case_html(verdict: Verdict, open_by_default: bool) -> str:
+def _case_html(verdict: Verdict, open_by_default: bool,
+               revised: dict | None = None) -> str:
     ev = verdict.evidence or {}
+    # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
+    # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
+    why = (revised or {}).get(verdict.case_id) or []
+    rev_tag = (f"<span class='tag revised' title='{_esc(' / '.join(why))}'>개정</span>"
+               if why else "")
     # 요소와 규칙을 함께 보여준다. 화면에 같은 규칙을 가진 요소가 여럿이면
     # (회원가입의 required 6개) 규칙 이름만으로는 어디를 고쳐야 할지 모른다.
     rule_name = RULE_LABELS.get(verdict.violates, verdict.violates) if verdict.violates else ""
@@ -430,7 +437,8 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     if verdict.verdict == "FAIL" and verdict.failure_detail:
         reason = f"<div class='reason'>{_esc(verdict.failure_detail)}</div>"
 
-    rows = [
+    rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
+    rows += [
         ("기대", _esc(ev.get("expected"))),
         ("실제", _esc(ev.get("actual"))),
         ("최종 URL", f"<code>{_esc(ev.get('url'))}</code>"),
@@ -445,7 +453,7 @@ def _case_html(verdict: Verdict, open_by_default: bool) -> str:
     return (
         f"<details class='case'{' open' if open_by_default else ''}>"
         f"<summary><span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
-        f"{cat_tag}{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
+        f"{cat_tag}{rev_tag}{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>{reason}"
         f"<table class='kv'>{kv}</table>"
@@ -492,7 +500,8 @@ def _screens_html(by_screen: dict, by_flow: dict, names: dict) -> str:
     )
 
 
-def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool) -> str:
+def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
+                  revised: dict | None = None) -> str:
     """판정을 화면별로 묶어 렌더한다. 묶을 것이 하나면 소제목을 붙이지 않는다.
 
     흐름은 별도 구획으로 떼어 맨 뒤에 둔다. 마지막 화면 구획에 섞으면 **그 화면에
@@ -508,12 +517,12 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool) -
         groups.setdefault(key, []).append(v)
 
     if len(groups) < 2:
-        return "".join(_case_html(v, open_by_default) for v in verdicts)
+        return "".join(_case_html(v, open_by_default, revised) for v in verdicts)
 
     out = []
     for label, items in groups.items():
         out.append(f"<h3 class='grp'>{_esc(label)} · {len(items)}건</h3>")
-        out.extend(_case_html(v, open_by_default) for v in items)
+        out.extend(_case_html(v, open_by_default, revised) for v in items)
     return "".join(out)
 
 
@@ -749,6 +758,22 @@ def render_html(report: TestReport) -> str:
             f"이 값에 기댄 판정은 그 수정이 맞을 때만 유효합니다.<ul>{items}</ul></div></div>"
         )
 
+    rev = s.get("revision") or {}
+    if rev:
+        # 기획서끼리의 차이 — 판정 수에 넣지 않는다 (prova.spec_revision).
+        changes = rev.get("changes") or []
+        items = "".join(f"<li>{_esc(m)}</li>" for m in changes) or "<li>바뀐 것이 없습니다.</li>"
+        scope = (f"바뀐 것을 건드리는 케이스 {len(rev.get('touched') or {})}개만 실행했습니다"
+                 f"(전체 {_esc(rev.get('cases_available'))}개). 나머지는 이번 실행에서 확인하지 않았습니다."
+                 if rev.get("changed_only") else
+                 f"바뀐 것을 건드리는 케이스 {len(rev.get('touched') or {})}개에 '개정' 표시를 달았습니다.")
+        mock_warn += (
+            f"<div class='warn'><b>이전 판 기획서와 비교 — 바뀐 것 {len(changes)}건</b>"
+            f"<div>이전 판 <code>{_esc(rev.get('since'))}</code> 과 이번 판의 추출 결과를 비교했습니다. "
+            "기획서끼리의 차이이며 결함이 아닙니다. 모델이 같은 문장을 다르게 읽은 것도 차이로 "
+            f"보일 수 있으니 원문과 대조하세요. {scope}<ul>{items}</ul></div></div>"
+        )
+
     history = s.get("history") or {}
     history_html = _history_html(history)
     if s.get("project"):
@@ -767,8 +792,10 @@ def render_html(report: TestReport) -> str:
     screens_html = _screens_html(s.get("by_screen") or {},
                                  s.get("by_flow") or {}, names)
 
-    fail_section = _grouped_html(fails, names, open_by_default=True) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
-    pass_section = _grouped_html(passes, names, open_by_default=False) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
+    revision = s.get("revision") or {}
+    revised = revision.get("touched") or {}
+    fail_section = _grouped_html(fails, names, open_by_default=True, revised=revised) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
+    pass_section = _grouped_html(passes, names, open_by_default=False, revised=revised) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
 
     defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
     breakdown = (f"<div class='breakdown'>실패 {len(fails)} = 기획서와 다름 {defects}"

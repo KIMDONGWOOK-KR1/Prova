@@ -31,6 +31,7 @@ from prova.llm.base import LLMClient
 from prova.llm.cache import CachedLLM
 from prova.models import SpecDocument, TestReport
 from prova.spec_edits import settle
+from prova.spec_revision import diff_revisions, revision_summary, touched_cases
 from prova.nodes import (
     AgentState,
     build_final_report,
@@ -172,6 +173,29 @@ def filter_cases(cases: list, pattern: Optional[str]) -> list:
     return picked
 
 
+def _compare_revision(state: AgentState, since_doc: SpecDocument, changed_only: bool,
+                      progress) -> dict:
+    """이전 판과 비교해 바뀐 것을 찾고, 바뀐 것만 돌리라면 케이스를 좁힌다 (B-3).
+
+    좁히는 것은 미탐을 만들 수 있다 — 무엇을 왜 남겼는지 summary["revision"] 이 말한다.
+    """
+    changes = diff_revisions(since_doc, state.doc)
+    touched = touched_cases(state.cases, changes)
+    progress(f"     이전 판({since_doc.source or '?'})과 비교: 바뀐 것 {len(changes)}건 · "
+             f"건드리는 케이스 {len(touched)}개")
+    for ch in changes:
+        progress(f"       {ch.text}")
+    available = len(state.cases)
+    if changed_only:
+        if not touched:
+            raise ValueError(
+                f"이전 판과 비교해 바뀐 것을 건드리는 케이스가 없습니다 (바뀐 것 {len(changes)}건)."
+                " 전체를 실행하려면 --changed-only 를 빼세요.")
+        state.cases = [c for c in state.cases if c.case_id in touched]
+        progress(f"     바뀐 것만 → {len(state.cases)}개 실행")
+    return revision_summary(since_doc.source, changes, touched, changed_only, available)
+
+
 def build_plan(
     pdf_path: str,
     base_url: str,
@@ -186,6 +210,8 @@ def build_plan(
     screen_urls: Optional[dict[str, str]] = None,
     on_progress=None,
     doc: Optional[SpecDocument] = None,
+    since_doc: Optional[SpecDocument] = None,
+    changed_only: bool = False,
     **state_kwargs,
 ) -> tuple[AgentState, int]:
     """브라우저를 열지 않고 S1~S2 와 케이스 선택까지만 수행한다.
@@ -206,6 +232,9 @@ def build_plan(
         reason: 계획 단계에서 모델이 밝힌 근거. case_ids 와 함께 넘겨 리포트에 남긴다.
         doc: 사람이 계획 화면에서 고친 추출 결과(prova.spec_edits). 주면 S1 을 건너뛰고
             이 문서로 S2 부터 돈다 — 기획서를 다시 읽으면 고친 것이 사라진다.
+        since_doc: 이전 판 기획서의 추출 결과 (prova.spec_revision). 주면 바뀐 것을 리포트에
+            남기고, 바뀐 것을 건드리는 케이스에 표시한다.
+        changed_only: since_doc 과 함께 — 바뀐 것을 건드리는 케이스만 실행한다.
 
     Returns:
         (선택까지 끝난 상태, 선택 전 전체 케이스 수)
@@ -262,6 +291,11 @@ def build_plan(
     state.cases = filter_cases(state.cases, only)
     if only:
         progress(f"     필터 '{only}' → {len(state.cases)}개만 실행")
+
+    if since_doc is not None:
+        state.revision = _compare_revision(state, since_doc, changed_only, progress)
+    elif changed_only:
+        raise ValueError("바뀐 것만 실행하려면 이전 판 기획서(--since)가 필요합니다.")
 
     # 케이스를 좁히는 자리. 여기가 **미탐을 만들 수 있는 유일한 자리**이므로
     # 무엇을 왜 뺐는지를 state.selection 에 담아 리포트까지 실어 보낸다.
@@ -321,6 +355,8 @@ def run_pipeline(
     on_progress=None,
     doc: Optional[SpecDocument] = None,
     spec_edits: Optional[list[str]] = None,
+    since_doc: Optional[SpecDocument] = None,
+    changed_only: bool = False,
 ) -> tuple[TestReport, Path]:
     """설계 문서 하나로 검증을 끝까지 수행하고 리포트를 저장한다.
 
@@ -369,6 +405,8 @@ def run_pipeline(
             figma_json=figma_json,
             screen_urls=screen_urls,
             doc=doc,
+            since_doc=since_doc,
+            changed_only=changed_only,
             vlm=vlm,
             step_timeout_ms=step_timeout_ms,
             navigation_timeout_ms=navigation_timeout_ms,
@@ -528,6 +566,9 @@ def _execute(
     if spec_edits:
         # 판정 근거의 일부가 기획서가 아니라 사람이 적은 값이다 (prova.spec_edits).
         state.report.summary["spec_edits"] = list(spec_edits)
+    if state.revision:
+        # 기획서끼리의 차이 — 판정이 아니다 (prova.spec_revision).
+        state.report.summary["revision"] = state.revision
     if isinstance(state.llm, CachedLLM):
         # 이번에 모델을 돌렸는가도 전제다 (llm/cache.py). 제목까지 거둔 뒤라야 수가 맞다.
         state.report.summary["llm_cache"] = {"hits": state.llm.hits,
