@@ -80,7 +80,7 @@ def test_run_cases_가_바꾼_값으로_실행하고_판정한다(monkeypatch, t
 
     seen = {}
 
-    def fake_steps(ctx, case):
+    def fake_steps(ctx, case, guard=None):
         seen["run"] = case
         return [], None
 
