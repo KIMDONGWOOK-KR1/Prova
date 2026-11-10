@@ -32,6 +32,7 @@
 | ~~병렬 실행~~ · ~~S1 캐시~~ | 2026-11-02 닫힘 — `--workers N`(스레드, 기본 1, 판단 26)·모델 응답 캐시(`runs/.llm-cache`, `--no-cache`, 판단 27)·제목 다듬기 뒤로 빼기(판단 28). 같은 날 리포트 원형차트·실행 이력/차수·`run.log`(판단 24·25), 실물 정답표 채점(`scripts/score_truth.py`), 반복 실패 시나리오(판단 29) |
 | ~~마감 로드맵 M1·M2~~ (2026-11-07~10) | 닫힘 — `--device mobile`(390x844), 웹 UI '기획서에서 읽은 내용' 고치기(사람이 고친 값은 리포트 상자), 엑셀 리포트(`report.xlsx`·`prova export-xlsx`), 기획서 개정판 비교(`prova diff-spec`·`run --since [--changed-only]`, `docs/measurements/revision-diff-2026-11-09.md`), `--dry-run`(쓰기 요청 차단, 우리 SUT 로만 검증), `--backend replay`(GPU 없이 실모델 응답 재생, `fixtures/replay-cache`). 기각: 다수결 추출(S1 82.2→80.0%, 시간 3배), 그림 이미지 읽기(놓친 8개가 전부 PDF 에 글자로 있었다) |
 | ~~읽는 사람 쪽 보강~~ (2026-11-10~11) | 닫힘 — 리포트 단계 표 '값' 칸·엑셀 '재현 절차' 칸·계획 화면 '절차·기대 보기', 사유와 기대를 기획서의 이름으로(`prova/wording.py`, 판단 37), 실패 카드 '기획서 근거'(몇 쪽 어느 줄, `prova/spec_source.py`, 판단 38 — 픽스처 96케이스 중 94). 같은 날 로컬 대 외부 API 비교(`docs/measurements/local-vs-api-2026-11-10.md`). 남은 것: 실물 기획서에서 근거가 붙는 비율 |
+| ~~리포트 완결성 수치~~ (2026-11-11) | 닫힘 — 픽스처 기획서 10개 × 변형 12종 120 실행의 실패 케이스 1,525건 전부에서 계획서의 다섯 칸이 찼다(100%). 칸이 있는지를 센 것이고, 넣은 값이 적혔는지 확인된 것은 입력까지 간 445건이다. `scripts/score_report_completeness.py`, `docs/measurements/report-completeness-2026-11-11.md` |
 | 웹 UI 에 `--since` | CLI 에만 있다(dry-run 은 2026-11-10 웹 UI 체크박스로 붙었다). 개정판 비교·dry-run 은 pipeline 한 번에 실행에만 붙어 `--plan-only`·`--resume`·LangGraph 경로는 미지원 |
 | 접근성 점검 · 배포 때 자동 재실행 | 향후 확장으로만 적는다 |
 | locator 캐시 · CI 연동 | 없어도 명제를 증명하는 데 지장이 없다. locator 캐시는 성능 검토(2026-11-02)에서 이득이 작아 비권장 |

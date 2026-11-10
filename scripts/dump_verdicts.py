@@ -48,6 +48,9 @@ def main() -> None:
     ap.add_argument("out", type=Path, help="결과 TSV 경로")
     ap.add_argument("runs_root", type=Path, help="실행 산출물(스크린샷 등)을 둘 폴더")
     ap.add_argument("--base", default="http://localhost:8199")
+    ap.add_argument("--every-step", action="store_true",
+                    help="스텝마다 스크린샷·DOM 을 남긴다(제품 기본값). 리포트 완결성을 셀 때 쓴다 — "
+                         "판정만 비교할 때는 빼야 빠르다")
     args = ap.parse_args()
 
     lines = []
@@ -59,7 +62,7 @@ def main() -> None:
             try:
                 report, _ = run_pipeline(pdf, f"{args.base}/{v}", llm,
                                          run_id=f"{stem}-{v}", runs_root=args.runs_root,
-                                         screenshot_every_step=False)
+                                         screenshot_every_step=args.every_step)
             except Exception as exc:  # 그 변형에 없는 화면이면 파이프라인이 멈출 수 있다
                 lines.append(f"{stem}\t{v}\t-\tERROR\t{type(exc).__name__}")
                 continue

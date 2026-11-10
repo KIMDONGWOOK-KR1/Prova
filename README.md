@@ -199,6 +199,7 @@ torch 를 끌고 오는데, 아무도 설치하지 않는 것을 프로젝트 �
 | `score_truth.py` | 실물 기획서 추출 정확도 — 사람이 옮겨 적은 정답표와 대조(놓친 것·추출에만 있는 것). 정답표는 저장소 밖에만 둔다 | 필요 |
 | `mutation_test.py` | 변이 시험 — 기획서 문구·라벨·선택지·예시 값을 하나씩 바꿔 정답 있는 차이를 만들고 잡는지 잰다(외부 5곳 32변이) | 필요 (replay 로 재생 가능) |
 | `score_verdicts.py` | PASS/FAIL 판단 정확도 — `dump_verdicts.py` 결과를 SUT 에 심은 결함에서 만든 정답 라벨과 대조(일치율·혼동행렬). 2026-11-10 98.5% | 불필요 (mock) |
+| `score_report_completeness.py` | 리포트 완결성 — 실패 케이스마다 계획서의 다섯 칸(실행 로그·입력 데이터·기대 결과·실제 결과·실패 원인)이 `report.json` 에 찼는지 센다. 2026-11-11 실패 1,525건 전부 100% (`docs/measurements/report-completeness-2026-11-11.md`) |
 | `dump_cases.py` · `dump_verdicts.py` | 코드 변경의 안전망 — 픽스처 케이스 전부·SUT 판정 전부를 한 줄씩 떠서 고치기 전후 `diff` | 불필요 (mock) |
 | `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
 | `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
