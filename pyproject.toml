@@ -17,6 +17,7 @@ dependencies = [
     "python-multipart>=0.0.32",
     "langgraph>=1.2.11",
     "openpyxl>=3.1",
+    "anthropic>=2.7.0",
 ]
 
 [project.optional-dependencies]

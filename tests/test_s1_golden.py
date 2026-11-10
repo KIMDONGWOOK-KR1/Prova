@@ -99,34 +99,59 @@ SUCCESS_TOKENS = {
 
 @pytest.fixture(scope="module")
 def client():
-    """vLLM 클라이언트. 연결 안 되면 이 파일 전체를 skip."""
+    """실제 모델 클라이언트. 연결 안 되면 이 파일 전체를 skip.
+
+    `PROVA_LLM_BACKEND=claude` 면 같은 대조를 Claude API 로 돌린다(지표 6 '로컬 대 외부
+    API' 측정, 모델은 `PROVA_CLAUDE_MODEL`). 여기 기획서는 전부 공개 픽스처다.
+    `PROVA_LLM_USAGE_OUT=경로` 를 주면 호출 수·시간·토큰을 그 파일에 남긴다.
+    """
     import yaml
+
+    from prova.llm.metered import MeteredLLM
 
     cfg = yaml.safe_load(Path("configs/default.yaml").read_text(encoding="utf-8"))
     llm_cfg = cfg.get("llm", {})
     backend = os.environ.get("PROVA_LLM_BACKEND", llm_cfg.get("backend", "vllm"))
 
-    if backend != "vllm":
+    if backend == "claude":
+        from prova.llm.claude_backend import DEFAULT_MODEL as CLAUDE_MODEL, ClaudeClient
+
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            pytest.skip("ANTHROPIC_API_KEY 가 없습니다 — Claude API 대조는 키가 있을 때만 돈다")
+        inst = ClaudeClient(model=os.environ.get("PROVA_CLAUDE_MODEL", CLAUDE_MODEL))
+        try:
+            inst.health()
+        except LLMError as exc:
+            # 키를 줬는데 안 되는 것은 환경이 없는 게 아니라 잘못된 것이다.
+            pytest.fail(str(exc))
+    elif backend != "vllm":
         pytest.skip(f"backend={backend} — 이 테스트는 실제 모델 정확도를 측정한다")
+    else:
+        from prova.llm.vllm_backend import DEFAULT_MODEL, VLLMClient
 
-    from prova.llm.vllm_backend import DEFAULT_MODEL, VLLMClient
+        inst = VLLMClient(
+            base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
+            model=llm_cfg.get("model", DEFAULT_MODEL),
+            timeout=float(llm_cfg.get("timeout", 180)),
+        )
+        try:
+            inst.health(timeout=4.0)  # skip 판단은 빨라야 한다
+        except ModelNotServed as exc:
+            # 서버는 살아 있는데 다른 모델(예: IoU 채점용 VL)이 떠 있다. 환경이 없는
+            # 게 아니라 잘못 구성된 것이므로 skip 이 아니라 실패다 — skip 으로 접으면
+            # 69개가 조용히 빠지고 추출 정확도를 아무것도 확인하지 않은 채 초록불이 된다.
+            pytest.fail(f"vLLM 이 설정과 다른 모델을 서빙 중입니다 — configs/default.yaml 의 "
+                        f"llm.model 로 되돌리세요(scripts/cheetah/serve_vllm.sh): {exc}")
+        except LLMError as exc:
+            pytest.skip(f"vLLM 에 연결할 수 없습니다 — {exc}")
 
-    inst = VLLMClient(
-        base_url=llm_cfg.get("base_url", "http://localhost:8000/v1"),
-        model=llm_cfg.get("model", DEFAULT_MODEL),
-        timeout=float(llm_cfg.get("timeout", 180)),
-    )
-    try:
-        inst.health(timeout=4.0)  # skip 판단은 빨라야 한다
-    except ModelNotServed as exc:
-        # 서버는 살아 있는데 다른 모델(예: IoU 채점용 VL)이 떠 있다. 환경이 없는
-        # 게 아니라 잘못 구성된 것이므로 skip 이 아니라 실패다 — skip 으로 접으면
-        # 69개가 조용히 빠지고 추출 정확도를 아무것도 확인하지 않은 채 초록불이 된다.
-        pytest.fail(f"vLLM 이 설정과 다른 모델을 서빙 중입니다 — configs/default.yaml 의 "
-                    f"llm.model 로 되돌리세요(scripts/cheetah/serve_vllm.sh): {exc}")
-    except LLMError as exc:
-        pytest.skip(f"vLLM 에 연결할 수 없습니다 — {exc}")
-    return inst
+    metered = MeteredLLM(inst)
+    yield metered
+    out = os.environ.get("PROVA_LLM_USAGE_OUT")
+    if out:
+        Path(out).parent.mkdir(parents=True, exist_ok=True)
+        Path(out).write_text(json.dumps(metered.summary(), ensure_ascii=False, indent=2),
+                             encoding="utf-8")
 
 
 @pytest.fixture(scope="module", params=SPECS)

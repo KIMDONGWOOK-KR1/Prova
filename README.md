@@ -169,7 +169,10 @@ selector-first 는 취향이 아니라 측정 결과다: 더 정확하고, 없�
 S1 추출 정확도도 골든 데이터와 대조해 확인했다 — 세 화면 **54/54 통과**.
 로컬 7B가 `constraints` 키 이름(`min_length`, `require_uppercase`, `same_as` 등)까지
 정확히 뽑아내므로, 계획 단계에서 우려했던 "7B가 검증 규칙을 놓칠 위험"은 해소됐다.
-Claude API가 필요하지 않다.
+Claude API가 필요하지 않다. 2026-11-10 에 같은 골든 105항목으로 실제 견줬다 — 로컬
+Qwen3.5-4B · Claude Haiku 5.5 · Claude Opus 5.5 모두 105/105
+(`docs/measurements/local-vs-api-2026-11-10.md`). Claude 백엔드는 이 비교 측정에만 쓰고
+제품 입구에는 붙이지 않았다.
 
 ---
 
