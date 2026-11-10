@@ -42,6 +42,7 @@ from prova.s1_merge import merge_documents
 from prova.s1_spec_extractor.extractor import NO_PATH_WARNING, extract_document
 from prova.s2_case_generator.coverage import coverage_gaps
 from prova.s2_case_generator.generator import ask_titles, generate_cases, generate_flow_cases
+from prova.spec_source import attach_sources
 from prova.s2_case_generator.precondition import login_screen
 from prova.s2_case_generator.selector import case_kind
 from prova.s2_case_generator.rule_expander import spec_defects
@@ -341,6 +342,8 @@ def generate_test_cases(state: AgentState) -> AgentState:
     # figma 단독 화면을 지나는 흐름은 generate_flow_cases 가 흐름 단위로
     # 거른다 — 병합 문서에서 document 화면만 지나는 흐름은 살아야 한다.
     cases.extend(generate_flow_cases(state.doc))
+    # 케이스마다 '기획서 몇 쪽 어느 줄' 을 붙인다 — 판정과 무관한, 읽는 사람용 근거.
+    attach_sources(state.doc, cases)
     state.cases = cases
 
     # 기획서에 적혀 있는데 어떤 케이스도 확인하지 않는 것을 여기서 센다.
@@ -484,7 +487,7 @@ def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
         case_id=case.case_id, title=case.title, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
-        target_label=case.target_label,
+        target_label=case.target_label, spec_sources=case.spec_sources,
         verdict="FAIL",
         failure_category="precondition_failed",
         failure_detail=detail,

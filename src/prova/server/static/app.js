@@ -622,6 +622,7 @@ function caseHow(c) {
     <summary>절차·기대 보기</summary>
     <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
     ${c.expected ? `<div class="expect"><b>기대</b> ${esc(c.expected)}</div>` : ""}
+    ${(c.sources || []).map((s) => `<div class="expect src"><b>기획서</b> ${esc(s)}</div>`).join("")}
   </details>`;
 }
 

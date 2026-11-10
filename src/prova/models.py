@@ -226,6 +226,22 @@ class StatusFilter(BaseModel):
     target_label: str = Field(description="필터가 적용되는 반복 목록 요소의 라벨")
 
 
+class SourceLine(BaseModel):
+    """기획서의 표 행 하나 또는 본문 줄 하나 — 쪽 번호와 함께 (prova.spec_source)."""
+
+    page: int
+    text: str  # 표 행은 칸을 ' | ' 로 이었다
+    table: bool = False
+
+
+class SpecSource(BaseModel):
+    """케이스의 기대가 기획서 어디에 적혀 있는지 — 리포트의 '기획서 근거'."""
+
+    page: int
+    quote: str
+    table: bool = False
+
+
 class ScreenSpec(BaseModel):
     """설계 문서에서 추출한 화면 단위 명세. S1의 출력.
 
@@ -268,6 +284,9 @@ class ScreenSpec(BaseModel):
     # 정적 대조(라벨·안내 문구·선택 항목)만 만든다. 근거 없이 만들면 구현이
     # 옳아도 FAIL 이 나는 오탐이 된다 (specs/2026-08-25).
     source_kind: Literal["document", "figma"] = "document"
+    # 이 화면이 실린 기획서 쪽들의 표 행·본문 줄 (쪽 번호 포함). 모델이 아니라 PDF 파서가
+    # 채운다 — 케이스의 기대가 기획서 어디에 적혀 있는지 찾는 데 쓴다 (prova.spec_source).
+    source_lines: SkipJsonSchema[list[SourceLine]] = Field(default_factory=list)
     example_path: SkipJsonSchema[Optional[str]] = None
 
     def element_by_id(self, element_id: str) -> Optional[UIElement]:
@@ -492,6 +511,8 @@ class TestCase(BaseModel):
     target_element: Optional[str] = None  # violates 대상 element_id
     # 그 요소를 기획서가 부르는 이름('비밀번호 확인'). 리포트·사유 문장이 식별자 대신 쓴다.
     target_label: Optional[str] = None
+    # 이 케이스의 기대가 기획서 어디에 적혀 있는지 (prova.spec_source). 못 찾으면 비어 있다.
+    spec_sources: list[SpecSource] = Field(default_factory=list)
     steps: list[TestStep] = Field(default_factory=list)
     # 전제를 세우는 스텝. S2 가 코드로 생성하며, 실패하면 FAIL + precondition_failed 로
     # 분류된다 (명세서 §3-2 참조).
@@ -692,6 +713,8 @@ class Verdict(BaseModel):
     target_element: Optional[str] = None
     # 그 요소를 기획서가 부르는 이름. 없으면 리포트가 target_element 를 쓴다.
     target_label: Optional[str] = None
+    # 기대가 기획서 어디에 적혀 있는지. 읽는 사람이 판정을 스스로 확인하는 자료다.
+    spec_sources: list[SpecSource] = Field(default_factory=list)
     evidence: dict = Field(default_factory=dict)
     failure_category: Optional[FailureCategory] = None
     failure_detail: Optional[str] = None

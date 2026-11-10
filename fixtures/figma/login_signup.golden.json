@@ -50,6 +50,7 @@
         }
       ],
       "scenarios": [],
+      "status_filter": null,
       "success_condition": "",
       "failure_conditions": [],
       "required_message": null,
@@ -59,8 +60,8 @@
       "precondition": null,
       "seed_rows": [],
       "date_filter": null,
-      "status_filter": null,
       "source_kind": "figma",
+      "source_lines": [],
       "example_path": null
     },
     {
@@ -172,6 +173,7 @@
         }
       ],
       "scenarios": [],
+      "status_filter": null,
       "success_condition": "",
       "failure_conditions": [],
       "required_message": null,
@@ -179,8 +181,8 @@
       "precondition": null,
       "seed_rows": [],
       "date_filter": null,
-      "status_filter": null,
       "source_kind": "figma",
+      "source_lines": [],
       "example_path": null
     }
   ],

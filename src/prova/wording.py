@@ -108,6 +108,11 @@ def reproduction_lines(steps: Iterable, setup_steps: Iterable = ()) -> list[str]
     return lines
 
 
+def source_sentence(source) -> str:
+    """기획서 근거 한 곳 — '2쪽 표 — …'."""
+    return f"{source.page}쪽 {'표' if source.table else '본문'} — {source.quote}"
+
+
 def rule_subject(target_label: Optional[str], target_element: Optional[str]) -> str:
     """규칙이 걸린 요소를 가리키는 말 — 기획서의 이름을 먼저, 없으면 식별자."""
     return target_label or target_element or ""

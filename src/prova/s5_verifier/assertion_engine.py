@@ -649,7 +649,7 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         case_id=case.case_id, title=case.title, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
-        target_label=case.target_label,
+        target_label=case.target_label, spec_sources=case.spec_sources,
         elapsed_ms=elapsed, step_results=step_results,
         # 보정으로 **진행한** 스텝이 있을 때만 healed 다.
         #

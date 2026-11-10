@@ -25,6 +25,7 @@ import re
 from pathlib import Path
 
 from prova.llm.base import LLMClient, LLMError, OutputTruncated
+from prova.spec_source import index_lines
 from prova.models import (DateFilter, Flow, Precondition, Scenario, ScreenSpec,
                           SpecDocument, StatusFilter, UIElement)
 from prova.s1_spec_extractor.pdf_parser import (
@@ -627,6 +628,8 @@ def extract_screen_spec(doc: ParsedDocument, llm: LLMClient, max_tokens: int = 3
     spec = ScreenSpec.model_validate(raw)
     spec.source_kind = "document"  # LLM 이 무엇을 냈든 이 경로의 출처는 문서다
     spec.example_path = doc.declared_example_path()
+    # 쪽 번호가 붙은 줄 색인. 케이스의 '기획서 근거' 를 코드가 찾는 재료다 (prova.spec_source).
+    spec.source_lines = index_lines(doc)
     # 이 시점의 warnings 는 전부 모델이 쓴 것이다. 아래에서 코드가 붙이는 경고와
     # 섞이기 전에 출처를 단다.
     _label_model_warnings(spec, doc_text)

@@ -37,7 +37,7 @@ from prova.theme import TOKENS_CSS
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
-from prova.wording import ACTION_LABELS, rule_subject
+from prova.wording import ACTION_LABELS, rule_subject, source_sentence
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -443,6 +443,12 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     rows += [
         ("기대", _esc(ev.get("expected"))),
         ("실제", _esc(ev.get("actual"))),
+    ]
+    if verdict.spec_sources:
+        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
+        rows.append(("기획서 근거", "<br>".join(
+            _esc(source_sentence(s)) for s in verdict.spec_sources)))
+    rows += [
         ("최종 URL", f"<code>{_esc(ev.get('url'))}</code>"),
     ]
     if verdict.failure_category:

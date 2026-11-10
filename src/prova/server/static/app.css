@@ -495,6 +495,7 @@ label.check input[type=checkbox] { margin: 0; }
 .case .how ol { margin: var(--sp-2) 0; padding-left: 1.4em; font-size: var(--tx-sm); color: var(--fg-default); }
 .case .how li { margin: 2px 0; }
 .case .how .expect { font-size: var(--tx-sm); color: var(--fg-default); }
+.case .how .expect.src { color: var(--fg-muted); margin-top: 2px; }
 .case .how .expect b { margin-right: var(--sp-2); }
 
 .field .hint { font-size: var(--tx-sm); color: var(--fg-muted); margin-top: 4px; }

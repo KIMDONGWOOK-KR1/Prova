@@ -35,7 +35,9 @@ from prova.models import SpecDocument
 from prova.nodes import AgentState, extract_spec, finish_titles
 from prova.spec_edits import diff_docs
 from prova.s2_case_generator.rule_expander import RULE_LABELS
-from prova.wording import expectation_sentence, reproduction_lines, rule_subject
+from prova.wording import (
+    expectation_sentence, reproduction_lines, rule_subject, source_sentence,
+)
 from prova.pipeline import build_plan, configured_workers, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
@@ -221,6 +223,7 @@ def plan(body: PlanRequest) -> dict:
                     # 무슨 값으로 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다.
                     "steps": reproduction_lines(c.steps, c.setup_steps),
                     "expected": expectation_sentence(c.expected),
+                    "sources": [source_sentence(s) for s in c.spec_sources],
                     "flow_id": c.flow_id,
                     "selected": c.case_id in chosen,
                 }
