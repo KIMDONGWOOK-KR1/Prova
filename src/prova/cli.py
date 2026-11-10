@@ -504,6 +504,18 @@ def _print_summary(report, run_dir: Path) -> None:
         bold=True,
     )
 
+    # dry-run 으로 막은 케이스는 '확인 불가' 로 실패 칸에 들어간다. 숫자(통과율·종료 코드)는
+    # 그대로 두고 — 확인하지 못한 것을 통과로 세지 않는다 — 결과 줄 바로 아래에서 그 실패의
+    # 성질과, 막지 않은 케이스만 본 결과를 말한다. 안 그러면 '통과율 17.6%' 가 구현 결함처럼 읽힌다.
+    blocked = (s.get("dry_run") or {}).get("cases_blocked", 0)
+    if blocked:
+        rest = s["total"] - blocked
+        typer.secho(
+            f"  ! dry-run: 쓰기 요청을 막은 {blocked}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 "
+            f"셉니다 — 구현 결함이 아닙니다. 막지 않은 {rest}건 중 통과 {s['pass']}",
+            fg=typer.colors.YELLOW,
+        )
+
     if s.get("filtered_by"):
         typer.secho(
             f"  ! 부분 실행: 필터 '{s['filtered_by']}' 로 전체 "
