@@ -244,6 +244,8 @@ uv run prova diff-spec --old fixtures/specs/login_spec.pdf --new fixtures/specs/
 uv run prova run --pdf fixtures/specs/revisions/login_spec_v2.pdf --since fixtures/specs/login_spec.pdf --changed-only --url http://localhost:8100/good --backend replay
 
 # 5. 리포트 열기 — 옆에 report.xlsx(요약·케이스·기획서와 다름 시트)도 생긴다
+#    실패 카드는 넣은 값(단계 표 '값' 칸)과 기획서 근거(몇 쪽 어느 줄)를 함께 보여 준다 —
+#    리포트만 보고 손으로 재현하고, 기획서에서 그 줄을 찾아 확인할 수 있다
 start runs/<run-id>/report.html
 
 # 5-1. 엑셀이 없는 예전 실행은 report.json 으로 다시 만든다
@@ -356,7 +358,8 @@ src/prova/
 ├── models.py                 데이터 계약 (명세서 §3) — 파이프라인 전체의 타입
 ├── theme.py                  디자인 토큰 — 웹 UI 와 리포트가 공유하는 단일 출처
 ├── text_utils.py             PDF 문구 ↔ 화면 문구 비교 규칙
-├── llm/                      백엔드 추상화 (base / mock / vllm)
+├── wording.py                사람이 읽는 문장 — 기대 결과·재현 절차·규칙 이름 (리포트·엑셀·계획 화면 공용)
+├── llm/                      백엔드 추상화 (base / mock / vllm / replay) + claude_backend(비교 측정 전용)
 ├── s1_spec_extractor/        PDF -> ScreenSpec
 │   ├── pdf_parser.py           결정적 추출 (pdfplumber, LLM 없음)
 │   └── extractor.py            LLM 구조화 + 표에서 읽은 사실로 교정
@@ -365,6 +368,7 @@ src/prova/
 │   └── extractor.py            SpecDocument 조립 — 경로는 --screen-url 매핑
 ├── s1_merge.py               기획서+Figma 병합 — 어긋남은 판정 대신 발견으로
 ├── spec_edits.py             사람이 고친 '기획서에서 읽은 내용' 을 SpecDocument 에 적용 (웹 UI 계획 화면)
+├── spec_source.py            기획서 근거 — 케이스의 기대가 몇 쪽 어느 줄에 적혀 있는지 (LLM 없음)
 ├── spec_revision.py          기획서 두 판 비교 — 바뀐 것과 그것을 건드리는 케이스 (diff-spec · --since)
 ├── s2_case_generator/        ScreenSpec -> TestCase[]
 │   ├── rule_expander.py        규칙 -> 위반값 + 요소 간 의존 해석 (순수 함수, LLM 없음)
