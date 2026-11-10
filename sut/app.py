@@ -14,6 +14,7 @@ Prova가 그것을 짚어낸다" 이다. 그걸 확인하려면 같은 기획서
                 B2    이메일 형식 검증 없음                            │  규칙 셋에서
                 B3    기획서와 다른 에러 문구                          │  각각 잡힘)
                 B4    안내 문구(placeholder)가 기획서와 다름           ┘
+                B5    반복 실패를 세지 않아 잠금 안내 없음 (lockout_spec 에서만 드러난다)
     signup      C1    비밀번호 확인 일치 검증 없음
                 C2    약관 동의 검증 없음
                 C3    닉네임 최대 길이 검증 없음
@@ -695,7 +696,7 @@ def bad_login_submit(
 
     if REGISTERED["bad"].get(email) != password:
         # B3: 기획서와 다른 문구를 쓴다
-        # B4: 반복 실패를 세지 않아 잠금 안내가 없다 (with_lockout 호출 누락)
+        # B5: 반복 실패를 세지 않아 잠금 안내가 없다 (with_lockout 호출 누락)
         return render_login(request, "bad", MSG_NO_ACCOUNT_WRONG)
     resp = RedirectResponse("/bad/dashboard", status_code=303)
     # 세션 쿠키 — 서명하지 않는다. 테스트 대상일 뿐 보안 대상이 아니기 때문이다.
