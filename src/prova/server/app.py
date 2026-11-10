@@ -34,6 +34,8 @@ from prova.llm.factory import BackendError, make_llm
 from prova.models import SpecDocument
 from prova.nodes import AgentState, extract_spec, finish_titles
 from prova.spec_edits import diff_docs
+from prova.s2_case_generator.rule_expander import RULE_LABELS
+from prova.wording import expectation_sentence, reproduction_lines, rule_subject
 from prova.pipeline import build_plan, configured_workers, execution_options, run_pipeline
 from prova.sut_build import check_sut_build
 from prova.server.runner import JobRunner
@@ -212,6 +214,13 @@ def plan(body: PlanRequest) -> dict:
                     "screen_id": c.screen_id,
                     "title": c.title,
                     "violates": c.violates,
+                    # 사람이 읽는 이름 — 규칙·요소를 기획서의 말로 (화면이 식별자 대신 쓴다)
+                    "rule_label": (RULE_LABELS.get(c.violates, c.violates)
+                                   if c.violates else None),
+                    "target_label": rule_subject(c.target_label, c.target_element) or None,
+                    # 무슨 값으로 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다.
+                    "steps": reproduction_lines(c.steps, c.setup_steps),
+                    "expected": expectation_sentence(c.expected),
                     "flow_id": c.flow_id,
                     "selected": c.case_id in chosen,
                 }

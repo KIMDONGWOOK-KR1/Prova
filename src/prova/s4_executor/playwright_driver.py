@@ -706,7 +706,7 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
     shot, dom = _capture(ctx, step.seq)
 
     return StepResult(
-        seq=step.seq, action=step.action, target=step.target,
+        seq=step.seq, action=step.action, target=step.target, value=step.value,
         status=status, elapsed_ms=elapsed_ms,
         screenshot=shot, dom_snapshot=dom,
         error_code=error_code, error_detail=error_detail,

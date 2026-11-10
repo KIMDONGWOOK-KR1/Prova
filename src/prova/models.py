@@ -490,6 +490,8 @@ class TestCase(BaseModel):
     flow_id: Optional[str] = None
     violates: Optional[str] = None
     target_element: Optional[str] = None  # violates 대상 element_id
+    # 그 요소를 기획서가 부르는 이름('비밀번호 확인'). 리포트·사유 문장이 식별자 대신 쓴다.
+    target_label: Optional[str] = None
     steps: list[TestStep] = Field(default_factory=list)
     # 전제를 세우는 스텝. S2 가 코드로 생성하며, 실패하면 FAIL + precondition_failed 로
     # 분류된다 (명세서 §3-2 참조).
@@ -626,6 +628,9 @@ class StepResult(BaseModel):
     seq: int
     action: str
     target: str = ""
+    # 넣은 값(입력·선택). 리포트의 단계 표가 보여 준다 — 값이 없으면 실패를 손으로
+    # 재현할 수 없다 (2026-11-10).
+    value: Optional[str] = None
     status: Literal["ok", "error"] = "ok"
     elapsed_ms: int = 0
     screenshot: Optional[str] = None
@@ -685,6 +690,8 @@ class Verdict(BaseModel):
     # required 규칙을 가진 요소가 여럿이면 'required 가 FAIL' 만 보고는 어느 입력의
     # 검증이 빠졌는지 알 수 없다.
     target_element: Optional[str] = None
+    # 그 요소를 기획서가 부르는 이름. 없으면 리포트가 target_element 를 쓴다.
+    target_label: Optional[str] = None
     evidence: dict = Field(default_factory=dict)
     failure_category: Optional[FailureCategory] = None
     failure_detail: Optional[str] = None

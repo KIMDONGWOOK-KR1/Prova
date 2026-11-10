@@ -33,6 +33,7 @@ from openpyxl.utils import get_column_letter
 
 from prova.models import TestReport, Verdict
 from prova.s6_report.report_builder import CATEGORY_LABELS, is_weak_pass
+from prova.wording import reproduction_lines
 
 XLSX_NAME = "report.xlsx"
 
@@ -44,12 +45,12 @@ _KIND_FILL = {
 }
 
 CASE_COLUMNS = ["번호", "화면", "케이스 ID", "제목", "유형", "판정", "구분", "실패 원인",
-                "기대", "실제", "상세", "URL", "스크린샷", "시간(초)", "개정"]
+                "기대", "실제", "상세", "재현 절차", "URL", "스크린샷", "시간(초)", "개정"]
 DEFECT_COLUMNS = ["번호", "화면", "케이스 ID", "제목", "기획서 기대", "실제 화면", "상세",
-                  "URL", "스크린샷"]
+                  "재현 절차", "URL", "스크린샷"]
 _WIDTHS = {"번호": 6, "화면": 16, "케이스 ID": 30, "제목": 36, "유형": 10, "판정": 7,
            "구분": 13, "실패 원인": 13, "기대": 40, "실제": 40, "기획서 기대": 40,
-           "실제 화면": 40, "상세": 50, "URL": 36, "스크린샷": 28, "시간(초)": 9, "개정": 40}
+           "실제 화면": 40, "상세": 50, "재현 절차": 46, "URL": 36, "스크린샷": 28, "시간(초)": 9, "개정": 40}
 _TYPE_LABELS = {"positive": "정상", "negative": "위반"}
 
 
@@ -100,6 +101,13 @@ def _table(ws, columns: list[str], rows: list[list]) -> None:
         ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{len(rows) + 1}"
 
 
+def _reproduction(v) -> str:
+    """손으로 따라 할 수 있는 재현 절차 — 실제로 실행한 스텝과 넣은 값 (prova.wording)."""
+    setup = [r for r in v.step_results if r.phase == "setup"]
+    test = [r for r in v.step_results if r.phase != "setup"]
+    return "\n".join(reproduction_lines(test, setup))
+
+
 def _case_rows(report: TestReport, names: dict) -> list[list]:
     # 이전 판과 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라 표시다.
     revised = ((report.summary or {}).get("revision") or {}).get("touched") or {}
@@ -112,6 +120,7 @@ def _case_rows(report: TestReport, names: dict) -> list[list]:
             i, names.get(v.screen_id, v.screen_id), v.case_id, v.title,
             _TYPE_LABELS.get(v.type, v.type), v.verdict, kind_of(v), category,
             str(ev.get("expected") or ""), str(ev.get("actual") or ""), _detail(v),
+            _reproduction(v),
             str(ev.get("url") or ""), str(ev.get("screenshot") or ""),
             round(v.elapsed_ms / 1000, 1),
             " / ".join(revised.get(v.case_id) or []),
@@ -128,6 +137,7 @@ def _defect_rows(report: TestReport, names: dict) -> list[list]:
         rows.append([
             len(rows) + 1, names.get(v.screen_id, v.screen_id), v.case_id, v.title,
             str(ev.get("expected") or ""), str(ev.get("actual") or ""), _detail(v),
+            _reproduction(v),
             str(ev.get("url") or ""), str(ev.get("screenshot") or ""),
         ])
     return rows

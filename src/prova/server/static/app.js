@@ -575,6 +575,8 @@ function renderGroups() {
 
   $("groups").querySelectorAll(".case").forEach((row) => {
     row.addEventListener("click", (e) => {
+      // '절차·기대' 를 펼치는 클릭은 선택을 바꾸지 않는다 — 읽으려고 눌렀다가 케이스가 꺼지면 안 된다.
+      if (e.target.closest(".how")) return;
       const box = row.querySelector("input");
       if (e.target !== box) box.checked = !box.checked;
       const c = state.plan.cases.find((x) => x.case_id === row.dataset.id);
@@ -603,12 +605,24 @@ function caseRow(c) {
     <div>
       <div class="desc">${esc(c.title)}</div>
       <div class="id">${esc(c.case_id)}</div>
+      ${caseHow(c)}
     </div>
     <div class="marks">
-      ${c.violates ? `<span class="tag rule">${esc(c.violates)}</span>` : ""}
+      ${c.violates ? `<span class="tag rule" title="${esc(c.violates)}">${
+        esc([c.target_label, c.rule_label || c.violates].filter(Boolean).join(" · "))}</span>` : ""}
       ${c.flow_id ? `<span class="tag flow">흐름</span>` : ""}
     </div>
   </div>`;
+}
+
+// 무슨 값을 넣고 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다 (prova/wording.py).
+function caseHow(c) {
+  if (!(c.steps || []).length && !c.expected) return "";
+  return `<details class="how">
+    <summary>절차·기대 보기</summary>
+    <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
+    ${c.expected ? `<div class="expect"><b>기대</b> ${esc(c.expected)}</div>` : ""}
+  </details>`;
 }
 
 function picked() {

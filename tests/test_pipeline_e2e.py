@@ -25,6 +25,8 @@ from __future__ import annotations
 
 import pytest
 
+from prova.s2_case_generator.rule_expander import RULE_LABELS
+
 from prova.llm.mock_backend import MockLLM
 from prova.pipeline import run_pipeline
 
@@ -136,7 +138,9 @@ class TestBadVariant:
                   if c.verdict == "FAIL" and c.type == "negative"):
             assert v.violates, f"{v.case_id}: 위반 규칙이 없다"
             assert v.failure_category, f"{v.case_id}: 실패 분류가 없다"
-            assert v.violates in v.failure_detail, f"{v.case_id}: 설명에 규칙이 없다"
+            # 설명은 규칙을 기획서의 말로 적는다(prova.wording) — 식별자는 violates 에 남는다.
+            assert RULE_LABELS.get(v.violates, v.violates) in v.failure_detail, (
+                f"{v.case_id}: 설명에 규칙이 없다")
 
 
 class TestReportCompleteness:

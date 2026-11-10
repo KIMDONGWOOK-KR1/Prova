@@ -37,16 +37,14 @@ from prova.theme import TOKENS_CSS
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
+from prova.wording import ACTION_LABELS, rule_subject
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
 MEMO_PREFIX = "모델 메모:"
 
 # 스텝 표의 동작·상태. 코드 이름(fill·ok)은 코드를 아는 사람만 읽는다.
-ACTION_LABELS = {
-    "navigate": "이동", "fill": "입력", "click": "클릭", "select": "선택",
-    "check": "체크", "uncheck": "체크 해제", "wait": "대기", "assert": "확인",
-}
+# (동작 이름표는 prova.wording 이 갖는다 — 엑셀·계획 화면과 같은 낱말을 쓴다.)
 STATUS_LABELS = {"ok": "성공", "error": "오류"}
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
@@ -210,6 +208,7 @@ table.kv td { padding:5px 0; word-break:break-all; }
 .steps th, .steps td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
 .steps th { background:var(--bg-inset); font-weight:600; }
 .steps td.err { color:var(--fail); }
+.steps td.val { font-family:var(--mono, monospace); word-break:break-all; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
 .shots a { display:block; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
@@ -270,12 +269,14 @@ def _steps_html(verdict: Verdict) -> str:
         rows.append(
             f"<tr><td>{_esc(phase_label)}</td><td>{r.seq}</td>"
             f"<td>{_esc(ACTION_LABELS.get(r.action, r.action))}</td><td>{_esc(r.target)}</td>"
+            # 넣은 값. 없으면 실패를 개발자에게 넘길 때 손으로 재현할 수 없다.
+            f"<td class='val'>{_esc(r.value) if r.value is not None else ''}</td>"
             f"<td>{_esc(strategy)}</td><td{cls}>{_esc(STATUS_LABELS.get(r.status, r.status))}</td>"
             f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
             f"<td>{evidence}</td></tr>"
         )
     return (
-        "<table class='steps'><thead><tr><th>단계</th><th>#</th><th>동작</th><th>대상</th>"
+        "<table class='steps'><thead><tr><th>단계</th><th>#</th><th>동작</th><th>대상</th><th>값</th>"
         "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
@@ -418,10 +419,11 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 요소와 규칙을 함께 보여준다. 화면에 같은 규칙을 가진 요소가 여럿이면
     # (회원가입의 required 6개) 규칙 이름만으로는 어디를 고쳐야 할지 모른다.
     rule_name = RULE_LABELS.get(verdict.violates, verdict.violates) if verdict.violates else ""
-    rule_label = (f"{verdict.target_element} · {rule_name}"
-                  if verdict.target_element else rule_name)
-    rule_tag = (f"<span class='tag rule'>{_esc(rule_label)}</span>"
-                if verdict.violates else "")
+    # 요소는 기획서의 이름으로 적는다(식별자는 마우스를 올리면 보인다).
+    subject = rule_subject(verdict.target_label, verdict.target_element)
+    rule_label = f"{subject} · {rule_name}" if subject else rule_name
+    rule_tag = (f"<span class='tag rule' title='{_esc(verdict.target_element or '')}'>"
+                f"{_esc(rule_label)}</span>" if verdict.violates else "")
     # 분류를 요약 줄에 올린다. 펼친 카드 안쪽 표에만 있으면 목록만 훑는 사람에게
     # 구현 결함과 도구·환경 실패가 똑같이 'FAIL' 로 보인다.
     cat_tag = ""

@@ -58,7 +58,7 @@ class TestNegativeErrorMessage:
         v = verify(case, steps_ok(), state(url="http://h/bad/dashboard", text="환영합니다"))
         assert v.verdict == "FAIL"
         assert v.failure_category == "assertion_mismatch"
-        assert "require_uppercase" in v.failure_detail
+        assert "대문자 포함" in v.failure_detail  # 규칙은 기획서의 말로 (prova.wording)
         # 사유는 본 것(에러 문구가 없었다)만 말하고, 결론(구현이 강제하지
         # 않는다)은 쓰지 않는다 — 노트 15 의 원칙. 기본 분기에만 남아 있었다.
         assert "에러가 전혀 노출되지 않음" in v.evidence["actual"]

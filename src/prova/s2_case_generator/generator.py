@@ -292,6 +292,7 @@ def generate_cases(
                 type="negative",
                 violates=violation.rule,
                 target_element=element.element_id,
+                target_label=element.label,
                 steps=_steps_for_case(spec, values),
                 expected=_expectation_for_violation(element, violation.rule, spec),
             ))
@@ -1144,6 +1145,7 @@ def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
             title=f"{element.label} 선택 목록이 기획서와 같은지 확인",
             type="positive",
             target_element=element.element_id,
+            target_label=element.label,
             steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
             expected=Expectation(
                 type="options_present",

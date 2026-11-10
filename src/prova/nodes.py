@@ -484,6 +484,7 @@ def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
         case_id=case.case_id, title=case.title, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
+        target_label=case.target_label,
         verdict="FAIL",
         failure_category="precondition_failed",
         failure_detail=detail,

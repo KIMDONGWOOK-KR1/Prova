@@ -32,8 +32,10 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from prova.models import Expectation, StepResult, TestCase, Verdict
+from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import CollectionCount, CollectionTexts
 from prova.text_utils import contains_loose, normalize_ws
+from prova.wording import expectation_sentence, rule_subject
 
 
 @dataclass
@@ -647,6 +649,7 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         case_id=case.case_id, title=case.title, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
+        target_label=case.target_label,
         elapsed_ms=elapsed, step_results=step_results,
         # 보정으로 **진행한** 스텝이 있을 때만 healed 다.
         #
@@ -841,20 +844,8 @@ def _rests_on_baseline(expected: Expectation, state: PageState) -> bool:
 
 
 def _expected_summary(expected: Expectation) -> str:
-    parts = [f"type={expected.type}"]
-    if expected.value:
-        parts.append(f"문구={expected.value!r}")
-    if expected.url_contains:
-        parts.append(f"경로={expected.url_contains!r}")
-    if expected.count is not None:
-        parts.append(f"건수={expected.count} (대상={expected.count_target!r})")
-    if expected.options:
-        parts.append(f"선택 항목={expected.options} (대상={expected.option_target!r})")
-    if expected.placeholders:
-        parts.append(f"안내 문구 {len(expected.placeholders)}건")
-    if expected.labels:
-        parts.append(f"라벨 {len(expected.labels)}개 탐지 가능")
-    return " ".join(parts)
+    """근거의 '기대' 줄. 기획자가 읽는 문장으로 적는다 (prova.wording)."""
+    return expectation_sentence(expected)
 
 
 def _classify(case: TestCase, state: PageState) -> str:
@@ -913,9 +904,12 @@ def _failure_detail(case: TestCase, reason: str) -> str:
     요소가 여럿이면 규칙 이름만으로는 어디를 고쳐야 하는지 알 수 없다.
     """
     if case.type == "negative" and case.violates:
-        where = f"'{case.target_element}' 의 " if case.target_element else ""
+        # 기획서의 이름으로 적는다 — 식별자(password_confirm·same_as)는 코드를 아는 사람만 읽는다.
+        subject = rule_subject(case.target_label, case.target_element)
+        where = f"'{subject}' 칸의 " if subject else ""
+        rule = RULE_LABELS.get(case.violates, case.violates)
         return (
-            f"기획서에 적힌 {where}'{case.violates}' 검증 규칙이 구현에서 "
+            f"기획서에 적힌 {where}'{rule}' 검증 규칙이 구현에서 "
             f"확인되지 않았습니다. ({reason})"
         )
     if case.flow_id:

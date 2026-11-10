@@ -490,6 +490,13 @@ label.check input[type=checkbox] { margin: 0; }
   margin-top: 1px;
 }
 
+.case .how { margin-top: var(--sp-2); cursor: default; }
+.case .how summary { font-size: var(--tx-sm); color: var(--fg-muted); cursor: pointer; width: fit-content; }
+.case .how ol { margin: var(--sp-2) 0; padding-left: 1.4em; font-size: var(--tx-sm); color: var(--fg-default); }
+.case .how li { margin: 2px 0; }
+.case .how .expect { font-size: var(--tx-sm); color: var(--fg-default); }
+.case .how .expect b { margin-right: var(--sp-2); }
+
 .field .hint { font-size: var(--tx-sm); color: var(--fg-muted); margin-top: 4px; }
 
 .case .marks { display: flex; gap: 5px; flex-wrap: wrap; justify-content: flex-end; }
