@@ -695,8 +695,11 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
         limit = ctx.navigation_timeout_ms if step.action == "navigate" else ctx.step_timeout_ms
         error_detail = f"{limit}ms 초과 — {str(exc).splitlines()[0]}"
     except PlaywrightError as exc:
-        # 요소는 찾았지만 조작할 수 없는 경우(다른 요소에 가림, disabled 등)
-        status, error_code = "error", "input_error"
+        # 요소는 찾았지만 조작할 수 없는 경우(다른 요소에 가림, disabled 등).
+        # 페이지 열기(navigate)는 조작할 요소가 없다 — 네트워크·접속 실패는 페이지 오류다.
+        # '입력 불가 — 요소를 찾았으나…' 로 두면 사유가 사실과 반대다 (2026-11-10 판단 정확도 측정).
+        status = "error"
+        error_code = "page_error" if step.action == "navigate" else "input_error"
         error_detail = str(exc).splitlines()[0]
 
     elapsed_ms = int((time.monotonic() - started) * 1000)

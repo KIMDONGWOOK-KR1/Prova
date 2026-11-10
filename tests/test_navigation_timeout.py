@@ -46,3 +46,19 @@ def test_설정에서_읽는다():
     assert execution_options({})["navigation_timeout_ms"] == 30000
     cfg = {"execution": {"navigation_timeout_ms": "45000"}}
     assert execution_options(cfg)["navigation_timeout_ms"] == 45000
+
+
+class _NetDownPage:
+    def goto(self, url, timeout, wait_until):
+        from playwright.sync_api import Error
+        raise Error(f"Page.goto: net::ERR_NETWORK_CHANGED at {url}")
+
+
+def test_페이지를_열다가_난_네트워크_오류는_입력_불가가_아니라_페이지_오류다(tmp_path):
+    # 2026-11-10 판단 정확도 측정: Windows 네트워크 변경으로 goto 가 실패했는데 '입력 불가 —
+    # 요소를 찾았으나 조작할 수 없었습니다' 로 나왔다. 요소는 아예 없었다.
+    r = execute_step(_ctx(_NetDownPage(), tmp_path),
+                     TestStep(seq=1, action="navigate", target="/login"))
+    assert r.status == "error"
+    assert r.error_code == "page_error"
+    assert "ERR_NETWORK_CHANGED" in r.error_detail
