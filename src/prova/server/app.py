@@ -119,6 +119,9 @@ class RunRequest(PlanRequest):
     #: 2차 경로(화면 이미지로 찾기). 기본은 끈다 — 좌표를 누르는 경로라 틀리면
     #: 그 뒤 판정이 전부 거짓이 된다. 켜는 것은 사람이 고르고, 리포트가 남긴다.
     vlm: bool = False
+    #: 쓰기 요청(POST·PUT·PATCH·DELETE)을 막고 실행한다 (prova.dry_run, CLI --dry-run).
+    #: 기본은 끈다 — 막으면 제출 케이스가 '확인 불가' 가 된다. 켰는지는 리포트가 남긴다.
+    dry_run: bool = False
     #: 실행을 묶을 이름. 비우면 기획서와 대상 URL 로 묶는다 (prova.history)
     project: str = ""
 
@@ -290,6 +293,7 @@ def run(body: RunRequest) -> dict:
             on_progress=report,
             doc=edited,
             spec_edits=edits,
+            dry_run=body.dry_run,
         )
         return {
             "run_id": run_id,

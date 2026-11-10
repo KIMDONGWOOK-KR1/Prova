@@ -25,7 +25,7 @@ uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미�
 | 3 | 리포트 · 엑셀 | 1번 결과의 `runs/<id>/report.html` → '엑셀로 받기' | `report.xlsx` 생성 |
 | 4 | 기획서 개정판 — 무엇이 바뀌었나 | `uv run prova diff-spec --old fixtures/specs/login_spec.pdf --new fixtures/specs/revisions/login_spec_v2.pdf --backend replay` | 바뀐 것 2건(비밀번호 안내 문구, 로그인 버튼 이름) |
 | 5 | 바뀐 것이 사이트에 반영됐나 | `uv run prova run --pdf fixtures/specs/revisions/login_spec_v2.pdf --since fixtures/specs/login_spec.pdf --changed-only --url http://localhost:8100/good --backend replay` | 10 FAIL — 사이트는 옛 판이라 '로그인하기' 버튼을 못 찾음 8 · 기획서와 다름 2 |
-| 6 | 실제 접수가 일어나면 안 되는 사이트 | `uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend replay --dry-run` | 3 PASS · 14 확인 불가(쓰기 요청 막음) |
+| 6 | 실제 접수가 일어나면 안 되는 사이트 (웹 UI 는 '쓰기 요청 막기' 체크박스) | `uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend replay --dry-run` | 3 PASS · 14 확인 불가(쓰기 요청 막음) |
 | 7 | 휴대폰 화면 크기 | `uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/good --backend replay --device mobile` | 10/10 PASS |
 
 ## 말할 때 조심할 것

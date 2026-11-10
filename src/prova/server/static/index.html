@@ -93,6 +93,14 @@
           <div class="hint">라벨로 못 찾은 요소만 스크린샷에서 찾아 누릅니다 · GPU 서버 필요.
             좌표를 누르는 경로라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
         </div>
+
+        <div class="field">
+          <label class="check" for="dryRun">
+            <input type="checkbox" id="dryRun"> 쓰기 요청 막기 (dry-run)
+          </label>
+          <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트용 · 제출(POST·PUT·PATCH·DELETE)을
+            막고 전제 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>
+        </div>
       </section>
 
       <section class="panel">

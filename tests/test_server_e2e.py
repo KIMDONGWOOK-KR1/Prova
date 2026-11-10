@@ -487,3 +487,30 @@ class TestSecondaryPath:
         assert res.status_code == 409, res.text
         assert "터널" in res.text
         assert not server_app.runner.busy
+
+
+class TestDryRun:
+    """웹 UI 에서도 쓰기 요청을 막고 실행할 수 있다 (CLI --dry-run 과 같은 장치).
+
+    실물 사이트를 웹 UI 로 돌리는 사람에게 실제 접수·가입을 막는 장치가 CLI 에만 있으면
+    정작 필요한 입구에 없는 것과 같다. 켰는지는 리포트 요약에 남는다.
+    """
+
+    def _run(self, client, sut_base, **extra):
+        make_plan(client, sut_base)
+        return client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/good", "backend": "mock",
+            "case_ids": ["login-valid-001"], **extra,
+        })
+
+    def test_기본은_꺼져_있다(self, client, sut_base):
+        job = wait(client, self._run(client, sut_base).json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        assert "dry_run" not in job["result"]["summary"]
+
+    def test_켜면_제출을_막고_확인_불가로_둔다(self, client, sut_base):
+        job = wait(client, self._run(client, sut_base, dry_run=True).json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        summary = job["result"]["summary"]
+        assert summary["dry_run"]["cases_blocked"] == 1
+        assert summary["pass"] == 0

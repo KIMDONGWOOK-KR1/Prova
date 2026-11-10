@@ -300,6 +300,10 @@ uv run prova serve      # http://127.0.0.1:7007
 기본은 꺼져 있다. 켜면 `configs/default.yaml` 의 `llm.base_url`·`llm.model` 서버에 붙고,
 서버가 없으면 실행을 시작하지 않는다. 켰는지 여부는 리포트 머리말에 남는다(CLI 도 같다).
 
+**쓰기 요청 막기(dry-run)** 체크박스도 있다 — CLI `--dry-run` 과 같은 장치로, 실제 접수·가입이
+일어나면 안 되는 사이트에서 켠다. 기본은 꺼져 있고 저장하지 않는다. dry-run 실행은 일반 실행과
+다른 이력 줄기로 센다(막은 케이스가 '새로 깨진 것' 으로 읽히지 않게).
+
 2026-09-28 부터는 Qwen3.5-4B 한 모델이 추출과 탐지를 함께 맡아, 2차 경로도 같은
 서버로 켠다(`--vlm http://localhost:8000/v1`). 근거는
 [모델 비교 측정](docs/measurements/model-compare-qwen35-4b-2026-09-28.md) —

@@ -642,6 +642,8 @@ async function startRun() {
       // 계속 도는 일이 없게, 페이지를 열 때마다 꺼진 상태로 시작한다.
       body: JSON.stringify({ ...form(), case_ids: ids, reason: state.plan.reason || "",
                              vlm: $("vlm").checked,
+                             // 쓰기 요청 막기 (prova.dry_run). 2차 경로처럼 저장하지 않는다.
+                             dry_run: $("dryRun").checked,
                              // 고친 추출 결과로 만든 계획이면 그 문서로 실행한다 (spec_edits)
                              doc: (state.plan.spec_edits || []).length ? state.plan.doc : null }),
     });
@@ -683,6 +685,14 @@ function showResult(out) {
     notes.push(alertBox("info", "2차 경로를 켜고 실행했습니다",
       `라벨로 못 찾은 요소를 화면 이미지로 찾았습니다 (${esc(s.vlm)}) — ` +
       `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시됩니다.`));
+  }
+  if (s.dry_run) {
+    // 확인 불가도 실패 칸에 센다(확인하지 못한 것을 통과로 세지 않는다). 그 실패의 성질을 바로 말한다.
+    const d = s.dry_run;
+    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했습니다 (dry-run)",
+      `막은 케이스 ${d.cases_blocked || 0}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 셉니다 — ` +
+      `<b>구현 결함이 아닙니다.</b> 막지 않은 ${s.total - (d.cases_blocked || 0)}건 중 통과 ${s.pass}. ` +
+      `${esc(d.limits || "")}`));
   }
   if (s.llm_backend === "mock") {
     notes.push(alertBox("warn", "mock 백엔드로 실행한 결과입니다",
