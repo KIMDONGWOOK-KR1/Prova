@@ -76,6 +76,21 @@ Prova는 이 작업을 자동화한다. 증명하려는 명제는 하나다 —
 검증 규칙 셀은 옮기지 않는다 — 규칙이 적힌 요소를 백필하면 위반 케이스가
 생성되지 않는다는 경고를 따로 낸다.
 
+**실물 기획서와 실물 사이트** (2026-11-06~09, Qwen3.5-4B). 회사가 준 실제 기획서 한 건과
+그 사이트로 쟀다. 기획서·정답표·실행 결과는 비공개라 저장소 밖에 두고 수치만 적는다.
+
+| 지표 | 1차 작업 뒤 (손대기 전 S1 0%) | 최종 |
+|---|---|---|
+| S1 추출(사람이 옮긴 정답표와 엄격 대조) | 22.2% | **82.2%** (37/45) |
+| 기획서와 사이트의 실제 차이 탐지 | 1/11 · 오탐 2 | **8/11 · 오탐 0** |
+| 휴대폰 크기(`--device mobile`) | — | 판정 17개 데스크톱과 동일 |
+
+표본이 한 건이고 규칙을 그 문서를 보며 고쳤으므로, 그 문서에 맞춰졌을 수 있다. 그래서
+외부 연습 사이트 기획서 다섯 개에 **정답이 정해진 차이 32개를 심는 변이 시험**을 따로
+했다 — 잴 수 있는 26개 중 **24개를 잡았고(92%), 결함으로 잡은 것은 22개(85%)**, 놓친 것 2개
+(`docs/measurements/mutation-2026-11-07.md`). 사람이 실제로 낸 실수가 아니라 만든 차이라
+보조 지표로만 쓴다.
+
 2차 경로는 **실물 시각 모델(Qwen2.5-VL-3B-AWQ)로 굳은 시험지를 채점했다**
 (2026-08-31, 화면 18장 · 항목 77개 · 있음 63 · 없음 14, `fixtures/iou/`). 그 전까지의
 초록불은 정답을 아는 mock 이 낸 것이어서 배관만 증명했고 정확도는 측정되지 않은
@@ -179,6 +194,8 @@ torch 를 끌고 오는데, 아무도 설치하지 않는 것을 프로젝트 �
 | `eval_vlm_iou.py` | 화면 이미지에서 요소를 찾는 정확도 (IoU·적중·오탐·속도) | 필요 |
 | `eval_selector_speed.py` | 같은 시험지를 1차 경로로 — §9 의 selector vs VLM 비교 | 불필요 (SUT 만) |
 | `score_truth.py` | 실물 기획서 추출 정확도 — 사람이 옮겨 적은 정답표와 대조(놓친 것·추출에만 있는 것). 정답표는 저장소 밖에만 둔다 | 필요 |
+| `mutation_test.py` | 변이 시험 — 기획서 문구·라벨·선택지·예시 값을 하나씩 바꿔 정답 있는 차이를 만들고 잡는지 잰다(외부 5곳 32변이) | 필요 (replay 로 재생 가능) |
+| `dump_cases.py` · `dump_verdicts.py` | 코드 변경의 안전망 — 픽스처 케이스 전부·SUT 판정 전부를 한 줄씩 떠서 고치기 전후 `diff` | 불필요 (mock) |
 | `make_spec_pdf.py` · `make_multi_spec.py` | 픽스처 기획서 md → PDF, 통합 문서 조립 | 불필요 |
 | `make_comparison.py` · `make_demo_gif.py` · `embed_media.py` | 티칭 페이지 자료(비교 이미지·GIF) 생성과 인라인 — 결과물은 `docs/teaching/media/` 에 이미 있다 | 불필요 |
 
@@ -216,6 +233,7 @@ uv run prova run --pdf fixtures/specs/search_spec.pdf --url http://localhost:810
 # 4-1. GPU 를 반납한 뒤(2026-11-13~) 실모델 결과를 다시 보려면 --backend replay.
 #      mock(정답표)과 달리 그때 실모델이 실제로 낸 응답을 그대로 쓴다(fixtures/replay-cache).
 #      픽스처·외부 기획서 26개와 시연 요청은 11-07 에 채워 두었다. 2차 경로(VLM)는 재생되지 않는다.
+#      시연 순서와 리허설 결과는 docs/demo-offline.md
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/bad  --backend replay
 #      개정판 비교 시연(11-09 응답): login_spec 의 v2 는 비밀번호 안내 문구와 로그인 버튼 이름이 다르다
 uv run prova diff-spec --old fixtures/specs/login_spec.pdf --new fixtures/specs/revisions/login_spec_v2.pdf --backend replay
@@ -237,6 +255,9 @@ uv run prova run --pdf 기획서_v0.3.pdf --since 기획서_v0.2.pdf --url <대�
 #    막은 요청이 있는 케이스는 서버 응답을 못 봐 '확인 불가', 전제(로그인) 요청만 통과시킨다.
 #    GET 으로 데이터를 바꾸는 주소와 웹소켓은 막지 못한다. 우리 SUT 로만 검증했다(tests/test_dry_run.py)
 uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend mock --dry-run
+
+# 8. 휴대폰 화면 크기(390x844)로 — 리포트 머리말과 실행 이력에 기기가 남는다
+uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/good --backend mock --device mobile
 ```
 
 SUT 는 `--reload` 로 띄운다. **`sut/` 를 고치고 재시작을 잊으면 옛 코드를 상대로
@@ -269,6 +290,11 @@ uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100
 ```powershell
 uv run prova serve      # http://127.0.0.1:7007
 ```
+
+계획 화면의 **'기획서에서 읽은 내용'** 에서 추출 결과(요소·규칙·문구)를 직접 보고,
+틀린 값을 고친 뒤 그 문서로 케이스를 다시 만들어 실행할 수 있다. 모델이 잘못 읽은 값이
+그대로 판정 기준이 되는 것을 사람이 실행 전에 막는 자리다. 사람이 고친 값은 리포트
+상자에 남는다(`summary["spec_edits"]`).
 
 웹 UI 에서도 **화면 이미지로 찾기(2차 경로)** 를 켤 수 있다 — 실행 설정의 체크박스이고
 기본은 꺼져 있다. 켜면 `configs/default.yaml` 의 `llm.base_url`·`llm.model` 서버에 붙고,
@@ -327,9 +353,11 @@ src/prova/
 │   ├── pdf_parser.py           결정적 추출 (pdfplumber, LLM 없음)
 │   └── extractor.py            LLM 구조화 + 표에서 읽은 사실로 교정
 ├── s1_figma/                 Figma API 응답 -> ScreenSpec (전부 결정적, LLM 없음)
-├── s1_merge.py               기획서+Figma 병합 — 어긋남은 판정 대신 발견으로
 │   ├── figma_parser.py         컴포넌트 기반 요소 인지 + 저장용 다듬기
 │   └── extractor.py            SpecDocument 조립 — 경로는 --screen-url 매핑
+├── s1_merge.py               기획서+Figma 병합 — 어긋남은 판정 대신 발견으로
+├── spec_edits.py             사람이 고친 '기획서에서 읽은 내용' 을 SpecDocument 에 적용 (웹 UI 계획 화면)
+├── spec_revision.py          기획서 두 판 비교 — 바뀐 것과 그것을 건드리는 케이스 (diff-spec · --since)
 ├── s2_case_generator/        ScreenSpec -> TestCase[]
 │   ├── rule_expander.py        규칙 -> 위반값 + 요소 간 의존 해석 (순수 함수, LLM 없음)
 │   ├── precondition.py         전제(로그인) 스텝 생성 (순수 함수, LLM 없음)
@@ -340,7 +368,8 @@ src/prova/
 ├── vlm/                      2차 경로의 시각 모델 (base / mock_backend / qwen_vl / metrics)
 ├── s4_executor/                Playwright 실행 + 스텝별 증거 수집
 ├── s5_verifier/                PASS/FAIL 판정
-├── s6_report/                  JSON + HTML 리포트
+├── s6_report/                  JSON + HTML 리포트 + 엑셀(xlsx_export.py)
+├── dry_run.py                쓰기 요청(POST·PUT·PATCH·DELETE)을 막는 장치 (--dry-run)
 ├── nodes.py                  (state) -> state 노드
 ├── pipeline.py               build_plan (브라우저 없이 S1~S2+선택) + run_pipeline
 ├── graph.py                  같은 노드를 LangGraph 로 배선
@@ -348,7 +377,7 @@ src/prova/
 │   ├── app.py                  /api/plan (브라우저 없음) · /api/run (승인 목록) · /api/runs
 │   ├── runner.py               워커 스레드 하나, 동시 실행 하나
 │   └── static/                 작업 콘솔 (index.html · app.css · app.js, CDN 없음)
-└── cli.py                    prova run / prova serve / prova check
+└── cli.py                    prova run · serve · login · diff-spec · export-xlsx · check
 
 sut/                          테스트 대상 미니 웹앱 — 6화면(로그인·회원가입·검색·비밀번호 찾기·상품등록·주문조회) good / bad + 도구를 시험하는 변형 8종
 fixtures/specs/               화면기획서 md / pdf / 정답(golden) — 화면마다 한 벌
