@@ -96,6 +96,10 @@ def _same_series(summary: dict, spec: str, target: str, data: dict) -> bool:
     # 결함 수정·회귀처럼 읽힌다. 화면 크기가 다르면 다른 줄기다(칸 없음 = 데스크톱).
     if summary.get("viewport", "") != other.get("viewport", ""):
         return False
+    # dry-run 은 쓰기 요청을 막아 제출 케이스가 '확인 불가' 가 된다. 일반 실행과 이으면 그
+    # 케이스가 전부 '새로 깨진 것' 으로 읽힌다(반대 방향은 '고쳐진 것'). 칸이 있으면 dry-run 이다.
+    if ("dry_run" in summary) != ("dry_run" in other):
+        return False
     if spec != Path(data.get("spec_source", "")).name:
         return False
     return bool(project) or target == data.get("target_url", "")

@@ -170,3 +170,23 @@ def test_같은_이름으로_다시_돌리면_로그를_새로_쓴다(sut_base, 
         _, run_dir = run_pipeline(pdf, f"{sut_base}/good", MockLLM.for_document(pdf),
                                   run_id="same", runs_root=tmp_path, only="login-valid")
     assert (run_dir / "run.log").read_text(encoding="utf-8").count("S6 리포트 생성") == 1
+
+
+def test_dry_run_실행은_일반_실행과_다른_줄기다(tmp_path):
+    # 일반 실행 다음 차수로 비교하면 막은 케이스(확인 불가)가 전부 '새로 깨진 것' 이 된다.
+    _save(tmp_path, _report("normal", {"c": "PASS"}))
+    r = _report("dry", {"c": "FAIL"}, created="2026-11-02T11:00:00+09:00")
+    r.summary["dry_run"] = {"cases_blocked": 1, "requests_blocked": 1, "setup_allowed": 0}
+    attach_history(r, tmp_path)
+    assert r.summary["history"]["previous_run"] is None
+    assert r.summary["history"]["regressed"] == []
+
+
+def test_dry_run_실행끼리는_차수를_잇는다(tmp_path):
+    first = _report("dry1", {"c": "FAIL"})
+    first.summary["dry_run"] = {"cases_blocked": 1}
+    _save(tmp_path, first)
+    r = _report("dry2", {"c": "FAIL"}, created="2026-11-02T11:00:00+09:00")
+    r.summary["dry_run"] = {"cases_blocked": 1}
+    attach_history(r, tmp_path)
+    assert (r.summary["history"]["round"], r.summary["history"]["previous_run"]) == (2, "dry1")
