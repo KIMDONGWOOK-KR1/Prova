@@ -1,5 +1,7 @@
 # 문서 안내
 
+처음이면 [results.md](results.md)(측정 결과 전체) · [usage.md](usage.md)(사용법) · [architecture.md](architecture.md)(폴더 구조)부터.
+
 ## specs/ — 개발 명세
 
 | 파일 | 내용 |
@@ -8,7 +10,7 @@
 
 코드에서 `명세서 §5-1`처럼 절 번호로 참조하는 대상이 이 파일이다.
 
-**구현이 명세서와 다른 곳이 열네 군데 있다.** 각각 이유가 있으며
+**구현이 명세서와 다른 곳이 서른여덟 군데 있다.** 각각 이유가 있으며
 [design-decisions.md](design-decisions.md) 에 정리돼 있다. 명세서를 읽고 코드를 볼 때
 그 차이를 먼저 확인할 것.
 

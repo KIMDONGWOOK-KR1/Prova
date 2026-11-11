@@ -84,7 +84,7 @@ def check_sut_build(base_url: str, *, fetch: Fetch = _http_get) -> BuildCheck:
             return BuildCheck(
                 "refused",
                 f"대상 URL 에 연결할 수 없습니다: {base_url}\n"
-                "  테스트 대상 웹앱을 먼저 띄웠나요? (README '빨리 돌려보기' 3단계, "
+                "  테스트 대상 웹앱을 먼저 띄웠나요? (README '빨리 돌려보기', "
                 "시연이라면 데모준비.ps1)")
         return BuildCheck("unreachable", f"SUT 빌드 확인: 닿지 않음 ({exc})")
 
