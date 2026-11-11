@@ -402,7 +402,7 @@ scripts/                      기획서 PDF 생성 · 통합 문서 조립 · Fi
 └── legacy/                   파이프라인 이전에 만든 독립 추출 도구 (HWPX·OCR)
 docs/
 ├── specs/                    Prova_서비스명세서.md (개발 기준 문서)
-├── reference/                계획서·주제개요서·멘토링보고서 · 옛 추출기 안내
+├── reference/                옛 추출기 안내
 ├── teaching/                 티칭 노트 24개 + overview.html (그림 자료)
 ├── measurements/             실측 결과 — 보고에 쓰는 숫자의 출처
 ├── pr/                       PR 읽기 안내
