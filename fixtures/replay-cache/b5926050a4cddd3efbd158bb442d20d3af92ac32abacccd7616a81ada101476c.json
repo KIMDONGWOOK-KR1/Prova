@@ -1,0 +1,1 @@
+{"case_ids": ["login-email-required-002", "login-email-format-003"], "reason": "요청이 이메일 항목의 검증만 지목했으므로 해당 화면의 이메일 관련 케이스를 전부 선택했습니다."}

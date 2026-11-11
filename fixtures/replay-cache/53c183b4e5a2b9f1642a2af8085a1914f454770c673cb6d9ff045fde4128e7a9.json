@@ -1,0 +1,1 @@
+{"case_ids": ["signup-valid-001", "signup-agree_terms-required-014"], "reason": "화면 signup 의 케이스를 전부 선택했으며, 약관 동의 안 하면 가입이 막히는지 확인하므로 필수 동의 검증 케이스와 정상 회원가입 케이스를 포함했습니다."}

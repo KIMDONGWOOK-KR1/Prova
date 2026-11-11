@@ -1,0 +1,1 @@
+{"case_ids": ["product-name-required-002", "product-name-max_length-003"], "reason": "요청이 '상품명 길이 제한'을 명시했으므로, 상품명 항목의 필수 입력 검증과 최대 길이 규칙 위반 케이스를 모두 선택했습니다."}

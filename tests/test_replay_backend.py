@@ -131,3 +131,30 @@ def test_개정판을_SUT_에_돌리면_반영_안_된_두_곳을_기획서와_�
                              runs_root=tmp_path, since_doc=since, changed_only=True)
     defects = [v.case_id for v in report.cases if v.failure_category == "assertion_mismatch"]
     assert sorted(defects) == ["login-labels-001", "login-placeholders-001"]
+
+
+def _saved_requests() -> list[dict]:
+    import json
+    from pathlib import Path
+
+    return json.loads(Path("fixtures/replay-requests.json").read_text(encoding="utf-8"))
+
+
+@pytest.mark.parametrize("row", _saved_requests(),
+                         ids=lambda r: f"{r['spec']}:{r['request']}")
+def test_저장해_둔_자연어_요청이_서버_없이_같은_케이스를_고른다(tmp_path, row):
+    """GPU 반납 전(2026-11-11)에 실모델에게 물어 둔 요청 문장들.
+
+    요청 해석은 응답이 없으면 **오류 없이 전체 실행으로 넘어진다**(selector 의 계약 3). 그래서
+    프롬프트가 바뀌어 저장된 응답과 어긋나도 시연에서는 '요청이 안 먹는다' 로만 보인다 —
+    여기서 '넘어지지 않았다' 와 고른 건수를 함께 본다.
+    """
+    from prova.pipeline import build_plan
+
+    pdf = f"fixtures/specs/{row['spec']}_spec.pdf"
+    llm, _ = make_llm("replay", {"llm": {"model": "qwen3.5-4b-awq",
+                                         "cache_dir": str(tmp_path / "empty")}}, pdf)
+    state, _ = build_plan(pdf_path=pdf, base_url="http://127.0.0.1:9/bad", llm=llm,
+                          request=row["request"])
+    assert not state.selection.fallback, state.selection.warnings
+    assert (len(state.cases), len(state.all_cases)) == (row["picked"], row["total"])

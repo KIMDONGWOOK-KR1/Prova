@@ -16,6 +16,12 @@
     uv run python scripts/probe_request_selection.py login      # 한 기획서만
     uv run python scripts/probe_request_selection.py heldout    # 홀드아웃 A (튜닝 세트로 강등)
     uv run python scripts/probe_request_selection.py heldout-b  # 홀드아웃 B — 보고에 쓰는 숫자
+
+GPU 반납(2026-11-13) 뒤에는 `--replay` 를 붙인다 — 2026-11-11 에 실모델이 낸 응답
+(`fixtures/replay-cache`)을 다시 읽어 같은 표를 낸다. 새로 묻는 것이 아니므로 **재측정이
+아니라 그날 측정의 재현**이다.
+
+    uv run python scripts/probe_request_selection.py heldout-b --replay
 """
 
 from __future__ import annotations
@@ -154,13 +160,18 @@ EMPTY_HELDOUT_B = [
 ]
 
 
+REPLAY = "--replay" in sys.argv
+if REPLAY:
+    sys.argv.remove("--replay")
+
+
 def spec_path(name: str) -> Path:
     return Path(f"fixtures/specs/{name}_spec.pdf")
 
 
 def plan_for(name: str, request: str | None):
     cfg = yaml.safe_load(CONFIG.read_text(encoding="utf-8")) or {}
-    llm, _ = make_llm("vllm", cfg, spec_path(name))
+    llm, _ = make_llm("replay" if REPLAY else "vllm", cfg, spec_path(name))
     return build_plan(
         pdf_path=str(spec_path(name)),
         base_url="http://localhost:8100/bad",
@@ -181,7 +192,7 @@ def main() -> int:
     rows, misses = [], 0
 
     print("=" * 78)
-    print(f"요청 해석 정확도 — 실모델(vLLM) · {label}")
+    print(f"요청 해석 정확도 — {'저장된 실모델 응답(replay)' if REPLAY else '실모델(vLLM)'} · {label}")
     print("=" * 78)
 
     for name, request, kind, wanted in cases:

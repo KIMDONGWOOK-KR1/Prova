@@ -1,0 +1,1 @@
+{"case_ids": ["login-placeholders-001", "login-labels-001", "signup-options-signup_path-015", "signup-placeholders-001", "signup-labels-001"], "reason": "요청이 '가입 경로 선택지'와 '기획서 항목' 일치 여부를 확인하므로, 해당 화면의 라벨, 플레이스홀더, 그리고 가입 경로 선택 목록을 직접 검증하는 케이스를 모두 선택했습니다."}

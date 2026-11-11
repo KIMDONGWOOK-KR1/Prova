@@ -1,0 +1,1 @@
+{"case_ids": ["signup-signup_path-required-013", "signup-agree_terms-required-014", "signup-options-signup_path-015"], "reason": "요청이 '가입 경로 선택'에 대한 검증인지 확인하므로, 해당 항목의 필수 검증 케이스와 기획서 대비 케이스를 모두 선택했습니다."}

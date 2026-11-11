@@ -1,0 +1,1 @@
+{"case_ids": ["login-placeholders-001", "login-labels-001", "product-placeholders-001", "product-labels-001"], "reason": "요청이 '상품등록 화면 문구'를 가리키므로 해당 화면의 문구 관련 케이스를 전부 선택했습니다."}

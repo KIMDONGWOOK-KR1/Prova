@@ -1,0 +1,1 @@
+{"case_ids": ["search-valid-001", "search-query-required-002", "search-query-min_length-003", "search-query-max_length-004", "search-scenario-005", "search-count-005", "search-scenario-006", "search-count-006"], "reason": "검색 화면의 케이스를 전부 선택하여 검색 결과 건수가 기획서와 일치하는지 확인합니다."}

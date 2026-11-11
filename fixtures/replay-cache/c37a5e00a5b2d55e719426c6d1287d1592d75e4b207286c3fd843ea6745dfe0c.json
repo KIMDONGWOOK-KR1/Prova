@@ -1,0 +1,1 @@
+{"case_ids": ["search-query-required-002", "search-query-min_length-003", "search-query-max_length-004"], "reason": "검색어 항목의 케이스를 전부 선택하여 검색어 길이 제한 규칙을 확인했습니다."}

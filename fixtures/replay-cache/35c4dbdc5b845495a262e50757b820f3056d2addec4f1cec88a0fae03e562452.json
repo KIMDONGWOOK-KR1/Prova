@@ -1,0 +1,1 @@
+{"case_ids": ["login-password-required-004", "login-password-min_length-005", "login-password-require_uppercase-006", "login-password-require_special-007"], "reason": "비밀번호 규칙 세 가지 (required, min_length, require_uppercase, require_special) 를 모두 확인하기 위해 해당 케이스를 선택했습니다."}

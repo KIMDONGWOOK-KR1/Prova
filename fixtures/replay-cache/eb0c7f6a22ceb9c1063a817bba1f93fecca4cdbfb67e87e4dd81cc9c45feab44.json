@@ -1,0 +1,1 @@
+{"case_ids": ["search-valid-001", "search-query-required-002", "search-query-min_length-003", "search-query-max_length-004", "search-scenario-005", "search-count-005", "search-scenario-006", "search-count-006"], "reason": "요청이 '상품 검색 결과 개수'를 언급했으므로 검색 화면(search)의 모든 케이스를 선택했습니다."}

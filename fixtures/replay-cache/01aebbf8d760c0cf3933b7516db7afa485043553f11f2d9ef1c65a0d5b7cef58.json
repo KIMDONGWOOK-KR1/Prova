@@ -1,0 +1,1 @@
+{"case_ids": ["flow-signup_link_to_login-001", "flow-signup_then_login-001"], "reason": "요청이 '가입 화면에서 로그인 화면으로 가는 링크' 동작을 확인하는 것이므로, 해당 흐름을 명시적으로 지목한 케이스를 선택했습니다."}

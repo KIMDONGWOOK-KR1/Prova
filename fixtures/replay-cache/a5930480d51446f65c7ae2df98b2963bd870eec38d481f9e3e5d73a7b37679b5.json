@@ -1,0 +1,1 @@
+{"case_ids": ["login-email-required-002", "login-email-format-003", "login-password-required-004", "login-password-min_length-005", "login-password-require_uppercase-006", "login-password-require_special-007"], "reason": "필수 입력 검증에 해당하는 모든 케이스를 선택했습니다."}

@@ -1,0 +1,1 @@
+{"case_ids": ["search-valid-001", "search-query-required-002", "search-query-min_length-003", "search-query-max_length-004", "search-placeholders-001", "search-labels-001"], "reason": "검색어 입력 규칙을 확인하므로 검색 화면의 입력 관련 케이스 (필수, 길이, 안내문구, 라벨) 를 전부 선택했습니다."}

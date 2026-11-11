@@ -1,0 +1,1 @@
+{"case_ids": ["login-email-required-002", "login-email-format-003", "login-password-required-004", "login-password-min_length-005", "login-password-require_uppercase-006", "login-password-require_special-007", "orders-precondition-guard-022"], "reason": "로그인 안 된 상태에서 주문조회 화면으로 이동하는 경우를 확인하기 위해 로그인 화면의 필수 입력 검증 케이스와 주문 화면의 비로그인 접근 보호 케이스를 모두 선택했습니다."}

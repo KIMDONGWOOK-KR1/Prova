@@ -1,0 +1,1 @@
+{"case_ids": ["search-valid-001", "search-query-required-002", "search-query-min_length-003", "search-query-max_length-004", "search-placeholders-001", "search-labels-001", "search-scenario-005", "search-count-005", "search-scenario-006", "search-count-006"], "reason": "요청이 '검색' 화면을 가리키므로 해당 화면에 속하는 모든 케이스를 선택했습니다."}

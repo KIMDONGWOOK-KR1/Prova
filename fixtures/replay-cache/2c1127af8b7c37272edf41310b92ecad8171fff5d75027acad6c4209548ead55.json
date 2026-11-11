@@ -1,0 +1,1 @@
+{"case_ids": ["product-precondition-guard-010"], "reason": "로그인 없이 상품 등록 화면으로 이동하는지 확인하므로, 해당 화면의 사전 조건 검증 케이스만 선택했습니다."}

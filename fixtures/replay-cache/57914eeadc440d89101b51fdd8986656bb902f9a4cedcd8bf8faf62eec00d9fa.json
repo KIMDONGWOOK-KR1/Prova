@@ -1,0 +1,1 @@
+{"case_ids": ["find_account-valid-001", "find_account-email-required-002", "find_account-email-format-003", "find_account-placeholders-001", "find_account-labels-001", "find_account-scenario-004", "find_account-absent-004", "find_account-scenario-005", "find_account-absent-005"], "reason": "화면 'find_account'를 명시적으로 지목했으므로 해당 화면의 모든 케이스를 선택했습니다."}

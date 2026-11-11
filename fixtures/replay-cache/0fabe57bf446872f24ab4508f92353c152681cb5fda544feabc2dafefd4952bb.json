@@ -1,0 +1,1 @@
+{"case_ids": ["orders-filter-002", "orders-filter-003", "orders-filter-004", "orders-filter-005", "orders-filter-006", "orders-filter-007", "orders-filter-008", "orders-filter-009", "orders-filter-010"], "reason": "요청이 '기간으로 조회'를 명시했으므로 해당 화면의 기간 관련 케이스를 전부 선택했습니다."}

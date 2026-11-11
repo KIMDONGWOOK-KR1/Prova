@@ -1,0 +1,1 @@
+{"case_ids": ["orders-sorted-002", "orders-filter-006"], "reason": "요청이 주문 내역의 정렬 순서를 확인하는 것이므로 해당 화면의 정렬 관련 케이스를 모두 선택했습니다."}
