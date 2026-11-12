@@ -657,3 +657,35 @@ iframe.report {
 
 /* 새 프로젝트 이름 칸 — 목록에서 '새 프로젝트 만들기' 를 골랐을 때만 보인다 */
 #projectPick + #project { margin-top: var(--sp-2); }
+
+/* ── 왼쪽 설정: 꼭 정할 것 / 가끔 바꾸는 것 ─────────────────────────────── */
+
+.field > label .opt { font-weight: 400; color: var(--fg-subtle); margin-left: 4px; }
+.field > .seg { margin-top: var(--sp-2); }
+.field > #uploadBtn { margin-top: var(--sp-2); }
+
+details.more { border-top: 1px solid var(--border-subtle); }
+details.more > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  font-size: var(--tx-sm);
+}
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary .t { font-weight: 650; color: var(--fg-default); white-space: nowrap; }
+details.more > summary .t::before { content: "＋ "; color: var(--fg-subtle); }
+details.more[open] > summary .t::before { content: "－ "; }
+details.more > summary .now { color: var(--fg-muted); min-width: 0; }
+details.more > summary .now b { color: var(--fg-default); font-weight: 650; }
+details.more[open] > summary { margin-bottom: var(--sp-4); }
+
+/* 계획 만들기 — 스크롤 영역 밖이라 항상 보인다 */
+.side-action {
+  padding: var(--sp-3) var(--sp-5) var(--sp-4);
+  border-top: 1px solid var(--border-default);
+  background: var(--bg-surface);
+  display: grid;
+  gap: var(--sp-3);
+}

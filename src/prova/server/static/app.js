@@ -142,6 +142,22 @@ function renderChrome() {
     `${state.busy ? "실행 중" : "준비됨"}</span>` +
     `<span class="chip">${esc(f.backend)}</span>` +
     (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
+  renderOptState();
+}
+
+// 접힌 '실행 방식' 의 제목 줄에 지금 고른 것을 적는다. 판정을 바꾸는 선택이 켜져 있으면
+// 굵게 — 접혀 있어서 켠 줄 모르고 돌리는 일이 없어야 한다.
+function renderOptState() {
+  const names = { mock: "연습용 응답", vllm: "실제 모델", replay: "저장된 응답" };
+  const parts = [esc(names[$("backend").value] || $("backend").value)];
+  if ($("figma").value) parts.push("디자인 병합");
+  if ($("vlm").checked) parts.push("<b>화면 이미지로 찾기</b>");
+  if ($("dryRun").checked) parts.push("<b>쓰기 요청 막기</b>");
+  $("optState").innerHTML = parts.join(" · ");
+}
+
+for (const id of ["backend", "figma", "vlm", "dryRun"]) {
+  $(id).addEventListener("change", renderOptState);
 }
 
 // ── 무대 (한 번에 한 상태만) ────────────────────────────────────────────────
