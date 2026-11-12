@@ -169,7 +169,7 @@ git clone https://github.com/KIMDONGWOOK-KR1/Prova.git
 cd Prova
 uv sync --extra dev
 uv run playwright install chromium
-uv run uvicorn sut.app:app --port 8100     # 터미널 1 — 테스트 대상 예시 사이트
+uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 터미널 1 — 테스트 대상 예시 사이트
 uv run prova serve                         # 터미널 2 — http://127.0.0.1:7007
 ```
 
