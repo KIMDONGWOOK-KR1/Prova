@@ -122,6 +122,14 @@ def build_report(
     # 칸이 없는 것은 '기록되기 전의 리포트' 라는 다른 사실이다.
     if vlm is not None:
         summary["vlm"] = vlm
+    # 2차 경로를 끈 채로 요소를 못 찾은 케이스의 수. 끈 실행은 필요한 상황이 와도 스스로
+    # 켜지지 않으므로, '켜서 다시 돌려 볼 만하다' 는 것을 리포트가 말해 준다. 0 이면 칸을
+    # 만들지 않는다. 기록이 없는 옛 리포트(vlm 이 None)에서는 끈 것인지 알 수 없어 세지 않는다.
+    if vlm == "":
+        missed = sum(1 for v in verdicts
+                     if v.verdict == "FAIL" and v.failure_category == "element_not_found")
+        if missed:
+            summary["not_found_without_vlm"] = missed
 
     return TestReport(
         run_id=run_id,
@@ -791,6 +799,28 @@ def render_html(report: TestReport) -> str:
             "판정은 유효하지만 <b>라벨이 구현과 이어져 있지 않습니다</b> — "
             "'라벨로 요소를 찾을 수 있는지 확인' 케이스를 함께 보세요.</div>"
             f"{healed_titles}</div>"
+        )
+
+    # 2차 경로를 끈 채로 요소를 못 찾았다 — 켜서 다시 돌려 볼 만하다고 알린다.
+    #
+    # 켜면 해결된다고 말하지 않는다. 못 찾은 까닭은 '라벨만 없다' 와 '구현이 그 항목을
+    # 빠뜨렸다' 가 섞여 있고, 뒤쪽이면 켜도 못 찾는 것이 맞는 결과다. 그래서 화면에 그
+    # 요소가 보이는지를 먼저 보라고 적는다.
+    missed = s.get("not_found_without_vlm", 0) or 0
+    if missed:
+        missed_titles = "".join(
+            f"<div>· {_esc(v.title)}</div>"
+            for v in report.cases
+            if v.verdict == "FAIL" and v.failure_category == "element_not_found"
+        )
+        heal_html += (
+            f"<div class='heal'><b>요소를 찾지 못한 케이스 ({missed}건) — 화면 이미지로 찾기를 "
+            "켜지 않은 실행입니다</b>"
+            "<div class='why'>기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 <b>보이는데</b> "
+            "못 찾았다면(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기 "
+            "(2차 경로)' 를 켜서 다시 돌려 보세요. 스크린샷에도 <b>없다면</b> 구현이 그 항목을 "
+            "빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.</div>"
+            f"{missed_titles}</div>"
         )
 
     # 기다려서 통과한 케이스.
