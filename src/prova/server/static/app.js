@@ -968,36 +968,103 @@ function renderSpecs(select) {
   if (keep && [...$("pdf").options].some((o) => o.value === keep)) $("pdf").value = keep;
 }
 
-// 프로젝트는 목록에서 고른다. 이름 칸(#project)은 값을 담는 자리로 그대로 두고,
-// '새 프로젝트 만들기' 를 골랐을 때만 보여 준다 — 자동완성 목록은 고를 수 있다는 것이
-// 눈에 안 띄고, 이미 적힌 글자와 맞는 것만 걸러 보여 다른 프로젝트로 바꾸기 어려웠다.
+// 프로젝트는 목록에서 고른다. 고른 이름은 숨은 칸(#project)이 담는다.
+// 새로 만들 때는 '새 프로젝트 만들기' 를 골라 이름을 적고 [추가] 를 눌러야 목록에 들어가
+// 선택된다 — 전에는 적는 글자가 곧바로 프로젝트 이름이 되어, 다 적었는지 아닌지와
+// 무관하게 그 이름으로 계획·올리기가 나갔다.
 // 이름에 쓸 수 없는 글자(:)를 넣어 실제 프로젝트 이름과 겹치지 않게 한다.
 const NEW_PROJECT = "::new";
 
+// [추가] 했지만 아직 실행·올리기가 없는 이름. 서버는 기획서나 실행이 생겨야 프로젝트를
+// 알게 되므로, 그 전까지는 이 브라우저가 기억한다.
+const DRAFT_KEY = "prova.projects.draft";
+
+function draftProjects() {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY)) || []; } catch (e) { return []; }
+}
+
+function knownProjects() {
+  const current = $("project").value.trim();
+  const all = [...(state.projects || []), ...draftProjects(), ...(current ? [current] : [])];
+  return [...new Set(all)].sort();
+}
+
 function renderProjects(names) {
   if (names) state.projects = names;
-  const known = state.projects || [];
-  const current = $("project").value.trim();
   const pick = $("projectPick");
-  // 목록에 없는 이름이 적혀 있으면 아직 만드는 중이다.
-  const making = !known.includes(current) && (current !== "" || pick.value === NEW_PROJECT);
+  const making = pick.value === NEW_PROJECT;
   pick.innerHTML = `<option value="">프로젝트 없음</option>` +
-    known.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
+    knownProjects().map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
     `<option value="${NEW_PROJECT}">＋ 새 프로젝트 만들기…</option>`;
-  pick.value = making ? NEW_PROJECT : current;
-  $("project").hidden = !making;
+  pick.value = making ? NEW_PROJECT : $("project").value.trim();
+  $("projectNewRow").hidden = !making;
+}
+
+// 값이 바뀐 것은 이름 칸의 일이다 — 거기 달린 처리(올릴 자리·묶음·저장)를 그대로 태운다.
+function setProject(name) {
+  const input = $("project");
+  input.value = name;
+  input.dispatchEvent(new Event("input"));
+  input.dispatchEvent(new Event("change"));
+}
+
+function projectError(message) {
+  $("projectErr").textContent = message || "";
+  $("projectErr").hidden = !message;
 }
 
 $("projectPick").addEventListener("change", () => {
   const picked = $("projectPick").value;
-  const input = $("project");
-  input.value = picked === NEW_PROJECT ? "" : picked;
-  input.hidden = picked !== NEW_PROJECT;
-  // 값이 바뀐 것은 이름 칸의 일이다 — 거기 달린 처리(올릴 자리·묶음·저장)를 그대로 태운다.
-  input.dispatchEvent(new Event("input"));
-  input.dispatchEvent(new Event("change"));
-  if (picked === NEW_PROJECT) input.focus();
+  projectError("");
+  // 만드는 중에는 아직 어느 프로젝트도 아니다.
+  setProject(picked === NEW_PROJECT ? "" : picked);
+  $("projectNewRow").hidden = picked !== NEW_PROJECT;
+  if (picked === NEW_PROJECT) { $("projectNew").value = ""; $("projectNew").focus(); }
 });
+
+// 서버(_project_name)와 같은 규칙. 이름이 곧 uploads/ 아래 폴더 이름이다.
+function projectNameProblem(name) {
+  if (!name) return "프로젝트 이름을 적어 주세요.";
+  const forbidden = /[\/\\:*?"<>|\x00-\x1f]/;
+  if (name.length > 60 || name.startsWith(".") || name.endsWith(".") || forbidden.test(name)) {
+    return "이 이름은 쓸 수 없습니다 — 60자 이하로, / \\ : * ? \" < > | 없이, " +
+           "점으로 시작하거나 끝나지 않게 적어 주세요.";
+  }
+  return "";
+}
+
+/** 적은 이름을 목록에 넣고 고른다. 넣었으면 true. */
+function addProject() {
+  const name = $("projectNew").value.trim();
+  const problem = projectNameProblem(name);
+  if (problem) { projectError(problem); $("projectNew").focus(); return false; }
+  projectError("");
+  if (!(state.projects || []).includes(name)) {
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify([...new Set([...draftProjects(), name])]));
+    } catch (e) { /* 저장 못 해도 이번 화면에서는 고를 수 있다 */ }
+  }
+  $("projectNew").value = "";
+  $("projectPick").value = "";   // '만드는 중' 을 끝낸다
+  setProject(name);              // 이미 있는 이름이면 그것을 고르는 것과 같다
+  renderProjects();
+  return true;
+}
+
+$("projectAdd").addEventListener("click", addProject);
+$("projectNew").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addProject(); }
+});
+$("projectNew").addEventListener("input", () => projectError(""));
+
+// 이름을 적어 놓고 [추가] 를 안 누른 채 계획을 만들면 '프로젝트 없음' 으로 나간다.
+// 조용히 그렇게 두지 않고 멈춰서 알린다 — 다른 처리보다 먼저 돌도록 캡처 단계에 건다.
+$("planBtn").addEventListener("click", (e) => {
+  if ($("projectNewRow").hidden || !$("projectNew").value.trim()) return;
+  e.stopImmediatePropagation();
+  projectError("적어 둔 프로젝트 이름이 아직 추가되지 않았습니다 — [추가] 를 누르거나 이름을 지워 주세요.");
+  $("projectNew").focus();
+}, true);
 
 function syncUploadLabel() {
   const current = $("project").value.trim();
@@ -1107,6 +1174,7 @@ async function boot() {
     state.specGroups = st.spec_groups || [];
     renderProjects(st.projects || []);
     if (saved.project) { $("project").value = saved.project; renderProjects(); }
+    else renderProjects();
     syncUploadLabel();
     renderSpecs(saved.pdf || "");
     $("figma").innerHTML = `<option value="">없음 — 기획서만</option>` +

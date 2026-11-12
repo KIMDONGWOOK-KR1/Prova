@@ -656,7 +656,6 @@ iframe.report {
 .spec-edits { margin: var(--sp-2) 0 0; padding-left: 1.2em; font-size: var(--tx-sm); }
 
 /* 새 프로젝트 이름 칸 — 목록에서 '새 프로젝트 만들기' 를 골랐을 때만 보인다 */
-#projectPick + #project { margin-top: var(--sp-2); }
 
 /* ── 왼쪽 설정: 꼭 정할 것 / 가끔 바꾸는 것 ─────────────────────────────── */
 
@@ -766,3 +765,10 @@ details.more[open] > summary { margin-bottom: var(--sp-4); }
 
 /* ── 밝게 / 어둡게 버튼 ────────────────────────────────────────────────── */
 .brand #themeBtn { margin-left: auto; flex: none; }
+
+/* ── 새 프로젝트: 이름 + [추가] ─────────────────────────────────────────── */
+.newproj { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.newproj[hidden] { display: none; }
+.newproj input { flex: 1; min-width: 0; }
+.newproj .btn { flex: none; }
+.field .hint.err { color: var(--fail-fg); }
