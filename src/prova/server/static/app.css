@@ -740,3 +740,26 @@ details.more[open] > summary { margin-bottom: var(--sp-4); }
 @media (prefers-reduced-motion: reduce) { .prog .bar i { transition: none; } }
 /* 돌아가는 표시는 제목 옆에 — 가운데 혼자 떠 있었다. */
 .head .spin { margin-left: var(--sp-3); margin-right: auto; }
+
+/* ── 좁은 화면 (마무리 점검) ───────────────────────────────────────────── */
+
+/* 위쪽 막대: 주소가 길면 오른쪽 칩 밑으로 파고들었다. 넘치는 만큼 말줄임한다. */
+.crumbs { overflow: hidden; white-space: nowrap; }
+.crumbs > * { overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+.crumbs b, .crumbs .sep { flex-shrink: 0; }
+#stageChips { flex: none; }
+
+@media (max-width: 640px) {
+  /* 규칙 꼬리표가 오른쪽 칸을 차지해 제목이 네 글자 폭으로 꺾였다. 제목 아래로 내린다. */
+  .case { grid-template-columns: 20px minmax(0, 1fr); }
+  .case .marks { grid-column: 2; justify-content: flex-start; }
+  .tag { white-space: normal; }
+  .stage { padding: var(--sp-4); }
+  .runbar.dock {
+    bottom: calc(var(--sp-4) * -1);
+    margin: 0 calc(var(--sp-4) * -1) calc(var(--sp-4) * -1);
+    padding: var(--sp-3) var(--sp-4);
+  }
+  .toolbar { position: static; }
+  .group > header { top: calc(var(--sp-4) * -1); }
+}
