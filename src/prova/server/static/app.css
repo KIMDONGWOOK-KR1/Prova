@@ -612,76 +612,19 @@ details.raw > summary::-webkit-details-marker { display: none; }
 details.raw > summary::before { content: "▸ "; color: var(--fg-subtle); }
 details.raw[open] > summary::before { content: "▾ "; }
 
-/* ── 결과 카드 ─────────────────────────────────────────────────────────── */
+/* ── 리포트 ────────────────────────────────────────────────────────────── */
 
-.stats {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-  gap: var(--sp-3);
-  margin-bottom: var(--sp-4);
-}
-
-.stat {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-lg);
-  padding: var(--sp-3) var(--sp-4);
-}
-
-.stat .n {
-  font-family: var(--font-mono);
-  font-size: var(--tx-2xl);
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.1;
-}
-
-.stat .k { font-size: var(--tx-sm); color: var(--fg-muted); margin-top: 2px; }
-.stat.pass .n { color: var(--pass-fg); }
-.stat.fail .n { color: var(--fail-fg); }
-
-.meter {
-  height: 6px;
-  border-radius: var(--r-full);
-  background: var(--fail-bg);
-  overflow: hidden;
-  margin-bottom: var(--sp-5);
-}
-
-.meter > i { display: block; height: 100%; background: var(--pass-fg); }
-
-/* ── 리포트 틀 ─────────────────────────────────────────────────────────── */
-
-.reportbox {
-  border: 1px solid var(--border-default);
-  border-radius: var(--r-lg);
-  overflow: hidden;
-  background: var(--bg-surface);
-}
-
-.reportbox > header {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-2) var(--sp-3);
-  border-bottom: 1px solid var(--border-default);
-  font-size: var(--tx-sm);
-  color: var(--fg-muted);
-}
-
-.reportbox > header .t { margin-right: auto; font-weight: 560; color: var(--fg-default); }
-
-.reportbox iframe {
+/* 리포트를 칸에 가두지 않는다. 높이는 스크립트가 내용에 맞춘다(fitReport). */
+iframe.report {
   display: block;
   width: 100%;
-  height: 560px;
+  min-height: 60vh;
   border: none;
+  border-top: 1px solid var(--border-default);
   background: var(--bg-canvas);
-  resize: vertical;
 }
 
-.reportbox.tall iframe { height: 85vh; }
+.head .sub { display: flex; align-items: center; gap: var(--sp-3); }
 
 /* ── 접근성 보조 ───────────────────────────────────────────────────────── */
 

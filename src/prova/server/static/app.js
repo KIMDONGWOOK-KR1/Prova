@@ -686,71 +686,45 @@ async function startRun() {
 
 function showResult(out) {
   const s = out.summary;
-  const planned = state.plan ? state.plan.cases.length : s.total;
-  const off = planned - s.total;
 
   $("stageChips").innerHTML =
     `<span class="chip ${s.fail ? "warn" : "ok"}"><i class="dot"></i>` +
     `${s.fail ? `실패 ${s.fail}건` : "전부 통과"}</span>`;
 
-  const notes = [];
-  if (off > 0) {
-    notes.push(alertBox("info", "이 통과율은 전체 상태가 아닙니다",
-      `생성된 ${planned}건 중 ${s.total}건만 실행했습니다. 나머지 ${off}건은 ` +
-      `<b>통과한 것이 아니라 확인하지 않은 것</b>입니다.`));
-  }
-  if (s.vlm) {
-    notes.push(alertBox("info", "2차 경로를 켜고 실행했습니다",
-      `라벨로 못 찾은 요소를 화면 이미지로 찾았습니다 (${esc(s.vlm)}) — ` +
-      `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시됩니다.`));
-  }
-  if (s.not_found_without_vlm) {
-    // 끈 실행은 필요한 상황이 와도 스스로 켜지지 않는다 — 다시 돌려 볼 만하다는 것을 알린다.
-    notes.push(alertBox("info", `요소를 찾지 못한 케이스 ${s.not_found_without_vlm}건`,
-      `화면 이미지로 찾기를 켜지 않은 실행입니다. 스크린샷에 그 요소가 보이는데 못 찾았다면 ` +
-      `<b>'화면 이미지로 찾기 (2차 경로)' 를 켜서 다시 돌려 보세요</b> (GPU 서버 필요). ` +
-      `스크린샷에도 없다면 구현이 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.`));
-  }
-  if (s.dry_run) {
-    // 확인 불가도 실패 칸에 센다(확인하지 못한 것을 통과로 세지 않는다). 그 실패의 성질을 바로 말한다.
-    const d = s.dry_run;
-    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했습니다 (dry-run)",
-      `막은 케이스 ${d.cases_blocked || 0}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 셉니다 — ` +
-      `<b>구현 결함이 아닙니다.</b> 막지 않은 ${s.total - (d.cases_blocked || 0)}건 중 통과 ${s.pass}. ` +
-      `${esc(d.limits || "")}`));
-  }
-  if (s.llm_backend === "mock") {
-    notes.push(alertBox("warn", "mock 백엔드로 실행한 결과입니다",
-      "설계 문서 추출에 실제 모델을 쓰지 않았습니다. 실제 검증 결과로 쓰지 마세요."));
-  }
-
+  // 숫자와 알림은 리포트가 말한다. 여기서 한 번 더 그리면 같은 숫자 네 칸과 같은 알림이
+  // 위아래로 두 번 보였다 — 리포트는 파일로 따로 나가는 문서라 거기 있는 쪽이 원본이다.
+  // 그래서 이 화면은 리포트를 칸에 가두지 않고 그대로 펼쳐 보여 주기만 한다.
   $("stage").innerHTML = `
     <div class="head">
       <h1>실행 결과</h1>
-      <div class="sub"><code>${esc(out.run_id)}</code></div>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="n">${s.total}</div><div class="k">실행</div></div>
-      <div class="stat pass"><div class="n">${s.pass}</div><div class="k">통과</div></div>
-      <div class="stat fail"><div class="n">${s.fail}</div><div class="k">실패</div></div>
-      <div class="stat"><div class="n">${s.pass_rate}%</div><div class="k">통과율</div></div>
-    </div>
-    <div class="meter"><i style="width:${s.pass_rate}%"></i></div>
-    ${notes.join("")}
-    <div class="reportbox" id="reportBox">
-      <header>
-        <span class="t">검증 리포트</span>
-        <button class="btn ghost quiet" id="tallBtn" type="button">크게 보기</button>
+      <div class="sub"><code>${esc(out.run_id)}</code>
         <a class="btn ghost quiet" href="${esc(out.report_url)}" target="_blank"
-           rel="noopener">새 탭에서 열기 ↗</a>
-      </header>
-      <iframe src="${esc(out.report_url)}" title="검증 리포트"></iframe>
-    </div>`;
+           rel="noopener">리포트만 새 탭에서 열기 ↗</a></div>
+    </div>
+    <iframe class="report" id="reportFrame" src="${esc(out.report_url)}"
+            title="검증 리포트" scrolling="no"></iframe>`;
 
-  $("tallBtn").addEventListener("click", (e) => {
-    const box = $("reportBox");
-    box.classList.toggle("tall");
-    e.currentTarget.textContent = box.classList.contains("tall") ? "작게 보기" : "크게 보기";
+  fitReport($("reportFrame"));
+}
+
+// 리포트의 길이에 맞춰 틀의 높이를 늘린다 — 안쪽 스크롤이 따로 생기면 바깥 스크롤과
+// 겹쳐 휠이 어디를 움직이는지 헷갈린다. 카드를 펼치면 길이가 바뀌므로 계속 지켜본다.
+function fitReport(frame) {
+  const fit = () => {
+    try {
+      const doc = frame.contentDocument;
+      if (doc && doc.body) {
+        frame.style.height = `${doc.body.offsetHeight}px`;
+      }
+    } catch (e) { /* 같은 출처가 아니면 기본 높이로 둔다 */ }
+  };
+  frame.addEventListener("load", () => {
+    fit();
+    try {
+      const doc = frame.contentDocument;
+      new ResizeObserver(fit).observe(doc.body);
+      doc.addEventListener("toggle", fit, true);
+    } catch (e) { /* 위와 같다 */ }
   });
 }
 
