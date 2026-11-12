@@ -210,7 +210,7 @@ table.kv td { padding:5px 0; word-break:break-all; }
 .steps td.err { color:var(--fail); }
 .steps td.val { font-family:var(--mono, monospace); word-break:break-all; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-.shots a { display:block; }
+.shots a { display:block; cursor:zoom-in; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:4px;
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
@@ -280,6 +280,122 @@ def _steps_html(verdict: Verdict) -> str:
         "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
+
+
+# 스크린샷을 누르면 새 탭이 아니라 화면 위에 크게 띄운다 (2026-11-12).
+#
+# 실패 카드를 읽다가 캡처를 확인하려고 탭을 오가면 어느 케이스를 보던 중인지 놓친다.
+# 그래서 같은 화면 위에 겹쳐 띄우고 Esc · × · 바깥 누르기로 닫는다. 좌우 화살표로 같은
+# 케이스의 앞뒤 스텝을 넘긴다.
+#
+# 웹 UI 는 리포트를 iframe 안에 넣는다. iframe 안에서만 띄우면 리포트 칸 크기에 갇히므로,
+# 같은 출처의 바깥 문서에 닿을 수 있으면 거기에 띄워 브라우저 창 전체를 쓴다. 닿지 못하면
+# (파일로 열었거나 다른 출처에 끼워 넣은 경우) 리포트 자기 문서에 띄운다.
+#
+# 바깥 문서에는 리포트의 CSS 가 없으므로 모양은 전부 요소에 직접 적는다. 링크의 href 는
+# 그대로 둔다 — 스크립트가 막힌 곳에서는 예전처럼 새 탭으로 열리고, Ctrl·가운데 버튼으로
+# 누르면 지금도 새 탭이다.
+_LIGHTBOX_JS = r"""
+(function () {
+  var host = document;
+  try {
+    if (window.parent !== window && window.parent.document.body) host = window.parent.document;
+  } catch (e) { host = document; }
+
+  var box = null, img = null, cap = null, links = [], at = 0, opener = null, prevOverflow = '';
+
+  function el(tag, css, text) {
+    var n = host.createElement(tag);
+    n.style.cssText = css;
+    if (text) n.textContent = text;
+    return n;
+  }
+
+  function button(label, text, css, onClick) {
+    var b = el('button', 'position:absolute;border:0;border-radius:6px;cursor:pointer;' +
+      'background:rgba(255,255,255,.14);color:white;font:inherit;line-height:1;' + css, text);
+    b.type = 'button';
+    b.setAttribute('aria-label', label);
+    b.addEventListener('click', function (e) { e.stopPropagation(); onClick(); });
+    return b;
+  }
+
+  function show(i) {
+    at = (i + links.length) % links.length;
+    var a = links[at];
+    var label = a.querySelector('.cap');
+    var text = label ? label.textContent : '';
+    img.src = a.href;
+    img.alt = text;
+    cap.textContent = links.length > 1 ? text + '  ·  ' + (at + 1) + ' / ' + links.length : text;
+  }
+
+  function onKey(e) {
+    if (!box) return;
+    if (e.key === 'Escape') close();
+    else if (e.key === 'ArrowLeft' && links.length > 1) show(at - 1);
+    else if (e.key === 'ArrowRight' && links.length > 1) show(at + 1);
+    else return;
+    e.preventDefault();
+  }
+
+  function close() {
+    if (!box) return;
+    host.removeEventListener('keydown', onKey);
+    if (host !== document) document.removeEventListener('keydown', onKey);
+    host.documentElement.style.overflow = prevOverflow;
+    if (box.parentNode) box.parentNode.removeChild(box);
+    box = null;
+    if (opener && opener.focus) { try { opener.focus(); } catch (e) {} }
+  }
+
+  function open(a) {
+    close();
+    opener = a;
+    var group = a.closest('.shots');
+    links = Array.prototype.slice.call((group || document).querySelectorAll('a'));
+    box = el('div', 'position:fixed;inset:0;z-index:2147483000;background:rgba(15,18,24,.88);' +
+      'display:flex;flex-direction:column;align-items:center;justify-content:center;' +
+      'padding:48px 64px 20px;box-sizing:border-box;' +
+      'font:14px/1.4 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif;');
+    box.id = 'prova-lightbox';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-modal', 'true');
+    box.setAttribute('aria-label', '스크린샷 크게 보기');
+    box.addEventListener('click', function (e) { if (e.target === box) close(); });
+
+    img = el('img', 'max-width:100%;max-height:calc(100% - 36px);object-fit:contain;' +
+      'background:var(--gray-0, white);border-radius:4px;box-shadow:0 8px 40px rgba(0,0,0,.5);');
+    cap = el('div', 'color:white;margin-top:12px;min-height:20px;text-align:center;');
+    var x = button('닫기', '×', 'top:10px;right:14px;width:36px;height:36px;font-size:24px;', close);
+    box.appendChild(img);
+    box.appendChild(cap);
+    box.appendChild(x);
+    if (links.length > 1) {
+      var side = 'top:50%;transform:translateY(-50%);width:40px;height:64px;font-size:28px;';
+      box.appendChild(button('이전 스크린샷', '‹', 'left:12px;' + side, function () { show(at - 1); }));
+      box.appendChild(button('다음 스크린샷', '›', 'right:12px;' + side, function () { show(at + 1); }));
+    }
+    show(Math.max(0, links.indexOf(a)));
+
+    prevOverflow = host.documentElement.style.overflow;
+    host.documentElement.style.overflow = 'hidden';
+    host.body.appendChild(box);
+    host.addEventListener('keydown', onKey);
+    if (host !== document) document.addEventListener('keydown', onKey);
+    x.focus();
+  }
+
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('.shots a') : null;
+    if (!a || e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    open(a);
+  });
+  // 리포트가 바뀌거나 닫히면 바깥 문서에 띄운 것도 같이 치운다.
+  window.addEventListener('pagehide', close);
+})();
+"""
 
 
 def _shots_html(verdict: Verdict) -> str:
@@ -859,7 +975,7 @@ def render_html(report: TestReport) -> str:
 
 <h2>통과 케이스 ({len(passes)})</h2>
 {pass_section}
-</div></body></html>
+</div><script>{_LIGHTBOX_JS}</script></body></html>
 """
 
 
