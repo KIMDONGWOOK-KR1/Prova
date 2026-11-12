@@ -99,6 +99,7 @@ const state = {
   serverBackend: "mock",
   busy: false,
   specGroups: [],    // 기획서 묶음 — 프로젝트 폴더들, 프로젝트 없이 올린 것, 예시
+  projects: [],      // 고를 수 있는 프로젝트 이름
   runs: [],          // 실행 기록 (프로젝트를 바꾸면 다시 그리기만 한다)
 };
 
@@ -810,6 +811,9 @@ async function loadRuns() {
     $("runs").innerHTML = `<div class="empty-line">기록을 불러오지 못했습니다.</div>`;
     return;
   }
+  // 방금 새 이름으로 돌렸으면 그 이름도 이제 고를 수 있는 프로젝트다.
+  const ran = state.runs.map((r) => r.project || "").filter(Boolean);
+  renderProjects([...new Set([...(state.projects || []), ...ran])].sort());
   renderRuns();
 }
 
@@ -889,9 +893,36 @@ function renderSpecs(select) {
   if (keep && [...$("pdf").options].some((o) => o.value === keep)) $("pdf").value = keep;
 }
 
+// 프로젝트는 목록에서 고른다. 이름 칸(#project)은 값을 담는 자리로 그대로 두고,
+// '새 프로젝트 만들기' 를 골랐을 때만 보여 준다 — 자동완성 목록은 고를 수 있다는 것이
+// 눈에 안 띄고, 이미 적힌 글자와 맞는 것만 걸러 보여 다른 프로젝트로 바꾸기 어려웠다.
+// 이름에 쓸 수 없는 글자(:)를 넣어 실제 프로젝트 이름과 겹치지 않게 한다.
+const NEW_PROJECT = "::new";
+
 function renderProjects(names) {
-  $("projectList").innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join("");
+  if (names) state.projects = names;
+  const known = state.projects || [];
+  const current = $("project").value.trim();
+  const pick = $("projectPick");
+  // 목록에 없는 이름이 적혀 있으면 아직 만드는 중이다.
+  const making = !known.includes(current) && (current !== "" || pick.value === NEW_PROJECT);
+  pick.innerHTML = `<option value="">프로젝트 없음</option>` +
+    known.map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
+    `<option value="${NEW_PROJECT}">＋ 새 프로젝트 만들기…</option>`;
+  pick.value = making ? NEW_PROJECT : current;
+  $("project").hidden = !making;
 }
+
+$("projectPick").addEventListener("change", () => {
+  const picked = $("projectPick").value;
+  const input = $("project");
+  input.value = picked === NEW_PROJECT ? "" : picked;
+  input.hidden = picked !== NEW_PROJECT;
+  // 값이 바뀐 것은 이름 칸의 일이다 — 거기 달린 처리(올릴 자리·묶음·저장)를 그대로 태운다.
+  input.dispatchEvent(new Event("input"));
+  input.dispatchEvent(new Event("change"));
+  if (picked === NEW_PROJECT) input.focus();
+});
 
 function syncUploadLabel() {
   const current = $("project").value.trim();
@@ -1000,7 +1031,7 @@ async function boot() {
     const saved = loadSettings();
     state.specGroups = st.spec_groups || [];
     renderProjects(st.projects || []);
-    if (saved.project) $("project").value = saved.project;
+    if (saved.project) { $("project").value = saved.project; renderProjects(); }
     syncUploadLabel();
     renderSpecs(saved.pdf || "");
     $("figma").innerHTML = `<option value="">없음 — 기획서만</option>` +

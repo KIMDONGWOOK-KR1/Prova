@@ -711,3 +711,6 @@ details.raw[open] > summary::before { content: "▾ "; }
   border-radius: 4px; background: var(--bg-surface, transparent); color: inherit; }
 .spec-table tr.off td { opacity: .45; }
 .spec-edits { margin: var(--sp-2) 0 0; padding-left: 1.2em; font-size: var(--tx-sm); }
+
+/* 새 프로젝트 이름 칸 — 목록에서 '새 프로젝트 만들기' 를 골랐을 때만 보인다 */
+#projectPick + #project { margin-top: var(--sp-2); }
