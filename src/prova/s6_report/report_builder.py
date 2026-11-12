@@ -168,11 +168,15 @@ body { margin:0; padding:48px 32px 72px; background:var(--bg); color:var(--text)
 .wrap { max-width:920px; margin:0 auto; }
 a { color:var(--text); text-underline-offset:3px; }
 h1 { font-size:28px; line-height:1.25; font-weight:800; letter-spacing:-0.02em; margin:0 0 16px; }
-.meta { color:var(--muted); font-size:13px; line-height:1.9; margin-bottom:26px; padding:12px 0;
-        border-top:2px solid var(--text); border-bottom:1px solid var(--line); }
-.meta code { font-family:var(--font-mono); font-size:12px; color:var(--text);
-             background:none; padding:0; }
-.meta b { color:var(--text); }
+.meta { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0 24px;
+        padding:6px 0; border-top:2px solid var(--text); border-bottom:1px solid var(--line); }
+.mi { padding:8px 0; min-width:0; color:var(--muted); font-size:11px; letter-spacing:0.04em; }
+.mi code { display:block; margin-top:2px; font-family:var(--font-mono); font-size:12.5px;
+           letter-spacing:0; color:var(--text); word-break:break-all; }
+.metanote { color:var(--muted); font-size:13px; margin:10px 0 0; }
+.metanote b { color:var(--text); }
+.metanote + .warn, .metanote + .gap, .metanote + .heal { margin-top:24px; }
+.metanote + .cards { margin-top:28px; }
 .cards { display:flex; flex-wrap:wrap; margin:0 0 8px; border-bottom:1px solid var(--line); }
 .card { padding:6px 44px 18px 0; min-width:110px; display:flex; flex-direction:column-reverse; }
 .card .n { font-size:28px; font-weight:700; line-height:1.2; font-variant-numeric:tabular-nums; }
@@ -928,14 +932,14 @@ def render_html(report: TestReport) -> str:
     build_meta = ""
     if build_state:
         label = "일치" if build_state == "match" else "확인 불가"
-        build_meta = f" · 대상 빌드 <code>{_esc(label)}</code>"
+        build_meta = f"\n대상 빌드 <code>{_esc(label)}</code>"
     # 2차 경로도 머리말 한 줄이다 — 꺼진 것이 기본이라 상자로 만들면 매번 뜬다.
     if "vlm" in s:
         state = f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"
-        build_meta += f" · 2차 경로 <code>{_esc(state)}</code>"
+        build_meta += f"\n2차 경로 <code>{_esc(state)}</code>"
     # 기본(데스크톱)이 아닌 화면 크기 — 판정의 전제라 머리말에 둔다 (nodes.note_viewport).
     if s.get("viewport"):
-        build_meta += f" · 화면 크기 <code>{_esc(s['viewport'])}</code>"
+        build_meta += f"\n화면 크기 <code>{_esc(s['viewport'])}</code>"
 
     backend = s.get("llm_backend", "")
     mock_warn = ""
@@ -1021,16 +1025,33 @@ def render_html(report: TestReport) -> str:
     history = s.get("history") or {}
     history_html = _history_html(history)
     if s.get("project"):
-        build_meta += f" · 프로젝트 <code>{_esc(s['project'])}</code>"
+        build_meta += f"\n프로젝트 <code>{_esc(s['project'])}</code>"
     if history.get("round"):
-        build_meta += f" · <b>{history['round']}차</b>"
+        build_meta += f"\n차수 <code>{history['round']}차</code>"
     if s.get("workers"):
-        build_meta += f" · 병렬 {_esc(s['workers'])}"
+        build_meta += f"\n병렬 <code>{_esc(s['workers'])}</code>"
     cache = s.get("llm_cache") or {}
     if cache.get("hits"):
-        build_meta += (f" · 저장된 모델 응답 {_esc(cache['hits'])}건 재사용"
-                       f"(새 호출 {_esc(cache.get('misses', 0))}건)")
+        build_meta += (f"\n저장된 모델 응답 <code>{_esc(cache['hits'])}건 재사용"
+                       f" · 새 호출 {_esc(cache.get('misses', 0))}건</code>")
     chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0)
+
+    # 실행 조건. 한 줄로 이어 쓰면 아홉 가지가 가운뎃점으로 붙어 읽히지 않았다 — 이름과 값을
+    # 한 칸씩 나눠 격자로 놓는다. 기획서는 파일 이름만 보이고 전체 경로는 마우스를 올리면 나온다
+    # (경로가 길어 다른 칸을 밀어냈다). 시각은 분까지만 적는다.
+    spec_name = str(report.spec_source or "").replace("\\", "/").rsplit("/", 1)[-1]
+    when = str(report.created_at or "")[:16].replace("T", " ")
+    meta_items = [
+        f"대상 <code>{_esc(report.target_url)}</code>",
+        f"기획서 <code title='{_esc(report.spec_source)}'>{_esc(spec_name)}</code>",
+        f"실행한 때 <code title='{_esc(report.created_at)}'>{_esc(when)}</code>",
+        f"실행 번호 <code>{_esc(report.run_id)}</code>",
+    ]
+    if backend:
+        meta_items.append(f"모델 <code>{_esc(backend)}</code>")
+    # 항목은 줄바꿈으로 나눠 모았다 — 값 안에 가운뎃점이 들어갈 수 있다('켬 · 모델 이름').
+    meta_items += [item for item in build_meta.split("\n") if item.strip()]
+    meta_html = "".join(f"<div class='mi'>{item}</div>" for item in meta_items)
 
     names = s.get("screen_names") or {}
     screens_html = _screens_html(s.get("by_screen") or {},
@@ -1056,15 +1077,10 @@ def render_html(report: TestReport) -> str:
 <style>{_CSS}</style></head>
 <body><div class="wrap">
 <h1>Prova 검증 리포트</h1>
-<div class="meta">
-  대상 <code>{_esc(report.target_url)}</code> ·
-  설계 문서 <code>{_esc(report.spec_source)}</code> ·
-  실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
-  {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
-  {f"<br><b>{_esc(s['url_note'])}</b>" if s.get("url_note") else ""}
-  <br>스크린샷은 이 파일 옆 폴더를 참조합니다 — 공유할 때는 결과 폴더째 보내세요.
-  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
-</div>
+<div class="meta">{meta_html}</div>
+{f"<p class='metanote'><b>{_esc(s['url_note'])}</b></p>" if s.get("url_note") else ""}
+<p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다 — 공유할 때는 결과 폴더째 보내세요.
+  <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)</p>
 {mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <div class="cards">
   <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>

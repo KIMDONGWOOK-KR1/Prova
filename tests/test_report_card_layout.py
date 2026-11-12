@@ -61,3 +61,31 @@ def test_스텝이_없으면_재현_절차도_없다():
     v = _fail()
     v.step_results = []
     assert "재현 절차" not in _case_html(v, True)
+
+
+# ── 머리말: 실행 조건을 이름·값 격자로 (2026-11-12) ────────────────────────────
+# 한 줄로 이어 쓰면 아홉 가지가 가운뎃점으로 붙어 읽히지 않았다.
+
+def _report(**kw):
+    from prova.s6_report.report_builder import build_report
+    report = build_report(run_id="run-1", target_url="http://x/good",
+                          verdicts=[_fail()], backend="mock", **kw)
+    report.spec_source = r"C:\work\specs\signup_spec.pdf"
+    report.created_at = "2026-11-12T17:30:57+09:00"
+    return report
+
+
+def test_실행_조건이_한_칸씩_나뉜다():
+    from prova.s6_report.report_builder import render_html
+    html = render_html(_report(vlm="qwen · 4b"))
+    assert "<div class='mi'>대상 <code>http://x/good</code></div>" in html
+    # 값 안의 가운뎃점에서 칸이 갈라지지 않는다.
+    assert "<div class='mi'>2차 경로 <code>켬 · qwen · 4b</code></div>" in html
+
+
+def test_기획서는_파일_이름만_보이고_경로는_남는다():
+    from prova.s6_report.report_builder import render_html
+    html = render_html(_report())
+    assert ">signup_spec.pdf</code>" in html
+    assert r"title='C:\work\specs\signup_spec.pdf'" in html
+    assert ">2026-11-12 17:30</code>" in html
