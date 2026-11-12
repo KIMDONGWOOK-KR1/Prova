@@ -30,7 +30,52 @@
 따라온다. 별칭이 있는 한 두 벌로 갈라질 수 없다.
 """
 
-TOKENS_CSS = """
+_DARK = """    --bg-canvas:  var(--gray-950);
+    --bg-surface: #181715;
+    --bg-raised:  #1e1d1a;
+    --bg-inset:   #0d0c0b;
+    --bg-hover:   #24221f;
+    --bg-active:  #2c2a26;
+
+    --fg-default: #ece9e2;
+    --fg-muted:   var(--gray-400);
+    --fg-subtle:  var(--gray-500);
+    --fg-onaccent: var(--gray-950);
+
+    --border-default: #2e2c28;
+    --border-subtle:  #24221f;
+    --border-strong:  #3d3a35;
+
+    --accent-fg:     #ece9e2;
+    --accent-solid:  #ece9e2;
+    --accent-hover:  var(--gray-0);
+    --accent-bg:     #24221f;
+    --accent-border: #3d3a35;
+
+    --pass-fg: var(--green-400);
+    --pass-bg: #12241b;
+    --fail-fg: var(--red-400);
+    --fail-bg: #2a1612;
+    --warn-fg: var(--amber-400);
+    --warn-bg: #261d0c;
+    --info-fg: #ece9e2;
+    --info-bg: #1e1d1a;
+    --note-fg: var(--violet-400);
+    --note-bg: #1f1a2c;
+
+    /* 황색↔적색의 색각 대비가 7.7 이라 이름표(범례)와 2px 틈을 함께 둔다 */
+    --chart-pass:   #2f9467;
+    --chart-weak:   #c08a1e;
+    --chart-defect: #d0553f;
+    --chart-infra:  #8b78c4;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
+    --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
+
+    --focus-ring: 0 0 0 3px rgba(236, 233, 226, 0.30);"""
+
+_TOKENS_TEMPLATE = """
 /* ===========================================================================
    1. primitive — 원시값. 여기서만 색을 만든다.
    =========================================================================== */
@@ -143,54 +188,21 @@ TOKENS_CSS = """
   --focus-ring: 0 0 0 3px rgba(28, 27, 25, 0.28);
 }
 
+/* 화면 설정(OS)을 따르되, 사람이 고른 값(data-theme)이 있으면 그쪽이 이긴다.
+   다크 값은 _DARK 한 곳에만 적는다 — 두 번 적으면 한쪽이 뒤처진다. */
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg-canvas:  var(--gray-950);
-    --bg-surface: #181715;
-    --bg-raised:  #1e1d1a;
-    --bg-inset:   #0d0c0b;
-    --bg-hover:   #24221f;
-    --bg-active:  #2c2a26;
-
-    --fg-default: #ece9e2;
-    --fg-muted:   var(--gray-400);
-    --fg-subtle:  var(--gray-500);
-    --fg-onaccent: var(--gray-950);
-
-    --border-default: #2e2c28;
-    --border-subtle:  #24221f;
-    --border-strong:  #3d3a35;
-
-    --accent-fg:     #ece9e2;
-    --accent-solid:  #ece9e2;
-    --accent-hover:  var(--gray-0);
-    --accent-bg:     #24221f;
-    --accent-border: #3d3a35;
-
-    --pass-fg: var(--green-400);
-    --pass-bg: #12241b;
-    --fail-fg: var(--red-400);
-    --fail-bg: #2a1612;
-    --warn-fg: var(--amber-400);
-    --warn-bg: #261d0c;
-    --info-fg: #ece9e2;
-    --info-bg: #1e1d1a;
-    --note-fg: var(--violet-400);
-    --note-bg: #1f1a2c;
-
-    /* 황색↔적색의 색각 대비가 7.7 이라 이름표(범례)와 2px 틈을 함께 둔다 */
-    --chart-pass:   #2f9467;
-    --chart-weak:   #c08a1e;
-    --chart-defect: #d0553f;
-    --chart-infra:  #8b78c4;
-
-    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
-    --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
-
-    --focus-ring: 0 0 0 3px rgba(236, 233, 226, 0.30);
+  :root:not([data-theme="light"]) {
+__DARK__
   }
 }
+
+:root[data-theme="dark"] {
+__DARK__
+}
+
+/* 입력 칸·스크롤 막대 같은 브라우저 기본 부품도 고른 쪽을 따른다 */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"]  { color-scheme: dark; }
 
 /* ===========================================================================
    3. 레거시 별칭 — 리포트 CSS 의 옛 이름을 새 semantic 으로 잇는다.
@@ -207,3 +219,5 @@ TOKENS_CSS = """
   --fail:    var(--fail-fg);
 }
 """
+
+TOKENS_CSS = _TOKENS_TEMPLATE.replace("__DARK__", _DARK)

@@ -345,6 +345,14 @@ def _steps_html(verdict: Verdict) -> str:
 # 바깥 문서에는 리포트의 CSS 가 없으므로 모양은 전부 요소에 직접 적는다. 링크의 href 는
 # 그대로 둔다 — 스크립트가 막힌 곳에서는 예전처럼 새 탭으로 열리고, Ctrl·가운데 버튼으로
 # 누르면 지금도 새 탭이다.
+# 웹 UI 에서 밝게/어둡게를 골랐으면 리포트도 같은 쪽으로 연다. 같은 서버에서 열릴 때만
+# 저장소가 보이므로, 파일로 받아 연 리포트는 전처럼 보는 사람의 화면 설정을 따른다.
+_THEME_JS = (
+    'try{var t=localStorage.getItem("prova-theme");'
+    'if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}'
+    'catch(e){}'
+)
+
 _LIGHTBOX_JS = r"""
 (function () {
   var host = document;
@@ -1073,6 +1081,8 @@ def render_html(report: TestReport) -> str:
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<script>{_THEME_JS}</script>
 <title>Prova 리포트 — {_esc(report.run_id)}</title>
 <style>{_CSS}</style></head>
 <body><div class="wrap">

@@ -12,6 +12,12 @@
   tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
   두 벌로 갈라진다.
 -->
+<!-- 고른 화면 모드를 첫 그림 전에 건다. app.js 에서 하면 어두웠다 밝아지며 깜빡인다. -->
+<script>
+try { var t = localStorage.getItem("prova-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+} catch (e) {}
+</script>
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -36,6 +42,7 @@
         <div class="name">Prova</div>
         <div class="sub">설계 문서 기반 QA 에이전트</div>
       </div>
+      <button class="btn ghost quiet" id="themeBtn" type="button"></button>
     </div>
 
     <div class="side-scroll">

@@ -766,6 +766,43 @@ function showResult(out) {
 
 // 리포트의 길이에 맞춰 틀의 높이를 늘린다 — 안쪽 스크롤이 따로 생기면 바깥 스크롤과
 // 겹쳐 휠이 어디를 움직이는지 헷갈린다. 카드를 펼치면 길이가 바뀌므로 계속 지켜본다.
+// ── 밝게 / 어둡게 ─────────────────────────────────────────────────────────
+// 기본은 화면 설정(OS)을 따른다. 버튼을 누르면 그 선택을 기억한다 — 발표·시연 때
+// PC 설정과 상관없이 한쪽으로 고정할 수 있게. 리포트(iframe)도 같이 바꾼다.
+const THEME_KEY = "prova-theme";
+
+function currentTheme() {
+  const set = document.documentElement.getAttribute("data-theme");
+  if (set === "light" || set === "dark") return set;
+  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+}
+
+function applyThemeToReport() {
+  const frame = $("reportFrame");
+  try {
+    if (frame && frame.contentDocument) {
+      frame.contentDocument.documentElement.setAttribute("data-theme", currentTheme());
+    }
+  } catch (e) { /* 같은 출처가 아니면 리포트는 제 설정대로 둔다 */ }
+}
+
+function renderThemeBtn() {
+  const dark = currentTheme() === "dark";
+  // 버튼은 누르면 바뀔 쪽을 말한다.
+  $("themeBtn").textContent = dark ? "밝게" : "어둡게";
+  $("themeBtn").setAttribute("aria-label", dark ? "밝은 화면으로 바꾸기" : "어두운 화면으로 바꾸기");
+}
+
+$("themeBtn").addEventListener("click", () => {
+  const next = currentTheme() === "dark" ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* 저장 못 해도 이번 화면은 바뀐다 */ }
+  renderThemeBtn();
+  applyThemeToReport();
+});
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderThemeBtn);
+renderThemeBtn();
+
 function fitReport(frame) {
   const fit = () => {
     try {

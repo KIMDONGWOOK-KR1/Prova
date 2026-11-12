@@ -763,3 +763,6 @@ details.more[open] > summary { margin-bottom: var(--sp-4); }
   .toolbar { position: static; }
   .group > header { top: calc(var(--sp-4) * -1); }
 }
+
+/* ── 밝게 / 어둡게 버튼 ────────────────────────────────────────────────── */
+.brand #themeBtn { margin-left: auto; flex: none; }
