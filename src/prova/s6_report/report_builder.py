@@ -159,18 +159,24 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 # 색·간격·서체는 theme.TOKENS_CSS 가 유일한 출처다. 여기서 색을 새로 만들면
 # 웹 UI 안에 iframe 으로 떴을 때 같은 화면에 파란색이 두 가지가 된다.
 _CSS = TOKENS_CSS + """
+/* 검수 문서처럼 읽히게 한다 — 상자 대신 가는 선, 색은 판정에만 쓴다.
+   기획자가 개발사에 그대로 보내는 문서라서 화면보다 종이에 가깝게 잡았다. */
 * { box-sizing:border-box; }
-body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
-       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal); }
-.wrap { max-width:1080px; margin:0 auto; }
-h1 { font-size:24px; margin:0 0 4px; }
-.meta { color:var(--muted); font-size:13px; margin-bottom:24px; }
-.meta code { background:var(--bg-inset); padding:1px 5px; border-radius:3px; font-size:12px; }
-.cards { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:8px;
-        padding:16px 20px; min-width:120px; flex:1; }
-.card .n { font-size:26px; font-weight:700; }
-.card .k { color:var(--muted); font-size:12px; }
+body { margin:0; padding:48px 32px 72px; background:var(--bg); color:var(--text);
+       font-family:var(--font-sans); font-size:15px; line-height:1.65;
+       -webkit-font-smoothing:antialiased; }
+.wrap { max-width:920px; margin:0 auto; }
+a { color:var(--text); text-underline-offset:3px; }
+h1 { font-size:28px; line-height:1.25; font-weight:800; letter-spacing:-0.02em; margin:0 0 16px; }
+.meta { color:var(--muted); font-size:13px; line-height:1.9; margin-bottom:26px; padding:12px 0;
+        border-top:2px solid var(--text); border-bottom:1px solid var(--line); }
+.meta code { font-family:var(--font-mono); font-size:12px; color:var(--text);
+             background:none; padding:0; }
+.meta b { color:var(--text); }
+.cards { display:flex; flex-wrap:wrap; margin:0 0 8px; border-bottom:1px solid var(--line); }
+.card { padding:6px 44px 18px 0; min-width:110px; display:flex; flex-direction:column-reverse; }
+.card .n { font-size:28px; font-weight:700; line-height:1.2; font-variant-numeric:tabular-nums; }
+.card .k { color:var(--muted); font-size:11px; letter-spacing:0.06em; }
 .card.pass .n { color:var(--pass); } .card.fail .n { color:var(--fail); }
 .chart { display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin:20px 0 24px; }
 .chart svg { flex:none; }
@@ -180,67 +186,76 @@ h1 { font-size:24px; margin:0 0 4px; }
 .chart .seg.pass { stroke:var(--chart-pass); } .chart .seg.weak { stroke:var(--chart-weak); }
 .chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
 .chart p { margin:10px 0 0; }
-.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; font-size:13px; }
 .legend li { display:grid; grid-template-columns:12px 8em 3em 3em; gap:8px; align-items:center; }
 .legend b { text-align:right; font-variant-numeric:tabular-nums; }
 .legend .ms { text-align:right; }
-.swatch { width:12px; height:12px; border-radius:3px; }
+.swatch { width:12px; height:12px; }
 .swatch.pass { background:var(--chart-pass); } .swatch.weak { background:var(--chart-weak); }
 .swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
-h2 { font-size:17px; margin:28px 0 12px; }
-.case { background:var(--card); border:1px solid var(--line); border-radius:8px;
-        margin-bottom:10px; overflow:hidden; }
-.case > summary { padding:12px 16px; cursor:pointer; display:flex; gap:10px;
-                  align-items:center; list-style:none; }
+h2 { font-size:13px; letter-spacing:0.08em; font-weight:700; margin:48px 0 0; padding-bottom:10px;
+     border-bottom:2px solid var(--text); }
+.case { border-bottom:1px solid var(--line); }
+.case > summary { padding:14px 0; cursor:pointer; display:flex; gap:14px;
+                  align-items:baseline; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
-.tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;
-       white-space:nowrap; }
-.tag.PASS { background:var(--pass-bg); color:var(--pass); }
-.tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:var(--accent-bg); color:var(--accent-fg); font-weight:600; }
-.tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
-.tag.cat.infra { background:var(--warn-bg); color:var(--warn-fg); }
-.tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
-.tag.revised { background:var(--accent-bg); color:var(--accent-fg); }
+.case > summary:hover .title { text-decoration:underline; text-underline-offset:4px; }
+/* 판정 꼬리표는 색을 깐 알약이 아니라 글자다. 색만으로 뜻을 전하지 않으려고 글자가 있고,
+   글자가 있으니 배경까지 칠할 이유가 없다. */
+.tag { font-size:12px; font-weight:700; white-space:nowrap; }
+.tag.PASS { color:var(--pass); }
+.tag.FAIL { color:var(--fail); }
+.tag.rule { color:var(--muted); font-weight:400; }
+.tag.cat.defect { color:var(--fail); }
+.tag.cat.infra { color:var(--note-fg); }
+.tag.cat.weak { color:var(--warn-fg); }
+.tag.revised { color:var(--text); text-decoration:underline; text-underline-offset:3px; }
 .breakdown { color:var(--muted); font-size:13px; margin:-8px 0 16px; }
-.title { flex:1; }
-.ms { color:var(--muted); font-size:12px; }
-.body { border-top:1px solid var(--line); padding:14px 16px; background:var(--bg-canvas); }
-.reason { background:var(--fail-bg); border-left:3px solid var(--fail); padding:10px 12px;
-          border-radius:0 4px 4px 0; margin-bottom:14px; }
-table.kv { width:100%; border-collapse:collapse; margin-bottom:12px; }
-table.kv th { text-align:left; width:110px; vertical-align:top; color:var(--muted);
-              font-weight:600; padding:5px 8px 5px 0; font-size:13px; }
-table.kv td { padding:5px 0; word-break:break-all; }
-.steps { border-collapse:collapse; width:100%; font-size:13px; }
-.steps th, .steps td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
-.steps th { background:var(--bg-inset); font-weight:600; }
+.title { flex:1; font-size:16px; font-weight:700; letter-spacing:-0.01em; }
+.ms { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.body { padding:2px 0 30px; }
+.reason { background:var(--fail-bg); border-left:2px solid var(--fail); padding:12px 16px;
+          margin-bottom:18px; }
+table.kv { width:100%; border-collapse:collapse; margin-bottom:18px; }
+table.kv th { text-align:left; width:104px; vertical-align:top; color:var(--muted);
+              font-weight:400; padding:8px 12px 8px 0; font-size:12px; letter-spacing:0.04em;
+              border-bottom:1px solid var(--border-subtle); }
+table.kv td { padding:8px 0; word-break:break-all; font-size:14px;
+              border-bottom:1px solid var(--border-subtle); }
+.steps { border-collapse:collapse; width:100%; font-size:12.5px; }
+.steps th, .steps td { border-bottom:1px solid var(--border-subtle); padding:6px 10px 6px 0;
+                       text-align:left; }
+.steps th { font-weight:400; font-size:11px; letter-spacing:0.04em; color:var(--muted);
+            border-bottom:1px solid var(--text); }
 .steps td.err { color:var(--fail); }
-.steps td.val { font-family:var(--mono, monospace); word-break:break-all; }
-.shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
-.shots a { display:block; cursor:zoom-in; }
-.shots img { height:150px; border:1px solid var(--line); border-radius:4px;
+.steps td.val { font-family:var(--font-mono); word-break:break-all; }
+.shots { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:14px;
+         margin-top:18px; }
+.shots a { display:block; cursor:zoom-in; text-decoration:none; }
+.shots img { width:100%; height:auto; border:1px solid var(--line);
              background:var(--gray-0); display:block; }
-.shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
-.heal { background:var(--note-bg); border:1px solid var(--note-fg); border-radius:6px;
-        padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
+.shots .cap { font-size:12px; color:var(--muted); margin-top:5px; }
+/* 알림 상자. 결과를 잘못 읽지 않게 하는 안전장치라 숫자보다 약해 보이면 안 된다 —
+   굵은 왼쪽 선과 굵은 첫 줄로 세우고, 주의(warn)에만 바탕색을 깐다. */
+.heal, .gap, .warn { padding:12px 0 12px 18px; margin-bottom:18px; font-size:13.5px;
+                     line-height:1.65; border-left:3px solid var(--text); }
+.heal { border-left-color:var(--note-fg); }
 .heal b { color:var(--note-fg); }
-.heal .why { color:var(--muted); margin:2px 0 8px; }
-.gap { background:var(--info-bg); border:1px solid var(--accent-border); border-radius:6px;
-       padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
-.gap b { color:var(--info-fg); }
-.gap .why { color:var(--muted); margin:2px 0 8px; }
-.warn { background:var(--warn-bg); border:1px solid var(--warn-fg); border-radius:6px;
-        padding:10px 14px; margin-bottom:18px; }
+.gap b { color:var(--text); }
+.heal .why, .gap .why { color:var(--muted); margin:2px 0 8px; }
+.warn { background:var(--warn-bg); border-left-color:var(--warn-fg); padding-right:18px; }
 .warn b { display:block; margin-bottom:4px; }
-.empty { color:var(--muted); padding:12px 0; }
+.empty { color:var(--muted); padding:14px 0; }
 .screens { border-collapse:collapse; font-size:13px; margin:14px 0 4px; }
-.screens th, .screens td { border:1px solid var(--line); padding:5px 10px; text-align:left; }
-.screens th { background:var(--bg-inset); font-weight:600; }
+.screens th, .screens td { border-bottom:1px solid var(--border-subtle); padding:6px 22px 6px 0;
+                           text-align:left; }
+.screens th { font-weight:400; font-size:11px; letter-spacing:0.04em; color:var(--muted);
+              border-bottom:1px solid var(--text); }
 .screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
 .screens td.f { color:var(--fail); font-weight:700; }
 .screens td.k { color:var(--muted); font-size:12px; }
-h3.grp { font-size:14px; margin:18px 0 6px; color:var(--muted); font-weight:600; }
+.screens code { font-family:var(--font-mono); font-size:12px; color:var(--muted); }
+h3.grp { font-size:13px; margin:22px 0 2px; color:var(--muted); font-weight:400; }
 """
 
 
