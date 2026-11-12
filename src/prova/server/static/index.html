@@ -44,6 +44,15 @@
         <h2>실행 설정</h2>
 
         <div class="field">
+          <label for="project">프로젝트 (선택)</label>
+          <input type="text" id="project" list="projectList" placeholder="예) A사 1차 납품"
+                 spellcheck="false" autocomplete="off" maxlength="60">
+          <datalist id="projectList"></datalist>
+          <div class="hint">기획서와 실행을 묶는 이름입니다. 새 이름을 적으면 프로젝트가 만들어지고,
+            같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 차수로 이어집니다.</div>
+        </div>
+
+        <div class="field">
           <label for="pdf">기획서</label>
           <select id="pdf"></select>
         </div>
@@ -69,12 +78,6 @@
             <button type="button" id="segBad" aria-pressed="true">/bad</button>
           </div>
           <div class="hint">good = 기획서대로 만든 앱 · bad = 결함을 심어 둔 앱</div>
-        </div>
-
-        <div class="field">
-          <label for="project">프로젝트 (선택 — 차수 묶음)</label>
-          <input type="text" id="project" placeholder="예) A사 1차 납품" spellcheck="false">
-          <div class="hint">적으면 대상 주소가 바뀌어도 같은 기획서를 차수로 잇습니다.</div>
         </div>
 
         <div class="field">
@@ -113,7 +116,7 @@
       </section>
 
       <section class="panel">
-        <h2>최근 실행</h2>
+        <h2>실행 기록</h2>
         <div class="runs" id="runs"></div>
       </section>
 

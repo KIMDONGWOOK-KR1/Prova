@@ -98,6 +98,8 @@ const state = {
   onlyOff: false,    // 제외된 것만 보기
   serverBackend: "mock",
   busy: false,
+  specGroups: [],    // 기획서 묶음 — 프로젝트 폴더들, 프로젝트 없이 올린 것, 예시
+  runs: [],          // 실행 기록 (프로젝트를 바꾸면 다시 그리기만 한다)
 };
 
 const LS = "prova.settings.v1";
@@ -106,7 +108,7 @@ function saveSettings() {
   try {
     localStorage.setItem(LS, JSON.stringify({
       pdf: $("pdf").value, url: $("url").value, backend: $("backend").value,
-      figma: $("figma").value,
+      figma: $("figma").value, project: $("project").value.trim(),
     }));
   } catch (e) { /* 저장 못 해도 기능은 그대로 돈다 */ }
 }
@@ -797,30 +799,60 @@ function runWhen(r) {
 }
 
 async function loadRuns() {
-  let runs;
   // 비어 있는 것과 아직 안 온 것을 구분해 준다. 빈 칸만 보이면 사람은
   // 기록이 없는 줄 안다.
   if (!$("runs").children.length) {
     $("runs").innerHTML = `<div class="empty-line">불러오는 중…</div>`;
   }
   try {
-    runs = (await api("/api/runs")).runs;
+    state.runs = (await api("/api/runs?limit=60")).runs;
   } catch (e) {
     $("runs").innerHTML = `<div class="empty-line">기록을 불러오지 못했습니다.</div>`;
     return;
   }
+  renderRuns();
+}
+
+/**
+ * 실행 기록을 프로젝트별로 묶어 그린다.
+ *
+ * 최신순 한 줄 목록에서는 'A사 납품을 몇 차까지 돌렸나' 를 보려면 줄을 하나씩 읽어야 했다.
+ * 프로젝트마다 접는 묶음으로 두고, 지금 고른 프로젝트만 펼친다. 프로젝트를 비워 두었으면
+ * '프로젝트 없음' 을, 고른 프로젝트에 아직 실행이 없으면 가장 최근 묶음을 펼친다.
+ * 묶음 안은 최신순이고 줄마다 기획서와 차수를 적는다 — 차수는 기획서별로 센다.
+ */
+function renderRuns() {
+  const runs = state.runs;
   if (!runs.length) {
     $("runs").innerHTML = `<div class="empty-line">아직 실행한 기록이 없습니다.</div>`;
     return;
   }
-  $("runs").innerHTML = runs.map((r) => `
-    <button class="run ${r.fail ? "has-fail" : ""}" type="button"
-            data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)}">
-      <i class="led"></i>
-      <span class="who"><b>${esc(r.project || runLabel(r))}</b><span>${esc(
-        [r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
-      <span class="score">${r.pass}/${r.total}</span>
-    </button>`).join("");
+  const current = $("project").value.trim();
+  const groups = new Map();
+  runs.forEach((r) => {
+    const key = r.project || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  });
+  // 지금 고른 프로젝트를 맨 위로, 나머지는 최근에 돌린 순서 그대로.
+  const order = [...groups.keys()].sort((a, b) => (b === current) - (a === current));
+  const open = groups.has(current) ? current : order[0];
+  const shown = $("runs").querySelector(".run[aria-current='true']");
+  const shownId = shown ? shown.dataset.run : "";
+
+  $("runs").innerHTML = order.map((key) => `
+    <details class="run-group" ${key === open ? "open" : ""}>
+      <summary><b>${esc(key || "프로젝트 없음")}</b><span>${groups.get(key).length}회</span></summary>
+      ${groups.get(key).map((r) => `
+      <button class="run ${r.fail ? "has-fail" : ""}" type="button"
+              data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)}"
+              aria-current="${r.run_id === shownId}">
+        <i class="led"></i>
+        <span class="who"><b>${esc(runLabel(r))}</b><span>${esc(
+          [r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
+        <span class="score">${r.pass}/${r.total}</span>
+      </button>`).join("")}
+    </details>`).join("");
 
   $("runs").querySelectorAll("[data-run]").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -834,6 +866,62 @@ async function loadRuns() {
   });
 }
 
+// ── 기획서 묶음 · 프로젝트 ─────────────────────────────────────────────────
+
+/**
+ * 기획서 셀렉트를 묶음별로 그린다. 지금 고른 프로젝트의 묶음이 맨 위다.
+ *
+ * 다른 묶음도 고를 수 있게 둔다 — 예시 기획서를 프로젝트 이름으로 돌려 보는 일이 흔하고,
+ * 막으면 '프로젝트를 지워야 예시가 보인다' 가 된다.
+ */
+function renderSpecs(select) {
+  const current = $("project").value.trim();
+  const keep = select !== undefined ? select : $("pdf").value;
+  // 값은 경로, 보이는 것은 파일 이름 — 폴더가 매 줄 반복되면 이름이 안 보인다.
+  const base = (p) => p.split(/[\\/]/).pop();
+  const mine = (g) => current !== "" && g.project === current;
+  const groups = [...state.specGroups].sort((a, b) => mine(b) - mine(a));
+  $("pdf").innerHTML = groups.map((g) => `
+    <optgroup label="${esc(g.project ? `프로젝트 · ${g.label}` : g.label)}">
+      ${g.specs.map((p) => `<option value="${esc(p)}">${esc(base(p))}</option>`).join("")}
+    </optgroup>`).join("")
+    || `<option value="" disabled selected>기획서 PDF 를 먼저 올려 주세요</option>`;
+  if (keep && [...$("pdf").options].some((o) => o.value === keep)) $("pdf").value = keep;
+}
+
+function renderProjects(names) {
+  $("projectList").innerHTML = names.map((n) => `<option value="${esc(n)}"></option>`).join("");
+}
+
+function syncUploadLabel() {
+  const current = $("project").value.trim();
+  $("uploadBtn").textContent = current
+    ? `＋ '${current}' 에 기획서 올리기` : "＋ PDF/JSON 올리기";
+}
+
+async function refreshSpecs(select) {
+  const st = await api("/api/state");
+  state.specGroups = st.spec_groups || [];
+  renderProjects(st.projects || []);
+  renderSpecs(select);
+}
+
+// 글자를 칠 때마다: 올릴 자리와 묶음 순서, 펼칠 실행 기록을 맞춘다.
+$("project").addEventListener("input", () => {
+  syncUploadLabel();
+  renderSpecs();
+  renderRuns();
+});
+
+// 이름을 다 적었을 때: 그 프로젝트에 기획서가 있으면 그중 첫 것을 고른다.
+$("project").addEventListener("change", () => {
+  const current = $("project").value.trim();
+  const own = state.specGroups.find((g) => current !== "" && g.project === current);
+  if (own && !own.specs.includes($("pdf").value)) $("pdf").value = own.specs[0];
+  saveSettings();
+  renderChrome();
+});
+
 // ── 사이드바 조작 ──────────────────────────────────────────────────────────
 
 $("uploadBtn").addEventListener("click", () => $("upload").click());
@@ -842,20 +930,25 @@ $("upload").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const btn = $("uploadBtn");
-  const label = btn.textContent;
   btn.disabled = true; btn.textContent = "올리는 중…";
   try {
     const form = new FormData();
     form.append("file", file);
+    // 기획서는 지금 적힌 프로젝트의 폴더로 들어간다 (서버가 이름을 확인한다).
+    form.append("project", $("project").value.trim());
     const out = await api("/api/upload", { method: "POST", body: form });
     // JSON 은 Figma 응답, PDF 는 기획서 — 올라간 쪽 셀렉트에 넣고 선택한다.
-    const target = out.path.toLowerCase().endsWith(".json") ? $("figma") : $("pdf");
-    if (![...target.options].some((o) => o.value === out.path)) {
-      const opt = document.createElement("option");
-      opt.value = out.path; opt.textContent = out.path;
-      target.appendChild(opt);
+    if (out.path.toLowerCase().endsWith(".json")) {
+      const target = $("figma");
+      if (![...target.options].some((o) => o.value === out.path)) {
+        const opt = document.createElement("option");
+        opt.value = out.path; opt.textContent = out.path;
+        target.appendChild(opt);
+      }
+      target.value = out.path;
+    } else {
+      await refreshSpecs(out.path);
     }
-    target.value = out.path;
     saveSettings();
     renderChrome();
   } catch (err) {
@@ -863,7 +956,7 @@ $("upload").addEventListener("change", async (e) => {
     $("stage").insertAdjacentHTML("afterbegin",
       alertBox("fail", "업로드 실패", esc(err.message)));
   } finally {
-    btn.disabled = false; btn.textContent = label;
+    btn.disabled = false; syncUploadLabel();
     e.target.value = "";
   }
 });
@@ -904,20 +997,17 @@ async function boot() {
   try {
     const st = await api("/api/state");
     state.serverBackend = st.backend;
-    // 값은 경로, 보이는 것은 파일 이름 — fixtures/specs/ 가 매 줄 반복되면 이름이 안 보인다.
-    const base = (p) => p.split(/[\\/]/).pop();
-    $("pdf").innerHTML = st.specs.map((p) =>
-      `<option value="${esc(p)}">${esc(base(p))}</option>`).join("")
-      || `<option value="" disabled selected>기획서 PDF 를 먼저 올려 주세요</option>`;
+    const saved = loadSettings();
+    state.specGroups = st.spec_groups || [];
+    renderProjects(st.projects || []);
+    if (saved.project) $("project").value = saved.project;
+    syncUploadLabel();
+    renderSpecs(saved.pdf || "");
     $("figma").innerHTML = `<option value="">없음 — 기획서만</option>` +
       (st.figmas || []).map((p) =>
         `<option value="${esc(p)}">${esc(p)}</option>`).join("");
     $("backend").value = st.backend;
 
-    const saved = loadSettings();
-    if (saved.pdf && [...$("pdf").options].some((o) => o.value === saved.pdf)) {
-      $("pdf").value = saved.pdf;
-    }
     if (saved.figma && [...$("figma").options].some((o) => o.value === saved.figma)) {
       $("figma").value = saved.figma;
     }

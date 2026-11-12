@@ -514,3 +514,69 @@ class TestDryRun:
         summary = job["result"]["summary"]
         assert summary["dry_run"]["cases_blocked"] == 1
         assert summary["pass"] == 0
+
+
+class TestProjects:
+    """프로젝트(카테고리) — 기획서와 실행을 사용자가 만든 이름으로 묶는다 (2026-11-12).
+
+    10-16 멘토링 요청: 기획서 선택 화면에서 사용자가 카테고리를 만들고 그 안에 기획서를
+    넣는다. 실행의 차수 묶음(prova.history)이 이미 '프로젝트' 이름을 쓰므로 같은 이름을
+    쓴다 — 기획서는 `uploads/<프로젝트>/` 폴더에, 실행은 리포트의 summary['project'] 에.
+    """
+
+    @pytest.fixture
+    def uploads(self, tmp_path, monkeypatch):
+        up = tmp_path / "up"
+        monkeypatch.setattr(server_app, "UPLOADS", up)
+        return up
+
+    def _upload(self, client, name="a.pdf", project=None):
+        data = {} if project is None else {"project": project}
+        return client.post("/api/upload", data=data,
+                           files={"file": (name, b"%PDF-1.4", "application/pdf")})
+
+    def test_프로젝트를_적고_올리면_그_폴더에_들어간다(self, client, uploads):
+        r = self._upload(client, project="A사 1차 납품")
+        assert r.status_code == 200, r.text
+        assert (uploads / "A사 1차 납품" / "a.pdf").exists()
+        assert r.json()["project"] == "A사 1차 납품"
+
+    def test_프로젝트를_안_적으면_전과_같은_자리에_들어간다(self, client, uploads):
+        assert self._upload(client).status_code == 200
+        assert (uploads / "a.pdf").exists()
+
+    @pytest.mark.parametrize("name", ["../밖", "a/b", "a\\b", "..", ".숨김", "x" * 61, "con:1"])
+    def test_폴더_밖으로_나가는_이름은_거부한다(self, client, uploads, name):
+        r = self._upload(client, project=name)
+        assert r.status_code == 400
+        assert not list(uploads.parent.rglob("a.pdf"))
+
+    def test_기획서_목록이_프로젝트별로_묶여_온다(self, client, uploads):
+        self._upload(client, "납품.pdf", project="A사")
+        self._upload(client, "분류없음.pdf")
+        st = client.get("/api/state").json()
+        groups = {g["project"]: g for g in st["spec_groups"]}
+        assert [p.rsplit("/", 1)[-1] for p in groups["A사"]["specs"]] == ["납품.pdf"]
+        assert any(p.endswith("분류없음.pdf") for p in groups[""]["specs"])
+        assert any(p.endswith("login_spec.pdf") for p in groups[None]["specs"])  # 예시 기획서
+        # 예전 목록(specs)에도 빠짐없이 들어 있다
+        assert any(p.endswith("납품.pdf") for p in st["specs"])
+
+    def test_프로젝트_폴더의_기획서로_계획을_만들_수_있다(self, client, uploads, sut_base):
+        import shutil
+        (uploads / "A사").mkdir(parents=True)
+        shutil.copy(SPEC, uploads / "A사" / "login_spec.pdf")
+        path = client.get("/api/state").json()["spec_groups"][0]["specs"][0]
+        res = client.post("/api/plan", json={
+            "pdf": path, "url": f"{sut_base}/bad", "request": None, "backend": "mock"})
+        assert res.status_code == 200, res.text
+
+    def test_프로젝트_이름_목록은_폴더와_실행_이력을_합친다(self, client, uploads, tmp_path):
+        import json
+        self._upload(client, project="폴더만")
+        run = tmp_path / "runs" / "r1"
+        run.mkdir()
+        (run / "report.json").write_text(json.dumps(
+            {"summary": {"project": "실행만"}, "created_at": "2026-11-12T00:00:00"}),
+            encoding="utf-8")
+        assert client.get("/api/state").json()["projects"] == ["실행만", "폴더만"]

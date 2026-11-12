@@ -24,12 +24,12 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
-from fastapi import FastAPI, HTTPException, UploadFile
+from fastapi import FastAPI, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from prova.history import list_runs
+from prova.history import list_runs, load_reports
 from prova.llm.factory import BackendError, make_llm
 from prova.models import SpecDocument
 from prova.nodes import AgentState, extract_spec, finish_titles
@@ -49,8 +49,20 @@ from prova.vlm.qwen_vl import QwenVLClient
 STATIC = Path(__file__).parent / "static"
 UPLOADS = Path("uploads")
 RUNS = Path("runs")
-SPEC_DIRS = [Path("fixtures/specs"), UPLOADS]
-FIGMA_DIRS = [Path("fixtures/figma"), UPLOADS]
+EXAMPLE_SPECS = Path("fixtures/specs")
+EXAMPLE_FIGMAS = Path("fixtures/figma")
+#: 프로젝트 이름에 쓸 수 없는 글자 — 이름이 폴더 이름이 되므로 경로 구분자와 Windows 금지 문자를 막는다.
+PROJECT_FORBIDDEN = '/\\:*?"<>|'
+PROJECT_MAX = 60
+
+
+def _spec_dirs() -> list[Path]:
+    # UPLOADS 를 부를 때 읽는다 — 테스트가 옮긴 자리를 따라가야 한다.
+    return [EXAMPLE_SPECS, UPLOADS]
+
+
+def _figma_dirs() -> list[Path]:
+    return [EXAMPLE_FIGMAS, UPLOADS]
 
 runner = JobRunner()
 app = FastAPI(title="Prova", docs_url=None, redoc_url=None)
@@ -69,7 +81,7 @@ def _safe_spec(raw: str) -> Path:
     있으므로 막는다 — localhost 는 같은 기계라는 뜻이지 신뢰할 수 있다는 뜻이 아니다.
     """
     path = Path(raw).resolve()
-    allowed = [d.resolve() for d in SPEC_DIRS if d.exists()]
+    allowed = [d.resolve() for d in _spec_dirs() if d.exists()]
     if not any(path.is_relative_to(root) for root in allowed):
         raise HTTPException(400, f"허용되지 않은 경로입니다: {raw}")
     if not path.exists():
@@ -80,12 +92,62 @@ def _safe_spec(raw: str) -> Path:
 def _safe_figma(raw: str) -> Path:
     """Figma 응답 경로 확인 — _safe_spec 과 같은 안전장치, 디렉터리만 다르다."""
     path = Path(raw).resolve()
-    allowed = [d.resolve() for d in FIGMA_DIRS if d.exists()]
+    allowed = [d.resolve() for d in _figma_dirs() if d.exists()]
     if not any(path.is_relative_to(root) for root in allowed):
         raise HTTPException(400, f"허용되지 않은 경로입니다: {raw}")
     if not path.exists():
         raise HTTPException(404, f"Figma 응답을 찾을 수 없습니다: {raw}")
     return path
+
+
+def _project_name(raw: str) -> str:
+    """프로젝트 이름을 확인한다. 이름이 곧 `uploads/` 아래 폴더 이름이다.
+
+    화면이 보낸 글자를 그대로 폴더로 쓰면 `../` 로 올린 파일이 아무 데나 떨어진다
+    (_safe_spec 과 같은 이유). 빈 이름은 '프로젝트 없음' 이다.
+    """
+    name = raw.strip()
+    if not name:
+        return ""
+    bad = (len(name) > PROJECT_MAX or name.startswith(".") or name.endswith(".")
+           or any(ch in PROJECT_FORBIDDEN or ord(ch) < 32 for ch in name))
+    if bad:
+        raise HTTPException(
+            400, f"프로젝트 이름으로 쓸 수 없습니다: {raw!r} — {PROJECT_MAX}자 이하로, "
+                 f"{' '.join(PROJECT_FORBIDDEN)} 없이, 점으로 시작하거나 끝나지 않게 적어 주세요.")
+    return name
+
+
+def _rel(path: Path) -> str:
+    return str(path).replace("\\", "/")
+
+
+def _spec_groups() -> list[dict]:
+    """기획서를 묶음별로 — 프로젝트 폴더들, 프로젝트 없이 올린 것, 저장소의 예시 순.
+
+    project 가 None 인 묶음은 예시 기획서다(사용자가 만든 것이 아니다). "" 는 프로젝트
+    없이 올린 것.
+    """
+    groups: list[dict] = []
+    if UPLOADS.exists():
+        for d in sorted(p for p in UPLOADS.iterdir() if p.is_dir()):
+            specs = sorted(_rel(p) for p in d.glob("*.pdf"))
+            if specs:
+                groups.append({"project": d.name, "label": d.name, "specs": specs})
+        loose = sorted(_rel(p) for p in UPLOADS.glob("*.pdf"))
+        if loose:
+            groups.append({"project": "", "label": "프로젝트 없이 올린 기획서", "specs": loose})
+    if EXAMPLE_SPECS.exists():
+        groups.append({"project": None, "label": "예시 기획서",
+                       "specs": sorted(_rel(p) for p in EXAMPLE_SPECS.glob("*.pdf"))})
+    return groups
+
+
+def _project_names(groups: list[dict]) -> list[str]:
+    """고를 수 있는 프로젝트 이름 — 기획서를 올린 폴더와, 실행할 때 적었던 이름."""
+    names = {g["project"] for g in groups if g["project"]}
+    names |= {(r.get("summary") or {}).get("project", "") for r in load_reports(RUNS)}
+    return sorted(n for n in names if n)
 
 
 def _config() -> dict:
@@ -151,12 +213,11 @@ def tokens() -> Response:
 
 @app.get("/api/state")
 def state() -> dict:
-    specs: list[str] = []
-    for d in SPEC_DIRS:
-        if d.exists():
-            specs += sorted(str(p).replace("\\", "/") for p in d.glob("*.pdf"))
+    groups = _spec_groups()
+    # 예전 순서(예시 → 올린 것)를 지킨다. 프로젝트 폴더 안의 것도 빠짐없이 넣는다.
+    specs = [p for g in reversed(groups) for p in g["specs"]]
     figmas: list[str] = []
-    for d in FIGMA_DIRS:
+    for d in _figma_dirs():
         if d.exists():
             figmas += sorted(str(p).replace("\\", "/") for p in d.glob("*.json")
                              if not p.name.endswith(".golden.json"))
@@ -164,20 +225,30 @@ def state() -> dict:
     return {
         "busy": runner.busy,
         "specs": specs,
+        "spec_groups": groups,
+        "projects": _project_names(groups),
         "figmas": figmas,
         "backend": cfg.get("llm", {}).get("backend", "mock"),
     }
 
 
 @app.post("/api/upload")
-async def upload(file: UploadFile) -> dict:
-    if not (file.filename or "").lower().endswith((".pdf", ".json")):
+async def upload(file: UploadFile, project: str = Form("")) -> dict:
+    """파일을 올린다. 프로젝트를 적었으면 기획서(PDF)는 그 프로젝트 폴더에 넣는다.
+
+    Figma 응답(JSON)은 프로젝트와 상관없이 한곳에 둔다 — 기획서에 딸린 선택 자료라
+    묶음을 따로 만들지 않는다.
+    """
+    filename = (file.filename or "").lower()
+    if not filename.endswith((".pdf", ".json")):
         raise HTTPException(400, "PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.")
-    UPLOADS.mkdir(parents=True, exist_ok=True)
-    dest = UPLOADS / Path(file.filename).name
+    name = _project_name(project) if filename.endswith(".pdf") else ""
+    folder = UPLOADS / name if name else UPLOADS
+    folder.mkdir(parents=True, exist_ok=True)
+    dest = folder / Path(file.filename).name
     with dest.open("wb") as out:
         shutil.copyfileobj(file.file, out)
-    return {"path": str(dest).replace("\\", "/")}
+    return {"path": _rel(dest), "project": name}
 
 
 # ---------------------------------------------------------------------------
