@@ -37,7 +37,7 @@ from prova.theme import TOKENS_CSS
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
-from prova.wording import ACTION_LABELS, rule_subject, source_sentence
+from prova.wording import ACTION_LABELS, rule_subject, source_sentence, step_sentence
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -216,12 +216,36 @@ h2 { font-size:13px; letter-spacing:0.08em; font-weight:700; margin:48px 0 0; pa
 .body { padding:2px 0 30px; }
 .reason { background:var(--fail-bg); border-left:2px solid var(--fail); padding:12px 16px;
           margin-bottom:18px; }
+.reason.infra { background:var(--note-bg); border-left-color:var(--note-fg); }
 table.kv { width:100%; border-collapse:collapse; margin-bottom:18px; }
 table.kv th { text-align:left; width:104px; vertical-align:top; color:var(--muted);
               font-weight:400; padding:8px 12px 8px 0; font-size:12px; letter-spacing:0.04em;
               border-bottom:1px solid var(--border-subtle); }
 table.kv td { padding:8px 0; word-break:break-all; font-size:14px;
               border-bottom:1px solid var(--border-subtle); }
+h4 { font-size:11px; letter-spacing:0.08em; color:var(--muted); font-weight:700; margin:0 0 8px; }
+/* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다. */
+.cmp { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--text);
+       margin-bottom:22px; }
+.cmp > div { padding:16px 18px; min-width:0; }
+.cmp > .got { border-left:1px solid var(--text); }
+.cmp.FAIL > .got { background:var(--fail-bg); }
+.cmp.infra > .got { background:var(--note-bg); }
+.cmp p { margin:0; word-break:break-word; }
+.cmp .src { font-size:12px; color:var(--muted); margin-top:10px; }
+.cmp .src b { font-weight:400; margin-right:6px; }
+.cmp code { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
+@media (max-width:640px) {
+  .cmp { grid-template-columns:1fr; }
+  .cmp > .got { border-left:0; border-top:1px solid var(--text); }
+}
+.repro { margin:0 0 22px; padding-left:22px; font-size:14px; }
+.repro li { padding:2px 0; }
+.repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); padding:0 5px; }
+.repro em { font-style:normal; font-size:12.5px; color:var(--fail); }
+details.raw { margin-top:22px; font-size:13px; }
+details.raw > summary { cursor:pointer; color:var(--muted); padding:6px 0; }
+details.raw[open] > summary { margin-bottom:6px; }
 .steps { border-collapse:collapse; width:100%; font-size:12.5px; }
 .steps th, .steps td { border-bottom:1px solid var(--border-subtle); padding:6px 10px 6px 0;
                        text-align:left; }
@@ -229,8 +253,7 @@ table.kv td { padding:8px 0; word-break:break-all; font-size:14px;
             border-bottom:1px solid var(--text); }
 .steps td.err { color:var(--fail); }
 .steps td.val { font-family:var(--font-mono); word-break:break-all; }
-.shots { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:14px;
-         margin-top:18px; }
+.shots { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:14px; }
 .shots a { display:block; cursor:zoom-in; text-decoration:none; }
 .shots img { width:100%; height:auto; border:1px solid var(--line);
              background:var(--gray-0); display:block; }
@@ -547,6 +570,45 @@ def _history_html(history: dict) -> str:
     )
 
 
+def _compare_html(verdict: Verdict, kind: str = "") -> str:
+    """기획서가 말한 것과 실제 화면을 나란히 놓는다.
+
+    표의 두 줄('기대'·'실제')로 두면 위아래로 읽어 견줘야 한다. 이 도구가 하는 일이 바로
+    그 대조이므로 한눈에 좌우로 보이게 한다. 기획서 쪽에는 어느 쪽 어느 줄인지(근거)를,
+    실제 쪽에는 그때의 주소를 붙인다.
+    """
+    ev = verdict.evidence or {}
+    sources = ""
+    if verdict.spec_sources:
+        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
+        sources = ("<p class='src'><b>기획서 근거</b> " + "<br>".join(
+            _esc(source_sentence(s)) for s in verdict.spec_sources) + "</p>")
+    url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
+           if ev.get("url") else "")
+    return (
+        f"<div class='cmp {verdict.verdict} {kind}'>"
+        f"<div class='want'><h4>기획서</h4><p>{_esc(ev.get('expected'))}</p>{sources}</div>"
+        f"<div class='got'><h4>실제 화면</h4><p>{_esc(ev.get('actual'))}</p>{url}</div>"
+        "</div>"
+    )
+
+
+def _repro_html(verdict: Verdict) -> str:
+    """재현 절차 — 손으로 그대로 따라 할 수 있는 문장으로.
+
+    엑셀의 '재현 절차' 칸과 같은 문장이다(wording.step_sentence). 기획자가 개발사에
+    "이렇게 하면 나온다" 고 넘길 때 표를 풀어 쓸 필요가 없게 한다. 멈춘 스텝에는 표시를 단다.
+    """
+    if not verdict.step_results:
+        return ""
+    items = []
+    for r in verdict.step_results:
+        prefix = "<span class='pre'>준비</span> " if r.phase == "setup" else ""
+        stopped = " <em>← 여기서 멈춤</em>" if r.status == "error" else ""
+        items.append(f"<li>{prefix}{_esc(step_sentence(r.action, r.target, r.value))}{stopped}</li>")
+    return f"<h4>재현 절차</h4><ol class='repro'>{''.join(items)}</ol>"
+
+
 def _case_html(verdict: Verdict, open_by_default: bool,
                revised: dict | None = None) -> str:
     ev = verdict.evidence or {}
@@ -566,6 +628,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 분류를 요약 줄에 올린다. 펼친 카드 안쪽 표에만 있으면 목록만 훑는 사람에게
     # 구현 결함과 도구·환경 실패가 똑같이 'FAIL' 로 보인다.
     cat_tag = ""
+    # 결함(기획서와 다름)과 도구·환경 쪽 실패는 카드 안에서도 색이 달라야 한다. 전부 빨강이면
+    # 기획자가 개발사에 잘못 따진다.
+    kind = ""
     if verdict.verdict == "FAIL" and verdict.failure_category:
         kind = "defect" if verdict.failure_category == "assertion_mismatch" else "infra"
         name = CATEGORY_LABELS.get(verdict.failure_category,
@@ -576,20 +641,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
 
     reason = ""
     if verdict.verdict == "FAIL" and verdict.failure_detail:
-        reason = f"<div class='reason'>{_esc(verdict.failure_detail)}</div>"
+        reason = f"<div class='reason {kind}'>{_esc(verdict.failure_detail)}</div>"
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
-    rows += [
-        ("기대", _esc(ev.get("expected"))),
-        ("실제", _esc(ev.get("actual"))),
-    ]
-    if verdict.spec_sources:
-        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
-        rows.append(("기획서 근거", "<br>".join(
-            _esc(source_sentence(s)) for s in verdict.spec_sources)))
-    rows += [
-        ("최종 URL", f"<code>{_esc(ev.get('url'))}</code>"),
-    ]
     if verdict.failure_category:
         rows.append(("실패 분류", _category_html(verdict)))
     if ev.get("error_texts"):
@@ -599,6 +653,13 @@ def _case_html(verdict: Verdict, open_by_default: bool,
                      + f" (막지 않았다면 판정: {_esc(ev.get('dry_run_original'))} — 참고용)"))
 
     kv = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
+    kv_table = f"<table class='kv'>{kv}</table>" if kv else ""
+    # 단계 표는 접어 둔다. 탐지 방법·소요 시간·DOM 은 실패를 조사하는 사람의 자료이고,
+    # 기획자가 먼저 읽을 것은 위의 대조와 재현 절차다.
+    steps = _steps_html(verdict)
+    if steps:
+        steps = ("<details class='raw'><summary>단계별 기록 — 찾은 방법 · 걸린 시간 · 화면 구조(DOM)"
+                 f"</summary>{steps}</details>")
 
     return (
         f"<details class='case'{' open' if open_by_default else ''}>"
@@ -606,8 +667,8 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         f"{cat_tag}{rev_tag}{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>{reason}"
-        f"<table class='kv'>{kv}</table>"
-        f"{_steps_html(verdict)}{_shots_html(verdict)}"
+        f"{_compare_html(verdict, kind)}{kv_table}"
+        f"{_repro_html(verdict)}{_shots_html(verdict)}{steps}"
         f"</div></details>"
     )
 
