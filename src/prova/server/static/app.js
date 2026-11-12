@@ -353,7 +353,7 @@ function showPlan() {
 
   $("stage").innerHTML = `
     <div class="head">
-      <h1>이렇게 이해했습니다</h1>
+      <h1>계획 확인</h1>
       <div class="sub">${p.request
         ? `요청 — ${esc(p.request)}`
         : "요청이 없어 전체 케이스를 골랐습니다"}</div>
@@ -372,7 +372,7 @@ function showPlan() {
       </label>
     </div>
     <div id="groups"></div>
-    <div class="runbar">
+    <div class="runbar dock">
       <button class="btn primary" id="runBtn" type="button">이대로 실행</button>
       <button class="btn ghost" id="backBtn" type="button">요청 고치기</button>
       <span class="hint" id="runHint"></span>
@@ -623,8 +623,7 @@ function caseRow(c) {
            aria-label="${esc(c.title)} 실행">
     <div>
       <div class="desc">${esc(c.title)}</div>
-      <div class="id">${esc(c.case_id)}</div>
-      ${caseHow(c)}
+      <div class="under"><span class="id">${esc(c.case_id)}</span>${caseHow(c)}</div>
     </div>
     <div class="marks">
       ${c.violates ? `<span class="tag rule" title="${esc(c.violates)}">${
@@ -638,7 +637,7 @@ function caseRow(c) {
 function caseHow(c) {
   if (!(c.steps || []).length && !c.expected) return "";
   return `<details class="how">
-    <summary>절차·기대 보기</summary>
+    <summary>절차·기대</summary>
     <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
     ${c.expected ? `<div class="expect"><b>기대</b> ${esc(c.expected)}</div>` : ""}
     ${(c.sources || []).map((s) => `<div class="expect src"><b>기획서</b> ${esc(s)}</div>`).join("")}

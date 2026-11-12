@@ -689,3 +689,30 @@ details.more[open] > summary { margin-bottom: var(--sp-4); }
   display: grid;
   gap: var(--sp-3);
 }
+
+/* ── 계획 확인: 촘촘한 케이스 줄, 겹치지 않는 실행 띠 ───────────────────── */
+
+/* 케이스 한 건이 세 줄(제목 / id / 절차 보기)이라 열 건이 한 화면에 안 들어왔다.
+   id 와 '절차·기대' 를 한 줄에 놓아 두 줄로 줄인다. 펼치면 그 아래로 내려간다. */
+.case { padding: var(--sp-2) var(--sp-3); }
+.case .under { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 var(--sp-3); }
+.case .under .id { margin-top: 0; }
+.case .how { margin-top: 0; }
+.case .how[open] { flex-basis: 100%; }
+.case .how summary::marker { color: var(--fg-subtle); }
+
+/* 실행 띠 — 흐린 그러데이션 위에 떠 있어 마지막 케이스 글자와 겹쳐 보였다.
+   불투명한 띠로 바닥에 붙이고 본문 여백만큼 양옆으로 넓힌다. */
+#groups { padding-bottom: var(--sp-4); }
+.runbar.dock {
+  bottom: calc(var(--sp-6) * -1);
+  margin: 0 calc(var(--sp-6) * -1) calc(var(--sp-6) * -1);
+  padding: var(--sp-3) var(--sp-6);
+  max-width: none;
+  background: var(--bg-surface);
+  border-top: 1px solid var(--border-default);
+  z-index: 3;
+}
+
+/* 도구 막대(60px)와 묶음 제목 사이에 8px 틈이 있어 스크롤하면 케이스 글자가 비쳤다. */
+.group > header { top: 36px; }
