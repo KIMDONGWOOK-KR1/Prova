@@ -716,3 +716,27 @@ details.more[open] > summary { margin-bottom: var(--sp-4); }
 
 /* 도구 막대(60px)와 묶음 제목 사이에 8px 틈이 있어 스크롤하면 케이스 글자가 비쳤다. */
 .group > header { top: 36px; }
+
+/* ── 실행 중: 몇 건 중 몇 건, 지금 무엇을 ───────────────────────────────── */
+
+.prog {
+  border: 1px solid var(--fg-default);
+  padding: var(--sp-4) var(--sp-5);
+  margin-bottom: var(--sp-5);
+  background: var(--bg-surface);
+}
+.prog .n {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  font-size: var(--tx-md); font-variant-numeric: tabular-nums;
+}
+.prog .n b { font-size: var(--tx-xl); font-weight: 750; letter-spacing: -0.02em; }
+.prog .n .left { margin-left: auto; color: var(--fg-muted); font-size: var(--tx-sm); }
+.prog .bar { height: 4px; background: var(--border-subtle); margin: var(--sp-3) 0; }
+.prog .bar i { display: block; height: 100%; background: var(--accent-solid);
+              transition: width 0.25s ease-out; }
+.prog .cur { font-size: var(--tx-md); }
+.prog .cur span { display: block; font-size: var(--tx-sm); color: var(--fg-muted);
+                 margin-bottom: 2px; }
+@media (prefers-reduced-motion: reduce) { .prog .bar i { transition: none; } }
+/* 돌아가는 표시는 제목 옆에 — 가운데 혼자 떠 있었다. */
+.head .spin { margin-left: var(--sp-3); margin-right: auto; }

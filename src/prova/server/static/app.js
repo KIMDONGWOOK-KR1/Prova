@@ -185,9 +185,11 @@ function showProgress(title, lines) {
   $("stage").innerHTML = `
     <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span>
       <span class="elapsed" id="pElapsed">0초</span></div>
+    <div class="prog" id="pNow" hidden></div>
     <div class="steps" id="pSteps"></div>
     <details class="raw"><summary>진행 로그 전체</summary>
       <pre class="log" id="pLog" role="log" aria-live="polite"></pre></details>`;
+  caseProg = null;
   pushProgress(lines || []);
   clearInterval(elapsedTimer);
   const t0 = Date.now();
@@ -215,6 +217,7 @@ function pushProgress(messages) {
     const isDetail = /^\s{2,}/.test(raw) || raw.trimStart().startsWith("!");
     const text = raw.trim();
     if (!text) continue;
+    trackCase(text);
     if (isDetail) {
       const last = steps.lastElementChild;
       if (last) {
@@ -232,6 +235,45 @@ function pushProgress(messages) {
     el.innerHTML = `<span class="mark">●</span><div class="body">${esc(text)}</div>`;
     steps.appendChild(el);
   }
+}
+
+// 몇 건 중 몇 건이 끝났는지. 단계 목록에는 케이스 줄이 아래로 쌓이기만 해서 스무 건을
+// 돌리면 얼마나 남았는지 세어 봐야 알았다. 파이프라인이 보내는 "케이스 3/5 · 제목"
+// (nodes.py) 을 읽는다. 병렬 실행은 일꾼마다 "[1/2] 케이스 2/3 · …" 로 따로 세므로
+// 꼬리표별로 모아 더한다.
+let caseProg = null;
+
+function trackCase(text) {
+  const m = /^(?:\[(\d+)\/\d+\]\s*)?케이스 (\d+)\/(\d+) · (.*)$/.exec(text);
+  if (m) {
+    caseProg = caseProg || {};
+    caseProg[m[1] || "0"] = { i: Number(m[2]), n: Number(m[3]), title: m[4] };
+  } else if (caseProg && /^S6 /.test(text)) {
+    // 리포트 단계로 넘어갔으면 브라우저 실행은 전부 끝난 것이다.
+    for (const r of Object.values(caseProg)) { r.i = r.n + 1; }
+  } else {
+    return;
+  }
+  renderNow();
+}
+
+function renderNow() {
+  const el = $("pNow");
+  if (!el || !caseProg) return;
+  const rows = Object.values(caseProg);
+  const total = rows.reduce((a, r) => a + r.n, 0);
+  // "케이스 i/n" 은 i 번째를 시작할 때 온다 — 끝난 것은 i-1 건이다.
+  const done = rows.reduce((a, r) => a + Math.min(r.i - 1, r.n), 0);
+  const running = rows.filter((r) => r.i <= r.n).map((r) => esc(r.title));
+  el.hidden = false;
+  el.innerHTML = `
+    <div class="n"><b>${done}</b> / ${total}건 끝남
+      <span class="left">${total - done ? `남은 것 ${total - done}건` : "브라우저 실행 끝"}</span></div>
+    <div class="bar" role="progressbar" aria-label="끝난 케이스" aria-valuemin="0"
+         aria-valuemax="${total}" aria-valuenow="${done}">
+      <i style="width:${total ? (done / total) * 100 : 0}%"></i></div>
+    <div class="cur"><span>${running.length ? "지금 확인 중" : "리포트를 만드는 중"}</span>${
+      running.map((t) => `<div>${t}</div>`).join("")}</div>`;
 }
 
 function finishProgress() {
