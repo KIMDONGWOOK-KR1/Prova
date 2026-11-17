@@ -12,6 +12,12 @@
   tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
   두 벌로 갈라진다.
 -->
+<!-- 고른 화면 모드를 첫 그림 전에 건다. app.js 에서 하면 어두웠다 밝아지며 깜빡인다. -->
+<script>
+try { var t = localStorage.getItem("prova-theme");
+      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+} catch (e) {}
+</script>
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
 </head>
@@ -21,7 +27,10 @@
 <header class="topbar">
   <b class="name">Prova</b>
   <div class="crumbs" id="crumbs"></div>
-  <div class="chips" id="stageChips"></div>
+  <div class="topright">
+    <div class="chips" id="stageChips"></div>
+    <button class="btn ghost quiet" id="themeBtn" type="button"></button>
+  </div>
   <ol class="stepper" id="stepper" aria-label="진행 단계">
     <li><button type="button" data-step="1">1 기획서</button></li>
     <li><button type="button" data-step="2">2 항목 검토</button></li>
@@ -67,9 +76,15 @@
         <div class="field">
           <label for="projectPick">프로젝트 (선택)</label>
           <select id="projectPick"></select>
-          <input type="text" id="project" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
-                 aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off"
-                 maxlength="60" hidden>
+          <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
+          <input type="hidden" id="project" value="">
+          <div class="newproj" id="projectNewRow" hidden>
+            <input type="text" id="projectNew" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
+                   aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off"
+                   maxlength="60">
+            <button class="btn ghost" id="projectAdd" type="button">추가</button>
+          </div>
+          <div class="hint err" id="projectErr" role="alert" hidden></div>
           <div class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</div>
         </div>
 
@@ -126,7 +141,9 @@
 
     </div>
 
-    <div class="panel" style="border-top:1px solid var(--border-subtle)">
+    <!-- 설정이 길어도 스크롤하지 않고 누를 수 있게 스크롤 영역 밖에 둔다. -->
+    <div class="side-action">
+      <button class="btn primary block" id="planBtn" type="button">계획 만들기</button>
       <div class="chips" id="chips"></div>
     </div>
   </aside>

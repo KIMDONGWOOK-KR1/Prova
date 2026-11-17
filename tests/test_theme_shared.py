@@ -71,3 +71,25 @@ class TestDarkMode:
         쓰기 시작하면 한쪽이 반드시 뒤처진다."""
         assert not re.search(r"^\s*\.[a-z]", _dark_block(), re.M), \
             "다크 블록에 컴포넌트 규칙이 있다"
+
+
+class TestManualTheme:
+    """밝게/어둡게 버튼 (2026-11-12). 기본은 화면 설정, 사람이 고르면 그쪽이 이긴다."""
+
+    def test_어둡게_고르면_화면_설정과_상관없이_다크_값이_걸린다(self):
+        assert ':root[data-theme="dark"] {' in TOKENS_CSS
+
+    def test_밝게_고르면_어두운_PC에서도_다크_값이_안_걸린다(self):
+        assert ':root:not([data-theme="light"]) {' in _dark_block()
+
+    def test_다크_값은_한_번_적은_것을_두_곳에_낸다(self):
+        """두 벌로 적으면 한쪽이 뒤처진다."""
+        from prova.theme import _DARK
+        assert TOKENS_CSS.count(_DARK) == 2
+        assert "__DARK__" not in TOKENS_CSS
+
+    def test_리포트가_웹_UI에서_고른_쪽을_따른다(self):
+        html = report_html()
+        assert 'localStorage.getItem("prova-theme")' in html
+        # 저장소를 못 읽는 곳(파일로 연 리포트)에서 스크립트가 죽으면 안 된다.
+        assert "catch(e)" in html

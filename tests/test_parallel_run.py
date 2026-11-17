@@ -34,7 +34,7 @@ def test_병렬로_돌렸다는_사실을_리포트가_말한다(sut_base, tmp_p
 
     report = _run(sut_base, tmp_path, "w2", 2)
     assert report.summary["workers"] == 2
-    assert "병렬 2" in render_html(report)
+    assert "병렬 <code>2</code>" in render_html(report)
 
 
 def test_순차_실행에는_병렬_칸을_만들지_않는다(sut_base, tmp_path):

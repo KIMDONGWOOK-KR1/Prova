@@ -39,7 +39,7 @@ from prova.theme import TOKENS_CSS
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
 from prova.wording import (ACTION_LABELS, copy_text, not_blocked_sentence, rule_subject,
-                            source_sentence)
+                            source_sentence, step_sentence)
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -168,6 +168,8 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 # 색·간격·서체는 theme.TOKENS_CSS 가 유일한 출처다. 여기서 색을 새로 만들면
 # 웹 UI 안에 iframe 으로 떴을 때 같은 화면에 파란색이 두 가지가 된다.
 _CSS = TOKENS_CSS + """
+/* 검수 문서처럼 읽히게 한다 — 상자 대신 가는 선, 색은 판정에만 쓴다.
+   기획자가 개발사에 그대로 보내는 문서라서 화면보다 종이에 가깝게 잡았다. */
 * { box-sizing:border-box; }
 body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
        font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal);
@@ -177,10 +179,15 @@ body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
 .embedded .wrap { max-width:none; }
 a { color:inherit; text-underline-offset:2px; }
 .wrap { max-width:1080px; margin:0 auto; }
-h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0 0 8px; }
-.meta { color:var(--muted); font-size:13px; line-height:1.7; margin-bottom:24px; }
-.meta code { font-family:inherit; font-size:inherit; color:var(--text); }
-/* 숫자 네 개는 상자 네 개가 아니라 한 줄이다 — 위 굵은 선이 '여기부터 결과' 를 말한다. */
+h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0 0 16px; }
+/* 실행 조건 — 이름과 값을 한 칸씩 나눈 격자. 한 줄로 이으면 아홉 가지가 붙어 읽히지 않았다. */
+.meta { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0 24px;
+        padding:6px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+.mi { padding:8px 0; min-width:0; color:var(--muted); font-size:12px; }
+.mi code { display:block; margin-top:2px; font-family:var(--font-mono); font-size:13px;
+           color:var(--text); word-break:break-all; }
+.metanote { color:var(--muted); font-size:13px; margin:10px 0 24px; }
+.embedded .metanote { display:none; }
 /* 결론 한 줄 — 숫자는 원형차트 범례 한 곳에만 둔다(숫자 칸과 범례가 같은 수를 두 번 말하지 않게).
    위 굵은 선이 '여기부터 결과' 를 말한다. 웹 UI 는 같은 문장을 제목으로 이미 보인다. */
 .concl { font-size:22px; font-weight:400; letter-spacing:-0.01em; line-height:1.4; word-break:keep-all;
@@ -232,7 +239,7 @@ details.passfold[open] .ms { visibility:hidden; }
 .chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
 .chart .seg.unv { stroke:var(--chart-unv); }
 .chart p { margin:10px 0 0; }
-.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; font-size:13px; }
 .legend li { display:grid; grid-template-columns:12px 8em 3em 3em; gap:8px; align-items:center; }
 .legend b { text-align:right; font-variant-numeric:tabular-nums; }
 .legend .ms { text-align:right; }
@@ -285,11 +292,31 @@ table.kv code { font-family:var(--font-mono); font-size:12px; }
 /* 요약 줄 — 분류 꼬리표가 있으면 FAIL 은 겹치는 말이다. 소요 시간은 기획자가 읽지 않는다. */
 .case summary .tag.FAIL:has(+ .tag.cat) { display:none; }
 .case > summary .ms { display:none; }
-details.more { margin-top:12px; }
-details.more > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
-details.more > summary:hover { color:var(--text); }
-details.more .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
-details.more .url code { font-family:var(--font-mono); }
+details.raw { margin-top:12px; }
+details.raw > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
+details.raw > summary:hover { color:var(--text); }
+details.raw .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
+details.raw .url code { font-family:var(--font-mono); }
+h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
+/* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다. */
+.cmp { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); border-radius:var(--r-lg);
+       margin:4px 0 16px; overflow:hidden; }
+.cmp > div { padding:14px 16px; min-width:0; }
+.cmp > .got { border-left:1px solid var(--line); }
+.cmp.FAIL > .got { background:var(--fail-bg); }
+.cmp.infra > .got { background:var(--note-bg); }
+.cmp.unv > .got { background:var(--bg-inset); }
+.cmp p { margin:0; word-break:break-word; }
+.cmp .src { font-size:13px; color:var(--muted); margin-top:10px; }
+.cmp .src b { font-weight:600; margin-right:6px; }
+.cmp code { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
+@media (max-width:640px) { .cmp { grid-template-columns:1fr; }
+  .cmp > .got { border-left:0; border-top:1px solid var(--line); } }
+.repro { margin:4px 0 8px; padding-left:22px; }
+.repro li { padding:2px 0; }
+.repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; }
+.repro em { font-style:normal; font-size:13px; color:var(--fail); }
+.shots.last + h4 { margin-top:18px; }
 .shots.last a { display:block; width:560px; max-width:100%; }
 .shots.last a > img { display:block; width:100%; height:300px; object-fit:cover; object-position:center;
                       transform-origin:top center; }
@@ -381,6 +408,14 @@ def _steps_html(verdict: Verdict) -> str:
 # 바깥 문서에는 리포트의 CSS 가 없으므로 모양은 전부 요소에 직접 적는다. 링크의 href 는
 # 그대로 둔다 — 스크립트가 막힌 곳에서는 예전처럼 새 탭으로 열리고, Ctrl·가운데 버튼으로
 # 누르면 지금도 새 탭이다.
+# 웹 UI 에서 밝게/어둡게를 골랐으면 리포트도 같은 쪽으로 연다. 같은 서버에서 열릴 때만
+# 저장소가 보이므로, 파일로 받아 연 리포트는 전처럼 보는 사람의 화면 설정을 따른다.
+_THEME_JS = (
+    'try{var t=localStorage.getItem("prova-theme");'
+    'if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}'
+    'catch(e){}'
+)
+
 _LIGHTBOX_JS = r"""
 (function () {
   var host = document;
@@ -693,6 +728,45 @@ def _headline(verdict: Verdict) -> tuple[str, str]:
     return first, rest.strip()
 
 
+def _compare_html(verdict: Verdict, kind: str = "") -> str:
+    """기획서가 말한 것과 실제 화면을 나란히 놓는다.
+
+    표의 두 줄('기대'·'실제')로 두면 위아래로 읽어 견줘야 한다. 이 도구가 하는 일이 바로
+    그 대조이므로 한눈에 좌우로 보이게 한다. 기획서 쪽에는 어느 쪽 어느 줄인지(근거)를,
+    실제 쪽에는 그때의 주소를 붙인다.
+    """
+    ev = verdict.evidence or {}
+    sources = ""
+    if verdict.spec_sources:
+        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
+        sources = ("<p class='src'><b>기획서 근거</b> " + "<br>".join(
+            _esc(source_sentence(s)) for s in verdict.spec_sources) + "</p>")
+    url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
+           if ev.get("url") else "")
+    return (
+        f"<div class='cmp {verdict.verdict} {kind}'>"
+        f"<div class='want'><h4>기획서</h4><p>{_esc(ev.get('expected'))}</p>{sources}</div>"
+        f"<div class='got'><h4>실제 화면</h4><p>{_esc(ev.get('actual'))}</p>{url}</div>"
+        "</div>"
+    )
+
+
+def _repro_html(verdict: Verdict) -> str:
+    """재현 절차 — 손으로 그대로 따라 할 수 있는 문장으로.
+
+    엑셀의 '재현 절차' 칸과 같은 문장이다(wording.step_sentence). 기획자가 개발사에
+    "이렇게 하면 나온다" 고 넘길 때 표를 풀어 쓸 필요가 없게 한다. 멈춘 스텝에는 표시를 단다.
+    """
+    if not verdict.step_results:
+        return ""
+    items = []
+    for r in verdict.step_results:
+        prefix = "<span class='pre'>준비</span> " if r.phase == "setup" else ""
+        stopped = " <em>← 여기서 멈춤</em>" if r.status == "error" else ""
+        items.append(f"<li>{prefix}{_esc(step_sentence(r.action, r.target, r.value))}{stopped}</li>")
+    return f"<h4>재현 절차</h4><ol class='repro'>{''.join(items)}</ol>"
+
+
 def _conclusion(verdicts: list[Verdict], total: int) -> str:
     """리포트 파일 맨 위의 결론 한 줄 — 웹 UI 결과 제목과 같은 말."""
     kinds = [fail_kind(v) for v in verdicts if v.verdict == "FAIL"]
@@ -752,6 +826,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 분류를 요약 줄에 올린다. 펼친 카드 안쪽 표에만 있으면 목록만 훑는 사람에게
     # 구현 결함과 도구·환경 실패가 똑같이 'FAIL' 로 보인다.
     cat_tag = ""
+    # 결함(기획서와 다름)과 도구·환경 쪽 실패는 카드 안에서도 색이 달라야 한다. 전부 빨강이면
+    # 기획자가 개발사에 잘못 따진다.
+    kind = ""
     if verdict.verdict == "FAIL" and verdict.failure_category:
         kind = fail_kind(verdict)
         name = CATEGORY_LABELS.get(verdict.failure_category,
@@ -765,17 +842,11 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     headline, rest = _headline(verdict)
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
-    rows.append(("기대", _esc(ev.get("expected"))))
+    # 기대·실제·기획서 근거는 아래 비교 칸(_compare_html)이 좌우로 나란히 보인다.
     actual = ev.get("actual")
-    if actual and str(actual).rstrip(".") not in headline:
-        rows.append(("실제", _esc(actual)))
     # 대제목에 못 담은 사유의 나머지 — 실제 결과와 같은 말이면 두 번 쓰지 않는다.
     if rest and rest not in str(actual or "") and str(actual or "") not in rest:
         rows.append(("자세히", _esc(rest)))
-    if verdict.spec_sources:
-        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
-        rows.append(("기획서 근거", "<br>".join(
-            _esc(source_sentence(s)) for s in verdict.spec_sources)))
     # 실패 분류는 요약 줄 꼬리표에 있다. 최종 URL 은 재현 자료와 함께 접어 둔다.
     if ev.get("error_texts"):
         rows.append(("화면 에러", _esc(" / ".join(ev["error_texts"]))))
@@ -784,19 +855,18 @@ def _case_html(verdict: Verdict, open_by_default: bool,
                      + f" (막지 않았다면 판정: {_esc(ev.get('dry_run_original'))}, 참고용)"))
 
     kv = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
-
     # 재현 자료(단계 표·캡처 전부·최종 URL)는 개발자에게 넘길 때 보는 것이라 접어 둔다.
     # 알림이 아니라 근거 자료다 — 요구서 4절 1번(알림은 접지 않는다)과 부딪히지 않는다.
     n_steps = len(verdict.step_results)
     n_shots = sum(1 for r in verdict.step_results if r.screenshot)
-    more = (f"<details class='more'><summary>재현 단계 {n_steps}개 · 캡처 {n_shots}장</summary>"
+    more = (f"<details class='raw'><summary>단계별 기록 {n_steps}개 · 캡처 {n_shots}장</summary>"
             f"<div class='url'>마지막 주소 <code>{_esc(ev.get('url'))}</code></div>"
-            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>")
+            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>" if n_steps else "")
     failed = verdict.verdict == "FAIL"
     copy = ""
     if failed:
-        kind = {"defect": "기획서와 다름", "infra": "실행 문제", "unv": "확인 불가"}[fail_kind(verdict)]
-        text = copy_text(verdict, f"[{kind}] {headline}", target_url)
+        label = {"defect": "기획서와 다름", "infra": "실행 문제", "unv": "확인 불가"}[fail_kind(verdict)]
+        text = copy_text(verdict, f"[{label}] {headline}", target_url)
         copy = (f"<button class='copy' type='button' data-copy='{_esc(text)}'>"
                 "재현 절차 복사</button>")
 
@@ -810,8 +880,8 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>"
-        f"<table class='kv'>{kv}</table>"
-        f"{_shots_html(verdict, last=True) if failed else ''}{more}"
+        f"{_compare_html(verdict, kind)}{f'<table class=kv>{kv}</table>' if kv else ''}"
+        f"{_shots_html(verdict, last=True) if failed else ''}{_repro_html(verdict)}{more}"
         f"</div></details>"
     )
 
@@ -1071,14 +1141,14 @@ def render_html(report: TestReport) -> str:
     build_meta = ""
     if build_state:
         label = "일치" if build_state == "match" else "확인 불가"
-        build_meta = f" · 대상 빌드 <code>{_esc(label)}</code>"
+        build_meta = f"\n대상 빌드 <code>{_esc(label)}</code>"
     # 2차 경로도 머리말 한 줄이다 — 꺼진 것이 기본이라 상자로 만들면 매번 뜬다.
     if "vlm" in s:
         state = f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"
-        build_meta += f" · 화면 이미지로 찾기 <code>{_esc(state)}</code>"
+        build_meta += f"\n화면 이미지로 찾기 <code>{_esc(state)}</code>"
     # 기본(데스크톱)이 아닌 화면 크기 — 판정의 전제라 머리말에 둔다 (nodes.note_viewport).
     if s.get("viewport"):
-        build_meta += f" · 화면 크기 <code>{_esc(s['viewport'])}</code>"
+        build_meta += f"\n화면 크기 <code>{_esc(s['viewport'])}</code>"
 
     backend = s.get("llm_backend", "")
     mock_warn = ""
@@ -1164,20 +1234,33 @@ def render_html(report: TestReport) -> str:
     history = s.get("history") or {}
     history_html = _history_html(history)
     if s.get("project"):
-        build_meta += f" · 프로젝트 <code>{_esc(s['project'])}</code>"
+        build_meta += f"\n프로젝트 <code>{_esc(s['project'])}</code>"
     if history.get("round"):
-        build_meta += f" · <b>{history['round']}차</b>"
+        build_meta += f"\n차수 <code>{history['round']}차</code>"
     if s.get("workers"):
-        build_meta += f" · 병렬 {_esc(s['workers'])}"
+        build_meta += f"\n병렬 <code>{_esc(s['workers'])}</code>"
     cache = s.get("llm_cache") or {}
     if cache.get("hits"):
-        build_meta += (f" · 저장된 모델 응답 {_esc(cache['hits'])}건 재사용"
-                       f"(새 호출 {_esc(cache.get('misses', 0))}건)")
-    defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
-    fail_cls = " fail" if defects else " infra" if failed else ""
-    # 폴더 경로는 뺀다 — 개발사에 보내는 문서에 내 PC 의 경로가 실려 나간다.
-    spec_name = re.split(r"[\\/]", report.spec_source or "")[-1]
+        build_meta += (f"\n저장된 모델 응답 <code>{_esc(cache['hits'])}건 재사용"
+                       f" · 새 호출 {_esc(cache.get('misses', 0))}건</code>")
     chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0)
+
+    # 실행 조건. 한 줄로 이어 쓰면 아홉 가지가 가운뎃점으로 붙어 읽히지 않았다 — 이름과 값을
+    # 한 칸씩 나눠 격자로 놓는다. 기획서는 파일 이름만 보이고 전체 경로는 마우스를 올리면 나온다
+    # (경로가 길어 다른 칸을 밀어냈다). 시각은 분까지만 적는다.
+    spec_name = str(report.spec_source or "").replace("\\", "/").rsplit("/", 1)[-1]
+    when = str(report.created_at or "")[:16].replace("T", " ")
+    meta_items = [
+        f"대상 <code>{_esc(report.target_url)}</code>",
+        f"기획서 <code title='{_esc(report.spec_source)}'>{_esc(spec_name)}</code>",
+        f"실행한 때 <code title='{_esc(report.created_at)}'>{_esc(when)}</code>",
+        f"실행 번호 <code>{_esc(report.run_id)}</code>",
+    ]
+    if backend:
+        meta_items.append(f"모델 <code>{_esc(backend)}</code>")
+    # 항목은 줄바꿈으로 나눠 모았다 — 값 안에 가운뎃점이 들어갈 수 있다('켬 · 모델 이름').
+    meta_items += [item for item in build_meta.split("\n") if item.strip()]
+    meta_html = "".join(f"<div class='mi'>{item}</div>" for item in meta_items)
 
     names = s.get("screen_names") or {}
     screens_html = _screens_html(s.get("by_screen") or {},
@@ -1202,19 +1285,16 @@ def render_html(report: TestReport) -> str:
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
+<meta name="color-scheme" content="light dark">
+<script>{_THEME_JS}</script>
 <title>Prova 리포트 · {_esc(report.run_id)}</title>
 <style>{_CSS}</style>
 <script>if(self!==top)document.documentElement.className='embedded'</script></head>
 <body><div class="wrap">
 <h1>Prova 검증 리포트</h1>
-<div class="meta">
-  대상 <code>{_esc(report.target_url)}</code> ·
-  기획서 <code>{_esc(spec_name)}</code> ·
-  실행 <code>{_esc(report.run_id)}</code> · {_esc((report.created_at or "")[:16].replace("T", " "))}
-  {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
-  <br>스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
-  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
-</div>
+<div class="meta">{meta_html}</div>
+<p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
+  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)</p>
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
 {mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <p class="concl">{_conclusion(report.cases, total)} <span class="rate">통과율 {rate}%</span></p>
