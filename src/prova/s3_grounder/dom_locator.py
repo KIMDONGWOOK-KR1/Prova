@@ -43,13 +43,13 @@ from prova.text_utils import normalize_ws
 #: 전략 이름 -> 사람이 읽는 설명. 리포트의 스텝 표(report_builder.strategy_label)가
 #: 쓴다. 새 전략을 더하면 여기에도 더한다 — 없으면 원시 이름이 그대로 찍힌다.
 STRATEGY_LABELS = {
-    "label": "<label> 연결",
+    "label": "항목 이름",
     "placeholder": "안내 문구",
     "placeholder_hint": "안내 문구 (기획서 값)",
     "table_label": "표 칸 라벨",
-    "role": "접근성 role+name",
+    "role": "버튼·링크 이름",
     "text": "텍스트 일치",
-    "vlm": "화면 이미지 (2차)",
+    "vlm": "화면 이미지",
 }
 
 

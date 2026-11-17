@@ -13,6 +13,7 @@ vLLM 에 연결하지 못했을 때 mock 으로 자동 전환하면, 아무 추�
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import NoReturn, Optional
@@ -644,6 +645,7 @@ def serve(
 
     typer.secho(f"Prova 웹 UI  http://{bind}:{where}", bold=True)
     typer.echo("  종료하려면 Ctrl+C")
+    os.environ["PROVA_CONFIG"] = str(config)
     uvicorn.run("prova.server.app:app", host=bind, port=where, log_level="warning")
 
 

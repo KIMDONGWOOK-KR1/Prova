@@ -40,7 +40,7 @@ from urllib.parse import parse_qs, urlsplit
 WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 #: 리포트·엑셀이 같은 말로 쓰는 한계 문장.
 LIMITS = ("GET 으로 데이터를 바꾸는 주소와 웹소켓 메시지는 막지 못합니다.")
-UNVERIFIABLE_PREFIX = "dry-run: 제출 요청을 막아 서버 응답을 볼 수 없습니다"
+UNVERIFIABLE_PREFIX = "쓰기 요청 막기로 제출을 막아 결과를 볼 수 없습니다"
 
 
 def _fields(request) -> list[str]:
@@ -119,7 +119,8 @@ def mark_unverifiable(verdict, guard: WriteGuard) -> None:
     verdict.evidence["dry_run_original"] = verdict.verdict
     verdict.verdict = "FAIL"
     verdict.failure_category = "unverifiable"
-    verdict.failure_detail = f"{UNVERIFIABLE_PREFIX} — 막은 요청: {' / '.join(blocked)}"
+    # 첫 문장만 리포트 대제목이 된다 — 막은 요청(주소·칸 이름)은 '자세히' 로 내려간다.
+    verdict.failure_detail = f"{UNVERIFIABLE_PREFIX}. 막은 요청: {' / '.join(blocked)}"
 
 
 def dry_run_summary(verdicts) -> dict:

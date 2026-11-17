@@ -157,3 +157,10 @@ def test_리포트_규칙_표시가_기획서의_이름을_쓴다():
     html = _case_html(verdict, open_by_default=True)
     assert "비밀번호 확인 · 다른 항목과 일치" in html
     assert "title='password_confirm'" in html  # 식별자는 지우지 않고 작게 둔다
+
+
+def test_조사는_받침을_따른다():
+    from prova.wording import josa
+    assert josa("닉네임", "을", "를") == "을"
+    assert josa("비밀번호", "을", "를") == "를"
+    assert josa("ID", "을", "를") == "을(를)"

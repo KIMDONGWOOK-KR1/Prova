@@ -34,6 +34,7 @@ class Job:
     messages: list[str] = field(default_factory=list)
     result: Any = None
     error: str = ""
+    cancelled: bool = False
 
     def public(self, since: int = 0) -> dict:
         """화면에 보낼 형태. since 이후의 메시지만 싣는다."""
@@ -62,6 +63,10 @@ def _user_message(exc: Exception) -> str:
             "진행 로그를 개발자에게 전달하세요.")
 
 
+class JobCancelled(Exception):
+    """사용자가 [멈추기] 를 눌렀다."""
+
+
 class JobRunner:
     """한 번에 하나만 도는 작업 실행기."""
 
@@ -75,6 +80,13 @@ class JobRunner:
 
     def get(self, job_id: str) -> Optional[Job]:
         return self._jobs.get(job_id)
+
+    def cancel(self, job_id: str) -> bool:
+        job = self._jobs.get(job_id)
+        if job is None or job.status != "running":
+            return False
+        job.cancelled = True
+        return True
 
     @property
     def busy(self) -> bool:
@@ -106,6 +118,10 @@ class JobRunner:
             self._active = job.job_id
 
         def report(message: str) -> None:
+            # 멈춤은 다음 진행 보고 때 걸린다 — 케이스 하나가 끝나야 멈춘다. 브라우저를
+            # 중간에 끊으면 정리되지 않은 창이 남는다.
+            if job.cancelled:
+                raise JobCancelled("실행을 멈췄습니다. 멈추기 전까지의 결과는 저장하지 않았습니다.")
             job.messages.append(message)
 
         def target() -> None:

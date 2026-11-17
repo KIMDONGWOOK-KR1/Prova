@@ -503,6 +503,10 @@ class TestCase(BaseModel):
     # 끊기면 그건 스텝 실패로 기록되고 그 스텝이 어느 화면인지도 함께 남는다.
     screen_id: str
     title: str
+    # 화면에 보일 문장 — '무엇을 하면 → 어떻게 돼야 하는가'. title 과 따로 둔다: title 은 모델에게
+    # 보내는 질문(제목 다듬기·요청 해석)에 들어가서, 바꾸면 저장해 둔 모델 응답(replay)이
+    # 맞지 않게 된다. 비어 있으면 화면은 title 을 쓴다.
+    plain: str = ""
     type: CaseType
     # 이 케이스가 밟는 흐름의 id. 흐름 케이스가 아니면 None.
     # 리포트에서 화면별 구획과 흐름 구획을 나누는 데 쓴다.
@@ -699,6 +703,7 @@ class Verdict(BaseModel):
 
     case_id: str
     title: str = ""
+    plain: str = ""  # TestCase.plain 과 같다
     type: CaseType = "positive"
     # 리포트를 화면별로 묶는 데 쓴다. case_id 접두사에서 잘라낼 수도 있지만,
     # 문자열을 다시 파싱해야 하는 값은 필드로 남기는 편이 낫다 — screen_id 에

@@ -73,7 +73,7 @@ def test_케이스_시트는_모든_케이스와_구분을_담는다(tmp_path: P
     assert c["기대"] == "c 기대" and c["실제"] == "다른 문구"
     assert c["상세"] == "문구가 다름"
     assert c["스크린샷"] == "c/step1.png"
-    assert rows[3]["실패 원인"] == "요소 미탐지"
+    assert rows[3]["실패 원인"] == "화면에서 못 찾음"
 
 
 def test_결함_목록에는_기획서와_다름만_들어간다(tmp_path: Path):
@@ -100,7 +100,7 @@ def test_요약은_화면_리포트와_같은_수를_말한다(tmp_path: Path):
     assert kv["실행 문제"] == 1
     assert kv["약한 확인"] == 1
     assert kv["화면 크기"] == "390x844"
-    assert kv["2차 경로(화면 이미지)"] == "꺼짐"
+    assert kv["화면 이미지로 찾기"] == "꺼짐"
 
 
 def test_사람이_고친_값으로_돈_실행이면_요약이_말한다(tmp_path: Path):

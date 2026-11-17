@@ -29,18 +29,18 @@ def test_끈_것도_사실이라_남는다():
 
 def test_켜면_머리말에_모델이_나온다():
     html = render_html(_report(vlm="qwen3.5-4b-awq"))
-    assert "2차 경로 <code>켬 · qwen3.5-4b-awq</code>" in html
+    assert "화면 이미지로 찾기 <code>켬 · qwen3.5-4b-awq</code>" in html
 
 
 def test_끄면_머리말에_꺼짐이_나온다():
-    assert "2차 경로 <code>꺼짐</code>" in render_html(_report(vlm=""))
+    assert "화면 이미지로 찾기 <code>꺼짐</code>" in render_html(_report(vlm=""))
 
 
 def test_기록이_없는_옛_리포트는_줄이_없다():
     """이 칸이 생기기 전의 리포트를 '꺼짐' 으로 읽으면 모르는 것을 안다고 말하는 것이다."""
     report = _report(vlm="")
     del report.summary["vlm"]
-    assert "2차 경로" not in render_html(report)
+    assert "화면 이미지로 찾기 <code>" not in render_html(report)
 
 
 # ── 끈 채로 요소를 못 찾았으면 켜서 다시 돌려 볼 만하다고 알린다 (2026-11-12) ──

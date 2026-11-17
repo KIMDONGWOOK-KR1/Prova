@@ -18,6 +18,8 @@
 
 from __future__ import annotations
 
+import re
+
 from typing import Iterable, Optional
 
 from prova.models import Expectation
@@ -31,6 +33,17 @@ ACTION_LABELS = {
 
 def _q(text) -> str:
     return f"'{text}'"
+
+
+def josa(word: str, with_final: str, without_final: str) -> str:
+    """word 뒤에 붙일 조사 — 받침이 있으면 with_final('을'), 없으면 without_final('를').
+
+    한글로 끝나지 않으면(영문·숫자) 받침을 알 수 없어 둘 다 적는다.
+    """
+    last = (word or " ")[-1]
+    if not "가" <= last <= "힣":
+        return f"{with_final}({without_final})"
+    return with_final if (ord(last) - 0xAC00) % 28 else without_final
 
 
 def expectation_sentence(expected: Expectation) -> str:
@@ -109,10 +122,55 @@ def reproduction_lines(steps: Iterable, setup_steps: Iterable = ()) -> list[str]
 
 
 def source_sentence(source) -> str:
-    """기획서 근거 한 곳 — '2쪽 표 — …'."""
-    return f"{source.page}쪽 {'표' if source.table else '본문'} — {source.quote}"
+    """기획서 근거 한 곳 — '2쪽 표 — …'.
+
+    표 행은 원문이 `nickname | 입력 | 닉네임 | 필수 | - | …` 처럼 온다. 칸 구분자와 빈 칸('-'),
+    첫 칸의 식별자(PDF 에서 'password_con firm' 처럼 깨져 오기도 한다)는 기획자가 읽을
+    말이 아니어서 빼고 ' · ' 로 잇는다.
+    """
+    quote = source.quote
+    if source.table and "|" in quote:
+        cells = [c.strip() for c in quote.split("|")]
+        if cells and re.fullmatch(r"[A-Za-z0-9_\- ]+", cells[0]):
+            cells = cells[1:]
+        quote = " · ".join(c for c in cells if c and c not in ("-", "—"))
+    return f"{source.page}쪽 {'표' if source.table else '본문'}: {quote}"
 
 
 def rule_subject(target_label: Optional[str], target_element: Optional[str]) -> str:
     """규칙이 걸린 요소를 가리키는 말 — 기획서의 이름을 먼저, 없으면 식별자."""
     return target_label or target_element or ""
+
+
+# '…하면 막힌다' 를 '…해도 막히지 않습니다' 로 — 결함 케이스에서 실제로 일어난 일.
+_NOT_BLOCKED = [
+    ("입력하면 막힌다", "입력해도 막히지 않습니다"),
+    ("비워 두면 막힌다", "비워 둬도 막히지 않습니다"),
+    ("않으면 막힌다", "않아도 막히지 않습니다"),
+]
+
+
+def not_blocked_sentence(plain: str) -> Optional[str]:
+    """막혀야 하는 입력이 막히지 않았을 때의 한 문장. 그런 모양의 문장이 아니면 None."""
+    for done, happened in _NOT_BLOCKED:
+        if plain.endswith(done):
+            return plain[: -len(done)] + happened
+    return None
+
+
+def copy_text(verdict, headline: str, target_url: str = "") -> str:
+    """'재현 절차 복사' 로 클립보드에 담는 글 — 개발자에게 그대로 붙여 넣는다."""
+    ev = verdict.evidence or {}
+    lines = [headline]
+    if target_url:
+        lines.append(f"주소: {target_url}")
+    setup = [r for r in verdict.step_results if r.phase == "setup"]
+    steps = [r for r in verdict.step_results if r.phase != "setup"]
+    lines += reproduction_lines(steps, setup)
+    if ev.get("expected"):
+        lines.append(f"기대: {ev['expected']}")
+    if ev.get("actual"):
+        lines.append(f"실제: {ev['actual']}")
+    lines += [f"기획서: {source_sentence(s)}" for s in verdict.spec_sources]
+    return "\n".join(lines)
+

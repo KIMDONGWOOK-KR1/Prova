@@ -183,7 +183,7 @@ class TestReportCompleteness:
         report, run_dir = bad_run
         assert report.summary["llm_backend"] == "mock"
         html = (run_dir / "report.html").read_text(encoding="utf-8")
-        assert "mock 백엔드로 실행된 리포트입니다" in html
+        assert "연습용으로 실행한 리포트입니다" in html
 
 
 class TestGroundingQuality:

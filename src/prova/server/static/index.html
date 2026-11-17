@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Prova</title>
+<title>Prova — 설계 문서 기반 QA 에이전트</title>
 <!--
   외부 자원을 불러오지 않는다. 리포트가 폐쇄망에서 열려야 한다는 원칙과 같다 —
   CDN 폰트도 아이콘도 없고, 아이콘은 인라인 SVG 다.
@@ -17,31 +17,52 @@
 </head>
 <body>
 
+<!-- 상단 한 줄 — 이름, 지금 다루는 기획서와 주소, 그리고 네 단계 중 어디인지. -->
+<header class="topbar">
+  <b class="name">Prova</b>
+  <div class="crumbs" id="crumbs"></div>
+  <div class="chips" id="stageChips"></div>
+  <ol class="stepper" id="stepper" aria-label="진행 단계">
+    <li><button type="button" data-step="1">1 기획서</button></li>
+    <li><button type="button" data-step="2">2 항목 검토</button></li>
+    <li><span data-step="3">3 실행</span></li>
+    <li><span data-step="4">4 결과</span></li>
+  </ol>
+</header>
+
 <div class="app">
 
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
   <aside class="side">
 
-    <div class="brand">
-      <svg width="26" height="26" viewBox="0 0 26 26" fill="none" aria-hidden="true">
-        <rect x="1" y="1" width="24" height="24" rx="6"
-              stroke="var(--accent-solid)" stroke-width="1.6"/>
-        <path d="M7.5 18.5V7.5h4.6a3.4 3.4 0 0 1 0 6.8H7.5"
-              stroke="var(--accent-solid)" stroke-width="1.9"
-              stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M14 16.6l2.2 2.2 4.3-4.6" stroke="var(--pass-fg)"
-              stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
-      </svg>
-      <div>
-        <div class="name">Prova</div>
-        <div class="sub">설계 문서 기반 QA 에이전트</div>
-      </div>
-    </div>
-
     <div class="side-scroll">
 
+      <!-- 꼭 정해야 하는 것만 위에 둔다 — 기획서와 주소, 그리고 [계획 만들기].
+           가끔 쓰는 설정은 아래 '실행 옵션' 에 접혀 있다. -->
       <section class="panel">
-        <h2>실행 설정</h2>
+        <h1>기획서대로 만들어졌는지 확인합니다</h1>
+        <p class="lede">기획서와 사이트 주소만 있으면 됩니다. 테스트 코드는 쓰지 않습니다.</p>
+
+        <div class="field">
+          <label for="pdf">기획서</label>
+          <select id="pdf"></select>
+          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF/JSON 올리기</button>
+          <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
+        </div>
+
+        <div class="field">
+          <label for="url">검사할 사이트 주소</label>
+          <input type="url" id="url" value="http://localhost:8100/bad"
+                 placeholder="http://localhost:8100/good" spellcheck="false">
+          <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
+          <div class="variant" id="variantRow">
+            <span class="hint">예시 사이트 넣기</span>
+            <div class="seg" role="group" aria-label="예시 사이트">
+              <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
+              <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
+            </div>
+          </div>
+        </div>
 
         <div class="field">
           <label for="projectPick">프로젝트 (선택)</label>
@@ -49,73 +70,54 @@
           <input type="text" id="project" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
                  aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off"
                  maxlength="60" hidden>
-          <div class="hint">기획서와 실행을 묶는 이름입니다. 있던 프로젝트는 목록에서 고르고,
-            없으면 '새 프로젝트 만들기' 로 이름을 적습니다. 같은 이름으로 다시 돌리면 대상
-            주소가 바뀌어도 차수로 이어집니다.</div>
+          <div class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</div>
         </div>
 
         <div class="field">
-          <label for="pdf">기획서</label>
-          <select id="pdf"></select>
+          <label for="request">무엇을 확인할까요 (선택)</label>
+          <textarea id="request" placeholder="예) 회원가입이 잘 되는지 확인해줘&#10;비워 두면 전체 케이스를 실행합니다"></textarea>
+        </div>
+        <div class="go">
+          <button class="btn primary" id="planBtn" type="button">확인할 항목 뽑기</button>
+          <span class="hint">바로 실행되지 않습니다. 뽑은 항목을 먼저 보여드립니다.</span>
+        </div>
+      </section>
+
+      <details class="panel opts" id="opts">
+        <summary><span>실행 옵션</span><span class="now" id="optsNow"></span></summary>
+
+        <div class="field">
+          <label for="backend">기획서 읽는 방식</label>
+          <select id="backend">
+            <option value="mock">연습용 — 저장된 정답 사용 (예시 기획서 전용)</option>
+            <option value="vllm">실제 모델로 읽기 — 모델 서버 필요</option>
+            <option value="replay">저장된 모델 응답으로 읽기 — 서버 없이</option>
+          </select>
         </div>
 
         <div class="field">
-          <label for="figma">Figma 응답 (선택 — 병합 모드)</label>
+          <label for="figma">Figma 자료 함께 읽기 (선택)</label>
           <select id="figma">
             <option value="">없음 — 기획서만</option>
           </select>
         </div>
 
         <div class="field">
-          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF/JSON 올리기</button>
-          <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
-        </div>
-
-        <div class="field">
-          <label for="url">테스트 대상 URL</label>
-          <input type="url" id="url" value="http://localhost:8100/bad"
-                 placeholder="http://localhost:8100/good" spellcheck="false">
-          <div style="margin-top:8px" class="seg" role="group" aria-label="구현 변형">
-            <button type="button" id="segGood" aria-pressed="false">/good</button>
-            <button type="button" id="segBad" aria-pressed="true">/bad</button>
-          </div>
-          <div class="hint">good = 기획서대로 만든 앱 · bad = 결함을 심어 둔 앱</div>
-        </div>
-
-        <div class="field">
-          <label for="backend">LLM 백엔드</label>
-          <select id="backend">
-            <option value="mock">연습용 — 저장된 정답 사용 (GPU 불필요)</option>
-            <option value="vllm">실제 모델 — GPU 서버</option>
-            <option value="replay">실제 모델의 저장된 응답 — 서버 없이 재생</option>
-          </select>
-        </div>
-
-        <div class="field">
           <label class="check" for="vlm">
-            <input type="checkbox" id="vlm"> 화면 이미지로 찾기 (2차 경로)
+            <input type="checkbox" id="vlm"> 화면 이미지로 찾기
           </label>
-          <div class="hint">라벨로 못 찾은 요소만 스크린샷에서 찾아 누릅니다 · GPU 서버 필요.
-            좌표를 누르는 경로라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
+          <div class="hint">요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
+            좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
         </div>
 
         <div class="field">
           <label class="check" for="dryRun">
-            <input type="checkbox" id="dryRun"> 쓰기 요청 막기 (dry-run)
+            <input type="checkbox" id="dryRun"> 쓰기 요청 막기
           </label>
-          <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트용 · 제출(POST·PUT·PATCH·DELETE)을
-            막고 전제 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>
+          <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
+            막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>
         </div>
-      </section>
-
-      <section class="panel">
-        <h2>무엇을 확인할까요</h2>
-        <div class="field">
-          <label for="request" class="sr">자연어 요청</label>
-          <textarea id="request" placeholder="예) 회원가입이 잘 되는지 확인해줘&#10;비워 두면 전체 케이스를 실행합니다"></textarea>
-        </div>
-        <button class="btn primary block" id="planBtn" type="button">계획 만들기</button>
-      </section>
+      </details>
 
       <section class="panel">
         <h2>실행 기록</h2>
@@ -131,11 +133,6 @@
 
   <!-- ═══ 메인 ═══════════════════════════════════════════════════════ -->
   <main class="main">
-
-    <div class="topbar">
-      <div class="crumbs" id="crumbs"></div>
-      <div class="chips" id="stageChips"></div>
-    </div>
 
     <div class="stage" id="stage"></div>
 

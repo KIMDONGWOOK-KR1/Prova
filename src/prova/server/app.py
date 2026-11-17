@@ -18,6 +18,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from datetime import datetime
 from pathlib import Path
@@ -151,7 +152,8 @@ def _project_names(groups: list[dict]) -> list[str]:
 
 
 def _config() -> dict:
-    cfg_path = Path("configs/default.yaml")
+    # `prova serve --config` 가 넘긴 파일. uvicorn 이 모듈을 문자열로 다시 불러오므로 환경변수로 받는다.
+    cfg_path = Path(os.environ.get("PROVA_CONFIG", "configs/default.yaml"))
     if not cfg_path.exists():
         return {}
     return yaml.safe_load(cfg_path.read_text(encoding="utf-8")) or {}
@@ -285,7 +287,7 @@ def plan(body: PlanRequest) -> dict:
                 {
                     "case_id": c.case_id,
                     "screen_id": c.screen_id,
-                    "title": c.title,
+                    "title": c.plain or c.title,
                     "violates": c.violates,
                     # 사람이 읽는 이름 — 규칙·요소를 기획서의 말로 (화면이 식별자 대신 쓴다)
                     "rule_label": (RULE_LABELS.get(c.violates, c.violates)
@@ -442,7 +444,7 @@ def _make_vlm(cfg: dict):
                               model=llm_cfg.get("model", DEFAULT_MODEL))
         client.health()
     except (ValueError, VLMError) as exc:
-        raise HTTPException(409, f"2차 경로를 켤 수 없습니다 — {exc}")
+        raise HTTPException(409, f"화면 이미지로 찾기를 켤 수 없습니다 — {exc}")
     return client
 
 
@@ -460,6 +462,13 @@ def job_status(job_id: str, since: int = 0) -> dict:
     if job is None:
         raise HTTPException(404, f"작업을 찾을 수 없습니다: {job_id}")
     return job.public(since)
+
+
+@app.post("/api/job/{job_id}/cancel")
+def job_cancel(job_id: str) -> dict:
+    if not runner.cancel(job_id):
+        raise HTTPException(409, "멈출 수 있는 실행이 없습니다.")
+    return {"ok": True}
 
 
 @app.get("/api/runs")

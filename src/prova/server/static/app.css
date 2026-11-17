@@ -112,8 +112,11 @@ a { color: var(--accent-fg); text-underline-offset: 2px; }
 }
 
 .chip.ok   { color: var(--pass-fg); background: var(--pass-bg); border-color: transparent; }
-.chip.busy { color: var(--warn-fg); background: var(--warn-bg); border-color: transparent; }
+/* 실행 중은 경고가 아니다 — 노랑은 알림에만 쓴다. */
+.chip.busy { color: var(--fg-default); background: var(--bg-inset); border-color: transparent; }
 .chip.warn { color: var(--warn-fg); background: var(--warn-bg); border-color: transparent; }
+.chip.fail { color: var(--fail-fg); background: var(--fail-bg); border-color: transparent; }
+.chip.infra { color: var(--note-fg); background: var(--note-bg); border-color: transparent; }
 
 /* ── 사이드바 폼 ───────────────────────────────────────────────────────── */
 
@@ -221,9 +224,11 @@ select {
   background: var(--bg-surface);
   color: var(--fg-default);
   cursor: pointer;
-  transition: background 0.12s, border-color 0.12s, color 0.12s;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, transform 0.08s;
   white-space: nowrap;
 }
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
 
 .btn.primary { background: var(--accent-solid); color: var(--fg-onaccent); }
 .btn.primary:hover:not(:disabled) { background: var(--accent-hover); }
@@ -244,7 +249,6 @@ select {
    더 심하다. 목록 자체를 스크롤시킨다. */
 .runs {
   display: flex; flex-direction: column; gap: 2px;
-  max-height: 264px; overflow-y: auto;
   margin: 0 calc(var(--sp-2) * -1);
   padding: 0 var(--sp-2);
 }
@@ -395,23 +399,23 @@ select {
   border-radius: var(--r-lg);
   border: 1px solid var(--border-default);
   background: var(--bg-surface);
-  font-size: var(--tx-md);
+  font-size: var(--tx-base);
   line-height: var(--lh-normal);
   margin-bottom: var(--sp-3);
 }
 
 .alert svg { margin-top: 2px; }
 /* 제목만 블록이다. 본문 속 <b> 까지 블록으로 만들면 문장 한가운데서 줄이 끊긴다. */
-.alert > div > b:first-child { display: block; font-weight: 620; margin-bottom: 2px; }
+.alert > div > b:first-child { display: block; font-weight: 620; margin-bottom: 2px; font-size: var(--tx-lg); }
 .alert .why { color: var(--fg-muted); white-space: pre-line; }
 .alert code { font-family: var(--font-mono); font-size: var(--tx-sm);
               background: var(--bg-inset); padding: 1px 5px; border-radius: var(--r-sm); }
 
 .alert.info { background: var(--info-bg); border-color: var(--accent-border); }
 .alert.info svg { color: var(--info-fg); }
-.alert.warn { background: var(--warn-bg); border-color: transparent; }
+.alert.warn { background: var(--warn-bg); border-color: var(--warn-fg); }
 .alert.warn svg { color: var(--warn-fg); }
-.alert.fail { background: var(--fail-bg); border-color: transparent; }
+.alert.fail { background: var(--fail-bg); border: 2px solid var(--fail-fg); }
 .alert.fail svg { color: var(--fail-fg); }
 
 /* ── 도구 막대 ─────────────────────────────────────────────────────────── */
@@ -473,7 +477,7 @@ select {
   grid-template-columns: 20px minmax(0, 1fr) auto;
   gap: var(--sp-3);
   align-items: start;
-  padding: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
   border-bottom: 1px solid var(--border-subtle);
   cursor: pointer;
 }
@@ -583,6 +587,7 @@ label.check input[type=checkbox] { margin: 0; }
 @media (prefers-reduced-motion: reduce) {
   .spin { animation: none; }
   * { transition: none !important; }
+  .btn:hover, .btn:active { transform: none !important; }
 }
 
 .log {
@@ -675,13 +680,12 @@ details.raw[open] > summary::before { content: "▾ "; }
 .reportbox iframe {
   display: block;
   width: 100%;
-  height: 560px;
+  height: calc(100vh - 200px);
+  min-height: 560px;
   border: none;
   background: var(--bg-canvas);
   resize: vertical;
 }
-
-.reportbox.tall iframe { height: 85vh; }
 
 /* ── 접근성 보조 ───────────────────────────────────────────────────────── */
 
@@ -714,3 +718,228 @@ details.raw[open] > summary::before { content: "▾ "; }
 
 /* 새 프로젝트 이름 칸 — 목록에서 '새 프로젝트 만들기' 를 골랐을 때만 보인다 */
 #projectPick + #project { margin-top: var(--sp-2); }
+
+/* ── 실행 옵션 — 가끔 쓰는 설정은 접어 둔다. 지금 값은 접힌 채로도 보인다 ── */
+.opts > summary {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-2);
+  cursor: pointer; font-size: var(--tx-sm); font-weight: 550; color: var(--fg-muted);
+}
+.opts > summary .now { font-weight: 400; color: var(--fg-subtle);
+                       overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.opts[open] > summary { margin-bottom: var(--sp-3); }
+#uploadBtn { margin-top: var(--sp-2); }
+#planBtn { margin-top: var(--sp-1); }
+
+/* ── 계획 — 화면 안의 항목 묶음 머리줄, 도구 막대 안의 실행 안내 ───────── */
+.subhead {
+  display: flex; align-items: baseline; gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-3) var(--sp-1);
+  font-size: var(--tx-sm); font-weight: 640; color: var(--fg-muted);
+}
+.subhead span { font-family: var(--font-mono); font-size: var(--tx-xs);
+                font-weight: 400; color: var(--fg-subtle); }
+.toolbar .hint { flex-basis: 100%; text-align: right; font-size: var(--tx-sm); color: var(--fg-muted); }
+.toolbar .hint:empty { display: none; }
+
+/* ── 진행 — 몇 건 중 몇 번째 ───────────────────────────────────────────── */
+.pnow { font-size: var(--tx-lg); font-weight: 600; margin-bottom: var(--sp-2); }
+.pnow:empty { display: none; }
+progress { display: block; width: 100%; height: 8px; margin-bottom: var(--sp-4);
+           accent-color: var(--accent-solid); }
+
+/* ── 결과 머리 · 실행 기록 — 색 점만이 아니라 글자로도 말한다 ───────────── */
+.head .sub code { font-family: var(--font-mono); font-size: var(--tx-sm);
+                  color: var(--fg-subtle); margin-left: var(--sp-2); }
+.run .score.fail { color: var(--fail-fg); }
+.run .score.pass { color: var(--pass-fg); }
+
+
+/* ═══ 흑백 + 색 블록 ═══════════════════════════════════════════════════════
+ * 사이드바를 없애고 위에 단계 네 개를 둔다. 1단계(기획서)에서만 입력 양식이
+ * 보이고, 나머지 단계는 무대가 화면을 다 쓴다. 바탕은 흰색, 글자와 주 버튼은
+ * 먹색, 색은 판정과 알림에만 연한 블록으로 쓴다. 위 규칙을 덮어쓴다.
+ */
+html, body { height: auto; }
+body { background: var(--bg-surface); }
+a { color: var(--fg-default); }
+::selection { background: var(--pass-bg); }
+
+.topbar { position: sticky; top: 0; z-index: 3; }
+.topbar .name { font-size: var(--tx-lg); letter-spacing: -0.02em; }
+.crumbs { font-family: var(--font-sans); }
+.stepper { display: flex; gap: var(--sp-5); margin: 0 0 0 auto; padding: 0; list-style: none; align-self: stretch; }
+.stepper li { display: flex; }
+.stepper [data-step] {
+  display: flex; align-items: center; padding: 0; white-space: nowrap;
+  font: inherit; font-size: var(--tx-md); color: var(--fg-default);
+  background: none; border: none; border-bottom: 2px solid transparent;
+}
+.stepper button { cursor: pointer; }
+.stepper [aria-current] { font-weight: 700; border-bottom-color: var(--fg-default); }
+
+.app { grid-template-columns: minmax(0, 1100px); justify-content: center; height: auto;
+       padding: var(--sp-8) var(--sp-6); }
+.side { display: none; background: none; border: none; }
+body[data-step="1"] .app { grid-template-columns: minmax(0, 640px); }
+body[data-step="1"] .main:has(.stage:empty) { display: none; }
+body[data-step="1"] .main { order: -1; }  /* 에러 안내는 입력 칸 위에 */
+body[data-step="1"] .side { display: block; }
+.side-scroll, .stage { overflow: visible; padding: 0; }
+.stage > * { max-width: none; }
+@media (max-width: 900px) {
+  body[data-step="1"] .app { grid-template-columns: minmax(0, 1fr); }
+  .crumbs { display: none; }
+}
+
+.panel { padding: 0 0 var(--sp-5); }
+.panel + .panel { padding-top: var(--sp-4); }
+.panel > h1 { font-size: 34px; font-weight: 400; letter-spacing: -0.02em; line-height: 1.25; margin: 0 0 var(--sp-2); }
+.lede { margin: 0 0 var(--sp-6); }
+.panel > h2 { font-size: var(--tx-md); letter-spacing: 0; text-transform: none; color: var(--fg-default);
+              padding-bottom: var(--sp-2); border-bottom: 2px solid var(--fg-default); }
+.field { margin-bottom: var(--sp-5); }
+.field > label { font-size: var(--tx-md); font-weight: 650; color: var(--fg-default); }
+input[type=text], input[type=url], select, textarea {
+  padding: 10px var(--sp-3); font-size: var(--tx-base); background: var(--bg-surface); border-radius: var(--r-lg);
+}
+input[type=text], input[type=url] { font-size: var(--tx-md); }
+input:focus, select:focus, textarea:focus { border-color: var(--fg-default); }
+label.check input[type=checkbox], .case input[type=checkbox] { accent-color: var(--fg-default); }
+.opts > summary { color: var(--fg-default); font-size: var(--tx-md); font-weight: 650; }
+.go { display: flex; align-items: center; gap: var(--sp-4); flex-wrap: wrap; }
+#planBtn { margin-top: 0; }
+
+.btn { border-radius: var(--r-full); padding: 9px var(--sp-5); font-weight: 650; }
+.btn.primary { background: var(--fg-default); color: var(--bg-surface); }
+.btn.primary:hover:not(:disabled) { background: var(--fg-default); opacity: 0.85; }
+.btn.ghost { border-color: var(--fg-default); color: var(--fg-default); }
+.btn.quiet { border-color: transparent; padding: 4px var(--sp-2); font-weight: 400; text-decoration: underline;
+             text-underline-offset: 2px; color: var(--fg-default); }
+.btn.quiet[aria-pressed="true"] { background: var(--bg-inset); font-weight: 700; }
+
+/* 첫 화면 오른쪽 — 진행 순서 */
+.blank { max-width: none; margin: 0; text-align: left; background: var(--pass-bg);
+         border-radius: 24px; padding: var(--sp-8); }
+.blank h2 { font-size: var(--tx-md); font-weight: 650; letter-spacing: 0; margin: 0 0 var(--sp-4); }
+.blank ol { display: block; }
+.blank li { gap: 0 var(--sp-3); color: var(--fg-default); }
+.blank li:last-child { margin-bottom: 0; }
+.blank li::before { grid-row: 1 / span 2; background: none; color: var(--fg-default);
+                    font-family: var(--font-sans); font-size: var(--tx-md); place-items: start; height: auto; }
+.blank li span { grid-column: 2; }
+
+.run[aria-current="true"] { background: var(--bg-inset); }
+.chip { border: none; border-radius: var(--r-md); font-family: var(--font-sans); }
+
+/* 계획 · 진행 · 결과 */
+.head h1 { font-size: 30px; font-weight: 400; line-height: 1.35; }
+.head h1 mark { color: inherit; border-radius: var(--r-lg); padding: 2px var(--sp-2);
+                -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+mark.fail { background: var(--fail-bg); }
+mark.pass { background: var(--pass-bg); }
+mark.infra { background: var(--note-bg); }
+.meter { display: flex; gap: 2px; background: none; border-radius: 0; margin-bottom: var(--sp-2); }
+.meter > i.f { background: var(--fail-fg); }
+.meter > i.x { background: var(--chart-infra); }
+.tally { font-size: var(--tx-md); margin-bottom: var(--sp-5); }
+.tally code { font-family: var(--font-mono); font-size: var(--tx-sm); color: var(--fg-subtle); margin-left: var(--sp-2); }
+
+.toolbar { top: 94px; background: var(--bg-surface); }
+.group > header { top: 140px; background: var(--bg-surface); border-bottom: 2px solid var(--fg-default); }
+.tag { border-radius: var(--r-md); font-family: var(--font-sans); color: var(--fg-default); }
+.tag.rule { background: var(--bg-inset); color: var(--fg-default); }
+.tag.flow, .tag.pass, .tag.fail { color: var(--fg-default); }
+.spec { background: var(--bg-surface); }
+
+.pstep.active { background: var(--bg-inset); }
+.pstep.active .mark { color: var(--fg-default); }
+.spin { border-color: var(--border-default); border-top-color: var(--fg-default); }
+progress { accent-color: var(--fg-default); }
+
+.alert { border-radius: var(--r-xl); }
+/* 정보 알림은 회색이다 — 보라는 '실행 문제' 의 색이라 여기 쓰면 뜻이 섞인다. */
+.alert.info { border-color: transparent; }
+.alert.warn { border-color: transparent; }
+/* 리포트는 상자 안의 상자가 아니라 이 화면의 이어지는 부분이다. */
+.reportbox { border: none; border-radius: 0; overflow: visible; }
+.reportbox > header { padding: var(--sp-2) 0; }
+.reportbox iframe { background: var(--bg-surface); }
+.search input { padding: 7px var(--sp-3) 7px var(--sp-8); }
+.head .spin { margin: 0 auto 0 var(--sp-1); }
+
+/* 상단 바 두 줄 — 윗줄 가운데에 이름, 아랫줄 가운데에 네 단계.
+   기획서·주소(왼쪽)와 결과 꼬리표(오른쪽)는 윗줄 양끝에 둔다. */
+.topbar { display: grid; grid-template-columns: 1fr auto 1fr; grid-template-rows: auto auto;
+          align-items: center; height: auto; padding: var(--sp-3) var(--sp-6) 0; row-gap: var(--sp-2); }
+.topbar .name { grid-column: 2; grid-row: 1; font-size: var(--tx-xl); letter-spacing: -0.03em; }
+.topbar .crumbs { grid-column: 1; grid-row: 1; }
+.topbar .chips { grid-column: 3; grid-row: 1; justify-self: end; }
+.topbar .stepper { grid-column: 1 / -1; grid-row: 2; justify-self: center; margin: 0; gap: var(--sp-8); }
+.stepper [data-step] { padding: var(--sp-2) 0 var(--sp-3); }
+
+/* ═══ PM 검토 반영 (2026-11-17) ═══════════════════════════════════════════ */
+
+/* 항목 검토 — 한 줄은 [체크박스] [제목 · 꼬리표]. 제목을 누르면 절차·기대가 펼쳐진다. */
+.case { grid-template-columns: 20px minmax(0, 1fr); cursor: default; }
+.case .line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--sp-1) var(--sp-2); }
+.case .how { margin: 0; }
+.case .how > summary { list-style: none; cursor: pointer; width: auto; font-size: inherit; color: inherit; }
+.case .how > summary::-webkit-details-marker { display: none; }
+.case .how > summary::after { content: "▸ 절차"; font-size: var(--tx-xs); color: var(--fg-subtle); }
+.case .how[open] > summary::after { content: "▾ 접기"; }
+.case .how > summary:hover .desc { text-decoration: underline; text-underline-offset: 3px; }
+.case .tag.rule { font-family: var(--font-sans); }
+
+/* 실행 중 — 지금까지의 판정 수와 멈추기 */
+.ptally { display: flex; gap: var(--sp-4); font-size: var(--tx-md); margin: 0 0 var(--sp-4); }
+.ptally .ok { color: var(--pass-fg); }
+.ptally .fail { color: var(--fail-fg); }
+.ptally .infra { color: var(--note-fg); }
+#pStop { margin-bottom: var(--sp-5); }
+progress { height: 6px; }
+
+/* 1단계 오른쪽 안내 — 색은 판정에만 쓴다. 통과 초록으로 칠하지 않는다. */
+.blank { background: var(--bg-inset); }
+.variant { display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-2); }
+.variant[hidden] { display: none; }
+
+/* 실행 기록 */
+.run .score.infra { color: var(--note-fg); }
+.run-more > summary { cursor: pointer; font-size: var(--tx-sm); color: var(--fg-muted); padding: var(--sp-2) var(--sp-2); list-style: none; }
+.run-more > summary:hover { color: var(--fg-default); }
+
+/* 결과 제목 — 줄이 바뀌어도 강조 배경이 줄마다 온전히 붙는다 */
+.head h1 { text-wrap: balance; }
+.head h1 mark { -webkit-box-decoration-break: clone; box-decoration-break: clone; }
+
+/* 리포트 틀은 내용 높이에 맞춘다 (app.js fitFrame) — 틀 안 스크롤·크기 손잡이를 없앤다 */
+.reportbox iframe { height: 800px; min-height: 0; resize: none; overflow: hidden; }
+
+/* 단계 표시 — 누를 수 있는 단계와 아닌 단계를 구분한다 */
+.stepper span[data-step]:not([aria-current]) { color: var(--fg-subtle); }
+.stepper button[data-step]:hover { border-bottom-color: var(--border-strong); }
+
+/* 좁은 화면 — 무엇을 검사 중인지(기획서 이름)와 결과 꼬리표는 남긴다 */
+@media (max-width: 900px) {
+  .topbar .crumbs { display: flex; min-width: 0; }
+  .topbar .crumbs .sep, .topbar .crumbs span:not(.sep) { display: none; }
+  .topbar .crumbs b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .topbar .chips { display: flex; }
+  .topbar .chips .chip:not(:first-child) { display: none; }
+  .topbar .stepper { gap: var(--sp-5); }
+}
+.run .score, .run .who span { font-family: var(--font-sans); }
+.head h1 { word-break: keep-all; }
+
+/* 결과 화면 머리 — 왼쪽 결론·조건, 오른쪽 할 일 */
+.result-head { display: flex; justify-content: space-between; align-items: flex-start; gap: var(--sp-4); flex-wrap: wrap; }
+.result-head .cond { font-size: var(--tx-md); color: var(--fg-muted); margin-top: var(--sp-1); }
+.result-head .actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
+.result-head .actions .btn { text-decoration: none; }
+.reportbox { border-top: none; }
+
+/* 확인 불가 — 결함도 실행 문제도 아니다(요구서 4절 2번). 무채색으로, 글자와 함께. */
+.meter > i.u { background: var(--chart-unv); }
+.ptally .unv, .run .score.unv { color: var(--fg-muted); }
+.chip.unv { color: var(--fg-default); background: var(--bg-inset); border-color: var(--border-default); }
+mark.unv { background: var(--bg-inset); }

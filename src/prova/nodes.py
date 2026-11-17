@@ -402,9 +402,22 @@ def run_cases(state: AgentState) -> AgentState:
         listen(state.page)
 
     total = len(state.cases)
+
+    def tally() -> None:
+        # 실행 화면이 끝까지 기다리지 않고 지금까지의 결과를 보이게 한다 (app.js pushProgress).
+        if not state.on_progress:
+            return
+        fails = [v for v in state.verdicts if v.verdict == "FAIL"]
+        defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
+        unv = sum(1 for v in fails if v.failure_category == "unverifiable")
+        state.on_progress(f"     집계 통과 {len(state.verdicts) - len(fails)} · "
+                          f"기획서와 다름 {defects} · 실행 문제 {len(fails) - defects - unv}"
+                          f" · 확인 불가 {unv}")
+
     for i, case in enumerate(state.cases, 1):
         if state.on_progress:
-            state.on_progress(f"     케이스 {i}/{total} · {case.title}")
+            tally()
+            state.on_progress(f"     케이스 {i}/{total} · {case.plain or case.title}")
         console_errors.clear()
         if case.precondition_unmet and state.storage_state is None:
             # 전제(로그인)를 세울 스텝 자체를 만들지 못한 케이스다
@@ -455,6 +468,7 @@ def run_cases(state: AgentState) -> AgentState:
             mark_unverifiable(verdict, guard)
         state.verdicts.append(verdict)
 
+    tally()
     return state
 
 
@@ -484,7 +498,7 @@ def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
     )
     detail = f"전제(로그인)를 세울 수 없어 실행하지 않았습니다 — {reason}"
     return Verdict(
-        case_id=case.case_id, title=case.title, type=case.type,
+        case_id=case.case_id, title=case.title, plain=case.plain, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
         target_label=case.target_label, spec_sources=case.spec_sources,

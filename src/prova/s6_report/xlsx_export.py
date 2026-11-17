@@ -122,7 +122,7 @@ def _case_rows(report: TestReport, names: dict) -> list[list]:
         category = (CATEGORY_LABELS.get(v.failure_category, CATEGORY_LABELS["unknown"])[0]
                     if v.verdict == "FAIL" else "")
         rows.append([
-            i, names.get(v.screen_id, v.screen_id), v.case_id, v.title,
+            i, names.get(v.screen_id, v.screen_id), v.case_id, v.plain or v.title,
             _TYPE_LABELS.get(v.type, v.type), v.verdict, kind_of(v), category,
             str(ev.get("expected") or ""), str(ev.get("actual") or ""), _sources(v),
             _detail(v),
@@ -141,7 +141,7 @@ def _defect_rows(report: TestReport, names: dict) -> list[list]:
             continue
         ev = v.evidence or {}
         rows.append([
-            len(rows) + 1, names.get(v.screen_id, v.screen_id), v.case_id, v.title,
+            len(rows) + 1, names.get(v.screen_id, v.screen_id), v.case_id, v.plain or v.title,
             str(ev.get("expected") or ""), str(ev.get("actual") or ""), _sources(v),
             _detail(v),
             _reproduction(v),
@@ -166,7 +166,7 @@ def _summary_sheet(ws, report: TestReport) -> None:
     if s.get("viewport"):
         lines.append(("화면 크기", s["viewport"]))
     if "vlm" in s:
-        lines.append(("2차 경로(화면 이미지)", f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"))
+        lines.append(("화면 이미지로 찾기", f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"))
     if s.get("project"):
         lines.append(("프로젝트", s["project"]))
     lines += [
@@ -189,7 +189,7 @@ def _summary_sheet(ws, report: TestReport) -> None:
             f"그 때문에 확인 불가가 된 케이스 {dry.get('cases_blocked')}개, 통과시킨 전제(로그인) 요청 "
             f"{dry.get('setup_allowed')}건. {dry.get('limits')}")
     if backend.startswith("mock"):
-        warnings.append("mock 백엔드로 실행된 리포트입니다 — 실제 모델의 결과가 아닙니다.")
+        warnings.append("연습용으로 실행한 리포트입니다 — 실제 모델의 결과가 아닙니다.")
     edits = s.get("spec_edits") or []
     if edits:
         warnings.append(f"사람이 고친 추출 결과로 실행했습니다({len(edits)}건) — 이 값에 기댄 "

@@ -149,7 +149,7 @@ def test_리포트와_엑셀이_dry_run_이었다고_말한다(tmp_path):
     s["dry_run"] = dry_run_summary([v])
     report = TestReport(run_id="r", target_url="http://x", summary=s, cases=[v])
     html = render_html(report)
-    assert "dry-run — 쓰기 요청을 막고 실행했습니다" in html
+    assert "쓰기 요청을 막고 실행했습니다" in html
     assert "POST /login (email)" in html
     text = " ".join(str(c) for r in load_workbook(save_xlsx(report, tmp_path))["요약"]
                     .iter_rows(values_only=True) for c in r if c)

@@ -96,7 +96,7 @@ def test_규칙_위반_케이스는_그_요소의_표_행을_근거로_갖는다
     case = next(c for c in generate_cases(signup) if c.violates == "max_length")
     sources = sources_for_case(signup, case)
     assert sources and sources[0].table and sources[0].quote.startswith("nickname")
-    assert source_sentence(sources[0]).startswith("1쪽 표 — nickname")
+    assert source_sentence(sources[0]).startswith("1쪽 표: 입력 · 닉네임")
 
 
 def test_필수_케이스는_요소_행과_공통_문구가_적힌_곳을_함께_갖는다(signup):
@@ -146,7 +146,7 @@ def test_리포트_실패_카드에_기획서_근거가_나온다():
                                     SpecSource(page=3, quote="필수 입력 항목입니다.")])
     html = _case_html(verdict, open_by_default=True)
     assert "기획서 근거" in html
-    assert "1쪽 표 — nickname | 입력 | 닉네임" in html and "3쪽 본문 — 필수 입력 항목입니다." in html
+    assert "1쪽 표: 입력 · 닉네임" in html and "3쪽 본문: 필수 입력 항목입니다." in html
 
 
 def test_근거가_없으면_그_줄을_그리지_않는다():

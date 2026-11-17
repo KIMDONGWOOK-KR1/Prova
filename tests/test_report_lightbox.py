@@ -109,7 +109,7 @@ class TestStandalone:
     def test_몇_번째_스텝인지_적힌다(self, page, base):
         page.goto(f"{base}/report.html")
         page.click("#first .shots a >> nth=0")
-        assert "준비 step 1" in page.locator(BOX).inner_text()
+        assert "준비 1단계" in page.locator(BOX).inner_text()
         assert "1 / 3" in page.locator(BOX).inner_text()
 
     def test_Esc_로_닫힌다(self, page, base):

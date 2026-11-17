@@ -61,7 +61,7 @@ class TestShotsHtmlPhase:
                       screenshot="case/setup/step1.png"),
         ])
         html = _shots_html(v)
-        assert "준비 step 1" in html
+        assert "준비 1단계" in html
 
     def test_실행_스텝_스크린샷은_접두어가_없다(self):
         v = _verdict([
@@ -69,5 +69,5 @@ class TestShotsHtmlPhase:
                       screenshot="case/step1.png"),
         ])
         html = _shots_html(v)
-        assert ">step 1<" in html
-        assert "준비 step 1" not in html
+        assert ">1단계<" in html
+        assert "준비 1단계" not in html

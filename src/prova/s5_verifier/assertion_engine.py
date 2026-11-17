@@ -112,6 +112,11 @@ _ERROR_AREA_JS = """() => {
 }"""
 
 
+
+def _quoted(items) -> str:
+    """['a', 'b'] 대신 'a', 'b' — 리포트를 읽는 기획자에게 파이썬 목록 모양을 보이지 않는다."""
+    return ", ".join(f"'{x}'" for x in items)
+
 def capture_page_state(
     page,
     console_errors: list[str] | None = None,
@@ -211,7 +216,7 @@ def _no_error_reason(state: PageState) -> str:
             "기획서가 지정한 문구는 노출되지 않습니다 "
             "(novalidate 를 쓰고 문구를 직접 노출하거나, 기획서를 고쳐야 합니다)"
         )
-    return "에러가 전혀 노출되지 않음 — 위반값을 제출한 뒤 화면에 에러 문구가 없었다"
+    return "에러가 전혀 노출되지 않음. 위반값을 제출한 뒤 화면에 오류 문구가 없었다"
 
 
 def _judge_error_message(expected: Expectation, state: PageState) -> tuple[bool, str]:
@@ -394,10 +399,10 @@ def _judge_options_present(expected: Expectation, state: PageState) -> tuple[boo
 
     missing = [o for o in want if o not in state.options]
     if not missing:
-        return True, f"{target!r} 선택 항목 {want} 모두 확인 (화면: {state.options})"
+        return True, f"{target!r} 선택 목록에 {_quoted(want)} 모두 있음 (화면: {_quoted(state.options)})"
     return False, (
-        f"{target!r} 에서 {missing} 을(를) 찾을 수 없습니다. "
-        f"화면의 항목: {state.options}"
+        f"{target!r} 선택 목록에 {_quoted(missing)} 항목이 없습니다. "
+        f"화면의 항목: {_quoted(state.options)}"
     )
 
 
@@ -541,7 +546,7 @@ def _judge_sorted_desc(expected: Expectation, state: PageState) -> tuple[bool, s
     if got is None:
         return False, reason
     if got.status != "ok":
-        return False, f"{target!r} 을(를) 셀 수 없습니다 — {got.detail}"
+        return False, f"{target!r} 의 개수를 셀 수 없습니다 — {got.detail}"
     values = got.texts
     if not values:
         return False, f"{target!r} 항목이 0개 — 정렬을 확인할 수 없습니다 ({got.detail})"
@@ -577,7 +582,7 @@ def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, s
     if rows is None:
         return False, reason
     if rows.status != "ok":
-        return False, f"{row_target!r} 을(를) 셀 수 없습니다 — {rows.detail}"
+        return False, f"{row_target!r} 의 개수를 셀 수 없습니다 — {rows.detail}"
     if not rows.texts:
         return False, f"{row_target!r} 항목이 0개 — 합계를 확인할 수 없습니다 ({rows.detail})"
 
@@ -585,7 +590,7 @@ def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, s
     if total_col is None:
         return False, reason
     if total_col.status != "ok" or not total_col.texts:
-        return False, f"{total_target!r} 을(를) 화면에서 찾지 못했습니다 ({total_col.detail})"
+        return False, f"화면에서 {total_target!r} 칸을 찾지 못했습니다 ({total_col.detail})"
     # 반복이 정당한 열(금액)과 달리 합계는 하나여야 한다 — 여럿을 조용히
     # 첫 값으로 접으면 근거가 거짓이 된다(판정 불능 = FAIL 원칙, 이 파일의
     # '정확히 1개' 원칙과 같다). dom_locator 의 반복 라벨 경로는 합계가 정말
@@ -604,7 +609,7 @@ def _judge_sum_matches(expected: Expectation, state: PageState) -> tuple[bool, s
     total_text = total_col.texts[0]
     total_amount = _parse_amount(total_text)
     if total_amount is None:
-        return False, f"{total_target!r} 의 값 {total_text!r} 을(를) 금액으로 파싱 실패"
+        return False, f"{total_target!r} 의 값 {total_text!r} 은 금액으로 읽을 수 없습니다"
 
     computed = sum(parsed_rows)
     where = _where(rows) + _where(total_col)
@@ -646,7 +651,7 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
     """
     elapsed = sum(r.elapsed_ms for r in step_results)
     base = dict(
-        case_id=case.case_id, title=case.title, type=case.type,
+        case_id=case.case_id, title=case.title, plain=case.plain, type=case.type,
         screen_id=case.screen_id, flow_id=case.flow_id,
         violates=case.violates, target_element=case.target_element,
         target_label=case.target_label, spec_sources=case.spec_sources,

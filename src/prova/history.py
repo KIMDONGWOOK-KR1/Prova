@@ -64,8 +64,14 @@ def load_reports(root: Path) -> list[dict]:
 def list_runs(root: Path, limit: Optional[int] = None) -> list[dict]:
     """지난 실행 목록. 케이스 본문은 빼고 목록에 보일 칸만 준다."""
     runs = []
-    for data in load_reports(root):
+    reports = load_reports(root)
+    for i, data in enumerate(reports):
         summary = data.get("summary") or {}
+        spec = Path(data.get("spec_source", "")).name
+        # 차수는 목록을 그릴 때 다시 센다. 저장된 값은 그 실행을 쓸 때의 것이라, 같은 이름으로
+        # 덮어 돌리거나 지운 실행이 있으면 '3차' 가 두 번 나온다. reports 는 최신순이다.
+        round_now = 1 + sum(1 for older in reports[i + 1:]
+                            if _same_series(summary, spec, data.get("target_url", ""), older))
         runs.append({
             "run_id": data["run_id"],
             "target": data.get("target_url", ""),
@@ -75,7 +81,7 @@ def list_runs(root: Path, limit: Optional[int] = None) -> list[dict]:
             "pass": summary.get("pass", 0),
             "fail": summary.get("fail", 0),
             "project": summary.get("project", ""),
-            "round": (summary.get("history") or {}).get("round"),
+            "round": round_now,
             "summary": summary,
         })
     return runs[:limit] if limit is not None else runs

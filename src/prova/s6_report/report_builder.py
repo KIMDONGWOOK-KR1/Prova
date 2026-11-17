@@ -26,6 +26,7 @@ from __future__ import annotations
 import html
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -37,7 +38,8 @@ from prova.theme import TOKENS_CSS
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
-from prova.wording import ACTION_LABELS, rule_subject, source_sentence
+from prova.wording import (ACTION_LABELS, copy_text, not_blocked_sentence, rule_subject,
+                            source_sentence)
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -49,7 +51,7 @@ STATUS_LABELS = {"ok": "성공", "error": "오류"}
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
 CATEGORY_LABELS = {
-    "element_not_found": ("요소 미탐지", "화면에서 조작할 요소를 찾지 못했습니다."),
+    "element_not_found": ("화면에서 못 찾음", "화면에서 조작할 요소를 찾지 못했습니다."),
     "input_error": ("입력 불가", "요소를 찾았으나 조작할 수 없었습니다 (가림·비활성)."),
     "assertion_mismatch": ("기획서와 다름", "실행은 됐으나 기획서의 기대와 다릅니다."),
     "timeout": ("시간 초과", "대기 시간을 초과했습니다."),
@@ -80,6 +82,13 @@ def build_report(
 ) -> TestReport:
     """판정 목록을 TestReport 로 집계한다."""
     summary = TestReport.summarize(verdicts)
+    # 실패 중 진짜 결함(기획서와 다름)의 수. 나머지는 실행 문제다 — 웹 UI 가 이 수로
+    # 빨강(결함)과 보라(실행 문제)를 가른다. 전부 빨강이면 개발사에 잘못 따진다.
+    summary["defects"] = sum(1 for v in verdicts if v.verdict == "FAIL"
+                             and v.failure_category == "assertion_mismatch")
+    # 확인 불가는 결함도 실행 문제도 아니다(요구서 4절 2번) — 따로 세어 회색으로 보인다.
+    summary["unverifiable"] = sum(1 for v in verdicts if v.verdict == "FAIL"
+                                  and v.failure_category == "unverifiable")
 
     # 어떤 백엔드로 실행했는지 남긴다. mock 으로 돌린 리포트를 실제 실행 결과로
     # 착각하면 QA 도구로서 최악의 사고가 된다.
@@ -161,86 +170,151 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 _CSS = TOKENS_CSS + """
 * { box-sizing:border-box; }
 body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
-       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal); }
+       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal);
+       -webkit-font-smoothing:antialiased; }
+/* 웹 UI 안에 들어가면 바깥 여백을 UI 가 준다 — 두 번 주면 좌우 선이 어긋난다. */
+.embedded body { padding:8px 0 32px; }
+.embedded .wrap { max-width:none; }
+a { color:inherit; text-underline-offset:2px; }
 .wrap { max-width:1080px; margin:0 auto; }
-h1 { font-size:24px; margin:0 0 4px; }
-.meta { color:var(--muted); font-size:13px; margin-bottom:24px; }
-.meta code { background:var(--bg-inset); padding:1px 5px; border-radius:3px; font-size:12px; }
-.cards { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:8px; }
-.card { background:var(--card); border:1px solid var(--line); border-radius:8px;
-        padding:16px 20px; min-width:120px; flex:1; }
-.card .n { font-size:26px; font-weight:700; }
-.card .k { color:var(--muted); font-size:12px; }
-.card.pass .n { color:var(--pass); } .card.fail .n { color:var(--fail); }
+h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0 0 8px; }
+.meta { color:var(--muted); font-size:13px; line-height:1.7; margin-bottom:24px; }
+.meta code { font-family:inherit; font-size:inherit; color:var(--text); }
+/* 숫자 네 개는 상자 네 개가 아니라 한 줄이다 — 위 굵은 선이 '여기부터 결과' 를 말한다. */
+/* 결론 한 줄 — 숫자는 원형차트 범례 한 곳에만 둔다(숫자 칸과 범례가 같은 수를 두 번 말하지 않게).
+   위 굵은 선이 '여기부터 결과' 를 말한다. 웹 UI 는 같은 문장을 제목으로 이미 보인다. */
+.concl { font-size:22px; font-weight:400; letter-spacing:-0.01em; line-height:1.4; word-break:keep-all;
+         margin:0 0 4px; padding-top:16px; border-top:2px solid var(--text); }
+.concl mark { color:inherit; border-radius:6px; padding:0 6px; -webkit-box-decoration-break:clone;
+              box-decoration-break:clone; }
+.concl mark.fail { background:var(--fail-bg); } .concl mark.infra { background:var(--note-bg); }
+.concl mark.unv { background:var(--bg-inset); } .concl mark.pass { background:var(--pass-bg); }
+.concl .rate { font-size:15px; color:var(--muted); margin-left:8px; white-space:nowrap;
+               font-variant-numeric:tabular-nums; }
+.embedded .concl { display:none; }
+/* 웹 UI 가 같은 알림을 숫자 바로 아래 이미 띄운다 — 한 화면에 두 번 나오지 않게 한다. */
+.embedded .dup { display:none; }
+.embedded h1 { display:none; }
+/* 웹 UI 가 위쪽 막대·숫자와 조건 줄을 이미 보인다 — 원형차트와 개발자용 조건 줄은 리포트 파일에만. */
+.embedded .chart, .embedded .meta { display:none; }
+/* 틀린 곳 목록 — 한 줄에 항목 이름 · 일어난 일 · 보기 */
+.flist { border-top:2px solid var(--text); margin:8px 0 24px; }
+.flist .cap { font-size:15px; font-weight:650; padding:10px 0 6px; }
+.flist.defect .cap { color:var(--fail); }
+.flist.infra .cap { color:var(--note-fg); }
+.flist.unv .cap { color:var(--muted); }
+.frow { display:grid; grid-template-columns:130px minmax(0,1fr) auto; gap:12px; align-items:baseline;
+        padding:9px 0; border-bottom:1px solid var(--line); color:inherit; text-decoration:none; }
+.frow:hover { background:var(--bg-hover); }
+.frow .who { font-weight:600; word-break:keep-all; }
+.frow .go { font-size:12px; color:var(--muted); text-decoration:underline; text-underline-offset:3px; }
+@media (max-width:640px) { .frow { grid-template-columns:minmax(0,1fr) auto; } .frow .who { grid-column:1/-1; } }
+.case { scroll-margin-top:16px; }
+button.copy { font:inherit; font-size:12px; font-weight:600; margin-left:auto; padding:5px 12px; border-radius:999px;
+              transition:border-color .12s, transform .08s;
+              border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
+button.copy:hover { border-color:var(--text); transform:translateY(-1px); }
+button.copy:active { transform:translateY(1px); }
+button.copy:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { button.copy, button.copy:hover, button.copy:active { transition:none; transform:none; } }
+/* 통과는 접어 둔다 — 확인할 것이 없는 줄이 실패와 같은 무게로 이어지지 않게. */
+details.passfold > summary { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:12px;
+                             border-bottom:2px solid var(--text); margin-top:36px; }
+details.passfold > summary::-webkit-details-marker { display:none; }
+details.passfold > summary h2 { border:none; margin:0; padding-bottom:8px; }
+details.passfold[open] .ms { visibility:hidden; }
 .chart { display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin:20px 0 24px; }
 .chart svg { flex:none; }
 .chart text { text-anchor:middle; fill:var(--text); }
-.chart .big { font-size:26px; font-weight:700; }
+.chart .big { font-size:26px; font-weight:400; }
 .chart .small { font-size:11px; fill:var(--muted); }
 .chart .seg.pass { stroke:var(--chart-pass); } .chart .seg.weak { stroke:var(--chart-weak); }
 .chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
+.chart .seg.unv { stroke:var(--chart-unv); }
 .chart p { margin:10px 0 0; }
 .legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
 .legend li { display:grid; grid-template-columns:12px 8em 3em 3em; gap:8px; align-items:center; }
 .legend b { text-align:right; font-variant-numeric:tabular-nums; }
 .legend .ms { text-align:right; }
-.swatch { width:12px; height:12px; border-radius:3px; }
+.swatch { width:12px; height:12px; border-radius:2px; }
 .swatch.pass { background:var(--chart-pass); } .swatch.weak { background:var(--chart-weak); }
 .swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
-h2 { font-size:17px; margin:28px 0 12px; }
-.case { background:var(--card); border:1px solid var(--line); border-radius:8px;
-        margin-bottom:10px; overflow:hidden; }
-.case > summary { padding:12px 16px; cursor:pointer; display:flex; gap:10px;
+.swatch.unv { background:var(--chart-unv); }
+h2 { font-size:20px; font-weight:650; margin:36px 0 0; padding-bottom:8px;
+     border-bottom:2px solid var(--text); }
+/* 케이스는 상자가 아니라 줄이다 — 계획 화면의 목록과 같은 모양. */
+.case { border-bottom:1px solid var(--line); }
+.case > summary { padding:12px 0; cursor:pointer; display:flex; gap:8px;
                   align-items:center; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
-.tag { font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;
+.tag { font-size:11px; font-weight:700; padding:2px 7px; border-radius:var(--r-sm);
        white-space:nowrap; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:var(--accent-bg); color:var(--accent-fg); font-weight:600; }
+.tag.rule { background:var(--bg-inset); color:var(--text); font-weight:500; }
 .tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
-.tag.cat.infra { background:var(--warn-bg); color:var(--warn-fg); }
+/* 실행 문제는 보라다 — 원형 차트의 '실행 문제' 와 같은 색이어야 한다. */
+.tag.cat.infra { background:var(--note-bg); color:var(--note-fg); }
 .tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
-.tag.revised { background:var(--accent-bg); color:var(--accent-fg); }
+/* 확인 불가 — 결함(빨강)도 실행 문제(보라)도 아니다. 무채색 + 점선 테두리로 '판정 없음' 을 보인다. */
+.tag.cat.unv { background:var(--bg-inset); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
+.tag.revised { background:var(--bg-inset); color:var(--text); }
 .breakdown { color:var(--muted); font-size:13px; margin:-8px 0 16px; }
 .title { flex:1; }
-.ms { color:var(--muted); font-size:12px; }
-.body { border-top:1px solid var(--line); padding:14px 16px; background:var(--bg-canvas); }
-.reason { background:var(--fail-bg); border-left:3px solid var(--fail); padding:10px 12px;
-          border-radius:0 4px 4px 0; margin-bottom:14px; }
+.ms { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
+.body { padding:0 0 24px; }
+/* 실패 카드 — 대제목이 맨 위, 분류·규칙 꼬리표와 케이스 제목은 그 아래 작은 한 줄. */
+.case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:20px 0 12px; }
+.case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:17px; font-weight:650; line-height:1.4;
+              letter-spacing:-0.01em; }
+.case.failed .title { color:var(--muted); font-size:13px; }
 table.kv { width:100%; border-collapse:collapse; margin-bottom:12px; }
 table.kv th { text-align:left; width:110px; vertical-align:top; color:var(--muted);
-              font-weight:600; padding:5px 8px 5px 0; font-size:13px; }
+              font-weight:400; padding:5px 8px 5px 0; font-size:13px; }
 table.kv td { padding:5px 0; word-break:break-all; }
-.steps { border-collapse:collapse; width:100%; font-size:13px; }
-.steps th, .steps td { border:1px solid var(--line); padding:5px 8px; text-align:left; }
-.steps th { background:var(--bg-inset); font-weight:600; }
+table.kv code { font-family:var(--font-mono); font-size:12px; }
+.steps, .screens { border-collapse:collapse; font-size:13px; }
+.steps { width:100%; }
+.screens { margin:14px 0 4px; }
+.steps th, .steps td, .screens th, .screens td {
+  border-bottom:1px solid var(--line); padding:6px 16px 6px 0; text-align:left; }
+.steps th, .screens th { font-weight:400; font-size:12px; color:var(--muted);
+                         border-bottom-color:var(--border-strong); }
 .steps td.err { color:var(--fail); }
-.steps td.val { font-family:var(--mono, monospace); word-break:break-all; }
-.shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:10px; }
+.steps td.val { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
+/* 요약 줄 — 분류 꼬리표가 있으면 FAIL 은 겹치는 말이다. 소요 시간은 기획자가 읽지 않는다. */
+.case summary .tag.FAIL:has(+ .tag.cat) { display:none; }
+.case > summary .ms { display:none; }
+details.more { margin-top:12px; }
+details.more > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
+details.more > summary:hover { color:var(--text); }
+details.more .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
+details.more .url code { font-family:var(--font-mono); }
+.shots.last a { display:block; width:560px; max-width:100%; }
+.shots.last a > img { display:block; width:100%; height:300px; object-fit:cover; object-position:center;
+                      transform-origin:top center; }
+.shots.last .cap { text-align:left; font-size:12px; }
+.shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
 .shots a { display:block; cursor:zoom-in; }
-.shots img { height:150px; border:1px solid var(--line); border-radius:4px;
+.shots img { height:150px; border:1px solid var(--line); border-radius:var(--r-sm);
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
-.heal { background:var(--note-bg); border:1px solid var(--note-fg); border-radius:6px;
-        padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
+/* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
+.heal, .gap, .warn { border-radius:var(--r-lg); padding:14px 16px; margin-bottom:12px;
+                     font-size:14px; line-height:1.6; }
+.warn b, .heal b, .gap b { font-size:15px; }
+.heal { background:var(--note-bg); }
 .heal b { color:var(--note-fg); }
-.heal .why { color:var(--muted); margin:2px 0 8px; }
-.gap { background:var(--info-bg); border:1px solid var(--accent-border); border-radius:6px;
-       padding:12px 14px; margin-bottom:14px; font-size:13px; line-height:1.6; }
-.gap b { color:var(--info-fg); }
-.gap .why { color:var(--muted); margin:2px 0 8px; }
-.warn { background:var(--warn-bg); border:1px solid var(--warn-fg); border-radius:6px;
-        padding:10px 14px; margin-bottom:18px; }
+.gap { background:var(--info-bg); }
+.warn { background:var(--warn-bg); }
 .warn b { display:block; margin-bottom:4px; }
+.heal .why, .gap .why { color:var(--muted); margin:2px 0 8px; }
 .empty { color:var(--muted); padding:12px 0; }
-.screens { border-collapse:collapse; font-size:13px; margin:14px 0 4px; }
-.screens th, .screens td { border:1px solid var(--line); padding:5px 10px; text-align:left; }
-.screens th { background:var(--bg-inset); font-weight:600; }
 .screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
 .screens td.f { color:var(--fail); font-weight:700; }
 .screens td.k { color:var(--muted); font-size:12px; }
-h3.grp { font-size:14px; margin:18px 0 6px; color:var(--muted); font-weight:600; }
+.screens code { font-family:var(--font-mono); font-size:12px; color:var(--muted); }
+h3.grp { font-size:13px; margin:20px 0 0; color:var(--muted); font-weight:650; }
 """
 
 
@@ -260,6 +334,8 @@ def _steps_html(verdict: Verdict) -> str:
     if not verdict.step_results:
         return ""
     rows = []
+    # '오류' 칸은 오류가 있을 때만 그린다 — 늘 비어 있는 칸은 표만 넓힌다.
+    has_err = any(r.error_detail for r in verdict.step_results)
     for r in verdict.step_results:
         detail = r.error_detail or ""
         # 원시 전략 이름(label·role·vlm)을 그대로 찍으면 코드를 아는 사람만 읽는다.
@@ -267,7 +343,7 @@ def _steps_html(verdict: Verdict) -> str:
         cls = " class='err'" if r.status == "error" else ""
         # DOM 스냅샷을 링크한다. 스텝마다 저장하면서 리포트에 링크가 없어 아무도
         # 열어 볼 수 없었다 — 탐지 실패를 조사할 때 가장 필요한 자료다.
-        evidence = (f"<a href='{_esc(r.dom_snapshot)}'>DOM</a>"
+        evidence = (f"<a href='{_esc(r.dom_snapshot)}'>화면 구조</a>"
                     if r.dom_snapshot else "")
         # 전제(setup)와 본 스텝(test)을 구분해 보여준다. 둘 다 seq 가 1부터
         # 따로 매겨지므로(nodes._run_case_steps 참고) 열이 없으면 "스텝 3" 이
@@ -280,12 +356,14 @@ def _steps_html(verdict: Verdict) -> str:
             # 넣은 값. 없으면 실패를 개발자에게 넘길 때 손으로 재현할 수 없다.
             f"<td class='val'>{_esc(r.value) if r.value is not None else ''}</td>"
             f"<td>{_esc(strategy)}</td><td{cls}>{_esc(STATUS_LABELS.get(r.status, r.status))}</td>"
-            f"<td>{r.elapsed_ms}ms</td><td{cls}>{_esc(detail)}</td>"
+            f"<td>{r.elapsed_ms}ms</td>"
+            + (f"<td{cls}>{_esc(detail)}</td>" if has_err else "") +
             f"<td>{evidence}</td></tr>"
         )
     return (
         "<table class='steps'><thead><tr><th>단계</th><th>#</th><th>동작</th><th>대상</th><th>값</th>"
-        "<th>탐지</th><th>결과</th><th>소요</th><th>오류</th><th>자료</th></tr></thead>"
+        "<th>찾은 방법</th><th>결과</th><th>소요</th>"
+        + ("<th>오류</th>" if has_err else "") + "<th>자료</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table>"
     )
 
@@ -406,17 +484,72 @@ _LIGHTBOX_JS = r"""
 """
 
 
-def _shots_html(verdict: Verdict) -> str:
+# '재현 절차 복사' — 클립보드가 막힌 곳(오래된 브라우저·권한 거부)에서는 글을 골라 둔다.
+_COPY_JS = r"""
+// 틀린 곳 목록의 '보기' — 카드의 대제목이 화면 맨 위에 오게 한다. 웹 UI 안(iframe)에서는
+// 브라우저가 바깥 페이지를 대신 스크롤하는데, 위에 붙은 Prova 막대를 모르고 그 밑으로
+// 대제목을 밀어 넣는다. 그래서 바깥 페이지를 막대 높이만큼 덜 내려 직접 스크롤한다.
+document.addEventListener('click', function (e) {
+  var a = e.target.closest && e.target.closest('a.frow');
+  if (!a) return;
+  var card = document.getElementById(a.getAttribute('href').slice(1));
+  if (!card) return;
+  e.preventDefault();
+  card.open = true;
+  var gap = 16, how = matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth';
+  try {
+    if (self !== top && window.frameElement) {
+      var pw = parent, bar = pw.document.querySelector('.topbar');
+      var barH = bar ? bar.getBoundingClientRect().height : 0;
+      var y = window.frameElement.getBoundingClientRect().top + pw.scrollY
+            + card.getBoundingClientRect().top - barH - gap;
+      pw.scrollTo({ top: y, behavior: how });
+      return;
+    }
+  } catch (err) { /* 다른 출처에 들어간 경우 — 아래의 기본 이동 */ }
+  window.scrollTo({ top: card.getBoundingClientRect().top + window.scrollY - gap, behavior: how });
+});
+
+document.addEventListener('click', function (e) {
+  var b = e.target.closest && e.target.closest('button.copy');
+  if (!b) return;
+  e.preventDefault();
+  var text = b.getAttribute('data-copy'), label = b.textContent;
+  function done(msg) { b.textContent = msg; setTimeout(function () { b.textContent = label; }, 1800); }
+  function fallback() {
+    var t = document.createElement('textarea');
+    t.value = text; document.body.appendChild(t); t.select();
+    var ok = false; try { ok = document.execCommand('copy'); } catch (err) {}
+    t.remove(); done(ok ? '복사했습니다' : '복사하지 못했습니다');
+  }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(function () { done('복사했습니다'); }, fallback);
+  } else { fallback(); }
+});
+"""
+
+
+def _shots_html(verdict: Verdict, last: bool = False) -> str:
     shots = [(r.seq, r.screenshot, r.phase) for r in verdict.step_results if r.screenshot]
+    # 실패 카드는 판정이 난 마지막 화면 하나만 바로 보인다 — 앞 단계 캡처는 거의 같은 그림이다.
+    if last:
+        shots = shots[-1:]
     if not shots:
         return ""
+    if last:
+        # 판정한 순간의 화면 하나를 읽을 수 있는 크기로 — 화면 전체를 줄이면 글자가 안 보인다.
+        # 가운데 윗부분을 잘라 보이고, 누르면 원본이 뜬다(라이트박스).
+        seq, path, phase = shots[0]
+        return (f"<div class='shots last'><a href='{_esc(path)}' target='_blank'>"
+                f"<img src='{_esc(path)}' alt='판정한 화면'>"
+                f"<div class='cap'>판정한 화면: {'준비 ' if phase == 'setup' else ''}{seq}단계 뒤, 누르면 크게 보기</div></a></div>")
     items = "".join(
         f"<a href='{_esc(path)}' target='_blank'>"
-        f"<img src='{_esc(path)}' alt='step {seq}'>"
+        f"<img src='{_esc(path)}' alt='{seq}단계 화면'>"
         # 준비(setup) 스텝의 스크린샷임을 캡션에서 밝힌다 — steps 표와 같은
         # 이유다. 준비·실행 둘 다 step1.png 부터 다시 시작하므로("step 1"이
         # 두 번 나온다) 접두어가 없으면 어느 단계의 캡처인지 구분할 수 없다.
-        f"<div class='cap'>{'준비 ' if phase == 'setup' else ''}step {seq}</div></a>"
+        f"<div class='cap'>{'준비 ' if phase == 'setup' else ''}{seq}단계</div></a>"
         for seq, path, phase in shots
     )
     return f"<div class='shots'>{items}</div>"
@@ -444,21 +577,27 @@ class ChartSegment:
     count: int
 
 
+def fail_kind(v: Verdict) -> str:
+    """실패의 세 갈래 — 기획서와 다름(빨강) · 실행 문제(보라) · 확인 불가(회색)."""
+    if v.failure_category == "assertion_mismatch":
+        return "defect"
+    return "unv" if v.failure_category == "unverifiable" else "infra"
+
+
 def chart_segments(verdicts: list[Verdict]) -> list[ChartSegment]:
     """판정을 네 조각으로 나눈다. 없는 조각은 뺀다.
 
     통과·실패 두 조각이면 결함과 도구 실패가 한 색이 되고, 약한 확인이 강한 확인과
     같은 색이 된다. 기획자가 차트만 보고 넘겨도 그 구분은 남아야 한다.
     """
-    counts = {"pass": 0, "weak": 0, "defect": 0, "infra": 0}
+    counts = {"pass": 0, "weak": 0, "defect": 0, "infra": 0, "unv": 0}
     for v in verdicts:
         if v.verdict == "PASS":
             counts["weak" if is_weak_pass(v) else "pass"] += 1
-        elif v.failure_category == "assertion_mismatch":
-            counts["defect"] += 1
         else:
-            counts["infra"] += 1
-    labels = {"pass": "통과", "weak": "약한 확인", "defect": "기획서와 다름", "infra": "실행 문제"}
+            counts[fail_kind(v)] += 1
+    labels = {"pass": "통과", "weak": "약한 확인", "defect": "기획서와 다름", "infra": "실행 문제",
+              "unv": "확인 불가"}
     return [ChartSegment(k, labels[k], n) for k, n in counts.items() if n]
 
 
@@ -517,6 +656,11 @@ def _history_html(history: dict) -> str:
         return ""
     regressed, fixed = history.get("regressed") or [], history.get("fixed") or []
     added, removed = history.get("added", 0), history.get("removed", 0)
+    if not (regressed or fixed or added or removed or history.get("partial")):
+        # 달라진 것이 없으면 상자를 세우지 않는다 — '0건 · 0건' 상자는 읽을 것 없이 자리만 차지한다.
+        return ("<div class='breakdown dup'>직전 실행"
+                f"({_esc((history.get('previous_at') or '')[:16].replace('T', ' '))})"
+                "과 달라진 판정이 없습니다.</div>")
     rows = [f"<div>새로 실패 <b>{len(regressed)}건</b> · 해결 <b>{len(fixed)}건</b>"
             + (f" · 새 케이스 {added}건" if added else "")
             + (f" · 사라진 케이스 {removed}건" if removed else "") + "</div>"]
@@ -528,12 +672,69 @@ def _history_html(history: dict) -> str:
     return (
         f"<div class='gap'><b>{history.get('round', '?')}차 실행 — 직전 실행과 비교</b>"
         f"<div class='why'>직전: <code>{_esc(history['previous_run'])}</code> "
-        f"{_esc(history.get('previous_at', ''))}</div>{''.join(rows)}</div>"
+        f"{_esc((history.get('previous_at') or '')[:16].replace('T', ' '))}</div>{''.join(rows)}</div>"
     )
 
 
+def _headline(verdict: Verdict) -> tuple[str, str]:
+    """실패 카드의 대제목과 사유의 나머지.
+
+    막혀야 하는 입력이 막히지 않은 결함은 실제로 일어난 일로 쓴다('…입력해도 막히지 않습니다').
+    그 밖에는 사유의 첫 문장을 쓴다.
+    """
+    if verdict.verdict != "FAIL" or not verdict.failure_detail:
+        return "", ""
+    first, _, rest = verdict.failure_detail.partition(". ")
+    first = first.removeprefix("기획서에 적힌 ").rstrip(".") + "."
+    if verdict.failure_category == "assertion_mismatch" and verdict.plain:
+        happened = not_blocked_sentence(verdict.plain)
+        if happened:
+            return happened + ".", ""
+    return first, rest.strip()
+
+
+def _conclusion(verdicts: list[Verdict], total: int) -> str:
+    """리포트 파일 맨 위의 결론 한 줄 — 웹 UI 결과 제목과 같은 말."""
+    kinds = [fail_kind(v) for v in verdicts if v.verdict == "FAIL"]
+    for kind, tail in (("defect", "건이 기획서와 다릅니다."), ("infra", "건을 실행 문제로 확인하지 못했습니다."),
+                       ("unv", "건은 판정할 근거가 없습니다.")):
+        n = kinds.count(kind)
+        if n:
+            return f"{total}건 중 <mark class='{'fail' if kind == 'defect' else kind}'>{n}{tail}</mark>"
+    return f"<mark class='pass'>{total}건 모두 통과했습니다.</mark>"
+
+
+def _fail_list_html(fails: list[Verdict], names: dict) -> str:
+    """틀린 곳을 한 줄씩 — 화면을 열자마자 '무엇이' 틀렸는지 보인다. 누르면 그 카드로 간다."""
+    if not fails:
+        return ""
+    out = []
+    for label, kind in (("기획서와 다른 곳", "defect"), ("실행 문제로 확인하지 못한 곳", "infra"),
+                        ("확인 불가 (결함도 통과도 아님)", "unv")):
+        items = [v for v in fails if fail_kind(v) == kind]
+        if not items:
+            continue
+        rows = []
+        for v in items:
+            who = v.target_label or names.get(v.screen_id or "", v.screen_id or "")
+            # 확인 불가는 이유가 대개 한 가지라(쓰기 요청 막기 등) 줄마다 같은 문장이 된다 —
+            # 무엇을 확인하지 못했는지(케이스 문장)를 쓰고, 이유는 카드에 둔다.
+            what = (v.plain or v.title) if kind == "unv" else _headline(v)[0]
+            # 왼쪽 칸에 항목 이름이 있으니 문장 앞의 같은 이름('비밀번호 확인에 …')은 뗀다.
+            for particle in ("에 ", "을 ", "를 "):
+                if who and what.startswith(who + particle):
+                    what = what[len(who + particle):]
+                    break
+            rows.append(f"<a class='frow' href='#c-{_esc(v.case_id)}'>"
+                        f"<span class='who'>{_esc(who)}</span>"
+                        f"<span class='what'>{_esc(what)}</span><span class='go'>보기</span></a>")
+        rows = "".join(rows)
+        out.append(f"<div class='flist {kind}'><div class='cap'>{label} {len(items)}</div>{rows}</div>")
+    return "".join(out)
+
+
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None) -> str:
+               revised: dict | None = None, target_url: str = "") -> str:
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -552,47 +753,65 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 구현 결함과 도구·환경 실패가 똑같이 'FAIL' 로 보인다.
     cat_tag = ""
     if verdict.verdict == "FAIL" and verdict.failure_category:
-        kind = "defect" if verdict.failure_category == "assertion_mismatch" else "infra"
+        kind = fail_kind(verdict)
         name = CATEGORY_LABELS.get(verdict.failure_category,
                                    CATEGORY_LABELS["unknown"])[0]
         cat_tag = f"<span class='tag cat {kind}'>{_esc(name)}</span>"
     elif is_weak_pass(verdict):
         cat_tag = "<span class='tag cat weak'>약한 확인</span>"
 
-    reason = ""
-    if verdict.verdict == "FAIL" and verdict.failure_detail:
-        reason = f"<div class='reason'>{_esc(verdict.failure_detail)}</div>"
+    # 실패 카드의 대제목 — 무엇이 틀렸는지를 사유의 첫 문장으로 크게 쓴다. 목록을 훑는
+    # 사람은 케이스 제목('…규칙 강제 여부 확인')이 아니라 이 문장을 읽고 지나간다.
+    headline, rest = _headline(verdict)
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
-    rows += [
-        ("기대", _esc(ev.get("expected"))),
-        ("실제", _esc(ev.get("actual"))),
-    ]
+    rows.append(("기대", _esc(ev.get("expected"))))
+    actual = ev.get("actual")
+    if actual and str(actual).rstrip(".") not in headline:
+        rows.append(("실제", _esc(actual)))
+    # 대제목에 못 담은 사유의 나머지 — 실제 결과와 같은 말이면 두 번 쓰지 않는다.
+    if rest and rest not in str(actual or "") and str(actual or "") not in rest:
+        rows.append(("자세히", _esc(rest)))
     if verdict.spec_sources:
         # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
         rows.append(("기획서 근거", "<br>".join(
             _esc(source_sentence(s)) for s in verdict.spec_sources)))
-    rows += [
-        ("최종 URL", f"<code>{_esc(ev.get('url'))}</code>"),
-    ]
-    if verdict.failure_category:
-        rows.append(("실패 분류", _category_html(verdict)))
+    # 실패 분류는 요약 줄 꼬리표에 있다. 최종 URL 은 재현 자료와 함께 접어 둔다.
     if ev.get("error_texts"):
         rows.append(("화면 에러", _esc(" / ".join(ev["error_texts"]))))
     if ev.get("dry_run_blocked"):
-        rows.append(("dry-run 으로 막은 요청", _esc(" / ".join(ev["dry_run_blocked"]))
-                     + f" (막지 않았다면 판정: {_esc(ev.get('dry_run_original'))} — 참고용)"))
+        rows.append(("쓰기 요청 막기로 막은 요청", _esc(" / ".join(ev["dry_run_blocked"]))
+                     + f" (막지 않았다면 판정: {_esc(ev.get('dry_run_original'))}, 참고용)"))
 
     kv = "".join(f"<tr><th>{k}</th><td>{v}</td></tr>" for k, v in rows)
 
+    # 재현 자료(단계 표·캡처 전부·최종 URL)는 개발자에게 넘길 때 보는 것이라 접어 둔다.
+    # 알림이 아니라 근거 자료다 — 요구서 4절 1번(알림은 접지 않는다)과 부딪히지 않는다.
+    n_steps = len(verdict.step_results)
+    n_shots = sum(1 for r in verdict.step_results if r.screenshot)
+    more = (f"<details class='more'><summary>재현 단계 {n_steps}개 · 캡처 {n_shots}장</summary>"
+            f"<div class='url'>마지막 주소 <code>{_esc(ev.get('url'))}</code></div>"
+            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>")
+    failed = verdict.verdict == "FAIL"
+    copy = ""
+    if failed:
+        kind = {"defect": "기획서와 다름", "infra": "실행 문제", "unv": "확인 불가"}[fail_kind(verdict)]
+        text = copy_text(verdict, f"[{kind}] {headline}", target_url)
+        copy = (f"<button class='copy' type='button' data-copy='{_esc(text)}'>"
+                "재현 절차 복사</button>")
+
     return (
-        f"<details class='case'{' open' if open_by_default else ''}>"
-        f"<summary><span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
-        f"{cat_tag}{rev_tag}{rule_tag}<span class='title'>{_esc(verdict.title)}</span>"
+        f"<details class='case{' failed' if failed else ''}' id='c-{_esc(verdict.case_id)}'"
+        f"{' open' if open_by_default else ''}>"
+        f"<summary>{f'<span class=head>{_esc(headline)}</span>' if headline else ''}{copy}"
+        f"<span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
+        f"{cat_tag}{rev_tag}{rule_tag}"
+        # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
+        f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
-        f"<div class='body'>{reason}"
+        f"<div class='body'>"
         f"<table class='kv'>{kv}</table>"
-        f"{_steps_html(verdict)}{_shots_html(verdict)}"
+        f"{_shots_html(verdict, last=True) if failed else ''}{more}"
         f"</div></details>"
     )
 
@@ -636,7 +855,7 @@ def _screens_html(by_screen: dict, by_flow: dict, names: dict) -> str:
 
 
 def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
-                  revised: dict | None = None) -> str:
+                  revised: dict | None = None, target_url: str = "") -> str:
     """판정을 화면별로 묶어 렌더한다. 묶을 것이 하나면 소제목을 붙이지 않는다.
 
     흐름은 별도 구획으로 떼어 맨 뒤에 둔다. 마지막 화면 구획에 섞으면 **그 화면에
@@ -652,12 +871,12 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
         groups.setdefault(key, []).append(v)
 
     if len(groups) < 2:
-        return "".join(_case_html(v, open_by_default, revised) for v in verdicts)
+        return "".join(_case_html(v, open_by_default, revised, target_url) for v in verdicts)
 
     out = []
     for label, items in groups.items():
         out.append(f"<h3 class='grp'>{_esc(label)} · {len(items)}건</h3>")
-        out.extend(_case_html(v, open_by_default, revised) for v in items)
+        out.extend(_case_html(v, open_by_default, revised, target_url) for v in items)
     return "".join(out)
 
 
@@ -790,14 +1009,14 @@ def render_html(report: TestReport) -> str:
     heal_html = ""
     if healed:
         healed_titles = "".join(
-            f"<div>· {_esc(v.title)}</div>"
+            f"<div>· {_esc(v.plain or v.title)}</div>"
             for v in report.cases if v.healed
         )
         heal_html = (
             f"<div class='heal'><b>화면 이미지로 찾아 진행한 케이스 ({healed}건)</b>"
-            "<div class='why'>기획서의 라벨로 요소를 찾지 못해 2차 경로로 보정했습니다. "
+            "<div class='why'>기획서의 라벨로 요소를 찾지 못해 화면 이미지로 찾아 진행했습니다. "
             "판정은 유효하지만 <b>라벨이 구현과 이어져 있지 않습니다</b> — "
-            "'라벨로 요소를 찾을 수 있는지 확인' 케이스를 함께 보세요.</div>"
+            "'기획서의 항목 이름으로 화면에서 칸을 찾을 수 있다' 항목을 함께 보세요.</div>"
             f"{healed_titles}</div>"
         )
 
@@ -809,16 +1028,16 @@ def render_html(report: TestReport) -> str:
     missed = s.get("not_found_without_vlm", 0) or 0
     if missed:
         missed_titles = "".join(
-            f"<div>· {_esc(v.title)}</div>"
+            f"<div>· {_esc(v.plain or v.title)}</div>"
             for v in report.cases
             if v.verdict == "FAIL" and v.failure_category == "element_not_found"
         )
         heal_html += (
-            f"<div class='heal'><b>요소를 찾지 못한 케이스 ({missed}건) — 화면 이미지로 찾기를 "
+            f"<div class='heal dup'><b>요소를 찾지 못한 케이스 ({missed}건) — 화면 이미지로 찾기를 "
             "켜지 않은 실행입니다</b>"
             "<div class='why'>기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 <b>보이는데</b> "
-            "못 찾았다면(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기 "
-            "(2차 경로)' 를 켜서 다시 돌려 보세요. 스크린샷에도 <b>없다면</b> 구현이 그 항목을 "
+            "못 찾았다면(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기"
+            "' 를 켜서 다시 돌려 보세요. 스크린샷에도 <b>없다면</b> 구현이 그 항목을 "
             "빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.</div>"
             f"{missed_titles}</div>"
         )
@@ -832,7 +1051,7 @@ def render_html(report: TestReport) -> str:
     settle_html = ""
     if settled:
         rows = "".join(
-            f"<div>· {_esc(v.title)} <b>{v.evidence['settled_ms']}ms</b></div>"
+            f"<div>· {_esc(v.plain or v.title)} <b>{v.evidence['settled_ms']}ms</b></div>"
             for v in report.cases if v.evidence.get("settled_ms")
         )
         worst = max(v.evidence["settled_ms"] for v in report.cases
@@ -856,7 +1075,7 @@ def render_html(report: TestReport) -> str:
     # 2차 경로도 머리말 한 줄이다 — 꺼진 것이 기본이라 상자로 만들면 매번 뜬다.
     if "vlm" in s:
         state = f"켬 · {s['vlm']}" if s["vlm"] else "꺼짐"
-        build_meta += f" · 2차 경로 <code>{_esc(state)}</code>"
+        build_meta += f" · 화면 이미지로 찾기 <code>{_esc(state)}</code>"
     # 기본(데스크톱)이 아닌 화면 크기 — 판정의 전제라 머리말에 둔다 (nodes.note_viewport).
     if s.get("viewport"):
         build_meta += f" · 화면 크기 <code>{_esc(s['viewport'])}</code>"
@@ -865,7 +1084,7 @@ def render_html(report: TestReport) -> str:
     mock_warn = ""
     if backend.startswith("mock"):
         mock_warn = (
-            "<div class='warn'><b>mock 백엔드로 실행된 리포트입니다</b>"
+            "<div class='warn dup'><b>연습용으로 실행한 리포트입니다</b>"
             "<div>설계 문서 추출에 실제 모델이 쓰이지 않았습니다. "
             "이 결과를 실제 검증 결과로 사용하지 마세요.</div></div>"
         )
@@ -919,7 +1138,7 @@ def render_html(report: TestReport) -> str:
     if dry:
         # 판정의 전제 — 쓰기 요청을 막은 케이스는 제출 뒤를 보지 못했다 (prova.dry_run).
         mock_warn += (
-            "<div class='warn'><b>dry-run — 쓰기 요청을 막고 실행했습니다</b>"
+            "<div class='warn dup'><b>쓰기 요청을 막고 실행했습니다</b>"
             f"<div>막은 요청 {_esc(dry.get('requests_blocked'))}건 · 그 때문에 확인 불가가 된 케이스 "
             f"{_esc(dry.get('cases_blocked'))}개 · 통과시킨 전제(로그인) 요청 "
             f"{_esc(dry.get('setup_allowed'))}건. 막은 요청이 있는 케이스는 서버 응답을 보지 못해 "
@@ -954,6 +1173,10 @@ def render_html(report: TestReport) -> str:
     if cache.get("hits"):
         build_meta += (f" · 저장된 모델 응답 {_esc(cache['hits'])}건 재사용"
                        f"(새 호출 {_esc(cache.get('misses', 0))}건)")
+    defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
+    fail_cls = " fail" if defects else " infra" if failed else ""
+    # 폴더 경로는 뺀다 — 개발사에 보내는 문서에 내 PC 의 경로가 실려 나간다.
+    spec_name = re.split(r"[\\/]", report.spec_source or "")[-1]
     chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0)
 
     names = s.get("screen_names") or {}
@@ -962,13 +1185,16 @@ def render_html(report: TestReport) -> str:
 
     revision = s.get("revision") or {}
     revised = revision.get("touched") or {}
-    fail_section = _grouped_html(fails, names, open_by_default=True, revised=revised) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
+    fail_section = _grouped_html(fails, names, open_by_default=True, revised=revised,
+                                 target_url=report.target_url) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
     pass_section = _grouped_html(passes, names, open_by_default=False, revised=revised) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
 
-    defects = sum(1 for v in fails if v.failure_category == "assertion_mismatch")
-    breakdown = (f"<div class='breakdown'>실패 {len(fails)} = 기획서와 다름 {defects}"
-                 f" · 실행 문제 {len(fails) - defects} (도구·환경을 먼저 확인)</div>"
-                 if fails else "")
+    # 기획서와 다름·실행 문제의 수는 원형차트 범례에 이미 있다. 실행 문제가 있을 때만
+    # '도구·환경을 먼저 확인' 을 덧붙인다.
+    n_infra = sum(1 for v in fails if fail_kind(v) == "infra")
+    breakdown = (f"<div class='breakdown'>실행 문제 {n_infra}건은 "
+                 "기획서와의 차이가 아니라 도구·환경 문제일 수 있습니다 — 먼저 확인하세요</div>"
+                 if n_infra else "")
     weak = sum(1 for v in passes if is_weak_pass(v))
     if weak:
         breakdown += (f"<div class='breakdown'>성공 조건이 없어 '에러 없음'만 확인한 정상 케이스 "
@@ -976,36 +1202,35 @@ def render_html(report: TestReport) -> str:
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
-<title>Prova 리포트 — {_esc(report.run_id)}</title>
-<style>{_CSS}</style></head>
+<title>Prova 리포트 · {_esc(report.run_id)}</title>
+<style>{_CSS}</style>
+<script>if(self!==top)document.documentElement.className='embedded'</script></head>
 <body><div class="wrap">
 <h1>Prova 검증 리포트</h1>
 <div class="meta">
   대상 <code>{_esc(report.target_url)}</code> ·
-  설계 문서 <code>{_esc(report.spec_source)}</code> ·
-  실행 <code>{_esc(report.run_id)}</code> · {_esc(report.created_at)}
+  기획서 <code>{_esc(spec_name)}</code> ·
+  실행 <code>{_esc(report.run_id)}</code> · {_esc((report.created_at or "")[:16].replace("T", " "))}
   {f" · 모델 <code>{_esc(backend)}</code>" if backend else ""}{build_meta}
-  {f"<br><b>{_esc(s['url_note'])}</b>" if s.get("url_note") else ""}
-  <br>스크린샷은 이 파일 옆 폴더를 참조합니다 — 공유할 때는 결과 폴더째 보내세요.
+  <br>스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
   · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
 </div>
+{f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
 {mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
-<div class="cards">
-  <div class="card"><div class="n">{total}</div><div class="k">전체 케이스</div></div>
-  <div class="card pass"><div class="n">{passed}</div><div class="k">통과</div></div>
-  <div class="card fail"><div class="n">{failed}</div><div class="k">실패</div></div>
-  <div class="card"><div class="n">{rate}%</div><div class="k">통과율</div></div>
-</div>
+<p class="concl">{_conclusion(report.cases, total)} <span class="rate">통과율 {rate}%</span></p>
 {chart_html}
 {breakdown}
+{_fail_list_html(fails, names)}
 {screens_html}
 
 <h2>실패 케이스 ({len(fails)})</h2>
 {fail_section}
 
-<h2>통과 케이스 ({len(passes)})</h2>
+<details class='passfold'><summary><h2>통과 케이스 ({len(passes)})</h2>
+<span class='ms'>확인할 것 없음 · 펼치기</span></summary>
 {pass_section}
-</div><script>{_LIGHTBOX_JS}</script></body></html>
+</details>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script></body></html>
 """
 
 

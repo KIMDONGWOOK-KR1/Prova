@@ -33,6 +33,7 @@ from typing import Optional
 from prova.llm.base import LLMClient, LLMError
 from prova.route_params import arrival_fragment, entry_path
 from prova.text_utils import find_quoted
+from prova.wording import josa
 from prova.models import (
     Expectation,
     Flow,
@@ -210,6 +211,8 @@ def _slug(text: str) -> str:
 
 
 def _title_for_violation(element: UIElement, rule: str, value: str) -> str:
+    # 이 문장은 모델에게 보내는 질문에 들어간다 — 바꾸면 저장해 둔 응답(replay)이 맞지 않는다.
+    # 화면에 보일 말은 _plain_for_violation 이 따로 만든다.
     label = RULE_LABELS.get(rule, rule)
     if rule == "required":
         if element.type == "checkbox":
@@ -218,6 +221,19 @@ def _title_for_violation(element: UIElement, rule: str, value: str) -> str:
             return f"{element.label} 미선택 — 필수 선택 검증 확인"
         return f"{element.label} 미입력 — 필수 입력 검증 확인"
     return f"{element.label} {label} 규칙 위반 (입력값 {value!r}) — 규칙 강제 여부 확인"
+
+
+def _plain_for_violation(element: UIElement, rule: str, value: str) -> str:
+    """'무엇을 하면 → 어떻게 돼야 하는가' 로 쓴다. 계획을 승인하는 PM 이 이 줄만 읽는다."""
+    name = element.label
+    if rule == "required":
+        if element.type == "checkbox":
+            return f"{name}{josa(name, '을', '를')} 체크하지 않으면 막힌다"
+        if element.type == "select":
+            return f"{name}{josa(name, '을', '를')} 고르지 않으면 막힌다"
+        return f"{name}{josa(name, '을', '를')} 비워 두면 막힌다"
+    # 어떤 규칙인지는 화면마다 꼬리표(규칙 이름)가 따로 붙는다 — 제목에 되풀이하지 않는다.
+    return f"{name}에 {value!r} 입력하면 막힌다"
 
 
 def generate_cases(
@@ -263,6 +279,7 @@ def generate_cases(
         case_id=f"{spec.screen_id}-valid-001",
         screen_id=spec.screen_id,
         title=f"정상 {spec.screen_name} (모든 입력 규칙 충족)",
+        plain=f"규칙대로 모두 입력하면 {spec.screen_name}{josa(spec.screen_name, '이', '가')} 된다",
         type="positive",
         steps=_steps_for_case(spec, valid_values),
         expected=parse_success_expectation(spec),
@@ -289,6 +306,7 @@ def generate_cases(
                         f"-{_slug(violation.rule)}-{seq:03d}",
                 screen_id=spec.screen_id,
                 title=_title_for_violation(element, violation.rule, violation.value),
+                plain=_plain_for_violation(element, violation.rule, violation.value),
                 type="negative",
                 violates=violation.rule,
                 target_element=element.element_id,
@@ -1143,6 +1161,7 @@ def _option_cases(spec: ScreenSpec, start_seq: int) -> list[TestCase]:
                     f"-{start_seq + i:03d}",
             screen_id=spec.screen_id,
             title=f"{element.label} 선택 목록이 기획서와 같은지 확인",
+            plain=f"{element.label} 선택 목록이 기획서와 같다",
             type="positive",
             target_element=element.element_id,
             target_label=element.label,
@@ -1190,6 +1209,7 @@ def _placeholder_case(spec: ScreenSpec) -> list[TestCase]:
         case_id=f"{spec.screen_id}-placeholders-001",
         screen_id=spec.screen_id,
         title="입력 안내 문구가 기획서와 같은지 확인",
+        plain="입력칸 안내 문구가 기획서와 같다",
         type="positive",
         steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
         expected=Expectation(type="placeholders_match", placeholders=declared),
@@ -1250,6 +1270,7 @@ def _label_case(spec: ScreenSpec) -> list[TestCase]:
         case_id=f"{spec.screen_id}-labels-001",
         screen_id=spec.screen_id,
         title="기획서의 라벨로 요소를 찾을 수 있는지 확인",
+        plain="기획서의 항목 이름으로 화면에서 칸을 찾을 수 있다",
         type="positive",
         steps=[TestStep(seq=1, action="navigate", target=entry_path(spec))],
         expected=Expectation(type="labels_findable", labels=labels),

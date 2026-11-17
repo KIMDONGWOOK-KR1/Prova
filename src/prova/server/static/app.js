@@ -20,7 +20,6 @@ const ICON = {
   warn: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.2l6 10.6H2L8 2.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.4v3M8 11.2v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   fail: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   search: `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.5"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
-  blank: `<svg width="52" height="52" viewBox="0 0 52 52" fill="none" aria-hidden="true"><rect x="9" y="5" width="26" height="34" rx="3" stroke="var(--border-strong)" stroke-width="1.6"/><path d="M15 14h14M15 20h14M15 26h9" stroke="var(--border-strong)" stroke-width="1.6" stroke-linecap="round"/><circle cx="35" cy="35" r="11" fill="var(--bg-canvas)" stroke="var(--accent-solid)" stroke-width="1.6"/><path d="M30.5 35.2l3 3 6-6.4" stroke="var(--accent-solid)" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
 };
 
 function alertBox(kind, title, why) {
@@ -131,6 +130,9 @@ function form() {
 
 // ── 상단 · 칩 ──────────────────────────────────────────────────────────────
 
+// 화면에 보이는 이름. 값(mock·vllm·replay)은 서버와 주고받는 이름이라 그대로 둔다.
+const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
+
 function renderChrome() {
   const f = form();
   const spec = (f.pdf || "").split("/").pop() || "기획서 없음";
@@ -140,35 +142,53 @@ function renderChrome() {
   $("chips").innerHTML =
     `<span class="chip ${state.busy ? "busy" : "ok"}"><i class="dot"></i>` +
     `${state.busy ? "실행 중" : "준비됨"}</span>` +
-    `<span class="chip">${esc(f.backend)}</span>` +
+    `<span class="chip">${esc(BACKEND_NAME[f.backend] || f.backend)}</span>` +
     (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
+
+  // 실행 옵션은 접혀 있다 — 지금 값은 접힌 채로도 보여야 모르고 켠 채 돌리지 않는다.
+  $("optsNow").textContent = [BACKEND_NAME[f.backend] || f.backend, f.figma && "Figma 함께",
+    $("vlm").checked && "이미지로 찾기 켬", $("dryRun").checked && "쓰기 막기 켬",
+  ].filter(Boolean).join(" · ");
 }
 
 // ── 무대 (한 번에 한 상태만) ────────────────────────────────────────────────
 
+// 지금 몇 단계인지. 1단계에서만 입력 양식이 보이고, 나머지는 무대가 화면을 다 쓴다.
+function setStep(n) {
+  document.body.dataset.step = n;
+  for (const el of $("stepper").querySelectorAll("[data-step]")) {
+    if (Number(el.dataset.step) === n) el.setAttribute("aria-current", "step");
+    else el.removeAttribute("aria-current");
+  }
+}
+
+$("stepper").addEventListener("click", (e) => {
+  const n = e.target.dataset && e.target.dataset.step;
+  if (state.busy || e.target.tagName !== "BUTTON") return;
+  if (n === "1") showBlank();
+  if (n === "2" && state.plan) showPlan();
+});
+
 function showBlank() {
+  setStep(1);
   $("stageChips").innerHTML = "";
-  $("stage").innerHTML = `
-    <div class="blank">
-      ${ICON.blank}
-      <h2>기획서대로 만들어졌는지 확인합니다</h2>
-      <p>설정에서 기획서와 대상 URL 을 고르고 계획을 만드세요.</p>
-      <ol>
-        <li><span>기획서에서 검증 규칙을 뽑아 <b>규칙 하나당 케이스 하나</b>를 만듭니다.</span></li>
-        <li><span>실행 전에 <b>무엇을 테스트할지 보여드립니다.</b> 빠진 것이 있으면 그 자리에서 되돌릴 수 있습니다.</span></li>
-        <li><span>진짜 브라우저로 조작하고, 어느 규칙이 구현되지 않았는지 리포트로 짚어 줍니다.</span></li>
-      </ol>
-    </div>`;
+  // 진행 순서 안내는 두지 않는다 — 위쪽 단계 표시(1 기획서 · 2 항목 검토 …)와 같은 말이다.
+  $("stage").innerHTML = "";
 }
 
 // 경과 시간. 몇 분 걸리는 실행에서 멈춘 것과 도는 것을 구별하게 한다.
 let elapsedTimer = null;
 
 function showProgress(title, lines) {
+  setStep(title === "실행 중" ? 3 : 2);
   $("stageChips").innerHTML = `<span class="chip busy"><i class="dot"></i>실행 중</span>`;
   $("stage").innerHTML = `
     <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span>
       <span class="elapsed" id="pElapsed">0초</span></div>
+    <div class="pnow" id="pNow" aria-live="polite"></div>
+    <progress id="pBar" hidden></progress>
+    <div class="ptally" id="pTally" hidden></div>
+    ${title === "실행 중" ? `<button class="btn ghost" id="pStop" type="button" hidden>멈추기</button>` : ""}
     <div class="steps" id="pSteps"></div>
     <details class="raw"><summary>진행 로그 전체</summary>
       <pre class="log" id="pLog" role="log" aria-live="polite"></pre></details>`;
@@ -195,7 +215,27 @@ function pushProgress(messages) {
   log.textContent += messages.join("\n") + "\n";
   log.scrollTop = log.scrollHeight;
 
-  for (const raw of messages) {
+  for (const raw0 of messages) {
+    // 지금까지의 판정 수 (nodes.run_cases 의 '집계' 줄). 단계 목록에 쌓지 않는다.
+    const t = /집계 통과 (\d+) · 기획서와 다름 (\d+) · 실행 문제 (\d+)(?: · 확인 불가 (\d+))?/.exec(raw0);
+    if (t) {
+      const el = $("pTally");
+      el.hidden = false;
+      el.innerHTML = `<span class="ok">통과 ${t[1]}</span>` +
+        `<span class="fail">기획서와 다름 ${t[2]}</span>` +
+        `<span class="infra">실행 문제 ${t[3]}</span>` +
+        (t[4] && t[4] !== "0" ? `<span class="unv">확인 불가 ${t[4]}</span>` : "");
+      continue;
+    }
+    const raw = plainProgress(raw0);
+    // 케이스 줄은 단계 목록에 쌓지 않고 '몇 건 중 몇 번째' 로 보인다. 원문은 로그에 남는다.
+    const m = /케이스 (\d+)\/(\d+) · (.+)/.exec(raw);
+    if (m) {
+      $("pNow").textContent = `${m[2]}건 중 ${m[1]}번째 — ${m[3]}`;
+      const bar = $("pBar");
+      bar.hidden = false; bar.max = Number(m[2]); bar.value = Number(m[1]) - 1;
+      continue;
+    }
     const isDetail = /^\s{2,}/.test(raw) || raw.trimStart().startsWith("!");
     const text = raw.trim();
     if (!text) continue;
@@ -213,9 +253,29 @@ function pushProgress(messages) {
     if (prev) { prev.classList.remove("active"); prev.classList.add("done"); }
     const el = document.createElement("div");
     el.className = "pstep active";
-    el.innerHTML = `<span class="mark">●</span><div class="body">${esc(text)}</div>`;
+    el.innerHTML = `<span class="mark">●</span><div class="body">${esc(text.replace(/^S\d(~S\d)?\s+/, ""))}</div>`;
     steps.appendChild(el);
   }
+}
+
+/**
+ * 파이프라인의 진행 문구를 기획자의 말로 바꾼다. 원문은 CLI 와 접힌 로그가 그대로 쓴다 —
+ * 개발자가 그 말로 코드를 찾는다.
+ */
+const PROGRESS_WORDS = [
+  [/mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다\./, "연습용으로 실행합니다 — 기획서를 실제 모델로 읽지 않습니다."],
+  [/^(\s*)S1 사람이 고친 추출 결과를 씁니다.*$/, "$1기획서 읽기 — 고친 내용을 씁니다"],
+  [/^(\s*)S1 설계 문서 추출/, "$1기획서 읽기"],
+  [/^(\s*)S2 테스트 케이스 생성/, "$1확인할 항목 만들기"],
+  [/^(\s*)S3~S5 브라우저 실행 및 판정/, "$1브라우저로 하나씩 확인"],
+  [/^(\s*)S6 리포트 생성/, "$1리포트 만들기"],
+  [/화면 '(.+?)' · 요소 (\d+)개/, "'$1' 화면 · 입력칸·버튼 $2개"],
+  [/케이스 (\d+)개 \(정상 (\d+) · 위반 (\d+)/, "항목 $1개 (정상 동작 $2 · 막혀야 하는 입력 $3"],
+  [/승인 목록 → (\d+)개 실행/, "승인한 $1개를 실행합니다"],
+];
+function plainProgress(line) {
+  for (const [re, to] of PROGRESS_WORDS) line = line.replace(re, to);
+  return line;
 }
 
 function finishProgress() {
@@ -224,6 +284,7 @@ function finishProgress() {
 }
 
 function showError(title, message) {
+  setStep(1);
   $("stageChips").innerHTML = "";
   $("stage").innerHTML = alertBox("fail", esc(title), esc(message));
 }
@@ -331,6 +392,7 @@ function planNotes() {
 }
 
 function showPlan() {
+  setStep(2);
   const p = state.plan;
   $("stageChips").innerHTML =
     `<span class="chip">생성 ${p.total_generated}건</span>`;
@@ -346,21 +408,18 @@ function showPlan() {
     <details class="spec" id="specPanel"></details>
     <div class="toolbar">
       <div class="count" id="count"></div>
-      <button class="btn ghost quiet" id="allBtn" type="button">전체</button>
-      <button class="btn ghost quiet" id="invBtn" type="button">반전</button>
-      <button class="btn ghost quiet" id="offBtn" type="button" aria-pressed="false">제외만</button>
+      <button class="btn ghost quiet" id="allBtn" type="button">모두 켜기</button>
+      <button class="btn ghost quiet" id="offBtn" type="button" aria-pressed="false">꺼 둔 것만 보기</button>
       <label class="search">
         ${ICON.search}
         <span class="sr">케이스 검색</span>
         <input type="text" id="q" placeholder="케이스 검색" spellcheck="false">
       </label>
-    </div>
-    <div id="groups"></div>
-    <div class="runbar">
-      <button class="btn primary" id="runBtn" type="button">이대로 실행</button>
       <button class="btn ghost" id="backBtn" type="button">요청 고치기</button>
+      <button class="btn primary" id="runBtn" type="button">이대로 실행</button>
       <span class="hint" id="runHint"></span>
-    </div>`;
+    </div>
+    <div id="groups"></div>`;
 
   $("q").addEventListener("input", (e) => {
     state.filter = e.target.value;
@@ -368,11 +427,6 @@ function showPlan() {
   });
   $("allBtn").addEventListener("click", () => {
     p.cases.forEach((c) => { c.selected = true; });
-    renderPlanBody();
-  });
-  $("invBtn").addEventListener("click", () => {
-    const shown = new Set(visibleCases().map((c) => c.case_id));
-    p.cases.forEach((c) => { if (shown.has(c.case_id)) c.selected = !c.selected; });
     renderPlanBody();
   });
   $("offBtn").addEventListener("click", (e) => {
@@ -400,15 +454,18 @@ function showPlan() {
 // 모델을 더 짜내는 것보다 싸고 확실하다. 고친 값은 리포트에 '사람이 고친 것' 으로 남는다.
 
 const EL_FIELDS = [
-  ["label", "라벨"], ["required", "필수"], ["placeholder", "안내 문구"],
-  ["error_message", "오류 문구"], ["required_message", "빈 칸 문구"], ["options", "선택 항목"],
+  ["label", "항목 이름"], ["required", "필수"], ["placeholder", "안내 문구"],
+  ["error_message", "오류 문구"], ["required_message", "비웠을 때 문구"], ["options", "선택 항목"],
 ];
 const SCREEN_FIELDS = [
-  ["url_path", "경로"], ["success_condition", "성공 조건"], ["required_message", "필수 공통 문구"],
+  ["url_path", "경로"], ["success_condition", "성공 조건"], ["required_message", "비웠을 때 공통 문구"],
 ];
 // 빈 칸으로 두면 '없음'(null) 이 되는 칸. 라벨·경로·성공 조건은 빈 글자 그대로 둔다.
 const NULLABLE = new Set(["placeholder", "error_message", "required_message"]);
 const CHOICE_TYPES = new Set(["select", "radio", "checkbox"]);
+// 요소 종류를 기획자의 말로. 식별자(element_id)는 마우스를 올리면 보인다.
+const TYPE_NAME = { input: "입력칸", textarea: "긴 입력칸", select: "선택 목록", checkbox: "체크박스",
+                    radio: "라디오", button: "버튼", link: "링크", text: "글자", table: "표" };
 
 function specInput(path, key, value) {
   const id = `${path}.${key}`;
@@ -430,7 +487,7 @@ function renderSpec() {
   const head = `<summary><b>기획서에서 읽은 내용</b>
     <span class="hint">${edits.length
       ? `사람이 고친 값 ${edits.length}건으로 만든 케이스입니다`
-      : "틀린 칸이 있으면 고친 뒤 [다시 만들기] — 기획서 문구 그대로 적어 주세요"}</span></summary>`;
+      : "잘못 읽은 칸이 있으면 기획서 문구 그대로 고친 뒤, 아래 '고친 내용으로 항목 다시 만들기' 를 누르세요"}</span></summary>`;
   const screens = d.screens.map((sc, si) => {
     const meta = SCREEN_FIELDS.map(([k, name]) =>
       `<label class="spec-meta"><span>${name}</span>${specInput(`s${si}`, k, sc[k])}</label>`).join("");
@@ -439,15 +496,15 @@ function renderSpec() {
       const cells = EL_FIELDS.map(([k]) => k === "options" && !CHOICE_TYPES.has(e.type)
         ? `<td class="id">—</td>`
         : `<td>${specInput(`s${si}.e${ei}`, k, e[k])}</td>`).join("");
-      return `<tr class="${e._removed ? "off" : ""}"><td class="id">${esc(e.type)}<br>${esc(e.element_id)}</td>${cells}
+      return `<tr class="${e._removed ? "off" : ""}"><td class="id" title="${esc(e.element_id)}">${esc(TYPE_NAME[e.type] || e.type)}</td>${cells}
         <td><label class="check"><input type="checkbox" data-remove="s${si}.e${ei}"
-            ${e._removed ? "checked" : ""}> 뺌</label></td></tr>`;
+            ${e._removed ? "checked" : ""}> 검사 안 함</label></td></tr>`;
     }).join("");
     return `<section class="group spec-screen">
       <header><h3>${esc(sc.screen_name)}</h3></header>
       <div class="spec-metas">${meta}</div>
       <div class="spec-scroll"><table class="spec-table">
-        <thead><tr><th>요소</th>${EL_FIELDS.map(([, n]) => `<th>${n}</th>`).join("")}<th></th></tr></thead>
+        <thead><tr><th>종류</th>${EL_FIELDS.map(([, n]) => `<th>${n}</th>`).join("")}<th></th></tr></thead>
         <tbody>${rows}</tbody></table></div>
     </section>`;
   }).join("");
@@ -455,8 +512,8 @@ function renderSpec() {
     ? `<ul class="spec-edits">${edits.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
   $("specPanel").innerHTML = head + list + screens + `
     <div class="runbar"><button class="btn ghost" id="replanBtn" type="button" disabled>
-      고친 내용으로 케이스 다시 만들기</button>
-      <span class="hint" id="specHint"></span></div>`;
+      고친 내용으로 항목 다시 만들기</button>
+      <span class="hint" id="specHint">칸을 고치면 누를 수 있습니다</span></div>`;
   if (edits.length) $("specPanel").open = true;
 
   $("specPanel").querySelectorAll("[data-spec]").forEach((el) => {
@@ -494,7 +551,7 @@ function specTarget(path) {
 function markDirty() {
   state.dirty = true;
   $("replanBtn").disabled = false;
-  $("specHint").textContent = "고친 내용은 [다시 만들기] 를 눌러야 케이스에 반영됩니다";
+  $("specHint").textContent = "고친 내용은 이 버튼을 눌러야 항목에 반영됩니다";
   renderCount();
 }
 
@@ -563,7 +620,7 @@ function renderGroups() {
         <button class="btn ghost quiet" data-group="${esc(key)}" type="button">
           ${on === list.length ? "모두 끄기" : "모두 켜기"}</button>
       </header>
-      ${list.map(caseRow).join("")}
+      ${byTarget(list)}
     </section>`;
   }).join("");
 
@@ -577,11 +634,8 @@ function renderGroups() {
   });
 
   $("groups").querySelectorAll(".case").forEach((row) => {
-    row.addEventListener("click", (e) => {
-      // '절차·기대' 를 펼치는 클릭은 선택을 바꾸지 않는다 — 읽으려고 눌렀다가 케이스가 꺼지면 안 된다.
-      if (e.target.closest(".how")) return;
-      const box = row.querySelector("input");
-      if (e.target !== box) box.checked = !box.checked;
+    row.querySelector("input").addEventListener("change", (e) => {
+      const box = e.target;
       const c = state.plan.cases.find((x) => x.case_id === row.dataset.id);
       c.selected = box.checked;
       row.classList.toggle("off", !c.selected);
@@ -594,6 +648,20 @@ function renderGroups() {
   });
 }
 
+// 화면 안에서 기획서 항목(이메일·비밀번호…)별로 한 번 더 묶는다 — 기획서 표와 나란히 대조하기 쉽다.
+function byTarget(list) {
+  const by = new Map();
+  for (const c of list) {
+    const k = c.target_label || "";
+    if (!by.has(k)) by.set(k, []);
+    by.get(k).push(c);
+  }
+  if (by.size < 2) return list.map((c) => caseRow(c)).join("");
+  return [...by].map(([k, cs]) =>
+    `<div class="subhead">${esc(k || "화면 전체")}<span>${cs.length}</span></div>` +
+    cs.map((c) => caseRow(c, true)).join("")).join("");
+}
+
 function groupCount(row) {
   const rows = [...row.closest(".group").querySelectorAll(".case")];
   const on = rows.filter((r) => r.querySelector("input").checked).length;
@@ -601,31 +669,31 @@ function groupCount(row) {
 }
 
 // 사람이 읽는 제목을 먼저, 내부 id 는 작게 뒤로. 스크린 리더도 제목을 읽는다.
-function caseRow(c) {
+// grouped: 항목 머리줄 아래에 놓인 줄 — 꼬리표에 항목 이름을 되풀이하지 않는다.
+// 제목을 누르면 절차·기대가 펼쳐진다 — 줄마다 '절차·기대 보기' 를 되풀이하지 않는다.
+// 선택은 체크박스로만 바꾼다. 읽으려고 누른 것이 케이스를 끄면 안 된다.
+function caseRow(c, grouped) {
+  const tags =
+    (c.violates ? `<span class="tag rule" title="${esc(c.violates)}">${
+      esc([grouped ? "" : c.target_label, c.rule_label || c.violates].filter(Boolean).join(" · "))}</span>` : "") +
+    (c.flow_id ? `<span class="tag flow">흐름</span>` : "");
+  const head = `<span class="desc">${esc(c.title)}</span>${tags}`;
   return `<div class="case ${c.selected ? "" : "off"}" data-id="${esc(c.case_id)}">
     <input type="checkbox" ${c.selected ? "checked" : ""}
            aria-label="${esc(c.title)} 실행">
-    <div>
-      <div class="desc">${esc(c.title)}</div>
-      <div class="id">${esc(c.case_id)}</div>
-      ${caseHow(c)}
-    </div>
-    <div class="marks">
-      ${c.violates ? `<span class="tag rule" title="${esc(c.violates)}">${
-        esc([c.target_label, c.rule_label || c.violates].filter(Boolean).join(" · "))}</span>` : ""}
-      ${c.flow_id ? `<span class="tag flow">흐름</span>` : ""}
-    </div>
+    ${caseHow(c, head) || `<div class="line">${head}</div>`}
   </div>`;
 }
 
 // 무슨 값을 넣고 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다 (prova/wording.py).
-function caseHow(c) {
+function caseHow(c, head) {
   if (!(c.steps || []).length && !c.expected) return "";
   return `<details class="how">
-    <summary>절차·기대 보기</summary>
+    <summary class="line">${head}</summary>
     <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
     ${c.expected ? `<div class="expect"><b>기대</b> ${esc(c.expected)}</div>` : ""}
     ${(c.sources || []).map((s) => `<div class="expect src"><b>기획서</b> ${esc(s)}</div>`).join("")}
+    <div class="expect src"><b>케이스 번호</b> ${esc(c.case_id)}</div>
   </details>`;
 }
 
@@ -665,6 +733,15 @@ async function startRun() {
                              // 고친 추출 결과로 만든 계획이면 그 문서로 실행한다 (spec_edits)
                              doc: (state.plan.spec_edits || []).length ? state.plan.doc : null }),
     });
+    const stop = $("pStop");
+    if (stop) {
+      stop.hidden = false;
+      stop.onclick = async () => {
+        stop.disabled = true;
+        stop.textContent = "지금 항목이 끝나면 멈춥니다…";
+        try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
+      };
+    }
     const out = await follow(job_id, pushProgress);
     finishProgress();
     state.result = out;
@@ -675,6 +752,8 @@ async function startRun() {
       // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
       // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
       showError("실행을 시작하지 않았습니다", err.message);
+    } else if (err.message.startsWith("실행을 멈췄습니다")) {
+      showError("실행을 멈췄습니다", "같은 항목으로 다시 돌리려면 위의 '2 항목 검토' 를 누르세요.");
     } else {
       showError("실행 실패", err.message);
     }
@@ -685,13 +764,20 @@ async function startRun() {
 }
 
 function showResult(out) {
+  setStep(4);
   const s = out.summary;
   const planned = state.plan ? state.plan.cases.length : s.total;
   const off = planned - s.total;
 
+  // 실패를 결함(기획서와 다름, 빨강)과 실행 문제(도구·환경, 보라)로 가른다.
+  // defects 가 없는 옛 리포트는 실패를 전부 결함으로 읽던 예전 모양 그대로 둔다.
+  // 확인 불가는 결함도 실행 문제도 아니다(요구서 4절 2번) — 따로 센다.
+  const defects = s.defects ?? s.fail;
+  const unv = s.unverifiable || 0;
+  const infra = s.fail - defects - unv;
   $("stageChips").innerHTML =
-    `<span class="chip ${s.fail ? "warn" : "ok"}"><i class="dot"></i>` +
-    `${s.fail ? `실패 ${s.fail}건` : "전부 통과"}</span>`;
+    `<span class="chip ${defects ? "fail" : infra ? "infra" : unv ? "unv" : "ok"}"><i class="dot"></i>` +
+    `${defects ? `기획서와 다름 ${defects}건` : infra ? `실행 문제 ${infra}건` : unv ? `확인 불가 ${unv}건` : "전부 통과"}</span>`;
 
   const notes = [];
   if (off > 0) {
@@ -700,7 +786,7 @@ function showResult(out) {
       `<b>통과한 것이 아니라 확인하지 않은 것</b>입니다.`));
   }
   if (s.vlm) {
-    notes.push(alertBox("info", "2차 경로를 켜고 실행했습니다",
+    notes.push(alertBox("info", "화면 이미지로 찾기를 켜고 실행했습니다",
       `라벨로 못 찾은 요소를 화면 이미지로 찾았습니다 (${esc(s.vlm)}) — ` +
       `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시됩니다.`));
   }
@@ -708,49 +794,77 @@ function showResult(out) {
     // 끈 실행은 필요한 상황이 와도 스스로 켜지지 않는다 — 다시 돌려 볼 만하다는 것을 알린다.
     notes.push(alertBox("info", `요소를 찾지 못한 케이스 ${s.not_found_without_vlm}건`,
       `화면 이미지로 찾기를 켜지 않은 실행입니다. 스크린샷에 그 요소가 보이는데 못 찾았다면 ` +
-      `<b>'화면 이미지로 찾기 (2차 경로)' 를 켜서 다시 돌려 보세요</b> (GPU 서버 필요). ` +
+      `<b>실행 옵션의 '화면 이미지로 찾기' 를 켜서 다시 돌려 보세요</b> (모델 서버 필요). ` +
       `스크린샷에도 없다면 구현이 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.`));
   }
   if (s.dry_run) {
     // 확인 불가도 실패 칸에 센다(확인하지 못한 것을 통과로 세지 않는다). 그 실패의 성질을 바로 말한다.
     const d = s.dry_run;
-    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했습니다 (dry-run)",
+    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했습니다",
       `막은 케이스 ${d.cases_blocked || 0}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 셉니다 — ` +
       `<b>구현 결함이 아닙니다.</b> 막지 않은 ${s.total - (d.cases_blocked || 0)}건 중 통과 ${s.pass}. ` +
       `${esc(d.limits || "")}`));
   }
   if (s.llm_backend === "mock") {
-    notes.push(alertBox("warn", "mock 백엔드로 실행한 결과입니다",
-      "설계 문서 추출에 실제 모델을 쓰지 않았습니다. 실제 검증 결과로 쓰지 마세요."));
+    notes.push(alertBox("warn", "연습용으로 실행한 결과입니다",
+      "기획서를 실제 모델로 읽지 않았습니다. 실제 검증 결과로 쓰지 마세요."));
   }
 
-  $("stage").innerHTML = `
-    <div class="head">
-      <h1>실행 결과</h1>
-      <div class="sub"><code>${esc(out.run_id)}</code></div>
-    </div>
-    <div class="stats">
-      <div class="stat"><div class="n">${s.total}</div><div class="k">실행</div></div>
-      <div class="stat pass"><div class="n">${s.pass}</div><div class="k">통과</div></div>
-      <div class="stat fail"><div class="n">${s.fail}</div><div class="k">실패</div></div>
-      <div class="stat"><div class="n">${s.pass_rate}%</div><div class="k">통과율</div></div>
-    </div>
-    <div class="meter"><i style="width:${s.pass_rate}%"></i></div>
-    ${notes.join("")}
-    <div class="reportbox" id="reportBox">
-      <header>
-        <span class="t">검증 리포트</span>
-        <button class="btn ghost quiet" id="tallBtn" type="button">크게 보기</button>
-        <a class="btn ghost quiet" href="${esc(out.report_url)}" target="_blank"
-           rel="noopener">새 탭에서 열기 ↗</a>
-      </header>
-      <iframe src="${esc(out.report_url)}" title="검증 리포트"></iframe>
-    </div>`;
+  // 조건 줄 — PM 이 읽을 것만: 어느 화면 · 몇 번째 실행 · 직전과 달라진 것.
+  const h = s.history || {};
+  const screens = Object.values(s.screen_names || {}).join(" · ");
+  const changed = (h.regressed || []).length + (h.fixed || []).length;
+  const cond = [
+    screens && `${screens} 화면`,
+    h.round && `${h.round}번째 실행`,
+    h.previous_run && (changed
+      ? `직전보다 새로 실패 ${(h.regressed || []).length} · 해결 ${(h.fixed || []).length}`
+      : "직전과 같은 결과"),
+  ].filter(Boolean).join(" · ");
+  const base = out.report_url.replace(/report\.html$/, "");
 
-  $("tallBtn").addEventListener("click", (e) => {
-    const box = $("reportBox");
-    box.classList.toggle("tall");
-    e.currentTarget.textContent = box.classList.contains("tall") ? "작게 보기" : "크게 보기";
+  $("stage").innerHTML = `
+    <div class="head result-head">
+      <div>
+      <h1>${defects
+        ? `${s.total}건 중 <mark class="fail">${defects}건이 기획서와 다릅니다.</mark>`
+        : infra
+        ? `${s.total}건 중 <mark class="infra">${infra}건을 실행 문제로 확인하지 못했습니다.</mark>`
+        : unv
+        ? `${s.total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없습니다.</mark>`
+        : `<mark class="pass">${s.total}건 모두 통과했습니다.</mark>`}</h1>
+      ${cond ? `<div class="cond">${esc(cond)}</div>` : ""}
+      </div>
+      <div class="actions">
+        <a class="btn primary" href="${esc(base)}report.xlsx" download>엑셀 받기</a>
+        <a class="btn ghost" href="${esc(out.report_url)}" target="_blank" rel="noopener">리포트 파일 열기</a>
+        ${state.plan ? `<button class="btn ghost" id="againBtn" type="button">다시 실행</button>` : ""}
+      </div>
+    </div>
+    <div class="meter" aria-hidden="true"><i class="f" style="flex:${defects}"></i><i class="x" style="flex:${infra}"></i><i class="u" style="flex:${unv}"></i><i style="flex:${s.pass}"></i></div>
+    <div class="tally">기획서와 다름 ${defects} · 실행 문제 ${infra}${unv ? ` · 확인 불가 ${unv}` : ""} · 통과 ${s.pass} · 통과율 ${s.pass_rate}%</div>
+    ${notes.join("")}
+    <div class="reportbox">
+      <iframe src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
+              allow="clipboard-write"></iframe>
+    </div>`;
+  // 같은 항목·같은 옵션으로 한 번 더 — 고친 뒤 확인할 때 1·2단계를 다시 밟지 않는다.
+  const again = $("againBtn");
+  if (again) again.addEventListener("click", startRun);
+  fitFrame($("stage").querySelector("iframe"));
+}
+
+/**
+ * 리포트 틀의 높이를 내용에 맞춘다 — 틀 안에 스크롤이 또 생기면 페이지 스크롤과 겹쳐
+ * 어디를 굴려야 할지 헷갈린다. 펼침·접기로 높이가 바뀌어도 따라간다 (같은 출처라 읽을 수 있다).
+ */
+function fitFrame(frame) {
+  frame.addEventListener("load", () => {
+    const doc = frame.contentDocument;
+    if (!doc) return;
+    const fit = () => { frame.style.height = doc.documentElement.scrollHeight + "px"; };
+    new ResizeObserver(fit).observe(doc.body);
+    fit();
   });
 }
 
@@ -794,9 +908,12 @@ $("planBtn").addEventListener("click", async () => {
  * 기획서와 변형(good/bad)을 함께 쓴다.
  */
 function runLabel(r) {
-  const spec = (r.spec || "").replace(/_spec\.pdf$/, "").replace(/\.pdf$/, "");
-  const variant = (/\/(good|bad)(\/|$)/.exec(r.target || "") || [])[1];
-  return variant ? `${spec} · ${variant}` : (spec || r.run_id);
+  return r.spec || r.run_id;
+}
+
+/** 어디를 검사했는지 — 주소에서 http:// 를 뺀 것. 같은 기획서를 다른 구현에 돌린 것을 가른다. */
+function runTarget(r) {
+  return (r.target || "").replace(/^https?:\/\//, "");
 }
 
 /** 언제 돌렸는지. 같은 대상을 여러 번 돌리면 이것만이 구분점이 된다. */
@@ -804,6 +921,21 @@ function runWhen(r) {
   const t = r.created_at || "";
   const m = /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t);
   return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : r.run_id;
+}
+
+// 묶음마다 처음에 보이는 기록 수. 나머지는 '더 보기' 안에 둔다 — 목록 칸을 잘라 스크롤시키면
+// 마지막 줄이 반쯤 가려진다.
+const RUNS_SHOWN = 5;
+
+/** 결과 한마디 — 결과 화면과 같은 말(기획서와 다름 · 실행 문제)을 쓴다. */
+function runScore(r) {
+  const defects = (r.summary && r.summary.defects) ?? r.fail;
+  const unv = (r.summary && r.summary.unverifiable) || 0;
+  const infra = r.fail - defects - unv;
+  if (defects) return `<span class="score fail">기획서와 다름 ${defects}</span>`;
+  if (infra) return `<span class="score infra">실행 문제 ${infra}</span>`;
+  if (unv) return `<span class="score unv">확인 불가 ${unv}</span>`;
+  return `<span class="score pass">전부 통과</span>`;
 }
 
 async function loadRuns() {
@@ -854,15 +986,15 @@ function renderRuns() {
   $("runs").innerHTML = order.map((key) => `
     <details class="run-group" ${key === open ? "open" : ""}>
       <summary><b>${esc(key || "프로젝트 없음")}</b><span>${groups.get(key).length}회</span></summary>
-      ${groups.get(key).map((r) => `
+      ${groups.get(key).map((r, i) => (i === RUNS_SHOWN ? `<details class="run-more"><summary>이전 기록 ${groups.get(key).length - RUNS_SHOWN}개 더 보기</summary>` : "") + `
       <button class="run ${r.fail ? "has-fail" : ""}" type="button"
-              data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)}"
+              data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)} · ${r.pass}/${r.total} 통과"
               aria-current="${r.run_id === shownId}">
         <i class="led"></i>
         <span class="who"><b>${esc(runLabel(r))}</b><span>${esc(
-          [r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
-        <span class="score">${r.pass}/${r.total}</span>
-      </button>`).join("")}
+          [runTarget(r), r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
+        ${runScore(r)}
+      </button>`).join("")}${groups.get(key).length > RUNS_SHOWN ? "</details>" : ""}
     </details>`).join("");
 
   $("runs").querySelectorAll("[data-run]").forEach((btn) => {
@@ -1011,10 +1143,13 @@ function syncVariant() {
   const m = /\/(good|bad)(\/|$)/.exec($("url").value);
   $("segGood").setAttribute("aria-pressed", String(m ? m[1] === "good" : false));
   $("segBad").setAttribute("aria-pressed", String(m ? m[1] === "bad" : false));
+  $("variantRow").hidden = !($("pdf").value || "").startsWith("fixtures/");
 }
 
 $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
+
+["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", renderChrome));
 
 ["pdf", "url", "backend", "figma"].forEach((id) =>
   $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); }));
@@ -1052,7 +1187,9 @@ async function boot() {
     if (saved.url) $("url").value = saved.url;
     // 지난번 선택이 서버 기본값을 덮을 때는 그 사실을 보인다 — 한 번 mock 을
     // 고른 사람이 모르는 채 계속 mock 으로 돌지 않게.
-    if (saved.backend && saved.backend !== st.backend) {
+    // 서버를 연습용 설정(configs/demo.yaml)으로 띄웠다면 그 뜻이 우선이다 — 지난번에
+    // 고른 '실제 모델' 이 남아 있으면 모델 서버 없이 띄운 데모가 바로 실패한다.
+    if (saved.backend && saved.backend !== st.backend && st.backend !== "mock") {
       $("backend").value = saved.backend;
       $("backend").insertAdjacentHTML("afterend",
         `<div class="hint">지난번 선택입니다 — 서버 기본값은 ${esc(st.backend)}</div>`);

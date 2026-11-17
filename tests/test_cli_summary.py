@@ -41,7 +41,7 @@ def test_두_묶음으로_나눈다(capsys):
     assert "도구·환경" in out
     # 실행 문제 줄에는 원인 이름이 붙는다 — 무엇을 고쳐야 하는지 한눈에
     assert "[전제 미충족]" in out
-    assert "[요소 미탐지]" in out
+    assert "[화면에서 못 찾음]" in out
     # 순서: 기획서와 다름이 먼저
     assert out.index("기획서와 다름") < out.index("실행 문제")
 

@@ -70,9 +70,10 @@ class TestReportBadges:
         assert "class='tag cat defect'>기획서와 다름<" in html
         assert "class='tag cat infra'>전제 미충족<" in html
 
-    def test_카드_아래에_실패_구성이_한_줄로_나온다(self):
+    def test_실행_문제가_있으면_도구부터_보라는_줄이_나온다(self):
+        # 기획서와 다름·실행 문제의 수는 원형차트 범례가 보여 준다. 한 줄은 실행 문제가 있을 때만.
         html = self._html()
-        assert "기획서와 다름 1 · 실행 문제 1" in html
+        assert "실행 문제 1건은" in html
 
     def test_폴더째_공유하라는_안내가_있다(self):
         assert "폴더째" in self._html()
