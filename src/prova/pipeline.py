@@ -45,7 +45,7 @@ from prova.nodes import (
 )
 from prova.plan_store import load_plan, plan_warnings, save_plan
 from prova.s2_case_generator.selector import select_by_ids, select_cases
-from prova.s6_report.report_builder import save_html, save_json
+from prova.s6_report.report_builder import save_csv, save_html, save_json
 from prova.s6_report.xlsx_export import save_xlsx
 
 
@@ -92,26 +92,37 @@ def _run_log(run_dir: Path, on_progress=None, fresh: bool = True):
         fresh: 같은 이름으로 다시 돌린 실행이면 옛 로그를 지운다. 재개(--resume)는
             계획 단계의 로그에 이어 쓴다.
     """
+    progress = _logged(on_progress, run_dir, fresh=fresh)
+    try:
+        yield progress
+    except Exception as exc:
+        _append_log(run_dir / "run.log", f"! 실행 실패 — {type(exc).__name__}: {exc}")
+        raise
+
+
+def _append_log(path: Path, message: str) -> None:
+    stamp = datetime.now().strftime("%H:%M:%S")
+    with path.open("a", encoding="utf-8") as out:
+        out.write(f"{stamp} {message}\n")
+
+
+def _logged(on_progress, run_dir: Path, fresh: bool = True):
+    """진행 메시지를 on_progress(화면·터미널)로 보내면서 run_dir/run.log 에 한 줄씩 남기는 함수.
+
+    `_run_log` 의 안쪽이다 — 예외를 로그에 남기는 일은 `_run_log` 가 한다.
+    fresh 면 옛 로그를 비우고 시작한다.
+    """
     run_dir.mkdir(parents=True, exist_ok=True)
     path = run_dir / "run.log"
     if fresh:
         path.write_text("", encoding="utf-8")
 
-    def write(message: str) -> None:
-        stamp = datetime.now().strftime("%H:%M:%S")
-        with path.open("a", encoding="utf-8") as out:
-            out.write(f"{stamp} {message}\n")
-
     def progress(message: str) -> None:
-        write(message)
+        _append_log(path, message)
         if on_progress:
             on_progress(message)
 
-    try:
-        yield progress
-    except Exception as exc:
-        write(f"! 실행 실패 — {type(exc).__name__}: {exc}")
-        raise
+    return progress
 
 
 def execution_options(cfg: dict, *, headed: bool = False) -> dict:
@@ -587,6 +598,7 @@ def _execute(
     save_json(state.report, run_dir)
     save_html(state.report, run_dir)
     save_xlsx(state.report, run_dir)
+    save_csv(state.report, run_dir)
 
     return state.report, run_dir
 

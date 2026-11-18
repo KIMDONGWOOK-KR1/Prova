@@ -50,6 +50,22 @@ MEMO_PREFIX = "모델 메모:"
 STATUS_LABELS = {"ok": "성공", "error": "오류"}
 
 # 실패 원인 코드 -> 사람이 읽는 이름과 설명 (명세서 §6)
+#: 인쇄(PDF 저장) 때는 접힌 카드·통과 목록·단계 기록을 모두 펼친다 — 종이에는 [펼치기] 가
+#: 없어서, 접힌 채 인쇄하면 실패 카드의 근거가 빠진 문서가 된다. 인쇄가 끝나면 원래대로.
+_PRINT_JS = """(function () {
+  var opened = [];
+  window.addEventListener('beforeprint', function () {
+    opened = [];
+    document.querySelectorAll('details:not([open])').forEach(function (d) {
+      d.open = true; opened.push(d);
+    });
+  });
+  window.addEventListener('afterprint', function () {
+    opened.forEach(function (d) { d.open = false; });
+    opened = [];
+  });
+})();"""
+
 CATEGORY_LABELS = {
     "element_not_found": ("화면에서 못 찾음", "화면에서 조작할 요소를 찾지 못했습니다."),
     "input_error": ("입력 불가", "요소를 찾았으나 조작할 수 없었습니다 (가림·비활성)."),
@@ -1294,7 +1310,8 @@ def render_html(report: TestReport) -> str:
 <h1>Prova 검증 리포트</h1>
 <div class="meta">{meta_html}</div>
 <p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
-  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)</p>
+  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
+  · <a href="report.csv" download>결과표 CSV</a> · <a href="run.log" target="_blank">실행 로그</a></p>
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
 {mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
 <p class="concl">{_conclusion(report.cases, total)} <span class="rate">통과율 {rate}%</span></p>
@@ -1310,7 +1327,7 @@ def render_html(report: TestReport) -> str:
 <span class='ms'>확인할 것 없음 · 펼치기</span></summary>
 {pass_section}
 </details>
-</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script></body></html>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script></body></html>
 """
 
 
@@ -1318,4 +1335,37 @@ def save_html(report: TestReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "report.html"
     path.write_text(render_html(report), encoding="utf-8")
+    return path
+
+
+#: CSV 결과표의 칸. 엑셀(xlsx_export) 의 '케이스' 시트와 같은 내용을 한 장으로 — 차수끼리
+#: 비교하거나 다른 도구(스프레드시트·diff)에 넣을 때 쓴다. 앞 다섯 칸의 순서는 바꾸지 않는다.
+CSV_COLUMNS = ["화면", "흐름", "케이스", "제목", "판정", "실패 원인",
+               "기획서 기대", "실제 화면", "상세"]
+
+
+def save_csv(report: TestReport, out_dir: Path) -> Path:
+    """케이스 한 줄씩 report.csv 로 남긴다.
+
+    utf-8-sig(BOM)로 쓴다 — BOM 이 없으면 엑셀이 CSV 를 열 때 한글을 시스템 코드 페이지로
+    읽어 깨뜨린다.
+    """
+    import csv
+
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / "report.csv"
+    names = report.summary.get("screen_names") or {}
+    with path.open("w", encoding="utf-8-sig", newline="") as fh:
+        writer = csv.writer(fh)
+        writer.writerow(CSV_COLUMNS)
+        for v in report.cases:
+            ev = v.evidence or {}
+            category = (CATEGORY_LABELS.get(v.failure_category, CATEGORY_LABELS["unknown"])[0]
+                        if v.verdict == "FAIL" else "")
+            writer.writerow([
+                names.get(v.screen_id, v.screen_id), v.flow_id or "", v.case_id,
+                v.plain or v.title, v.verdict, category,
+                str(ev.get("expected") or ""), str(ev.get("actual") or ""),
+                v.failure_detail or "",
+            ])
     return path
