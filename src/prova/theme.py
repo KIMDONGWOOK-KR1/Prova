@@ -176,7 +176,7 @@ _TOKENS_TEMPLATE = """
   --note-fg: var(--violet-500);
   --note-bg: var(--violet-100);
 
-  /* 리포트 원형차트. 글자색(--pass-fg 등)을 그대로 쓰지 않는다 — 면으로 칠할 때의
+  /* 리포트·웹 UI 의 비율 막대(처음에는 원형차트였다). 글자색(--pass-fg 등)을 그대로 쓰지 않는다 — 면으로 칠할 때의
      명도·색각 대비는 글자일 때와 다르다. dataviz validate_palette 로 양쪽 모드 확인. */
   --chart-pass:   #1d6b48;
   --chart-weak:   #b07d14;

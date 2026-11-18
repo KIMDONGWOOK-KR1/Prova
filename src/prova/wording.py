@@ -130,11 +130,18 @@ def source_sentence(source) -> str:
     """
     quote = source.quote
     if source.table and "|" in quote:
-        cells = [c.strip() for c in quote.split("|")]
-        if cells and re.fullmatch(r"[A-Za-z0-9_\- ]+", cells[0]):
-            cells = cells[1:]
-        quote = " · ".join(c for c in cells if c and c not in ("-", "—"))
+        quote = " · ".join(source_cells(source))
     return f"{source.page}쪽 {'표' if source.table else '본문'}: {quote}"
+
+
+def source_cells(source) -> list[str]:
+    """표 행 근거를 읽을 칸만 남겨 나눈다. 표 행이 아니면 빈 목록 — 리포트가 표 모양으로 옮길 때 쓴다."""
+    if not (source.table and "|" in source.quote):
+        return []
+    cells = [c.strip() for c in source.quote.split("|")]
+    if cells and re.fullmatch(r"[A-Za-z0-9_\- ]+", cells[0]):
+        cells = cells[1:]
+    return [c for c in cells if c and c not in ("-", "—")]
 
 
 def rule_subject(target_label: Optional[str], target_element: Optional[str]) -> str:

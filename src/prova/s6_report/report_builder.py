@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import html
 import json
-import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -39,7 +38,7 @@ from prova.theme import TOKENS_CSS
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
 from prova.wording import (ACTION_LABELS, copy_text, not_blocked_sentence, rule_subject,
-                            source_sentence, step_sentence)
+                            source_cells, source_sentence, step_sentence)
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -187,96 +186,106 @@ _CSS = TOKENS_CSS + """
 /* 검수 문서처럼 읽히게 한다 — 상자 대신 가는 선, 색은 판정에만 쓴다.
    기획자가 개발사에 그대로 보내는 문서라서 화면보다 종이에 가깝게 잡았다. */
 * { box-sizing:border-box; }
-body { margin:0; padding:32px 24px; background:var(--bg); color:var(--text);
+body { margin:0; background:var(--bg); color:var(--text);
        font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal);
        -webkit-font-smoothing:antialiased; }
-/* 웹 UI 안에 들어가면 바깥 여백을 UI 가 준다 — 두 번 주면 좌우 선이 어긋난다. */
-.embedded body { padding:8px 0 32px; }
-.embedded .wrap { max-width:none; }
 a { color:inherit; text-underline-offset:2px; }
-.wrap { max-width:1080px; margin:0 auto; }
-h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0 0 16px; }
-/* 실행 조건 — 이름과 값을 한 칸씩 나눈 격자. 한 줄로 이으면 아홉 가지가 붙어 읽히지 않았다. */
+/* 폭과 바깥 여백은 웹 UI 의 무대(.app)와 같다 — 파일로 열어도 같은 자리에 선다. */
+.wrap { max-width:1148px; margin:0 auto; padding:var(--sp-8) var(--sp-6) var(--sp-12); }
+/* 웹 UI 안에 들어가면 바깥 여백을 UI 가 준다 — 두 번 주면 좌우 선이 어긋난다. */
+.embedded .wrap { max-width:none; padding:var(--sp-2) 0 var(--sp-8); }
+
+/* 리포트 파일의 머리는 웹 UI 결과 화면과 같은 부품을 같은 순서로 쓴다 — 위쪽 막대, 결론 제목,
+   비율 막대, 집계 한 줄. 기획자가 화면에서 본 것과 개발사에 보낸 파일이 같은 문서로 읽힌다.
+   규칙은 app.css 의 .topbar · .result-head · .btn · .meter · .tally 와 값을 맞춘다. */
+.topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--sp-4);
+          padding:var(--sp-3) var(--sp-6); border-bottom:1px solid var(--line); font-size:var(--tx-md); }
+.crumbs { display:flex; gap:var(--sp-2); align-items:center; min-width:0; color:var(--muted); }
+.crumbs > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.crumbs b { color:var(--text); font-weight:600; flex:none; max-width:100%; }
+.topbar .name { font-size:var(--tx-xl); font-weight:660; letter-spacing:-0.03em; }
+.topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums; }
+.result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
+               flex-wrap:wrap; margin-bottom:var(--sp-4); }
+h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0;
+     word-break:keep-all; text-wrap:balance; }
+h1 mark { color:inherit; border-radius:var(--r-lg); padding:2px var(--sp-2);
+          -webkit-box-decoration-break:clone; box-decoration-break:clone; }
+h1 mark.fail { background:var(--fail-bg); } h1 mark.infra { background:var(--note-bg); }
+h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass-bg); }
+.result-head .cond { font-size:var(--tx-md); color:var(--muted); margin-top:var(--sp-1); }
+.actions { display:flex; gap:var(--sp-2); flex-wrap:wrap; }
+.btn { display:inline-flex; align-items:center; font:inherit; font-size:var(--tx-md); font-weight:650;
+       padding:9px var(--sp-5); border-radius:var(--r-full); border:1px solid transparent;
+       text-decoration:none; white-space:nowrap; cursor:pointer; transition:opacity .12s, transform .08s; }
+.btn.primary { background:var(--text); color:var(--bg); }
+.btn:hover { transform:translateY(-1px); opacity:.85; }
+.btn:active { transform:translateY(1px); }
+.btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+/* 비율 막대 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순. 숫자는 아래 한 줄이 글자로 말한다. */
+.chart { margin-bottom:var(--sp-5); }
+.meter { display:flex; gap:2px; height:6px; margin-bottom:var(--sp-2); }
+.meter i { display:block; height:100%; }
+.meter .defect { background:var(--chart-defect); } .meter .infra { background:var(--chart-infra); }
+.meter .unv { background:var(--chart-unv); } .meter .weak { background:var(--chart-weak); }
+.meter .pass { background:var(--chart-pass); }
+.tally { font-size:var(--tx-md); font-variant-numeric:tabular-nums; }
+.chart p { margin:var(--sp-1) 0 0; }
+/* 웹 UI 가 위쪽 막대·결론·숫자·같은 알림을 이미 보인다 — 한 화면에 두 번 나오지 않게 한다. */
+.embedded .topbar, .embedded .result-head, .embedded .chart, .embedded .dup,
+.embedded .meta, .embedded .metanote { display:none; }
+/* 실행 조건 — 다시 돌려 볼 사람이 찾는 값이라 문서 끝에 둔다. 이름과 값을 한 칸씩 나눈 격자. */
 .meta { display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:0 24px;
-        padding:6px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
+        margin-top:var(--sp-12); padding-top:6px; border-top:1px solid var(--line); }
 .mi { padding:8px 0; min-width:0; color:var(--muted); font-size:12px; }
 .mi code { display:block; margin-top:2px; font-family:var(--font-mono); font-size:13px;
            color:var(--text); word-break:break-all; }
-.metanote { color:var(--muted); font-size:13px; margin:10px 0 24px; }
-.embedded .metanote { display:none; }
-/* 결론 한 줄 — 숫자는 원형차트 범례 한 곳에만 둔다(숫자 칸과 범례가 같은 수를 두 번 말하지 않게).
-   위 굵은 선이 '여기부터 결과' 를 말한다. 웹 UI 는 같은 문장을 제목으로 이미 보인다. */
-.concl { font-size:22px; font-weight:400; letter-spacing:-0.01em; line-height:1.4; word-break:keep-all;
-         margin:0 0 4px; padding-top:16px; border-top:2px solid var(--text); }
-.concl mark { color:inherit; border-radius:6px; padding:0 6px; -webkit-box-decoration-break:clone;
-              box-decoration-break:clone; }
-.concl mark.fail { background:var(--fail-bg); } .concl mark.infra { background:var(--note-bg); }
-.concl mark.unv { background:var(--bg-inset); } .concl mark.pass { background:var(--pass-bg); }
-.concl .rate { font-size:15px; color:var(--muted); margin-left:8px; white-space:nowrap;
-               font-variant-numeric:tabular-nums; }
-.embedded .concl { display:none; }
-/* 웹 UI 가 같은 알림을 숫자 바로 아래 이미 띄운다 — 한 화면에 두 번 나오지 않게 한다. */
-.embedded .dup { display:none; }
-.embedded h1 { display:none; }
-/* 웹 UI 가 위쪽 막대·숫자와 조건 줄을 이미 보인다 — 원형차트와 개발자용 조건 줄은 리포트 파일에만. */
-.embedded .chart, .embedded .meta { display:none; }
-/* 틀린 곳 목록 — 한 줄에 항목 이름 · 일어난 일 · 보기 */
-.flist { border-top:2px solid var(--text); margin:8px 0 24px; }
-.flist .cap { font-size:15px; font-weight:650; padding:10px 0 6px; }
+.metanote { color:var(--muted); font-size:13px; margin:10px 0 0; }
+/* 틀린 곳 목록 — 한 줄에 번호 · 항목 이름 · 일어난 일 · 어긴 규칙. 번호는 아래 카드의 번호와 같다. */
+.flist { margin:var(--sp-8) 0 0; }
+.flist .cap { font-size:var(--tx-base); font-weight:650; padding-bottom:var(--sp-2);
+              border-bottom:2px solid var(--text); }
 .flist.defect .cap { color:var(--fail); }
 .flist.infra .cap { color:var(--note-fg); }
 .flist.unv .cap { color:var(--muted); }
-.frow { display:grid; grid-template-columns:130px minmax(0,1fr) auto; gap:12px; align-items:baseline;
+.frow { display:grid; grid-template-columns:28px 130px minmax(0,1fr) auto; gap:12px; align-items:baseline;
         padding:9px 0; border-bottom:1px solid var(--line); color:inherit; text-decoration:none; }
 .frow:hover { background:var(--bg-hover); }
 .frow .who { font-weight:600; word-break:keep-all; }
-.frow .go { font-size:12px; color:var(--muted); text-decoration:underline; text-underline-offset:3px; }
-@media (max-width:640px) { .frow { grid-template-columns:minmax(0,1fr) auto; } .frow .who { grid-column:1/-1; } }
+.frow .rule { font-size:var(--tx-md); color:var(--muted); }
+.no { font-weight:700; font-variant-numeric:tabular-nums; }
+.no.defect { color:var(--fail); } .no.infra { color:var(--note-fg); } .no.unv { color:var(--muted); }
+@media (max-width:640px) { .frow { grid-template-columns:28px minmax(0,1fr); }
+  .frow .what, .frow .rule { grid-column:2; } }
 .case { scroll-margin-top:16px; }
-button.copy { font:inherit; font-size:12px; font-weight:600; margin-left:auto; padding:5px 12px; border-radius:999px;
+button.copy { font:inherit; font-size:12px; font-weight:650; margin-left:auto; padding:5px 12px; border-radius:999px;
               transition:border-color .12s, transform .08s;
-              border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
+              border:1px solid var(--text); background:transparent; color:var(--text); cursor:pointer; }
 button.copy:hover { border-color:var(--text); transform:translateY(-1px); }
 button.copy:active { transform:translateY(1px); }
 button.copy:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
 @media (prefers-reduced-motion: reduce) { button.copy, button.copy:hover, button.copy:active { transition:none; transform:none; } }
 /* 통과는 접어 둔다 — 확인할 것이 없는 줄이 실패와 같은 무게로 이어지지 않게. */
 details.passfold > summary { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:12px;
-                             border-bottom:2px solid var(--text); margin-top:36px; }
+                             border-bottom:2px solid var(--text); margin-top:var(--sp-8); }
 details.passfold > summary::-webkit-details-marker { display:none; }
 details.passfold > summary h2 { border:none; margin:0; padding-bottom:8px; }
 details.passfold[open] .ms { visibility:hidden; }
-.chart { display:flex; gap:28px; align-items:center; flex-wrap:wrap; margin:20px 0 24px; }
-.chart svg { flex:none; }
-.chart text { text-anchor:middle; fill:var(--text); }
-.chart .big { font-size:26px; font-weight:400; }
-.chart .small { font-size:11px; fill:var(--muted); }
-.chart .seg.pass { stroke:var(--chart-pass); } .chart .seg.weak { stroke:var(--chart-weak); }
-.chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
-.chart .seg.unv { stroke:var(--chart-unv); }
-.chart p { margin:10px 0 0; }
-.legend { list-style:none; margin:0; padding:0; display:grid; gap:6px; font-size:13px; }
-.legend li { display:grid; grid-template-columns:12px 8em 3em 3em; gap:8px; align-items:center; }
-.legend b { text-align:right; font-variant-numeric:tabular-nums; }
-.legend .ms { text-align:right; }
-.swatch { width:12px; height:12px; border-radius:2px; }
-.swatch.pass { background:var(--chart-pass); } .swatch.weak { background:var(--chart-weak); }
-.swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
-.swatch.unv { background:var(--chart-unv); }
-h2 { font-size:20px; font-weight:650; margin:36px 0 0; padding-bottom:8px;
+/* 섹션 머리 — 웹 UI 의 묶음 머리줄과 같은 크기, 아래 굵은 선. */
+h2 { font-size:var(--tx-base); font-weight:650; margin:var(--sp-8) 0 0; padding-bottom:var(--sp-2);
      border-bottom:2px solid var(--text); }
 /* 케이스는 상자가 아니라 줄이다 — 계획 화면의 목록과 같은 모양. */
 .case { border-bottom:1px solid var(--line); }
 .case > summary { padding:12px 0; cursor:pointer; display:flex; gap:8px;
                   align-items:center; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
-.tag { font-size:11px; font-weight:700; padding:2px 7px; border-radius:var(--r-sm);
+.tag { font-size:11px; font-weight:650; padding:1px 7px; border-radius:var(--r-md);
        white-space:nowrap; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:var(--bg-inset); color:var(--text); font-weight:500; }
+.tag.rule { background:var(--bg-inset); color:var(--text); }
 .tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
-/* 실행 문제는 보라다 — 원형 차트의 '실행 문제' 와 같은 색이어야 한다. */
+/* 실행 문제는 보라다 — 비율 막대의 '실행 문제' 와 같은 색이어야 한다. */
 .tag.cat.infra { background:var(--note-bg); color:var(--note-fg); }
 .tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
 /* 확인 불가 — 결함(빨강)도 실행 문제(보라)도 아니다. 무채색 + 점선 테두리로 '판정 없음' 을 보인다. */
@@ -287,7 +296,12 @@ h2 { font-size:20px; font-weight:650; margin:36px 0 0; padding-bottom:8px;
 .ms { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
 .body { padding:0 0 24px; }
 /* 실패 카드 — 대제목이 맨 위, 분류·규칙 꼬리표와 케이스 제목은 그 아래 작은 한 줄. */
-.case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:20px 0 12px; }
+/* 번호는 왼쪽 칸에 따로 선다 — 제목·꼬리표·비교 칸이 같은 세로선에서 시작한다. */
+.case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:24px 0 12px 36px; position:relative;
+                          align-items:baseline; }
+.case.failed > summary .no { position:absolute; left:0; top:27px; font-size:17px; line-height:1.4; }
+.case.failed > .body { padding-left:36px; }
+@media (max-width:640px) { .case.failed > .body { padding-left:0; } }
 .case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:17px; font-weight:650; line-height:1.4;
               letter-spacing:-0.01em; }
 .case.failed .title { color:var(--muted); font-size:13px; }
@@ -314,7 +328,8 @@ details.raw > summary:hover { color:var(--text); }
 details.raw .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
 details.raw .url code { font-family:var(--font-mono); }
 h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
-/* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다. */
+/* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다.
+   왼쪽 칸에 기대·근거·재현 절차, 오른쪽 칸에 관찰·판정한 화면·그때의 주소가 든다. */
 .cmp { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); border-radius:var(--r-lg);
        margin:4px 0 16px; overflow:hidden; }
 .cmp > div { padding:14px 16px; min-width:0; }
@@ -323,29 +338,51 @@ h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
 .cmp.infra > .got { background:var(--note-bg); }
 .cmp.unv > .got { background:var(--bg-inset); }
 .cmp p { margin:0; word-break:break-word; }
+.cmp h4 + p { font-size:var(--tx-lg); line-height:1.5; word-break:keep-all; overflow-wrap:anywhere; }
+.cmp h4 ~ h4 { margin-top:18px; }
+.cmp.defect > .got > h4:first-child { color:var(--fail); }
+.cmp.infra > .got > h4:first-child { color:var(--note-fg); }
+/* 기획서 근거 — 기획서 표의 그 줄을 표 모양 그대로 옮긴다. 판정에 쓴 칸만 진하게. */
+table.src { width:100%; margin-top:12px; border-collapse:collapse; font-size:12px; line-height:1.45; }
+table.src caption { text-align:left; color:var(--muted); padding-bottom:4px; }
+table.src caption b { font-weight:600; margin-right:6px; }
+table.src td { border:1px solid var(--line); padding:5px 7px; vertical-align:top; color:var(--muted);
+               word-break:keep-all; overflow-wrap:break-word; }
+table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset); }
+@media (max-width:640px) { table.src, table.src caption, table.src tbody, table.src tr { display:block; }
+  table.src td { display:inline-block; margin:0 -1px -1px 0; } }
 .cmp .src { font-size:13px; color:var(--muted); margin-top:10px; }
 .cmp .src b { font-weight:600; margin-right:6px; }
 .cmp code { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
 @media (max-width:640px) { .cmp { grid-template-columns:1fr; }
   .cmp > .got { border-left:0; border-top:1px solid var(--line); } }
-.repro { margin:4px 0 8px; padding-left:22px; }
-.repro li { padding:2px 0; }
+.repro { margin:4px 0 0; padding-left:22px; font-size:var(--tx-md); color:var(--muted); }
+.repro li { padding:1px 0; }
+/* 여덟 단계 가운데 일곱은 케이스마다 같다 — 기획서를 어긴 단계만 진하게 둔다. */
+.repro li.broke { color:var(--text); font-weight:600; }
+.repro em.broke { font-size:11px; font-weight:650; background:var(--fail-bg); padding:1px 6px;
+                  border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
 .repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; }
 .repro em { font-style:normal; font-size:13px; color:var(--fail); }
-.shots.last + h4 { margin-top:18px; }
-.shots.last a { display:block; width:560px; max-width:100%; }
-.shots.last a > img { display:block; width:100%; height:300px; object-fit:cover; object-position:center;
-                      transform-origin:top center; }
+.shots.last { margin-top:12px; }
+.shots.last a { display:block; width:100%; }
+.shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
 .shots.last .cap { text-align:left; font-size:12px; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
-.shots a { display:block; cursor:zoom-in; }
+.shots a { display:block; cursor:zoom-in; text-decoration:none; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:var(--r-sm);
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
 /* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
-.heal, .gap, .warn { border-radius:var(--r-lg); padding:14px 16px; margin-bottom:12px;
+.heal, .gap, .warn { border-radius:var(--r-xl); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3);
                      font-size:14px; line-height:1.6; }
-.warn b, .heal b, .gap b { font-size:15px; }
+.warn b, .heal b, .gap b { font-size:var(--tx-lg); font-weight:620; }
+/* 주의 알림의 세모 — 웹 UI 알림과 같은 그림. 색은 토큰으로 칠하고 그림은 가리개로만 쓴다. */
+.warn { position:relative; padding-left:46px; }
+.warn::before { content:""; position:absolute; left:16px; top:15px; width:18px; height:18px;
+                background:var(--warn-fg); -webkit-mask:var(--warn-icon) center / contain no-repeat;
+                mask:var(--warn-icon) center / contain no-repeat; }
+:root { --warn-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M8 2.2l6 10.6H2z' stroke-width='1.4'/%3E%3Cpath d='M8 6.4v3M8 11.2v.1' stroke-width='1.6'/%3E%3C/svg%3E"); }
 .heal { background:var(--note-bg); }
 .heal b { color:var(--note-fg); }
 .gap { background:var(--info-bg); }
@@ -358,6 +395,14 @@ h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
 .screens td.k { color:var(--muted); font-size:12px; }
 .screens code { font-family:var(--font-mono); font-size:12px; color:var(--muted); }
 h3.grp { font-size:13px; margin:20px 0 0; color:var(--muted); font-weight:650; }
+@media (max-width:640px) {
+  .wrap { padding:var(--sp-6) var(--sp-4) var(--sp-10); }
+  h1 { font-size:25px; }
+  .topbar { grid-template-columns:minmax(0,1fr) auto; padding:var(--sp-3) var(--sp-4); }
+  .topbar .name { order:-1; } .topbar .when, .crumbs span { display:none; } .crumbs { justify-content:flex-end; }
+}
+@media (prefers-reduced-motion: reduce) { .btn, .btn:hover, .btn:active { transition:none; transform:none; } }
+@media print { .actions, button.copy { display:none; } .case { break-inside:avoid; } }
 """
 
 
@@ -621,7 +666,7 @@ def is_weak_pass(verdict: Verdict) -> bool:
 
 @dataclass(frozen=True)
 class ChartSegment:
-    """원형차트 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
+    """비율 막대 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
 
     key: str
     label: str
@@ -652,52 +697,41 @@ def chart_segments(verdicts: list[Verdict]) -> list[ChartSegment]:
     return [ChartSegment(k, labels[k], n) for k, n in counts.items() if n]
 
 
-def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int) -> str:
-    """도넛과 범례. 외부 라이브러리 없이 SVG 를 문서에 넣는다 (file:// 로 열린다).
+def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
+    """비율 막대와 집계 한 줄 — 웹 UI 결과 화면의 막대(.meter · .tally)와 같은 모양이다.
 
-    색은 --chart-* 토큰이고 이름표가 늘 곁에 있다. 색만으로 뜻을 전하면 인쇄물과
+    색은 토큰이고 이름과 수가 늘 아래 줄에 글자로 있다. 색만으로 뜻을 전하면 인쇄물과
     색각 이상 독자에게 조각이 구별되지 않는다. 조각에 들어가지 않는 것(실행하지 않은
-    것)은 조각으로 만들지 않고 글로 쓴다 — 도넛의 합은 실행한 케이스뿐이어서, 이 줄이
-    없으면 온통 초록인 차트가 '전부 확인됨' 으로 읽힌다.
+    것)은 조각으로 만들지 않고 글로 쓴다 — 막대의 합은 실행한 케이스뿐이어서, 이 줄이
+    없으면 온통 초록인 막대가 '전부 확인됨' 으로 읽힌다.
     """
-    segments = chart_segments(verdicts)
+    segments = {s.key: s for s in chart_segments(verdicts)}
     if not segments:
         return ""
-    total = sum(s.count for s in segments)
-    radius, width, gap = 54.0, 18.0, 2.0
-    length = 2 * math.pi * radius
-    arcs, legend, offset = [], [], 0.0
-    for s in segments:
-        share = s.count / total
-        arc = share * length
-        # 조각이 하나면 틈을 두지 않는다 — 끊긴 고리가 뭔가 빠진 것처럼 보인다.
-        drawn = arc if len(segments) == 1 else max(arc - gap, 0.5)
-        tip = f"{s.label} {s.count}건 ({share:.0%})"
-        arcs.append(
-            f"<circle class='seg {s.key}' cx='70' cy='70' r='{radius:g}' fill='none' "
-            f"stroke-width='{width:g}' stroke-dasharray='{drawn:.2f} {length - drawn:.2f}' "
-            f"stroke-dashoffset='{-offset:.2f}'><title>{_esc(tip)}</title></circle>"
-        )
-        legend.append(
-            f"<li><i class='swatch {s.key}'></i><span>{_esc(s.label)}</span>"
-            f"<b>{s.count}</b><span class='ms'>{share:.0%}</span></li>"
-        )
-        offset += arc
+    total = sum(s.count for s in segments.values())
+    n = {k: segments[k].count if k in segments else 0 for k in ("defect", "infra", "unv", "weak", "pass")}
+    # 결함이 맨 앞, 통과가 맨 뒤 — 웹 UI 의 막대와 같은 순서.
+    bars = "".join(
+        f"<i class='{k}' style='flex:{n[k]}' title='{_esc(segments[k].label)} {n[k]}건 ({n[k] / total:.0%})'></i>"
+        for k in n if n[k])
+    # 기획서와 다름·실행 문제는 0이어도 적는다 — '없다' 도 읽는 사람이 찾는 답이다 (웹 UI 와 같다).
+    parts = [f"기획서와 다름 {n['defect']}", f"실행 문제 {n['infra']}"]
+    if n["unv"]:
+        parts.append(f"확인 불가 {n['unv']}")
+    parts.append(f"통과 {n['pass'] + n['weak']}" + (f" (약한 확인 {n['weak']} 포함)" if n["weak"] else ""))
+    if rate is not None:
+        parts.append(f"통과율 {rate}%")
     outside = []
     if unchecked:
         outside.append(f"기획서에 적혔으나 확인하지 않은 것 {unchecked}건")
     if excluded:
         outside.append(f"이번 실행에서 제외한 케이스 {excluded}건")
     note = (f"<p class='ms'>차트에 없는 것: {_esc(' · '.join(outside))}</p>" if outside else "")
-    summary = ", ".join(f"{s.label} {s.count}건" for s in segments)
+    summary = ", ".join(f"{s.label} {s.count}건" for s in segments.values())
     return (
         "<div class='chart'>"
-        f"<svg viewBox='0 0 140 140' width='140' height='140' role='img' "
-        f"aria-label='전체 {total}건 — {_esc(summary)}'>"
-        f"<g transform='rotate(-90 70 70)'>{''.join(arcs)}</g>"
-        f"<text x='70' y='68' class='big'>{total}</text>"
-        "<text x='70' y='86' class='small'>케이스</text></svg>"
-        f"<div><ul class='legend'>{''.join(legend)}</ul>{note}</div></div>"
+        f"<div class='meter' role='img' aria-label='전체 {total}건 — {_esc(summary)}'>{bars}</div>"
+        f"<div class='tally'>{_esc(' · '.join(parts))}</div>{note}</div>"
     )
 
 
@@ -744,34 +778,53 @@ def _headline(verdict: Verdict) -> tuple[str, str]:
     return first, rest.strip()
 
 
-def _compare_html(verdict: Verdict, kind: str = "") -> str:
+def _source_html(source, expected: str, label: str | None = None) -> str:
+    """기획서 근거 한 곳 — 기대가 기획서 어디에 적혀 있는지. "그런 말이 어디 있느냐" 에 리포트가 답한다.
+
+    표 행은 표 모양 그대로 옮긴다. 가운뎃점으로 이은 한 줄보다 기획서의 그 줄을 찾기 쉽다.
+    """
+    sentence = source_sentence(source)
+    cells = source_cells(source)
+    if not cells:
+        return f"<p class='src'><b>기획서 근거</b> {_esc(sentence)}</p>"
+    # ponytail: 기대 문장이 따옴표로 그대로 옮긴 칸만 진하게 한다(항목 이름 칸은 뺀다 — 어느
+    # 줄인지일 뿐 판정에 쓴 값이 아니다). 선택 목록처럼 문장이 칸을 풀어 쓴 경우는 못 찾아
+    # 강조 없이 둔다 — 추출 단계가 칸 위치를 넘겨주면 그것으로 바꾼다.
+    hit = max((c for c in cells if c != label and f"'{c}'" in expected), key=len, default=None)
+    tds = "".join(f"<td{' class=hit' if c == hit else ''}>{_esc(c)}</td>" for c in cells)
+    return (f"<table class='src' aria-label='{_esc(sentence)}'><caption><b>기획서 근거</b>"
+            f"{source.page}쪽 표</caption><tr>{tds}</tr></table>")
+
+
+def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str = "") -> str:
     """기획서가 말한 것과 실제 화면을 나란히 놓는다.
 
     표의 두 줄('기대'·'실제')로 두면 위아래로 읽어 견줘야 한다. 이 도구가 하는 일이 바로
-    그 대조이므로 한눈에 좌우로 보이게 한다. 기획서 쪽에는 어느 쪽 어느 줄인지(근거)를,
-    실제 쪽에는 그때의 주소를 붙인다.
+    그 대조이므로 한눈에 좌우로 보이게 한다. 기획서 쪽에는 어느 쪽 어느 줄인지(근거)와
+    그 기대에 이르는 절차를, 실제 쪽에는 판정한 화면과 그때의 주소를 붙인다 — 캡처를 칸 밖에
+    따로 두면 오른쪽 절반이 비고 카드가 한 화면을 넘겼다.
     """
     ev = verdict.evidence or {}
-    sources = ""
-    if verdict.spec_sources:
-        # 기대가 기획서 어디에 적혀 있는지. "기획서에 그런 말이 어디 있느냐" 에 리포트가 답한다.
-        sources = ("<p class='src'><b>기획서 근거</b> " + "<br>".join(
-            _esc(source_sentence(s)) for s in verdict.spec_sources) + "</p>")
+    expected = ev.get("expected")
+    sources = "".join(_source_html(s, str(expected or ""), verdict.target_label)
+                      for s in verdict.spec_sources)
     url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
            if ev.get("url") else "")
     return (
         f"<div class='cmp {verdict.verdict} {kind}'>"
-        f"<div class='want'><h4>기획서</h4><p>{_esc(ev.get('expected'))}</p>{sources}</div>"
-        f"<div class='got'><h4>실제 화면</h4><p>{_esc(ev.get('actual'))}</p>{url}</div>"
+        f"<div class='want'><h4>기획서</h4><p>{_esc(expected)}</p>{sources}{repro}</div>"
+        f"<div class='got'><h4>실제 화면</h4><p>{_esc(ev.get('actual'))}</p>{shot}{url}</div>"
         "</div>"
     )
 
 
-def _repro_html(verdict: Verdict) -> str:
+def _repro_html(verdict: Verdict, broke: str | None = None) -> str:
     """재현 절차 — 손으로 그대로 따라 할 수 있는 문장으로.
 
     엑셀의 '재현 절차' 칸과 같은 문장이다(wording.step_sentence). 기획자가 개발사에
     "이렇게 하면 나온다" 고 넘길 때 표를 풀어 쓸 필요가 없게 한다. 멈춘 스텝에는 표시를 단다.
+    `broke` 는 규칙을 어긴 항목의 이름이다 — 그 항목을 건드린 단계만 진하게 둔다. 나머지 단계는
+    케이스마다 같아서, 다 같은 무게면 무엇을 다르게 넣었는지 찾아 읽어야 한다.
     """
     if not verdict.step_results:
         return ""
@@ -779,7 +832,10 @@ def _repro_html(verdict: Verdict) -> str:
     for r in verdict.step_results:
         prefix = "<span class='pre'>준비</span> " if r.phase == "setup" else ""
         stopped = " <em>← 여기서 멈춤</em>" if r.status == "error" else ""
-        items.append(f"<li>{prefix}{_esc(step_sentence(r.action, r.target, r.value))}{stopped}</li>")
+        hit = bool(broke) and r.phase != "setup" and r.target == broke and r.action != "click"
+        mark = " <em class='broke'>기획서를 어긴 단계</em>" if hit else ""
+        items.append(f"<li{' class=broke' if hit else ''}>{prefix}"
+                     f"{_esc(step_sentence(r.action, r.target, r.value))}{mark}{stopped}</li>")
     return f"<h4>재현 절차</h4><ol class='repro'>{''.join(items)}</ol>"
 
 
@@ -794,8 +850,11 @@ def _conclusion(verdicts: list[Verdict], total: int) -> str:
     return f"<mark class='pass'>{total}건 모두 통과했습니다.</mark>"
 
 
-def _fail_list_html(fails: list[Verdict], names: dict) -> str:
-    """틀린 곳을 한 줄씩 — 화면을 열자마자 '무엇이' 틀렸는지 보인다. 누르면 그 카드로 간다."""
+def _fail_list_html(fails: list[Verdict], names: dict, numbers: dict | None = None) -> str:
+    """틀린 곳을 한 줄씩 — 화면을 열자마자 '무엇이' 틀렸는지 보인다. 누르면 그 카드로 간다.
+
+    번호는 카드의 번호와 같다 — 기획자와 개발사가 '3번' 으로 같은 건을 가리킨다.
+    """
     if not fails:
         return ""
     out = []
@@ -815,16 +874,18 @@ def _fail_list_html(fails: list[Verdict], names: dict) -> str:
                 if who and what.startswith(who + particle):
                     what = what[len(who + particle):]
                     break
+            rule = RULE_LABELS.get(v.violates, v.violates) if v.violates else ""
             rows.append(f"<a class='frow' href='#c-{_esc(v.case_id)}'>"
+                        f"<span class='no {kind}'>{(numbers or {}).get(v.case_id, '')}</span>"
                         f"<span class='who'>{_esc(who)}</span>"
-                        f"<span class='what'>{_esc(what)}</span><span class='go'>보기</span></a>")
+                        f"<span class='what'>{_esc(what)}</span><span class='rule'>{_esc(rule)}</span></a>")
         rows = "".join(rows)
         out.append(f"<div class='flist {kind}'><div class='cap'>{label} {len(items)}</div>{rows}</div>")
     return "".join(out)
 
 
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None, target_url: str = "") -> str:
+               revised: dict | None = None, target_url: str = "", no: int | None = None) -> str:
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -886,18 +947,23 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         copy = (f"<button class='copy' type='button' data-copy='{_esc(text)}'>"
                 "재현 절차 복사</button>")
 
+    shot = _shots_html(verdict, last=True) if failed else ""
+    no_tag = f"<span class='no {kind}'>{no}</span>" if failed and no else ""
+    repro = _repro_html(verdict, verdict.target_label if kind == "defect" and verdict.violates else None)
+
     return (
         f"<details class='case{' failed' if failed else ''}' id='c-{_esc(verdict.case_id)}'"
         f"{' open' if open_by_default else ''}>"
-        f"<summary>{f'<span class=head>{_esc(headline)}</span>' if headline else ''}{copy}"
+        f"<summary>{no_tag}"
+        f"{f'<span class=head>{_esc(headline)}</span>' if headline else ''}{copy}"
         f"<span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
         f"{cat_tag}{rev_tag}{rule_tag}"
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>"
-        f"{_compare_html(verdict, kind)}{f'<table class=kv>{kv}</table>' if kv else ''}"
-        f"{_shots_html(verdict, last=True) if failed else ''}{_repro_html(verdict)}{more}"
+        f"{_compare_html(verdict, kind, shot, repro)}{f'<table class=kv>{kv}</table>' if kv else ''}"
+        f"{more}"
         f"</div></details>"
     )
 
@@ -940,8 +1006,19 @@ def _screens_html(by_screen: dict, by_flow: dict, names: dict) -> str:
     )
 
 
+def _groups(verdicts: list[Verdict], names: dict) -> dict[str, list[Verdict]]:
+    """판정을 화면별로 묶는다. 흐름은 화면과 섞지 않고 제 묶음을 갖는다."""
+    groups: dict[str, list[Verdict]] = {}
+    for v in verdicts:
+        key = f"흐름 {v.flow_id}" if v.flow_id else names.get(v.screen_id or "?",
+                                                             v.screen_id or "?")
+        groups.setdefault(key, []).append(v)
+    return groups
+
+
 def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
-                  revised: dict | None = None, target_url: str = "") -> str:
+                  revised: dict | None = None, target_url: str = "",
+                  numbers: dict | None = None) -> str:
     """판정을 화면별로 묶어 렌더한다. 묶을 것이 하나면 소제목을 붙이지 않는다.
 
     흐름은 별도 구획으로 떼어 맨 뒤에 둔다. 마지막 화면 구획에 섞으면 **그 화면에
@@ -950,19 +1027,18 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
     """
     if not verdicts:
         return ""
-    groups: dict[str, list[Verdict]] = {}
-    for v in verdicts:
-        key = f"흐름 {v.flow_id}" if v.flow_id else names.get(v.screen_id or "?",
-                                                             v.screen_id or "?")
-        groups.setdefault(key, []).append(v)
+    groups = _groups(verdicts, names)
+
+    def card(v: Verdict) -> str:
+        return _case_html(v, open_by_default, revised, target_url, (numbers or {}).get(v.case_id))
 
     if len(groups) < 2:
-        return "".join(_case_html(v, open_by_default, revised, target_url) for v in verdicts)
+        return "".join(card(v) for v in verdicts)
 
     out = []
     for label, items in groups.items():
         out.append(f"<h3 class='grp'>{_esc(label)} · {len(items)}건</h3>")
-        out.extend(_case_html(v, open_by_default, revised, target_url) for v in items)
+        out.extend(card(v) for v in items)
     return "".join(out)
 
 
@@ -1259,7 +1335,7 @@ def render_html(report: TestReport) -> str:
     if cache.get("hits"):
         build_meta += (f"\n저장된 모델 응답 <code>{_esc(cache['hits'])}건 재사용"
                        f" · 새 호출 {_esc(cache.get('misses', 0))}건</code>")
-    chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0)
+    chart_html = _chart_html(report.cases, len(gaps), len(sel.excluded) if sel else 0, rate)
 
     # 실행 조건. 한 줄로 이어 쓰면 아홉 가지가 가운뎃점으로 붙어 읽히지 않았다 — 이름과 값을
     # 한 칸씩 나눠 격자로 놓는다. 기획서는 파일 이름만 보이고 전체 경로는 마우스를 올리면 나온다
@@ -1284,11 +1360,23 @@ def render_html(report: TestReport) -> str:
 
     revision = s.get("revision") or {}
     revised = revision.get("touched") or {}
+    # 실패 건의 번호 — 카드가 놓이는 순서대로. 틀린 곳 목록과 카드가 같은 번호를 쓴다.
+    numbers = {v.case_id: i for i, v in enumerate(
+        (v for items in _groups(fails, names).values() for v in items), 1)}
+    # 결론 아래 한 줄 — 웹 UI 결과 화면과 같은 말(app.js 의 cond).
+    changed = len(history.get("regressed") or []) + len(history.get("fixed") or [])
+    cond = " · ".join(x for x in (
+        f"{' · '.join(str(n) for n in names.values())} 화면" if names else "",
+        f"{history['round']}번째 실행" if history.get("round") else "",
+        "" if not history.get("previous_run") else
+        (f"직전보다 새로 실패 {len(history.get('regressed') or [])} · 해결 {len(history.get('fixed') or [])}"
+         if changed else "직전과 같은 결과"),
+    ) if x)
     fail_section = _grouped_html(fails, names, open_by_default=True, revised=revised,
-                                 target_url=report.target_url) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
+                                 target_url=report.target_url, numbers=numbers) or         "<div class='empty'>실패한 케이스가 없습니다.</div>"
     pass_section = _grouped_html(passes, names, open_by_default=False, revised=revised) or         "<div class='empty'>통과한 케이스가 없습니다.</div>"
 
-    # 기획서와 다름·실행 문제의 수는 원형차트 범례에 이미 있다. 실행 문제가 있을 때만
+    # 기획서와 다름·실행 문제의 수는 비율 막대 아래 집계 줄에 이미 있다. 실행 문제가 있을 때만
     # '도구·환경을 먼저 확인' 을 덧붙인다.
     n_infra = sum(1 for v in fails if fail_kind(v) == "infra")
     breakdown = (f"<div class='breakdown'>실행 문제 {n_infra}건은 "
@@ -1303,21 +1391,25 @@ def render_html(report: TestReport) -> str:
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="color-scheme" content="light dark">
 <script>{_THEME_JS}</script>
-<title>Prova 리포트 · {_esc(report.run_id)}</title>
+<title>Prova 검증 리포트 · {_esc(report.run_id)}</title>
 <style>{_CSS}</style>
 <script>if(self!==top)document.documentElement.className='embedded'</script></head>
-<body><div class="wrap">
-<h1>Prova 검증 리포트</h1>
-<div class="meta">{meta_html}</div>
-<p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
-  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
-  · <a href="report.csv" download>결과표 CSV</a> · <a href="run.log" target="_blank">실행 로그</a></p>
+<body>
+<header class="topbar">
+<div class="crumbs">{f"<b title='{_esc(report.spec_source)}'>{_esc(spec_name)}</b><span aria-hidden='true'>→</span>" if spec_name else ""}<span>{_esc(report.target_url)}</span></div>
+<div class="name">Prova</div>
+<div class="when">검증 리포트 · {_esc(when)}</div>
+</header>
+<div class="wrap">
+<div class="result-head">
+<div><h1>{_conclusion(report.cases, total)}</h1>{f"<div class='cond'>{_esc(cond)}</div>" if cond else ""}</div>
+<div class="actions"><a class="btn primary" href="report.xlsx" download>엑셀 받기</a></div>
+</div>
+{chart_html}
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
 {mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
-<p class="concl">{_conclusion(report.cases, total)} <span class="rate">통과율 {rate}%</span></p>
-{chart_html}
 {breakdown}
-{_fail_list_html(fails, names)}
+{_fail_list_html(fails, names, numbers)}
 {screens_html}
 
 <h2>실패 케이스 ({len(fails)})</h2>
@@ -1327,6 +1419,10 @@ def render_html(report: TestReport) -> str:
 <span class='ms'>확인할 것 없음 · 펼치기</span></summary>
 {pass_section}
 </details>
+<div class="meta">{meta_html}</div>
+<p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
+  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
+  · <a href="report.csv" download>결과표 CSV</a> · <a href="run.log" target="_blank">실행 로그</a></p>
 </div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script></body></html>
 """
 
