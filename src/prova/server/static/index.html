@@ -118,6 +118,15 @@ try { var t = localStorage.getItem("prova-theme");
         </div>
 
         <div class="field">
+          <label for="screenUrls">화면별 주소 (기획서에 경로가 없을 때)</label>
+          <textarea id="screenUrls" rows="3" spellcheck="false"
+                    placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
+          <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
+          <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않습니다
+            (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적습니다.</div>
+        </div>
+
+        <div class="field">
           <label class="check" for="vlm">
             <input type="checkbox" id="vlm"> 화면 이미지로 찾기
           </label>

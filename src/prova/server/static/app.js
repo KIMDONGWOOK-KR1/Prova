@@ -109,6 +109,7 @@ function saveSettings() {
     localStorage.setItem(LS, JSON.stringify({
       pdf: $("pdf").value, url: $("url").value, backend: $("backend").value,
       figma: $("figma").value, project: $("project").value.trim(),
+      screenUrls: $("screenUrls").value,
     }));
   } catch (e) { /* 저장 못 해도 기능은 그대로 돈다 */ }
 }
@@ -125,7 +126,32 @@ function form() {
     backend: $("backend").value,
     figma: $("figma").value || null,
     project: $("project").value.trim(),
+    screen_urls: screenUrls().urls,
   };
+}
+
+// '화면 이름=/경로' 줄들을 읽는다. 빈 줄은 건너뛰고, '=' 가 없거나 한쪽이 빈 줄은 틀린 줄로
+// 모은다 — 조용히 버리면 그 화면이 0건으로 끝나도 사람이 이유를 모른다.
+function screenUrls() {
+  const urls = {};
+  const bad = [];
+  for (const raw of $("screenUrls").value.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const i = line.indexOf("=");
+    const name = i < 0 ? "" : line.slice(0, i).trim();
+    const path = i < 0 ? "" : line.slice(i + 1).trim();
+    if (!name || !path) bad.push(line);
+    else urls[name] = path;
+  }
+  return { urls, bad };
+}
+
+function renderScreenUrlsErr() {
+  const { bad } = screenUrls();
+  const box = $("screenUrlsErr");
+  box.hidden = bad.length === 0;
+  box.textContent = bad.length ? `'화면 이름=/경로' 모양이 아닌 줄: ${bad.join(", ")}` : "";
 }
 
 // ── 상단 · 칩 ──────────────────────────────────────────────────────────────
@@ -146,7 +172,9 @@ function renderChrome() {
     (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
 
   // 실행 옵션은 접혀 있다 — 지금 값은 접힌 채로도 보여야 모르고 켠 채 돌리지 않는다.
+  const nUrls = Object.keys(f.screen_urls).length;
   $("optsNow").textContent = [BACKEND_NAME[f.backend] || f.backend, f.figma && "Figma 함께",
+    nUrls && `화면 주소 ${nUrls}개`,
     $("vlm").checked && "이미지로 찾기 켬", $("dryRun").checked && "쓰기 막기 켬",
   ].filter(Boolean).join(" · ");
 }
@@ -1168,6 +1196,16 @@ $("planBtn").addEventListener("click", (e) => {
   $("projectNew").focus();
 }, true);
 
+// 화면별 주소에 틀린 줄이 있으면 멈춘다 — 그 줄을 빼고 돌리면 적은 화면이 0건이 된다.
+// 접힌 '실행 옵션' 안에 있으므로 펼쳐서 보여 준다.
+$("planBtn").addEventListener("click", (e) => {
+  if (screenUrls().bad.length === 0) return;
+  e.stopImmediatePropagation();
+  renderScreenUrlsErr();
+  $("opts").open = true;
+  $("screenUrls").focus();
+}, true);
+
 function syncUploadLabel() {
   const current = $("project").value.trim();
   $("uploadBtn").textContent = current
@@ -1255,6 +1293,9 @@ $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
 
 ["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", renderChrome));
+$("screenUrls").addEventListener("input", () => {
+  renderScreenUrlsErr(); renderChrome(); saveSettings();
+});
 
 ["pdf", "url", "backend", "figma"].forEach((id) =>
   $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); }));
@@ -1278,6 +1319,7 @@ async function boot() {
     const saved = loadSettings();
     state.specGroups = st.spec_groups || [];
     renderProjects(st.projects || []);
+    if (typeof saved.screenUrls === "string") $("screenUrls").value = saved.screenUrls;
     if (saved.project) { $("project").value = saved.project; renderProjects(); }
     else renderProjects();
     syncUploadLabel();

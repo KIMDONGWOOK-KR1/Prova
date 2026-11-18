@@ -580,3 +580,59 @@ class TestProjects:
             {"summary": {"project": "실행만"}, "created_at": "2026-11-12T00:00:00"}),
             encoding="utf-8")
         assert client.get("/api/state").json()["projects"] == ["실행만", "폴더만"]
+
+
+class TestScreenUrls:
+    """화면별 주소(CLI --screen-url) — 실물 기획서는 화면 경로가 없어 이것 없이는 0건이다."""
+
+    def _spy(self, monkeypatch, name):
+        seen = {}
+        original = getattr(server_app, name)
+
+        def spy(*args, **kwargs):
+            seen.update(kwargs)
+            return original(*args, **kwargs)
+
+        monkeypatch.setattr(server_app, name, spy)
+        return seen
+
+    def test_계획에_화면별_주소가_넘어간다(self, client, sut_base, monkeypatch):
+        seen = self._spy(monkeypatch, "build_plan")
+        res = client.post("/api/plan", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock",
+            "screen_urls": {" 로그인 ": " /login "},
+        })
+        job = wait(client, res.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        assert seen["screen_urls"] == {"로그인": "/login"}
+
+    def test_실행에도_같은_주소가_넘어간다(self, client, sut_base, monkeypatch):
+        """계획과 실행이 다른 주소로 돌면 사람이 승인한 것과 도는 것이 어긋난다."""
+        seen = self._spy(monkeypatch, "run_pipeline")
+        plan = make_plan(client, sut_base)
+        ids = [c["case_id"] for c in plan["cases"]][:1]
+        res = client.post("/api/run", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock", "case_ids": ids,
+            "screen_urls": {"로그인": "/login"},
+        })
+        job = wait(client, res.json()["job_id"])
+        assert job["status"] == "done", job["error"]
+        assert seen["screen_urls"] == {"로그인": "/login"}
+
+    def test_비우면_빈_매핑이다(self, client, sut_base, monkeypatch):
+        seen = self._spy(monkeypatch, "build_plan")
+        make_plan(client, sut_base)
+        assert seen["screen_urls"] == {}
+
+    @pytest.mark.parametrize("pair", [{"로그인": " "}, {" ": "/login"}])
+    def test_한쪽이_빈_줄은_작업_전에_거부한다(self, client, sut_base, pair):
+        """조용히 버리면 그 화면이 0건으로 끝나도 사람이 이유를 모른다."""
+        res = client.post("/api/plan", json={
+            "pdf": SPEC, "url": f"{sut_base}/bad", "backend": "mock", "screen_urls": pair,
+        })
+        assert res.status_code == 400
+        assert "화면 이름=/경로" in res.json()["detail"]
+
+    def test_화면에_입력란이_있다(self, client):
+        html = client.get("/").text
+        assert 'id="screenUrls"' in html

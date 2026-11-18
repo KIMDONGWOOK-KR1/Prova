@@ -177,6 +177,10 @@ class PlanRequest(BaseModel):
     #: 사람이 계획 화면에서 고친 추출 결과(SpecDocument). 주면 기획서를 다시 읽지 않고 이
     #: 문서로 케이스를 만든다. 원래 추출과 다른 점은 리포트에 남는다 (prova.spec_edits).
     doc: Optional[dict] = None
+    #: 화면 이름 → 경로 (CLI --screen-url). 기획서에 화면 경로가 없을 때 사람이 알려 준다 —
+    #: 실물 기획서는 화면 그림과 페이지명만 있고 경로가 없어, 없으면 그 화면의 케이스가 0건이다.
+    #: 모델이 지은 경로는 쓰지 않는다(pipeline.apply_screen_urls).
+    screen_urls: dict[str, str] = {}
 
 
 class RunRequest(PlanRequest):
@@ -265,6 +269,7 @@ def plan(body: PlanRequest) -> dict:
     cfg = _config()
 
     edited = _edited_doc(body)
+    urls = _screen_urls(body)  # 작업을 띄우기 전에 — 틀린 줄은 진행 로그가 아니라 곧바로 400
 
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
@@ -275,6 +280,7 @@ def plan(body: PlanRequest) -> dict:
             llm=llm,
             request=body.request,
             figma_json=str(figma) if figma else None,
+            screen_urls=urls,
             on_progress=report,
             doc=edited,
         )
@@ -355,6 +361,7 @@ def run(body: RunRequest) -> dict:
     # 실패가 탐지 실패로 되돌아가, '보정을 켠' 실행이 조용히 1차 경로만 돈다.
     vlm = _make_vlm(cfg) if body.vlm else None
     edited = _edited_doc(body)
+    urls = _screen_urls(body)
 
     def work(report):
         llm = _backend(body.backend, cfg, pdf, report)
@@ -365,6 +372,7 @@ def run(body: RunRequest) -> dict:
             base_url=body.url,
             llm=llm,
             figma_json=str(figma) if figma else None,
+            screen_urls=urls,
             run_id=run_id,
             runs_root=RUNS,  # 목록·리포트 조회(RUNS)와 같은 뿌리여야 한다
             case_ids=body.case_ids,
@@ -393,6 +401,18 @@ def run(body: RunRequest) -> dict:
 # ---------------------------------------------------------------------------
 # 공통
 # ---------------------------------------------------------------------------
+
+
+def _screen_urls(body: PlanRequest) -> dict[str, str]:
+    """화면별 주소를 다듬는다. 이름이나 경로가 빈 줄은 400 — 조용히 버리면 사람이 적은
+    화면이 0건으로 끝나도 이유를 모른다."""
+    out: dict[str, str] = {}
+    for name, path in body.screen_urls.items():
+        name, path = name.strip(), path.strip()
+        if not name or not path:
+            raise HTTPException(400, f"화면별 주소는 '화면 이름=/경로' 로 적습니다: {name!r}={path!r}")
+        out[name] = path
+    return out
 
 
 def _edited_doc(body: PlanRequest) -> Optional[SpecDocument]:
