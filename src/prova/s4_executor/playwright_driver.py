@@ -631,6 +631,8 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
                 # 200 인데 앱이 '페이지 없음' 을 그렸다(2026-11-04, 0051 B /reviews/new).
                 # 서버 404 와 같은 길로 보낸다 — 계속하고, 그 뒤의 실패를 페이지 오류로 본다.
                 not_found_page = looks_not_found(_visible_text(ctx.page))
+            if status == "ok":
+                _wait_for_splash(ctx.page)
 
         elif step.action == "wait":
             ctx.page.wait_for_timeout(int(step.value or 500))
@@ -717,6 +719,84 @@ def execute_step(ctx: ExecutionContext, step: TestStep) -> StepResult:
 # 404 를 받은 SPA 가 화면을 그리기를 기다리는 상한. 판정 전 대기(settle_timeout_ms)의
 # 기본값과 같다 — 느린 것은 참을 수 있고 틀린 것은 참을 수 없다.
 _SPA_RENDER_WAIT_MS = 2000
+
+
+# 인트로(덮개) 화면이 걷히기를 기다리는 상한. 실물 기획서의 사이트의 인트로는 본문이 뜬 뒤
+# 4.3초 머물고 0.5초에 걸쳐 걷힌다(2026-11-19 세 번 실측) — 5초면 빠듯해 여유를 둔다.
+_SPLASH_WAIT_MS = 8000
+
+# 그림·스타일까지 다 받기(load)를 기다리는 상한. 넘기면 받은 데까지로 계속한다.
+_LOAD_WAIT_MS = 5000
+
+# 화면이 멈추기를 기다리는 상한과, 두 장을 찍는 간격.
+_STILL_WAIT_MS = 5000
+_STILL_GAP_MS = 300
+
+# 화면 다섯 곳을 맨 위에서 덮고 있는 요소가 하나이고, 화면을 거의 다 가리고, 누를 것이
+# 하나도 없으면 덮개(인트로·로딩 화면)다. 누를 것이 있으면 팝업·동의창이라 사이트가
+# 보여 주려는 화면이다.
+_COVERED_JS = """() => {
+  const W = innerWidth, H = innerHeight;
+  const pts = [[.5, .5], [.2, .2], [.8, .2], [.2, .8], [.8, .8]];
+  let cover = null;
+  for (const [fx, fy] of pts) {
+    let el = document.elementFromPoint(W * fx, H * fy), found = null;
+    for (; el && el !== document.body && el !== document.documentElement; el = el.parentElement) {
+      const cs = getComputedStyle(el), r = el.getBoundingClientRect();
+      if ((cs.position === "fixed" || cs.position === "absolute") && parseFloat(cs.opacity) > 0.05
+          && r.width >= W * 0.9 && r.height >= H * 0.9) { found = el; break; }
+    }
+    if (!found || (cover && cover !== found)) return false;
+    cover = found;
+  }
+  const act = cover.querySelectorAll("a[href], button, input, select, textarea, [role=button]");
+  return ![...act].some(e => e.getClientRects().length > 0);
+}"""
+
+
+def _wait_for_splash(page: Page) -> None:
+    """그림을 다 받고, 인트로처럼 화면 전체를 덮은 화면이 걷히기를 기다린다 (2026-11-19, 실물 기획서의 사이트).
+
+    덮개가 있는 채로 찍으면 '판정 시점 화면' 이 로딩 화면이 되고, 덮개 위에서 누르려던 스텝은
+    '화면에 보이지 않음' 으로 멈춘다. 덮개가 없으면 바로 돌아온다. 상한을 넘기면 그대로 계속한다 —
+    덮개 자체는 판정 근거가 아니다.
+
+    페이지 열기는 본문이 뜨면(domcontentloaded) 끝나서, 느린 날에는 덮개가 걷힌 뒤에도 큰 배경
+    그림이 반쯤 그려진 채 찍혔다(열기 11초). 그래서 먼저 그림까지 다 받기를 상한을 두고 기다린다.
+    """
+    try:
+        page.wait_for_load_state("load", timeout=_LOAD_WAIT_MS)
+    except Exception:  # 기다림이 스텝을 실패시키지 않는다
+        pass
+    try:
+        page.wait_for_function(f"() => !({_COVERED_JS})()", timeout=_SPLASH_WAIT_MS,
+                               polling=100)
+    except Exception:  # 기다림이 스텝을 실패시키지 않는다
+        pass
+    _wait_until_still(page)
+
+
+def _wait_until_still(page: Page) -> None:
+    """화면이 멈추기를 기다린다 — 그림이 다 칠해지고, 사이트의 등장 연출이 끝날 때까지.
+
+    실물 기획서의 사이트(2026-11-19)는 느린 날 다 받은 뒤에도 큰 그림이 천천히 칠해졌고, CONTACT
+    화면은 그림이 커지다가 문의 양식으로 스스로 스크롤했다. 그 도중이 '판정 시점 화면' 이 됐다.
+    화면 배치는 그동안 바뀌지 않아 배치로는 못 가른다 — 화면 자체를 두 번 찍어 같은지 본다.
+
+    animations="disabled" 로 찍는다: 계속 도는 장식은 처음 모습에, 끝이 있는 CSS 애니메이션은
+    끝 모습에 두고 찍으므로, 장식 때문에 끝없이 기다리지 않는다.
+    """
+    try:
+        deadline = time.monotonic() + _STILL_WAIT_MS / 1000
+        last = page.screenshot(animations="disabled")
+        while time.monotonic() < deadline:
+            page.wait_for_timeout(_STILL_GAP_MS)
+            now = page.screenshot(animations="disabled")
+            if now == last:
+                return
+            last = now
+    except Exception:  # 기다림이 스텝을 실패시키지 않는다
+        pass
 
 
 def _is_html(response) -> bool:
