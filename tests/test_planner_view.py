@@ -246,3 +246,47 @@ def test_두_리포트_모두_밝게_어둡게_버튼이_있다():
     for html in (render_planner_html(report), render_html(report)):
         assert "id='themeBtn'" in html
         assert "localStorage.setItem('prova-theme'" in html
+
+
+# ── 멈춘 단계는 어디서 보든 같다 — 리포트 카드·복사 글·엑셀 (2026-11-19) ─────────────
+#
+# 팀원 리포트(PR 4)에서는 멈춘 단계에 꼬리표만 있고 강조가 없었다. 복사 글과 엑셀은 멈춘 데서
+# 끊겼고, 대제목과 '실제 화면' 칸은 내부 말('스텝 7(fill …) 실패', '스텝 7 에서 중단')이었다.
+
+def test_고치는_사람용_리포트도_멈춘_단계를_강조하고_뒤_단계를_잇는다():
+    v = _stuck(1)
+    v.evidence = {"expected": "성공 안내가 보인다", "actual": "스텝 3 에서 중단"}
+    html = render_html(_report([v], screen_names={"contact": "CONTACT"}))
+    assert "<li class='broke stuck'>" in html and "여기서 멈춤" in html
+    assert html.count("<li class='todo'>") == 2
+    # 대제목과 '실제 화면' 칸은 무엇을 하려다 멈췄는지다.
+    assert "<span class=head>스텝" not in html and "<p>스텝 3 에서 중단</p>" not in html
+    assert "<span class=head>&#x27;내용&#x27; 칸에 입력하려다 멈췄습니다." in html
+
+
+def test_복사_글과_엑셀도_멈춘_단계와_뒤_단계를_적는다():
+    from prova.s6_report.xlsx_export import _reproduction
+    from prova.wording import copy_text
+
+    v = _stuck(1)
+    v.evidence = {"actual": "스텝 3 에서 중단"}
+    lines = _reproduction(v).split("\n")
+    assert lines[2] == "3. '내용' 칸에 'x' 입력 ← 여기서 멈춤"
+    assert lines[3:] == ["4. '개인정보 수집 동의' 체크 (실행하지 못함)", "5. '문의 등록' 클릭 (실행하지 못함)"]
+    text = copy_text(v, "[실행 문제] 제목")
+    assert "← 여기서 멈춤" in text and "(실행하지 못함)" in text
+    assert "실제: '내용' 칸에 입력하려다 멈췄습니다." in text
+
+
+def test_고치는_사람용_리포트도_옛_실행은_계획_파일에서_채운다(tmp_path):
+    from prova.s6_report.report_builder import save_html
+
+    report = _report([_stuck(1, pending=False)], screen_names={"contact": "CONTACT"})
+    (tmp_path / "plan.json").write_text(json.dumps({"all_cases": [{
+        "case_id": "contact-req-001", "setup_steps": [],
+        "steps": [{"action": "navigate", "target": "/contact"},
+                  {"action": "fill", "target": "성명", "value": "홍길동"},
+                  {"action": "fill", "target": "내용", "value": "x"},
+                  {"action": "click", "target": "문의 등록"}]}]}), encoding="utf-8")
+    html = save_html(report, tmp_path).read_text(encoding="utf-8")
+    assert html.count("<li class='todo'>") == 1

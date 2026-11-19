@@ -110,7 +110,7 @@ def _reproduction(v) -> str:
     """손으로 따라 할 수 있는 재현 절차 — 실제로 실행한 스텝과 넣은 값 (prova.wording)."""
     setup = [r for r in v.step_results if r.phase == "setup"]
     test = [r for r in v.step_results if r.phase != "setup"]
-    return "\n".join(reproduction_lines(test, setup))
+    return "\n".join(reproduction_lines(test, setup, v.pending_steps))
 
 
 def _case_rows(report: TestReport, names: dict) -> list[list]:

@@ -891,7 +891,9 @@ def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str =
     url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
            if ev.get("url") and not planner else "")
     seen = ev.get("actual")
-    if planner and kind == "infra":
+    if kind == "infra" and any(r.status == "error" for r in verdict.step_results):
+        # 판정이 남긴 관찰은 '스텝 7 에서 중단' 뿐이다 — 재현 절차가 이미 그 자리를 짚는다.
+        # 무엇을 하려다 왜 멈췄는지를 쓴다. 두 리포트 모두 (2026-11-19).
         seen = stop_reason(verdict)[1]
     actual = f"<p>{_esc(seen)}</p>"
     missing, found = missing_names(verdict)
@@ -1084,8 +1086,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 나눠 적는다(_compare_html). 복사하는 글에는 원래 문장을 둔다 — 개발사에는 이름이 필요하다.
     missing, found = missing_names(verdict)
     shown = _names_sentence(missing, found) if missing and verdict.verdict == "FAIL" else headline
-    if planner and kind == "infra":
+    if kind == "infra" and any(r.status == "error" for r in verdict.step_results):
         # 사유의 첫 문장은 내부 말('스텝 3(fill …) 실패')이다 — 무엇을 하려다 멈췄는지로 바꿔 적는다.
+        # 고치는 사람용은 원래 문장을 오른쪽 '실제 화면' 칸에 그대로 둔다. 복사 글도 원래 문장이다.
         shown, rest = stop_reason(verdict)[1], ""
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
@@ -1763,8 +1766,36 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 """
 
 
+def fill_pending_from_plan(report: TestReport, run_dir: Path) -> None:
+    """옛 실행(판정에 남은 단계가 없다)이면 실행 폴더의 plan.json 에서 채운다.
+
+    멈춘 뒤 단계는 2026-11-19 부터 판정에 실린다(Verdict.pending_steps). 그 전의 실행도 계획 파일이
+    옆에 있으면 같은 재현 절차를 보일 수 있다. 없거나 읽지 못하면 실행한 단계까지만 보인다.
+    """
+    stuck = [v for v in report.cases
+             if not v.pending_steps and any(r.status == "error" for r in v.step_results)]
+    if not stuck:
+        return
+    try:
+        plan = json.loads((Path(run_dir) / "plan.json").read_text(encoding="utf-8"))
+        by_id = {c.get("case_id"): c for c in plan.get("all_cases") or []}
+    except (OSError, ValueError):
+        return
+    for v in stuck:
+        case = by_id.get(v.case_id)
+        if not case:
+            continue
+        done_setup = sum(1 for r in v.step_results if r.phase == "setup")
+        done_test = sum(1 for r in v.step_results if r.phase != "setup")
+        rest = ([("setup", x) for x in (case.get("setup_steps") or [])[done_setup:]]
+                + [("test", x) for x in (case.get("steps") or [])[done_test:]])
+        v.pending_steps = [{"action": x.get("action", ""), "target": x.get("target", ""),
+                            "value": x.get("value"), "phase": phase} for phase, x in rest]
+
+
 def save_html(report: TestReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
+    fill_pending_from_plan(report, out_dir)
     path = out_dir / "report.html"
     path.write_text(render_html(report, build_spec_figures(report, out_dir)), encoding="utf-8")
     return path

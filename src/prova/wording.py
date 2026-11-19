@@ -108,16 +108,26 @@ def step_sentence(action: str, target: str = "", value: Optional[str] = None) ->
     return f"{ACTION_LABELS.get(action, action)} {target}".strip()
 
 
-def reproduction_lines(steps: Iterable, setup_steps: Iterable = ()) -> list[str]:
+def reproduction_lines(steps: Iterable, setup_steps: Iterable = (), pending: Iterable = ()) -> list[str]:
     """재현 절차. 스텝(TestStep·StepResult 어느 쪽이든)을 번호 붙인 줄로 만든다.
 
     전제(로그인 등)를 세우는 스텝은 '준비' 로 구분한다 — 번호가 둘 다 1부터 시작한다.
+    멈춘 스텝에는 '← 여기서 멈춤' 을 달고, 멈춘 뒤 실행하지 못한 스텝(Verdict.pending_steps)을
+    '(실행하지 못함)' 으로 잇는다 — 리포트 카드의 재현 절차와 같은 내용이다 (2026-11-19).
     """
+    pending = list(pending)
     lines = []
-    for prefix, group in (("준비 ", setup_steps), ("", steps)):
+    for prefix, phase, group in (("준비 ", "setup", setup_steps), ("", "test", steps)):
+        last = 0
         for step in group:
+            last = step.seq
+            stop = " ← 여기서 멈춤" if getattr(step, "status", "ok") == "error" else ""
             lines.append(f"{prefix}{step.seq}. "
-                         f"{step_sentence(step.action, step.target, getattr(step, 'value', None))}")
+                         f"{step_sentence(step.action, step.target, getattr(step, 'value', None))}{stop}")
+        for s in (s for s in pending if (s.get("phase") or "test") == phase):
+            last += 1
+            lines.append(f"{prefix}{last}. "
+                         f"{step_sentence(s.get('action', ''), s.get('target', ''), s.get('value'))} (실행하지 못함)")
     return lines
 
 
@@ -173,11 +183,14 @@ def copy_text(verdict, headline: str, target_url: str = "") -> str:
         lines.append(f"주소: {target_url}")
     setup = [r for r in verdict.step_results if r.phase == "setup"]
     steps = [r for r in verdict.step_results if r.phase != "setup"]
-    lines += reproduction_lines(steps, setup)
+    lines += reproduction_lines(steps, setup, getattr(verdict, "pending_steps", ()))
     if ev.get("expected"):
         lines.append(f"기대: {ev['expected']}")
-    if ev.get("actual"):
-        lines.append(f"실제: {ev['actual']}")
+    actual = ev.get("actual")
+    if any(getattr(r, "status", "ok") == "error" for r in verdict.step_results):
+        actual = stop_reason(verdict)[1] or actual  # '스텝 7 에서 중단' 보다 무엇을 하려다 멈췄는지
+    if actual:
+        lines.append(f"실제: {actual}")
     lines += [f"기획서: {source_sentence(s)}" for s in verdict.spec_sources]
     return "\n".join(lines)
 
