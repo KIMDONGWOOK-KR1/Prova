@@ -1543,7 +1543,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
             "않은 실행입니다. 기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 보이는데 못 찾았다면"
             "(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기' 를 켜서 다시 돌려 "
             "보세요. 스크린샷에도 없다면 구현이 그 항목을 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다. "
-            "어느 건인지는 위 '실행 문제로 확인하지 못한 곳' 목록에 있습니다.</p>"
+            "어느 건인지는 아래 '실행 문제로 확인하지 못한 곳' 목록에 있습니다.</p>"
         )
 
     # 기다려서 통과한 케이스.
@@ -1755,7 +1755,6 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {chart_html}
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
 {mock_warn}{filter_warn}
-{_fail_list_html(fails, names, numbers)}
 
 <h2>실패 케이스 ({len(fails)})</h2>
 {fail_section}
@@ -1766,6 +1765,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {pass_section}
 </details>
 {weak_note}
+{_fail_list_html(fails, names, numbers)}
 {plan_html}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
 {screens_html}
 {pairs_html}

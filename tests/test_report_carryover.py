@@ -164,7 +164,7 @@ def test_실패_건은_화면_줄에서_번호로_가리킨다():
 def test_요소를_못_찾은_건의_제목을_상자에_늘어놓지_않는다():
     html = render_html(_report([_stuck(1), _stuck(2)], screen_names=_NAMES, not_found_without_vlm=2))
     box = html[html.index("화면 이미지로 찾기를 켜지 않은 실행입니다"):]
-    box = box[:box.index("</div></div>")]
+    box = box[:box.index("</p>")]  # 상자가 아니라 작은 글씨 문단이다 (2026-11-19)
     assert "항목 1을 비워 두면 막힌다" not in box
     assert "실행 문제로 확인하지 못한 곳" in box
 
