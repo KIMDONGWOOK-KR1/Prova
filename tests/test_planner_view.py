@@ -290,3 +290,15 @@ def test_고치는_사람용_리포트도_옛_실행은_계획_파일에서_채�
                   {"action": "click", "target": "문의 등록"}]}]}), encoding="utf-8")
     html = save_html(report, tmp_path).read_text(encoding="utf-8")
     assert html.count("<li class='todo'>") == 1
+
+
+def test_리포트는_실패_케이스와_통과_케이스가_맨_위다():
+    """결론 바로 아래가 실패·통과 케이스다. 실행 정보·직전 비교·화면별 범위는 그 아래 (2026-11-19)."""
+    report = _many()
+    report.summary["plan"] = {"backend": "replay", "created_at": "2026-11-19"}
+    html = render_html(report)
+    fail_at, pass_at = html.index("<h2>실패 케이스"), html.index("<h2>통과 케이스")
+    for later in ("<b>두 단계 실행", "<h2>화면별 확인 범위"):
+        if later in html:
+            assert html.index(later) > pass_at, later
+    assert html.index("<div class='chart'") < fail_at

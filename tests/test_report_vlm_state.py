@@ -62,10 +62,12 @@ def test_끈_채로_못_찾은_케이스가_있으면_켜_보라고_알린다():
     report = _missed_report("")
     assert report.summary["not_found_without_vlm"] == 1
     html = render_html(report)
-    assert "요소를 찾지 못한 케이스 (1건)" in html
+    # 상자가 아니라 실패 케이스 바로 아래 작은 글씨다 (2026-11-19).
+    assert "<p class='smallnote'><b>요소를 찾지 못한 케이스 1건</b>" in html
+    assert html.index("<h2>실패 케이스") < html.index("요소를 찾지 못한 케이스 1건")
     assert "켜서 다시 돌려 보세요" in html
-    # 건의 제목은 상자에 다시 늘어놓지 않는다 — 바로 아래 목록이 같은 건을 번호와 함께 보인다 (2026-11-19).
-    assert "아래 &#x27;실행 문제로 확인하지 못한 곳&#x27; 목록" in html or "아래 '실행 문제로 확인하지 못한 곳' 목록" in html
+    # 건의 제목은 다시 늘어놓지 않는다 — 위 목록이 같은 건을 번호와 함께 보인다.
+    assert "위 &#x27;실행 문제로 확인하지 못한 곳&#x27; 목록" in html or "위 '실행 문제로 확인하지 못한 곳' 목록" in html
     assert "· 아이콘 버튼 누르기" not in html
     assert "실행 문제로 확인하지 못한 곳 1" in html
     # 켜면 해결된다고 말하지 않는다 — 구현이 빠뜨린 경우에는 켜도 못 찾는 것이 맞다.

@@ -440,6 +440,10 @@ table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset
                  padding:1px 6px; border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
 .repro li.todo { opacity:.55; }
 .repro-note { font-size:12px; color:var(--muted); margin:6px 0 0 22px; }
+/* 다시 돌릴 때의 요령처럼 판정을 바꾸지 않는 안내 — 상자 없이 작은 글씨. */
+.smallnote { font-size:13px; line-height:1.6; color:var(--muted); margin:12px 0 0; word-break:keep-all; }
+.smallnote b { color:var(--text); font-weight:600; }
+.smallnote + .warn, .smallnote + .heal, .smallnote + .gap { margin-top:32px; }
 .shots.last { margin-top:12px; }
 .shots.last a { display:block; width:100%; }
 .shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
@@ -1528,16 +1532,18 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
     # 켜면 해결된다고 말하지 않는다. 못 찾은 까닭은 '라벨만 없다' 와 '구현이 그 항목을
     # 빠뜨렸다' 가 섞여 있고, 뒤쪽이면 켜도 못 찾는 것이 맞는 결과다. 그래서 화면에 그
     # 요소가 보이는지를 먼저 보라고 적는다.
+    #
+    # 상자가 아니라 실패 케이스 바로 아래 작은 글씨다 (2026-11-19) — 결론과 실패 케이스 사이를
+    # 막던 상자 중 하나였다. 판정을 바꾸는 알림이 아니라 다시 돌릴 때의 요령이다.
     missed = s.get("not_found_without_vlm", 0) or 0
+    missed_note = ""
     if missed:
-        heal_html += (
-            f"<div class='heal dup'><b>요소를 찾지 못한 케이스 ({missed}건) — 화면 이미지로 찾기를 "
-            "켜지 않은 실행입니다</b>"
-            "<div class='why'>기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 <b>보이는데</b> "
-            "못 찾았다면(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기"
-            "' 를 켜서 다시 돌려 보세요. 스크린샷에도 <b>없다면</b> 구현이 그 항목을 "
-            "빠뜨린 것일 수 있고, 켜도 달라지지 않습니다. 어느 건인지는 아래 '실행 문제로 확인하지 못한 곳' "
-            "목록에 있습니다.</div></div>"
+        missed_note = (
+            f"<p class='smallnote'><b>요소를 찾지 못한 케이스 {missed}건</b> — 화면 이미지로 찾기를 켜지 "
+            "않은 실행입니다. 기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 보이는데 못 찾았다면"
+            "(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기' 를 켜서 다시 돌려 "
+            "보세요. 스크린샷에도 없다면 구현이 그 항목을 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다. "
+            "어느 건인지는 위 '실행 문제로 확인하지 못한 곳' 목록에 있습니다.</p>"
         )
 
     # 기다려서 통과한 케이스.
@@ -1601,12 +1607,13 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
             "세션 없는 별도 컨텍스트에서 수행했습니다.</div></div>"
         )
     plan_info = s.get("plan") or {}
+    plan_html = ""
     if plan_info:
         # 두 단계 실행 — 추출(계획)과 실행(재개)이 다른 시점·다른 서버에서
         # 일어났다. 판정의 전제이므로 JSON 만이 아니라 HTML 도 말해야 한다.
         plan_warns = "".join(
             f"<li>{_esc(w)}</li>" for w in plan_info.get("warnings", []))
-        mock_warn += (
+        plan_html = (
             "<div class='warn'><b>두 단계 실행 — 저장된 계획을 재개했습니다</b>"
             f"<div>추출(S1~S2): {_esc(plan_info.get('backend', '?'))} · "
             f"{_esc(plan_info.get('created_at', '?'))} — 실행(S3~S6)은 이후 "
@@ -1717,13 +1724,15 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
     # 기획서와 다름·실행 문제의 수는 비율 막대 아래 집계 줄에 이미 있다. 실행 문제가 있을 때만
     # '도구·환경을 먼저 확인' 을 덧붙인다.
     n_infra = sum(1 for v in fails if fail_kind(v) == "infra")
-    breakdown = (f"<div class='breakdown'>실행 문제 {n_infra}건은 "
-                 "기획서와의 차이가 아니라 도구·환경 문제일 수 있습니다 — 먼저 확인하세요</div>"
+    # 실패 케이스·통과 케이스 바로 아래 작은 글씨로 둔다 — 그 목록에 대한 말이다.
+    breakdown = (f"<p class='smallnote'><b>실행 문제 {n_infra}건</b>은 "
+                 "기획서와의 차이가 아니라 도구·환경 문제일 수 있습니다 — 먼저 확인하세요.</p>"
                  if n_infra else "")
+    weak_note = ""
     weak = sum(1 for v in passes if is_weak_pass(v))
     if weak:
-        breakdown += (f"<div class='breakdown'>성공 조건이 없어 '에러 없음'만 확인한 정상 케이스 "
-                      f"{weak}건 — 기획서의 성공 조건에 이동 경로나 문구가 있으면 더 강하게 확인합니다</div>")
+        weak_note = (f"<p class='smallnote'>성공 조건이 없어 '에러 없음'만 확인한 정상 케이스 "
+                     f"<b>{weak}건</b> — 기획서의 성공 조건에 이동 경로나 문구가 있으면 더 강하게 확인합니다.</p>")
 
     return f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -1745,18 +1754,20 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 </div>
 {chart_html}
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
-{mock_warn}{filter_warn}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
-{breakdown}
+{mock_warn}{filter_warn}
 {_fail_list_html(fails, names, numbers)}
-{screens_html}
 
 <h2>실패 케이스 ({len(fails)})</h2>
 {fail_section}
+{breakdown}{missed_note}
 
 <details class='passfold'><summary><h2>통과 케이스 ({len(passes)})</h2>
 <span class='ms'>확인할 것 없음 · 펼치기</span></summary>
 {pass_section}
 </details>
+{weak_note}
+{plan_html}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
+{screens_html}
 {pairs_html}
 <div class="meta">{meta_html}</div>
 <p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
