@@ -31,14 +31,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from prova.models import CaseSelection, SpecDocument, TestReport, Verdict
+from prova.s6_report.spec_figures import build_spec_figures
 from prova.theme import TOKENS_CSS
 # 전략 이름 -> 사람이 읽는 설명. 표를 dom_locator 에 두는 이유는 전략 이름을
 # 만드는 곳과 같은 파일이라야 새 전략을 추가할 때 눈에 들어오기 때문이다 —
 # 실제로 2차 경로(vlm)가 생긴 뒤에도 그 표에 vlm 이 빠져 있었다.
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import strategy_label
-from prova.wording import (ACTION_LABELS, copy_text, not_blocked_sentence, rule_subject,
-                            source_cells, source_sentence, step_sentence)
+from prova.wording import (ACTION_LABELS, copy_text, missing_names, not_blocked_sentence,
+                            rule_subject, source_cells, source_sentence, step_sentence,
+                            stop_reason)
 
 #: 모델이 남긴 경고에 붙는 접두어 (extractor._label_model_warnings). 리포트·터미널이
 #: 이것으로 '코드가 확인한 경고' 와 '모델이 한 말' 을 갈라 보여 준다.
@@ -253,6 +255,43 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 .frow:hover { background:var(--bg-hover); }
 .frow .who { font-weight:600; word-break:keep-all; }
 .frow .rule { font-size:var(--tx-md); color:var(--muted); }
+/* 멈춘 이유가 같은 건의 묶음 — 이유는 머리에 한 번, 줄에는 확인하려던 것. */
+.fwhy { padding:10px 0 6px; font-size:var(--tx-md); color:var(--muted); line-height:1.6; }
+.fwhy b { color:var(--note-fg); font-weight:650; margin-right:8px; }
+.fgroup { border-bottom:1px solid var(--line); }
+.fgroup .frow { padding-left:12px; }
+.fgroup .frow:last-child { border-bottom:0; }
+/* 화면별 확인 범위 — 화면마다 그림 한 장과 그 화면의 결과·못 본 것·주의. */
+.scope-note { color:var(--muted); font-size:13px; margin:0 0 8px; }
+.scope { border-top:1px solid var(--line); }
+.scr { display:grid; grid-template-columns:112px minmax(0,1fr); gap:16px; padding:12px 0;
+       border-bottom:1px solid var(--line); align-items:start; }
+.shots.scr-t { display:block; margin:0; }
+.shots.scr-t img { display:block; width:112px; height:70px; object-fit:cover; object-position:top; }
+.shots.scr-t .cap { display:none; }
+.scr-t.none { width:112px; height:70px; border:1px dashed var(--line); border-radius:var(--r-sm); }
+.scr.unseen .scr-t img { opacity:.55; }
+.scr-h { display:flex; flex-wrap:wrap; gap:4px 14px; align-items:baseline; }
+.scr-h > b { font-weight:650; }
+.scr-n { font-size:13px; color:var(--muted); }
+.scr-n .n.defect { color:var(--fail); font-weight:600; }
+.scr-n .n.infra { color:var(--note-fg); font-weight:600; }
+.scr-n .unseen { color:var(--text); font-weight:650; }
+.scr-l { font-size:13px; margin-top:4px; line-height:1.6; }
+.scr-l b { font-weight:600; margin-right:6px; }
+.scr-more { margin-top:6px; font-size:13px; color:var(--muted); line-height:1.6; }
+.scr-more > summary { cursor:pointer; }
+.scr-more[open] > summary { margin-bottom:4px; }
+.scr-more.all { margin:12px 0 0; }
+@media (max-width:640px) { .scr { grid-template-columns:72px minmax(0,1fr); gap:10px; }
+  .shots.scr-t img, .scr-t.none { width:72px; height:46px; } }
+/* 이름 대조 — 못 찾은 이름과 찾은 이름. */
+.cmp .src .miss { color:var(--fail); font-weight:600; }
+/* 시안·화면 쌍 — 판정하지 않고 나란히 둔다. */
+.shots.pair { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin:8px 0 20px; }
+.shots.pair img { width:100%; height:auto; aspect-ratio:16/10; object-fit:cover; object-position:top; }
+.shots.pair .cap { text-align:left; font-size:12px; }
+@media (max-width:640px) { .shots.pair { grid-template-columns:1fr; } }
 .no { font-weight:700; font-variant-numeric:tabular-nums; }
 .no.defect { color:var(--fail); } .no.infra { color:var(--note-fg); } .no.unv { color:var(--muted); }
 @media (max-width:640px) { .frow { grid-template-columns:28px minmax(0,1fr); }
@@ -810,10 +849,22 @@ def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str =
                       for s in verdict.spec_sources)
     url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
            if ev.get("url") else "")
+    actual = f"<p>{_esc(ev.get('actual'))}</p>"
+    missing, found = missing_names(verdict)
+    if missing:
+        # 이름 대조(2026-11-19, 기획자용 보고서에서 옮김) — 관찰 문장은 못 찾은 이름과 까닭을 한 줄로
+        # 이어 길다. 몇 개 중 몇 개인지를 먼저 크게 쓰고, 이름을 못 찾은 것·찾은 것으로 나눈다.
+        # 이름마다의 까닭(없음·후보 여럿)은 원래 문장에 있으니 그대로 남긴다.
+        actual = (
+            f"<p>{_esc(_names_sentence(missing, found))}</p>"
+            "<p class='src'><b>찾지 못함</b>"
+            + ", ".join(f"<span class='miss'>{_esc(n)}</span>" for n in missing) + "</p>"
+            + (f"<p class='src'><b>확인됨</b>{_esc(', '.join(found))}</p>" if found else "")
+            + f"<p class='src'><b>자세히</b>{_esc(ev.get('actual'))}</p>")
     return (
         f"<div class='cmp {verdict.verdict} {kind}'>"
         f"<div class='want'><h4>기획서</h4><p>{_esc(expected)}</p>{sources}{repro}</div>"
-        f"<div class='got'><h4>실제 화면</h4><p>{_esc(ev.get('actual'))}</p>{shot}{url}</div>"
+        f"<div class='got'><h4>실제 화면</h4>{actual}{shot}{url}</div>"
         "</div>"
     )
 
@@ -863,24 +914,77 @@ def _fail_list_html(fails: list[Verdict], names: dict, numbers: dict | None = No
         items = [v for v in fails if fail_kind(v) == kind]
         if not items:
             continue
-        rows = []
-        for v in items:
+        def row(v: Verdict, what: str, kind: str = kind) -> str:
             who = v.target_label or names.get(v.screen_id or "", v.screen_id or "")
-            # 확인 불가는 이유가 대개 한 가지라(쓰기 요청 막기 등) 줄마다 같은 문장이 된다 —
-            # 무엇을 확인하지 못했는지(케이스 문장)를 쓰고, 이유는 카드에 둔다.
-            what = (v.plain or v.title) if kind == "unv" else _headline(v)[0]
             # 왼쪽 칸에 항목 이름이 있으니 문장 앞의 같은 이름('비밀번호 확인에 …')은 뗀다.
             for particle in ("에 ", "을 ", "를 "):
                 if who and what.startswith(who + particle):
                     what = what[len(who + particle):]
                     break
             rule = RULE_LABELS.get(v.violates, v.violates) if v.violates else ""
-            rows.append(f"<a class='frow' href='#c-{_esc(v.case_id)}'>"
-                        f"<span class='no {kind}'>{(numbers or {}).get(v.case_id, '')}</span>"
-                        f"<span class='who'>{_esc(who)}</span>"
-                        f"<span class='what'>{_esc(what)}</span><span class='rule'>{_esc(rule)}</span></a>")
-        rows = "".join(rows)
+            return (f"<a class='frow' href='#c-{_esc(v.case_id)}'>"
+                    f"<span class='no {kind}'>{(numbers or {}).get(v.case_id, '')}</span>"
+                    f"<span class='who'>{_esc(who)}</span>"
+                    f"<span class='what'>{_esc(what)}</span><span class='rule'>{_esc(rule)}</span></a>")
+
+        if kind == "infra":
+            rows = _stuck_rows_html(items, fails, names, numbers or {}, row)
+        else:
+            rows = ""
+            for v in items:
+                missing, found = missing_names(v)
+                if kind == "unv":
+                    # 확인 불가는 이유가 대개 한 가지라(쓰기 요청 막기 등) 줄마다 같은 문장이 된다 —
+                    # 무엇을 확인하지 못했는지(케이스 문장)를 쓰고, 이유는 카드에 둔다.
+                    what = v.plain or v.title
+                elif missing:
+                    # 이름 대조는 사유가 못 찾은 이름을 전부 이은 긴 문장이다 — 수만 적고 이름은 카드에 둔다.
+                    what = _names_sentence(missing, found)
+                else:
+                    what = _headline(v)[0]
+                rows += row(v, what)
         out.append(f"<div class='flist {kind}'><div class='cap'>{label} {len(items)}</div>{rows}</div>")
+    return "".join(out)
+
+
+def _names_sentence(missing: list[str], found: list[str]) -> str:
+    return (f"기획서의 이름 {len(missing) + len(found)}개 가운데 {len(missing)}개를 "
+            "화면에서 찾지 못했습니다.")
+
+
+def _stuck_rows_html(items: list[Verdict], fails: list[Verdict], names: dict, numbers: dict,
+                     row) -> str:
+    """판정하지 못한 건을 멈춘 이유가 같은 것끼리 묶는다 (2026-11-19, 기획자용 보고서에서 옮김).
+
+    실물 기획서 실행에서 19건 중 10건이 한 화면의 같은 자리에서 멈췄다. 한 줄씩 늘어놓으면 같은
+    문장을 열 번 읽고서야 '원인은 하나' 임을 안다. 이유는 묶음 머리에 한 번 적고, 줄에는 무엇을
+    확인하려던 것인지를 적는다. 화면이 다르면 같은 문장이라도 고칠 곳이 달라 따로 묶는다.
+    """
+    groups: dict[tuple[str, str], list[Verdict]] = {}
+    for v in items:
+        groups.setdefault((v.screen_id or "", stop_reason(v)[1]), []).append(v)
+    # 기획서와 다른 곳에서 '화면에 없던 이름' → 그 건의 번호. 멈춘 대상이 그 이름이면 같은 차이다.
+    missing_at: dict[tuple[str, str], object] = {}
+    for d in fails:
+        if fail_kind(d) == "defect":
+            for name in missing_names(d)[0]:
+                missing_at.setdefault((d.screen_id or "", name), numbers.get(d.case_id, ""))
+    out = []
+    for (sid, sentence), group in groups.items():
+        target = stop_reason(group[0])[0]
+        same = ""
+        if target and (sid, target) in missing_at:
+            same = (f"멈춘 대상 {_esc(repr(target))} — 기획서와 다른 곳 {missing_at[(sid, target)]}번에서 "
+                    "화면에 없던 이름입니다. 같은 차이 때문에 멈춘 것으로 보입니다.")
+        if len(group) < 2:
+            out.append(row(group[0], sentence) + (f"<div class='fwhy'>{same}</div>" if same else ""))
+            continue
+        screen = names.get(sid, sid)
+        out.append(
+            f"<div class='fgroup'><div class='fwhy'><b>같은 이유로 {len(group)}건</b>"
+            f"{_esc(screen) + ' — ' if screen else ''}{_esc(sentence)}"
+            f"{'<br>' + same if same else ''}</div>"
+            + "".join(row(v, v.plain or v.title) for v in group) + "</div>")
     return "".join(out)
 
 
@@ -917,6 +1021,10 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 실패 카드의 대제목 — 무엇이 틀렸는지를 사유의 첫 문장으로 크게 쓴다. 목록을 훑는
     # 사람은 케이스 제목('…규칙 강제 여부 확인')이 아니라 이 문장을 읽고 지나간다.
     headline, rest = _headline(verdict)
+    # 이름 대조는 사유가 못 찾은 이름을 전부 이은 긴 문장이다 — 대제목에는 수만 쓰고 이름은 비교 칸에
+    # 나눠 적는다(_compare_html). 복사하는 글에는 원래 문장을 둔다 — 개발사에는 이름이 필요하다.
+    missing, found = missing_names(verdict)
+    shown = _names_sentence(missing, found) if missing and verdict.verdict == "FAIL" else headline
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
     # 기대·실제·기획서 근거는 아래 비교 칸(_compare_html)이 좌우로 나란히 보인다.
@@ -955,7 +1063,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         f"<details class='case{' failed' if failed else ''}' id='c-{_esc(verdict.case_id)}'"
         f"{' open' if open_by_default else ''}>"
         f"<summary>{no_tag}"
-        f"{f'<span class=head>{_esc(headline)}</span>' if headline else ''}{copy}"
+        f"{f'<span class=head>{_esc(shown)}</span>' if shown else ''}{copy}"
         f"<span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
         f"{cat_tag}{rev_tag}{rule_tag}"
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
@@ -1042,7 +1150,203 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
     return "".join(out)
 
 
-def render_html(report: TestReport) -> str:
+def _screens_phrase(names: dict, checked: list) -> str:
+    """결론 아래 한 줄의 화면 부분. 화면이 많으면 이름을 잇지 않고 수만 적는다.
+
+    실물 기획서(화면 21개)에서 이름 21개를 가운뎃점으로 이은 줄이 결론 밑에 세 줄을 차지했고,
+    보지 않은 화면까지 '확인한 화면' 처럼 읽혔다(2026-11-19). 이름은 화면별 확인 범위에 있다.
+    """
+    if not names:
+        return ""
+    seen = [sid for sid in names if sid in checked] if checked else list(names)
+    if len(names) <= 3 and len(seen) == len(names):
+        return f"{' · '.join(str(n) for n in names.values())} 화면"
+    if len(seen) == len(names):
+        return f"화면 {len(names)}개"
+    return f"기획서 화면 {len(names)}개 중 {len(seen)}개 확인"
+
+
+_NO_URL = "화면 경로가 기획서에 없어 실행하지 않습니다"
+
+
+def _scope_html(report: TestReport, names: dict, checked: list, numbers: dict, gaps: list,
+                warnings: list, spec_figures: dict) -> str:
+    """화면별 확인 범위 — 화면마다 한 줄에 그 화면의 결과·못 본 것·읽을 때의 주의를 모은다 (2026-11-19).
+
+    전에는 '요소를 찾지 못한 케이스', '확인하지 않은 것', '보지 않은 화면', '설계 문서 추출 경고' 가
+    저마다 상자였고, 줄마다 [화면 ID] 를 앞에 단 긴 목록이었다. 실물 기획서(화면 21개)에서 경고만
+    150줄이 결론과 틀린 곳 목록 사이에 놓였다. 읽는 사람은 '이 화면은 어떻게 됐나' 를 묻는데 답이
+    네 상자에 흩어져 있었다.
+
+    - 화면마다 그 화면의 그림 한 장(실제 화면, 보지 않았으면 기획서 시안)을 붙인다.
+    - 실패 건은 제목을 다시 늘어놓지 않고 번호로 가리킨다 — 틀린 곳 목록·카드와 같은 번호다.
+    - 여러 화면에 똑같이 붙은 주의(예: 요소 표 없음)는 한 번만 적고 몇 곳인지 센다.
+    - 추출 경고와 모델 메모는 접는다. 건수는 접힌 줄에 보인다. 판정의 범위를 바꾸는 것(보지 않은
+      화면, 확인하지 않은 것)은 접지 않는다.
+    """
+    by_name = {str(v): k for k, v in names.items()}
+
+    def split(line: str) -> tuple[str, str]:
+        m = re.match(r"\[([^\]]+)\]\s*(.*)", str(line), re.S)
+        if not m:
+            return "", str(line)
+        sid = m.group(1) if m.group(1) in names else by_name.get(m.group(1), "")
+        return (sid, m.group(2)) if sid else ("", str(line))
+
+    notes: dict[str, list[str]] = {}
+    for w in warnings:
+        sid, text = split(w)
+        notes.setdefault(sid, []).append(text)
+    # 여러 화면에 같은 문장으로 붙은 주의 — 화면마다 되풀이하지 않는다.
+    spread: dict[str, int] = {}
+    for sid, items in notes.items():
+        if sid:
+            for text in dict.fromkeys(items):
+                spread[text] = spread.get(text, 0) + 1
+    common = {text: n for text, n in spread.items()
+              if n >= 3 and not text.startswith(MEMO_PREFIX) and _NO_URL not in text}
+    gap_by: dict[str, list[str]] = {}
+    for g in gaps:
+        sid, text = split(g)
+        gap_by.setdefault(sid, []).append(text)
+
+    def thumb(sid: str) -> str:
+        shot = next((r.screenshot for v in report.cases if v.screen_id == sid and not v.flow_id
+                     for r in v.step_results if r.action == "navigate" and r.screenshot), None)
+        label = "실제 화면"
+        if not shot and sid in spec_figures:
+            shot, label = spec_figures[sid][0], "기획서 시안"
+        if not shot:
+            return "<div class='scr-t none'></div>"
+        name = names.get(sid) or sid
+        return (f"<div class='shots scr-t'><a href='{_esc(shot)}' target='_blank'>"
+                f"<img src='{_esc(shot)}' loading='lazy' alt='{_esc(name)} {label}'>"
+                f"<div class='cap'>{_esc(name)} · {label}</div></a></div>")
+
+    def refs(items: list[Verdict]) -> str:
+        return ", ".join(f"<a href='#c-{_esc(v.case_id)}'>{numbers.get(v.case_id, '')}번</a>"
+                         for v in items)
+
+    def memo_html(memo: list[str]) -> str:
+        if not memo:
+            return ""
+        return ("<div class='why'><b>모델 메모</b> — 모델이 '판단할 수 없다' 고 남긴 말입니다. 도구가 확인한 "
+                "사실이 아닙니다.</div>" + "".join(f"<div>· {_esc(x)}</div>" for x in memo))
+
+    def folded(items: list[str]) -> str:
+        tool = [x for x in items if not x.startswith(MEMO_PREFIX)]
+        memo = [x[len(MEMO_PREFIX):].strip() for x in items if x.startswith(MEMO_PREFIX)]
+        if not (tool or memo):
+            return ""
+        head = " · ".join(x for x in (f"기획서를 읽을 때의 주의 {len(tool)}건" if tool else "",
+                                      f"모델 메모 {len(memo)}건" if memo else "") if x)
+        body = "".join(f"<div>· {_esc(x)}</div>" for x in tool) + memo_html(memo)
+        return f"<details class='scr-more'><summary>{head}</summary>{body}</details>"
+
+    rows = []
+    for sid in dict.fromkeys(list(names) + checked):
+        mine = [v for v in report.cases if v.screen_id == sid and not v.flow_id]
+        own = [x for x in notes.get(sid, []) if x not in common]
+        no_url = any(_NO_URL in x for x in own)
+        own = [x for x in own if _NO_URL not in x]
+        lines = []
+        if mine:
+            kinds = {k: [v for v in mine if v.verdict == "FAIL" and fail_kind(v) == k]
+                     for k in ("defect", "infra", "unv")}
+            passed = sum(1 for v in mine if v.verdict == "PASS")
+            tally = " · ".join(x for x in (
+                f"<span class='n defect'>기획서와 다름 {len(kinds['defect'])}</span>" if kinds["defect"] else "",
+                f"<span class='n infra'>확인하지 못함 {len(kinds['infra'])}</span>" if kinds["infra"] else "",
+                f"<span class='n unv'>확인 불가 {len(kinds['unv'])}</span>" if kinds["unv"] else "",
+                f"통과 {passed}") if x)
+            head = f"<span class='scr-n'>확인 {len(mine)}건 — {tally}</span>"
+            for label, k in (("기획서와 다른 곳", "defect"), ("확인하지 못한 곳", "infra"),
+                             ("확인 불가", "unv")):
+                if kinds[k]:
+                    lines.append(f"<div class='scr-l'>{label}: {refs(kinds[k])}</div>")
+        else:
+            why = ("화면 주소가 기획서에 없어 열지 못했습니다. 실행할 때 이 화면의 주소를 알려 주면 확인합니다."
+                   if no_url else "이번 실행에서 확인한 케이스가 없습니다.")
+            head = f"<span class='scr-n'><b class='unseen'>보지 않음</b> — {why}</span>"
+        for g in gap_by.get(sid, []):
+            lines.append(f"<div class='scr-l'><b>확인하지 않은 것</b> {_esc(g)}</div>")
+        rows.append(
+            f"<div class='scr{'' if mine else ' unseen'}'>{thumb(sid)}"
+            f"<div class='scr-b'><div class='scr-h'><b>{_esc(names.get(sid) or sid)}</b>{head}</div>"
+            f"{''.join(lines)}{folded(own)}</div></div>")
+
+    # 화면 사이(흐름) — 화면 안이 아니라 화면 사이의 문제라 제 줄을 갖는다.
+    flows: dict[str, list[Verdict]] = {}
+    for v in report.cases:
+        if v.flow_id:
+            flows.setdefault(v.flow_id, []).append(v)
+    for fid, items in flows.items():
+        bad = [v for v in items if v.verdict == "FAIL"]
+        pre = sum(1 for v in bad if v.failure_category == "precondition_failed")
+        rows.append(
+            "<div class='scr'><div class='scr-t none'></div><div class='scr-b'>"
+            f"<div class='scr-h'><b>화면 사이 <code>{_esc(fid)}</code></b><span class='scr-n'>"
+            f"확인 {len(items)}건 — 실패 {len(bad)} · 통과 {len(items) - len(bad)}"
+            f"{f' · 전제 미충족 {pre}' if pre else ''}</span></div>"
+            + (f"<div class='scr-l'>실패: {refs(bad)}</div>" if bad else "") + "</div></div>")
+
+    shared = [f"<div>· {_esc(text)} <span class='ms'>화면 {n}곳</span></div>" for text, n in common.items()]
+    whole = notes.get("", [])
+    extra = ""
+    if shared or whole:
+        head = " · ".join(x for x in (f"여러 화면에 공통인 주의 {len(shared)}가지" if shared else "",
+                                      f"문서 전체 {len(whole)}건" if whole else "") if x)
+        tool = [x for x in whole if not x.startswith(MEMO_PREFIX)]
+        memo = [x[len(MEMO_PREFIX):].strip() for x in whole if x.startswith(MEMO_PREFIX)]
+        body = "".join(shared) + "".join(f"<div>· {_esc(x)}</div>" for x in tool) + memo_html(memo)
+        extra = (f"<details class='scr-more all'><summary>설계 문서 추출 경고 — {head}</summary>"
+                 f"{body}</details>")
+    loose = "".join(f"<div class='scr-l'><b>확인하지 않은 것</b> {_esc(g)}</div>" for g in gap_by.get("", []))
+
+    if len(rows) < 2 and not (gaps or warnings):
+        return ""
+    unseen = [sid for sid in names if sid not in checked]
+    intro = ""
+    if unseen and checked:
+        intro = (f"기획서 화면 {len(names)}개 가운데 {len(names) - len(unseen)}개만 이번 실행에서 "
+                 "확인했습니다. ")
+    if (unseen and checked) or gaps:
+        intro += "'보지 않음' 과 '확인하지 않은 것' 은 <b>통과한 것이 아니라 확인하지 않은 것</b>입니다."
+    title = f"화면별 확인 범위 ({len(rows)})" if len(rows) > 1 else "확인 범위와 주의"
+    return (f"<h2>{title}</h2>"
+            + (f"<p class='scope-note'>{intro}</p>" if intro else "")
+            + f"<div class='scope'>{''.join(rows)}</div>{loose}{extra}")
+
+
+def _design_pairs_html(report: TestReport, names: dict, checked: list, spec_figures: dict) -> str:
+    """기획서 시안과 실제 화면을 나란히 둔다 (2026-11-19, 기획자용 보고서에서 옮김).
+
+    색·배치는 판정하지 않는다(spec_figures 의 설명). 시안이 없으면 절을 세우지 않는다.
+    실제 화면은 그 화면을 연 직후의 캡처다 — 조작하기 전 모습이 시안과 견줄 만하다.
+    """
+    sids = [sid for sid in checked if sid in spec_figures]
+    if not sids:
+        return ""
+    out = [f"<h2>기획서 시안과 실제 화면 ({len(sids)})</h2>"
+           "<p class='scope-note'>왼쪽은 기획서 그 화면 쪽의 첫 화면 부분이고, 오른쪽은 그 화면을 연 직후 찍은 "
+           "것입니다. 색·배치는 자동으로 대조하지 않았습니다 — 나란히 놓고 직접 비교하세요. "
+           "누르면 크게 봅니다(시안은 전체).</p>"]
+    for sid in sids:
+        name = names.get(sid) or sid
+        crop, full = spec_figures[sid]
+        shot = next((r.screenshot for v in report.cases if v.screen_id == sid
+                     for r in v.step_results if r.action == "navigate" and r.screenshot), None)
+        real = (f"<a href='{_esc(shot)}' target='_blank'><img src='{_esc(shot)}' loading='lazy' "
+                f"alt='{_esc(name)} 실제 화면'><div class='cap'>{_esc(name)} · 실제 화면</div></a>"
+                if shot else "<div class='cap'>실제 화면 캡처가 없습니다.</div>")
+        out.append(
+            f"<div class='shots pair'><a href='{_esc(full)}' target='_blank'>"
+            f"<img src='{_esc(crop)}' loading='lazy' alt='{_esc(name)} 기획서 시안'>"
+            f"<div class='cap'>{_esc(name)} · 기획서 시안</div></a>{real}</div>")
+    return "".join(out)
+
+
+def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
     s = report.summary
     total = s.get("total", 0) or 0
     passed, failed = s.get("pass", 0), s.get("fail", 0)
@@ -1051,25 +1355,7 @@ def render_html(report: TestReport) -> str:
     fails = [v for v in report.cases if v.verdict == "FAIL"]
     passes = [v for v in report.cases if v.verdict == "PASS"]
 
-    warnings = s.get("spec_warnings") or []
-    # 코드가 확인한 경고와 모델이 남긴 메모를 나눈다. 한 상자에 섞이면 도구가
-    # 기획서에서 찾은 문제인지 모델이 한 말인지 읽는 사람이 구별하지 못한다.
-    memos = [w for w in warnings if w.startswith(MEMO_PREFIX)]
-    checked = [w for w in warnings if not w.startswith(MEMO_PREFIX)]
-    warn_html = ""
-    if checked:
-        items = "".join(f"<div>· {_esc(w)}</div>" for w in checked)
-        warn_html = (
-            "<div class='warn'><b>설계 문서 추출 경고</b>"
-            f"{items}</div>"
-        )
-    if memos:
-        items = "".join(f"<div>· {_esc(w[len(MEMO_PREFIX):].strip())}</div>" for w in memos)
-        warn_html += (
-            "<div class='warn'><b>모델 메모</b> — 모델이 '판단할 수 없다' 고 남긴 말입니다. "
-            "도구가 확인한 사실이 아닙니다."
-            f"{items}</div>"
-        )
+    warn_html = ""  # 추출 경고·모델 메모는 화면별 확인 범위(_scope_html)가 화면마다 접어서 보인다.
 
     # 부분 실행 경고. --only 로 일부만 돌린 결과를 전체 결과로 착각하면
     # "통과율 100%" 가 실제 상태를 뜻하지 않게 된다.
@@ -1155,17 +1441,7 @@ def render_html(report: TestReport) -> str:
         )
 
     gaps = s.get("coverage_gaps") or []
-    gap_html = ""
-    if gaps:
-        items = "".join(f"<div>· {_esc(g)}</div>" for g in gaps)
-        gap_html = (
-            "<div class='gap'><b>확인하지 않은 것 "
-            f"({len(gaps)}건)</b>"
-            "<div class='why'>기획서에 적혀 있으나 이 실행에서 대조한 케이스가 "
-            "없습니다. 아래 항목은 <b>통과한 것이 아니라 확인하지 않은 것</b>입니다."
-            "</div>"
-            f"{items}</div>"
-        )
+    gap_html = ""  # 확인하지 않은 것은 화면별 확인 범위(_scope_html)가 그 화면 줄에 적는다.
 
     healed = s.get("healed", 0) or 0
     heal_html = ""
@@ -1189,19 +1465,14 @@ def render_html(report: TestReport) -> str:
     # 요소가 보이는지를 먼저 보라고 적는다.
     missed = s.get("not_found_without_vlm", 0) or 0
     if missed:
-        missed_titles = "".join(
-            f"<div>· {_esc(v.plain or v.title)}</div>"
-            for v in report.cases
-            if v.verdict == "FAIL" and v.failure_category == "element_not_found"
-        )
         heal_html += (
             f"<div class='heal dup'><b>요소를 찾지 못한 케이스 ({missed}건) — 화면 이미지로 찾기를 "
             "켜지 않은 실행입니다</b>"
             "<div class='why'>기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 <b>보이는데</b> "
             "못 찾았다면(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기"
             "' 를 켜서 다시 돌려 보세요. 스크린샷에도 <b>없다면</b> 구현이 그 항목을 "
-            "빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.</div>"
-            f"{missed_titles}</div>"
+            "빠뜨린 것일 수 있고, 켜도 달라지지 않습니다. 어느 건인지는 아래 '실행 문제로 확인하지 못한 곳' "
+            "목록에 있습니다.</div></div>"
         )
 
     # 기다려서 통과한 케이스.
@@ -1355,8 +1626,8 @@ def render_html(report: TestReport) -> str:
     meta_html = "".join(f"<div class='mi'>{item}</div>" for item in meta_items)
 
     names = s.get("screen_names") or {}
-    screens_html = _screens_html(s.get("by_screen") or {},
-                                 s.get("by_flow") or {}, names)
+    checked = list(dict.fromkeys(v.screen_id for v in report.cases if v.screen_id))
+    pairs_html = _design_pairs_html(report, names, checked, spec_figures or {})
 
     revision = s.get("revision") or {}
     revised = revision.get("touched") or {}
@@ -1365,8 +1636,10 @@ def render_html(report: TestReport) -> str:
         (v for items in _groups(fails, names).values() for v in items), 1)}
     # 결론 아래 한 줄 — 웹 UI 결과 화면과 같은 말(app.js 의 cond).
     changed = len(history.get("regressed") or []) + len(history.get("fixed") or [])
+    screens_html = _scope_html(report, names, checked, numbers, gaps, s.get("spec_warnings") or [],
+                               spec_figures or {})
     cond = " · ".join(x for x in (
-        f"{' · '.join(str(n) for n in names.values())} 화면" if names else "",
+        _screens_phrase(names, checked),
         f"{history['round']}번째 실행" if history.get("round") else "",
         "" if not history.get("previous_run") else
         (f"직전보다 새로 실패 {len(history.get('regressed') or [])} · 해결 {len(history.get('fixed') or [])}"
@@ -1419,6 +1692,7 @@ def render_html(report: TestReport) -> str:
 <span class='ms'>확인할 것 없음 · 펼치기</span></summary>
 {pass_section}
 </details>
+{pairs_html}
 <div class="meta">{meta_html}</div>
 <p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
   · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
@@ -1430,7 +1704,7 @@ def render_html(report: TestReport) -> str:
 def save_html(report: TestReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "report.html"
-    path.write_text(render_html(report), encoding="utf-8")
+    path.write_text(render_html(report, build_spec_figures(report, out_dir)), encoding="utf-8")
     return path
 
 

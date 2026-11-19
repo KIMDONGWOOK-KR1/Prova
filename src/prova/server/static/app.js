@@ -840,10 +840,16 @@ function showResult(out) {
 
   // 조건 줄 — PM 이 읽을 것만: 어느 화면 · 몇 번째 실행 · 직전과 달라진 것.
   const h = s.history || {};
-  const screens = Object.values(s.screen_names || {}).join(" · ");
+  // 화면이 많으면 이름을 잇지 않고 수만 적는다 — 리포트 파일과 같은 말(report_builder._screens_phrase).
+  const allNames = Object.values(s.screen_names || {});
+  const seenCount = Object.keys(s.by_screen || {}).length || allNames.length;
+  const screens = !allNames.length ? ""
+    : (allNames.length <= 3 && seenCount >= allNames.length) ? `${allNames.join(" · ")} 화면`
+    : seenCount >= allNames.length ? `화면 ${allNames.length}개`
+    : `기획서 화면 ${allNames.length}개 중 ${seenCount}개 확인`;
   const changed = (h.regressed || []).length + (h.fixed || []).length;
   const cond = [
-    screens && `${screens} 화면`,
+    screens,
     h.round && `${h.round}번째 실행`,
     h.previous_run && (changed
       ? `직전보다 새로 실패 ${(h.regressed || []).length} · 해결 ${(h.fixed || []).length}`

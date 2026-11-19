@@ -181,3 +181,56 @@ def copy_text(verdict, headline: str, target_url: str = "") -> str:
     lines += [f"기획서: {source_sentence(s)}" for s in verdict.spec_sources]
     return "\n".join(lines)
 
+
+
+# ── 멈춘 이유와 이름 대조 — 여러 건을 한 번에 읽게 한다 (2026-11-19) ─────────────
+#
+# 실물 기획서 실행(43건)에서 판정하지 못한 19건 중 10건이 같은 자리에서 멈췄고, 기획서와 다른
+# 14건은 전부 이름 대조였다. 한 건씩 늘어놓으면 '같은 이유 열 번' 과 '이름 여덟 개' 를 읽는
+# 사람이 직접 세어야 한다.
+
+def _stop_sentence(action: str, target: str) -> str:
+    """멈춘 스텝 — '무엇을 하려다' 멈췄는지. 조사는 뒤 낱말(칸·버튼·목록)에 붙여 맞춘다."""
+    t = _q(target)
+    return {
+        "fill": f"{t} 칸에 입력하려다 멈췄습니다",
+        "click": f"{t} 버튼을 누르려다 멈췄습니다",
+        "select": f"{t} 목록에서 고르려다 멈췄습니다",
+        "check": f"{t} 체크 상자를 누르려다 멈췄습니다",
+        "uncheck": f"{t} 체크 상자를 풀려다 멈췄습니다",
+        "navigate": f"{t} 주소로 이동하려다 멈췄습니다",
+    }.get(action, f"{t} 단계에서 멈췄습니다")
+
+
+def _why_sentence(detail: str) -> str:
+    detail = detail or ""
+    if "보이지 않" in detail:
+        return "화면 구조에는 있지만 화면에 보이지 않았습니다."
+    if "일치하는 요소가 없" in detail or "찾지 못" in detail:
+        return "화면에서 그 이름을 찾지 못했습니다."
+    if "시간" in detail or "초과" in detail or "timeout" in detail.lower():
+        return "정해진 시간 안에 화면이 준비되지 않았습니다."
+    return detail.rstrip(".") + "." if detail else ""
+
+
+def stop_reason(verdict) -> tuple[str, str]:
+    """판정하지 못한 케이스가 어디서, 왜 멈췄는지 — (멈춘 대상 이름, 문장).
+
+    문장이 같으면 같은 이유로 멈춘 것이다 — 리포트가 그것으로 묶는다.
+    """
+    stopped = next((r for r in verdict.step_results if r.status == "error"), None)
+    if stopped is not None:
+        why = _why_sentence(stopped.error_detail or verdict.failure_detail or "")
+        return stopped.target, f"{_stop_sentence(stopped.action, stopped.target)}. {why}".strip()
+    detail = verdict.failure_detail or ""
+    names = re.findall(r"'([^']+)'", detail)
+    if names and "찾지 못" in detail:
+        return names[0], f"화면에서 {', '.join(_q(n) for n in names)} 항목을 찾지 못해 확인하지 못했습니다."
+    return "", (detail or "도중에 멈췄습니다.").strip()
+
+
+def missing_names(verdict) -> tuple[list[str], list[str]]:
+    """이름 대조 케이스라면 (화면에 없던 이름, 있던 이름). 아니면 빈 목록 둘."""
+    findable = (getattr(verdict, "evidence", None) or {}).get("findable") or {}
+    return ([name for name, err in findable.items() if err],
+            [name for name, err in findable.items() if not err])
