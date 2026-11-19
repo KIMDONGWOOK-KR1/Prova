@@ -44,5 +44,5 @@ def test_진행_메시지가_화면과_run_log_에_함께_남는다(tmp_path):
 
 def test_리포트가_내보내기_링크와_인쇄_펼침을_싣는다():
     html = render_html(_report())
-    assert "href=\"report.csv\"" in html and "href=\"run.log\"" in html
+    assert "href='report.csv'" in html and "href='run.log'" in html
     assert "beforeprint" in html

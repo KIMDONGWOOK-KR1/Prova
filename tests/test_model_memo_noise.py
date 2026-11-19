@@ -76,11 +76,9 @@ def test_리포트와_터미널이_메모를_경고와_나눠_보인다(capsys):
                "spec_warnings": ["요소 표에는 4개 요소가 있는데 추출된 것은 0개입니다",
                                  "모델 메모: 가격의 최대값이 기획서에 없습니다"]}
     html = render_html(TestReport(run_id="r", target_url="http://x", summary=summary))
-    # 경고와 메모는 '확인 범위와 주의' 에 접혀 있고, 그 안에서 둘이 나뉜다 (2026-11-19).
-    assert "설계 문서 추출 경고 — 문서 전체 2건" in html and "<b>모델 메모</b>" in html
-    assert html.index("요소 표에는 4개 요소가") < html.index("<b>모델 메모</b>") < html.index("가격의 최대값")
-    # 메모 상자 안에서는 접두어를 한 번만 말한다
-    assert "모델 메모: 가격" not in html
+    # 리포트(HTML)는 압축판이라 추출 경고·모델 메모를 싣지 않는다 — report.json 과 터미널에 있다
+    # (2026-11-19 사용자 결정: 실패·통과 케이스 밖은 최소한만).
+    assert "요소 표에는 4개 요소가" not in html and "가격의 최대값" not in html
 
     _print_summary(SimpleNamespace(summary=summary, cases=[]), Path("runs/x"))
     out = capsys.readouterr().out

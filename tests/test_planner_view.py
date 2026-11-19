@@ -298,9 +298,10 @@ def test_리포트는_실패_케이스와_통과_케이스가_맨_위다():
     report.summary["plan"] = {"backend": "replay", "created_at": "2026-11-19"}
     html = render_html(report)
     fail_at, pass_at = html.index("<h2>실패 케이스"), html.index("<h2>통과 케이스")
-    # 기획서와 다른 곳 목록도 실패·통과 케이스 아래다.
-    assert html.index("<div class='flist") > pass_at
-    for later in ("<b>두 단계 실행", "<h2>화면별 확인 범위"):
+    # 압축판(2026-11-19): 케이스 아래에는 '참고' 하나뿐이다. 한 줄 목록·화면별 범위는 없다.
+    assert html.index("<h2 class='brief-h'>참고</h2>") > pass_at
+    assert "<div class='flist" not in html and "<h2>화면별 확인 범위" not in html
+    for later in ("두 단계 실행(",):
         if later in html:
             assert html.index(later) > pass_at, later
     assert html.index("<div class='chart'") < fail_at

@@ -130,18 +130,24 @@ def test_이름_대조가_아니면_그대로다():
 _NAMES = {"main": "메인화면", "contact": "CONTACT", "about": "회사소개", "history": "연혁"}
 
 
-def test_보지_않은_화면을_그_화면_줄에서_밝힌다():
+def test_보지_않은_화면을_참고에_한_줄로_밝힌다():
     html = render_html(_report(
         [_pass("main")], screen_names=_NAMES,
         spec_warnings=["[history] 화면 경로가 기획서에 없어 실행하지 않습니다 — 모델이 '/x' 를 지었지만 "
                        "쓰지 않습니다. --screen-url 'history=/경로' 로 알려 주면 실행합니다."]))
-    assert "<h2>화면별 확인 범위 (4)</h2>" in html
-    assert "기획서 화면 4개 가운데 1개만" in html
-    assert "통과한 것이 아니라 확인하지 않은 것" in html
-    row = html[html.index("<b>연혁</b>"):]
-    assert "보지 않음" in row[:200] and "화면 주소가 기획서에 없어 열지 못했습니다" in row[:300]
+    row = html[html.index("<b>보지 않은 화면 3개</b>"):]
+    row = row[:row.index("</li>")]
+    assert "CONTACT" in row and "회사소개" in row and "연혁" in row
+    assert "통과한 것이 아닙니다" in row
     # 명령줄 옵션 이름은 기획자가 읽을 말이 아니다.
     assert "--screen-url" not in html
+
+
+def test_보지_않은_화면이_모두_주소가_없으면_그렇게_말한다():
+    html = render_html(_report(
+        [_pass("main")], screen_names={"main": "메인화면", "history": "연혁"},
+        spec_warnings=["[history] 화면 경로가 기획서에 없어 실행하지 않습니다"]))
+    assert "연혁 — 화면 주소가 기획서에 없어 열지 못했습니다" in html
 
 
 def test_결론_아래_줄은_화면이_많으면_이름을_잇지_않는다():
@@ -152,43 +158,38 @@ def test_결론_아래_줄은_화면이_많으면_이름을_잇지_않는다():
     assert "<div class='cond'>메인화면 화면" in few
 
 
-def test_실패_건은_화면_줄에서_번호로_가리킨다():
+def test_실행_문제가_멈춘_이유를_번호와_함께_적는다():
     html = render_html(_report([_labels(), _stuck(1), _stuck(2)], screen_names=_NAMES))
-    row = html[html.index("<b>CONTACT</b>"):]
-    row = row[:row.index("</div></div>")]
-    assert "확인 3건" in row and "기획서와 다름 1" in row and "확인하지 못함 2" in row
-    assert "기획서와 다른 곳: <a href='#c-contact-labels-001'>1번</a>" in row
-    assert "<a href='#c-contact-req-001'>2번</a>, <a href='#c-contact-req-002'>3번</a>" in row
+    row = html[html.index("<b>실행 문제 2건이 멈춘 이유</b>"):]
+    row = row[:row.index("</li>")]
+    assert "2건 — &#x27;내용&#x27; 칸에 입력하려다 멈췄습니다." in row
+    assert "<a href='#c-contact-req-001'>2</a>, <a href='#c-contact-req-002'>3</a>" in row
 
 
-def test_요소를_못_찾은_건의_제목을_상자에_늘어놓지_않는다():
+def test_요소를_못_찾은_건의_제목을_늘어놓지_않는다():
     html = render_html(_report([_stuck(1), _stuck(2)], screen_names=_NAMES, not_found_without_vlm=2))
     box = html[html.index("화면 이미지로 찾기를 켜지 않은 실행입니다"):]
     box = box[:box.index("</p>")]  # 상자가 아니라 작은 글씨 문단이다 (2026-11-19)
     assert "항목 1을 비워 두면 막힌다" not in box
-    assert "실행 문제로 확인하지 못한 곳" in box
+    assert "&#x27;멈춘 이유&#x27; 에 번호" in box or "'멈춘 이유' 에 번호" in box
 
 
-def test_확인하지_않은_것은_그_화면_줄에_적는다():
+def test_확인하지_않은_것은_화면_이름을_붙여_적는다():
     html = render_html(_report([_pass("contact")], screen_names={"contact": "CONTACT"},
                                coverage_gaps=["[contact] '파일첨부' 의 에러 문구를 확인하는 케이스가 없습니다."]))
     assert "[contact]" not in html
-    row = html[html.index("<b>CONTACT</b>"):]
-    assert "<b>확인하지 않은 것</b> &#x27;파일첨부&#x27; 의 에러 문구를" in row[:600]
+    row = html[html.index("<b>확인하지 않은 것 1건</b>"):]
+    assert "CONTACT: &#x27;파일첨부&#x27; 의 에러 문구를" in row[:400]
 
 
-def test_여러_화면에_같은_주의는_한_번만_적고_접는다():
+def test_추출_경고와_모델_메모는_리포트에_싣지_않는다():
     same = "UI 요소 정의 표를 찾지 못했습니다."
     html = render_html(_report(
         [_pass("main")], screen_names=_NAMES,
         spec_warnings=[f"[{sid}] {same}" for sid in _NAMES]
         + ["[contact] '연락처' 은 예시값이 없습니다.", "[contact] 모델 메모: 파일 형식 제한이 없습니다."]))
-    assert html.count(same) == 1
-    assert "여러 화면에 공통인 주의 1가지" in html and "화면 4곳" in html
-    # 그 화면에만 있는 주의와 메모는 그 화면 줄에 접혀 있다.
-    row = html[html.index("<b>CONTACT</b>"):]
-    assert "<summary>기획서를 읽을 때의 주의 1건 · 모델 메모 1건</summary>" in row[:500]
-    assert "<div class='warn'><b>설계 문서 추출 경고</b>" not in html
+    assert same not in html and "파일 형식 제한" not in html
+    assert "설계 문서 추출 경고" not in html
 
 
 def test_화면이_하나이고_적을_것이_없으면_절이_없다():

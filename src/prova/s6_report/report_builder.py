@@ -393,7 +393,7 @@ table.kv code { font-family:var(--font-mono); font-size:12px; }
 /* 요약 줄 — 분류 꼬리표가 있으면 FAIL 은 겹치는 말이다. 소요 시간은 기획자가 읽지 않는다. */
 .case summary .tag.FAIL:has(+ .tag.cat) { display:none; }
 .case > summary .ms { display:none; }
-details.raw { margin-top:12px; }
+details.raw { margin-top:12px; overflow-x:auto; }
 details.raw > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
 details.raw > summary:hover { color:var(--text); }
 details.raw .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
@@ -444,6 +444,18 @@ table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset
 .smallnote { font-size:13px; line-height:1.6; color:var(--muted); margin:12px 0 0; word-break:keep-all; }
 .smallnote b { color:var(--text); font-weight:600; }
 .smallnote + .warn, .smallnote + .heal, .smallnote + .gap { margin-top:32px; }
+/* 참고 — 실패·통과 케이스 아래의 압축판. 이름 한 칸, 내용 한 칸, 상자 없음. */
+h2.brief-h { margin-top:48px; }
+ul.brief { list-style:none; margin:0; padding:0; font-size:14px; line-height:1.6; }
+ul.brief li { display:grid; grid-template-columns:200px minmax(0,1fr); gap:4px 16px; padding:10px 0;
+              border-bottom:1px solid var(--line); word-break:keep-all; color:var(--muted); }
+ul.brief li > b { color:var(--text); font-weight:600; }
+ul.brief .nos a { color:inherit; }
+@media (max-width:640px) { ul.brief li { grid-template-columns:1fr; } }
+details.pairfold { margin-top:16px; }
+details.pairfold > summary { cursor:pointer; font-size:14px; color:var(--muted); padding:6px 0; }
+details.pairfold > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+details.pairfold h2 { display:none; }
 .shots.last { margin-top:12px; }
 .shots.last a { display:block; width:100%; }
 .shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
@@ -1415,6 +1427,94 @@ def _design_pairs_html(report: TestReport, names: dict, checked: list, spec_figu
     return "".join(out)
 
 
+def _split_screen(line: str, names: dict) -> tuple[str, str]:
+    """'[화면 ID] 문장' 을 (화면 ID, 문장)으로. 화면을 모르면 ('', 원문)."""
+    m = re.match(r"\[([^\]]+)\]\s*(.*)", str(line), re.S)
+    if not m:
+        return "", str(line)
+    by_name = {str(v): k for k, v in names.items()}
+    sid = m.group(1) if m.group(1) in names else by_name.get(m.group(1), "")
+    return (sid, m.group(2)) if sid else ("", str(line))
+
+
+def _brief_html(report: TestReport, names: dict, checked: list, fails: list[Verdict],
+                numbers: dict, gaps: list, backend: str, pairs_html: str) -> str:
+    """실패·통과 케이스 아래의 '참고' — 판정을 읽는 데 필요한 것만 한 줄씩 (2026-11-19).
+
+    실물 기획서 실행(화면 21개·43건)에서 케이스 아래에 틀린 곳 목록·화면별 확인 범위(21줄)·
+    직전 비교·두 단계 실행·시안 15쌍이 이어져, 다 읽을 것 같지 않은 길이가 됐다. 사용자 결정:
+    실패·통과 케이스 밖의 내용은 최소한만 남긴 압축판으로.
+
+    남기는 것은 결과를 잘못 읽지 않는 데 필요한 것뿐이다 — 보지 않은 화면(통과가 아니다),
+    확인하지 않은 것, 실행 문제가 몰린 이유, 실행 조건 한 줄, 받을 파일. 추출 경고·모델 메모는
+    report.json 과 엑셀에 있다. 시안 대조는 접어 둔다.
+    """
+    s = report.summary
+    items = []
+    no_url = {sid for sid, text in (_split_screen(w, names) for w in s.get("spec_warnings") or [])
+              if sid and _NO_URL in text}
+    unseen = [sid for sid in names if sid not in checked]
+    if unseen:
+        why = ("화면 주소가 기획서에 없어 열지 못했습니다" if all(u in no_url for u in unseen)
+               else "이번 실행에서 확인한 케이스가 없습니다")
+        items.append(
+            f"<li><b>보지 않은 화면 {len(unseen)}개</b>"
+            f"{_esc(' · '.join(str(names[u]) for u in unseen))} — {why}. 통과한 것이 아닙니다.</li>")
+    if gaps:
+        shown = [_split_screen(g, names) for g in gaps[:3]]
+        more = f" 외 {len(gaps) - 3}건" if len(gaps) > 3 else ""
+        items.append(
+            f"<li><b>확인하지 않은 것 {len(gaps)}건</b>"
+            + " / ".join(f"{_esc(names.get(sid, sid)) + ': ' if sid else ''}{_esc(text)}" for sid, text in shown)
+            + f"{more}</li>")
+    stuck = [v for v in fails if fail_kind(v) == "infra"]
+    if stuck:
+        reasons: dict[str, list[Verdict]] = {}
+        for v in stuck:
+            reasons.setdefault(stop_reason(v)[1], []).append(v)
+        top = sorted(reasons.items(), key=lambda kv: -len(kv[1]))[:2]
+        lines = []
+        for sentence, group in top:
+            nos = ", ".join(f"<a href='#c-{_esc(v.case_id)}'>{numbers.get(v.case_id, '')}</a>" for v in group)
+            lines.append(f"{len(group)}건 — {_esc(sentence)} <span class='nos'>({nos})</span>")
+        rest = len(stuck) - sum(len(g) for _, g in top)
+        items.append(f"<li><b>실행 문제 {len(stuck)}건이 멈춘 이유</b>" + "<br>".join(lines)
+                     + (f"<br>그 밖의 이유 {rest}건" if rest else "") + "</li>")
+    if s.get("healed"):
+        items.append(f"<li><b>화면 이미지로 찾아 진행 {s['healed']}건</b>기획서의 라벨이 구현과 이어져 있지 않습니다.</li>")
+    if s.get("settled"):
+        items.append(f"<li><b>결과를 기다린 뒤 통과 {s['settled']}건</b>이 화면은 결과를 늦게 보여 줍니다.</li>")
+    plan = s.get("plan") or {}
+    run = [f"실행 번호 {_esc(report.run_id)}"]
+    if backend:
+        run.append(f"모델 {_esc(backend)}")
+    if plan:
+        run.append(f"두 단계 실행(추출 {_esc(str(plan.get('created_at', '?'))[:16].replace('T', ' '))}"
+                   f" · {_esc(plan.get('backend', '?'))})")
+    if "vlm" in s:
+        run.append("화면 이미지로 찾기 " + (f"켬 · {_esc(s['vlm'])}" if s["vlm"] else "꺼짐"))
+    if s.get("viewport"):
+        run.append(f"화면 크기 {_esc(s['viewport'])}")
+    if s.get("sut_build"):
+        run.append("대상 빌드 " + ("일치" if s["sut_build"] == "match" else "확인 불가"))
+    items.append(f"<li><b>실행 조건</b>{' · '.join(run)}</li>")
+    # 계획을 세운 뒤 기획서가 바뀌었다는 경고는 판정의 전제를 흔든다 — 짧게라도 남긴다.
+    if plan.get("warnings"):
+        items.append("<li><b>저장된 계획의 주의</b>"
+                     + "<br>".join(_esc(w) for w in plan["warnings"]) + "</li>")
+    items.append("<li><b>받기</b><a href='report.xlsx' download>엑셀</a> · "
+                 "<a href='report.csv' download>결과표 CSV</a> · "
+                 "<a href='run.log' target='_blank'>실행 로그</a> — 스크린샷은 이 파일 옆 폴더에 있어, "
+                 "공유할 때는 결과 폴더째 보내세요.</li>")
+    fold = (f"<details class='pairfold'><summary>기획서 시안과 실제 화면 보기</summary>{pairs_html}</details>"
+            if pairs_html else "")
+    def cell(item: str) -> str:
+        head, _, rest = item.removeprefix("<li><b>").removesuffix("</li>").partition("</b>")
+        return f"<li><b>{head}</b><span>{rest}</span></li>"
+    items = [cell(i) for i in items]
+    return f"<h2 class='brief-h'>참고</h2><ul class='brief'>{''.join(items)}</ul>{fold}"
+
+
 def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
     s = report.summary
     total = s.get("total", 0) or 0
@@ -1543,7 +1643,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
             "않은 실행입니다. 기획서의 라벨로만 찾았습니다. 스크린샷에 그 요소가 보이는데 못 찾았다면"
             "(아이콘만 있는 버튼, 라벨을 잇지 않은 입력란 등) '화면 이미지로 찾기' 를 켜서 다시 돌려 "
             "보세요. 스크린샷에도 없다면 구현이 그 항목을 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다. "
-            "어느 건인지는 아래 '실행 문제로 확인하지 못한 곳' 목록에 있습니다.</p>"
+            "어느 건인지는 아래 '참고' 의 '멈춘 이유' 에 번호가 있습니다.</p>"
         )
 
     # 기다려서 통과한 케이스.
@@ -1765,14 +1865,8 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {pass_section}
 </details>
 {weak_note}
-{_fail_list_html(fails, names, numbers)}
-{plan_html}{sel_html}{history_html}{heal_html}{settle_html}{gap_html}{warn_html}
-{screens_html}
-{pairs_html}
-<div class="meta">{meta_html}</div>
-<p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
-  · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
-  · <a href="report.csv" download>결과표 CSV</a> · <a href="run.log" target="_blank">실행 로그</a></p>
+{sel_html}
+{_brief_html(report, names, checked, fails, numbers, gaps, backend, pairs_html)}
 </div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
 """
 

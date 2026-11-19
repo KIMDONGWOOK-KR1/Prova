@@ -101,8 +101,8 @@ def test_목록과_카드가_같은_번호를_쓴다():
     a, b = _fail(), _fail()
     b.case_id = "c2"
     html = render_html(build_report(run_id="r", target_url="http://x", verdicts=[a, b], backend="mock"))
+    # 한 줄 목록은 압축판에서 빠졌다 (2026-11-19). 카드 번호는 그대로다.
     for no, cid in ((1, "c1"), (2, "c2")):
-        assert f"href='#c-{cid}'><span class='no defect'>{no}</span>" in html
         assert f"id='c-{cid}' open><summary><span class='no defect'>{no}</span>" in html
 
 
@@ -121,14 +121,16 @@ def _report(**kw):
 def test_실행_조건이_한_칸씩_나뉜다():
     from prova.s6_report.report_builder import render_html
     html = render_html(_report(vlm="qwen · 4b"))
-    assert "<div class='mi'>대상 <code>http://x/good</code></div>" in html
-    # 값 안의 가운뎃점에서 칸이 갈라지지 않는다.
-    assert "<div class='mi'>화면 이미지로 찾기 <code>켬 · qwen · 4b</code></div>" in html
+    # 압축판(2026-11-19): 실행 조건은 '참고' 의 한 줄이다. 대상은 위쪽 막대에 있다.
+    row = html[html.index("<b>실행 조건</b>"):]
+    assert "화면 이미지로 찾기 켬 · qwen · 4b" in row[:400]
+    assert "<span>http://x/good</span>" in html
 
 
 def test_기획서는_파일_이름만_보이고_경로는_남는다():
     from prova.s6_report.report_builder import render_html
     html = render_html(_report())
-    assert ">signup_spec.pdf</code>" in html
+    # 위쪽 막대에 파일 이름, 마우스를 올리면 전체 경로.
+    assert ">signup_spec.pdf</b>" in html
     assert r"title='C:\work\specs\signup_spec.pdf'" in html
-    assert ">2026-11-12 17:30</code>" in html
+    assert "2026-11-12 17:30" in html

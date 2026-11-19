@@ -29,11 +29,11 @@ def test_끈_것도_사실이라_남는다():
 
 def test_켜면_머리말에_모델이_나온다():
     html = render_html(_report(vlm="qwen3.5-4b-awq"))
-    assert "화면 이미지로 찾기 <code>켬 · qwen3.5-4b-awq</code>" in html
+    assert "화면 이미지로 찾기 켬 · qwen3.5-4b-awq" in html
 
 
 def test_끄면_머리말에_꺼짐이_나온다():
-    assert "화면 이미지로 찾기 <code>꺼짐</code>" in render_html(_report(vlm=""))
+    assert "화면 이미지로 찾기 꺼짐" in render_html(_report(vlm=""))
 
 
 def test_기록이_없는_옛_리포트는_줄이_없다():
@@ -66,10 +66,10 @@ def test_끈_채로_못_찾은_케이스가_있으면_켜_보라고_알린다():
     assert "<p class='smallnote'><b>요소를 찾지 못한 케이스 1건</b>" in html
     assert html.index("<h2>실패 케이스") < html.index("요소를 찾지 못한 케이스 1건")
     assert "켜서 다시 돌려 보세요" in html
-    # 건의 제목은 다시 늘어놓지 않는다 — 아래 목록이 같은 건을 번호와 함께 보인다.
-    assert "아래 &#x27;실행 문제로 확인하지 못한 곳&#x27; 목록" in html or "아래 '실행 문제로 확인하지 못한 곳' 목록" in html
+    # 건의 제목은 다시 늘어놓지 않는다 — 아래 '참고' 의 멈춘 이유가 번호를 보인다.
+    assert "&#x27;멈춘 이유&#x27; 에 번호" in html or "'멈춘 이유' 에 번호" in html
     assert "· 아이콘 버튼 누르기" not in html
-    assert "실행 문제로 확인하지 못한 곳 1" in html
+    assert "<b>실행 문제 1건이 멈춘 이유</b>" in html
     # 켜면 해결된다고 말하지 않는다 — 구현이 빠뜨린 경우에는 켜도 못 찾는 것이 맞다.
     assert "켜도 달라지지 않습니다" in html
 

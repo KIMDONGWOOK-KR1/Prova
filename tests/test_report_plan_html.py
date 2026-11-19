@@ -28,9 +28,8 @@ class TestPlanBox:
             "backend": "vllm", "created_at": "2026-08-26T09:00:00+09:00",
             "warnings": [],
         }}))
-        assert "두 단계 실행" in html
-        assert "vllm" in html
-        assert "2026-08-26T09:00:00+09:00" in html
+        # 압축판(2026-11-19): 상자가 아니라 '참고' 의 실행 조건 한 줄.
+        assert "두 단계 실행(추출 2026-08-26 09:00 · vllm)" in html
 
     def test_계획_경고도_상자에_담긴다(self):
         html = render_html(_report({"plan": {
