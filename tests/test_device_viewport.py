@@ -58,7 +58,8 @@ class TestNoteViewport:
 
 def test_리포트_머리말에_화면_크기가_보인다():
     html = render_html(_report("m", viewport="390x844"))
-    assert "화면 크기 <code>390x844</code>" in html
+    # 압축판(2026-11-19): '참고' 의 실행 조건 한 줄.
+    assert "화면 크기 390x844" in html
     assert "화면 크기" not in render_html(_report("d"))
 
 

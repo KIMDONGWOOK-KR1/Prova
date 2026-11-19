@@ -86,4 +86,4 @@ class TestWeakPass:
     def test_약한_확인_배지와_요약_한_줄(self):
         html = self._html()
         assert html.count("class='tag cat weak'>약한 확인<") == 1
-        assert "'에러 없음'만 확인한 정상 케이스 1건" in html
+        assert "'에러 없음'만 확인한 정상 케이스 <b>1건</b>" in html

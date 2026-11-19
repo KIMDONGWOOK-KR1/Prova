@@ -827,32 +827,6 @@ def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=Non
     )
 
 
-def _history_html(history: dict) -> str:
-    """직전 실행과의 비교. 첫 실행이면 비교할 것이 없으니 그리지 않는다."""
-    if not history.get("previous_run"):
-        return ""
-    regressed, fixed = history.get("regressed") or [], history.get("fixed") or []
-    added, removed = history.get("added", 0), history.get("removed", 0)
-    if not (regressed or fixed or added or removed or history.get("partial")):
-        # 달라진 것이 없으면 상자를 세우지 않는다 — '0건 · 0건' 상자는 읽을 것 없이 자리만 차지한다.
-        return ("<div class='breakdown dup'>직전 실행"
-                f"({_esc((history.get('previous_at') or '')[:16].replace('T', ' '))})"
-                "과 달라진 판정이 없습니다.</div>")
-    rows = [f"<div>새로 실패 <b>{len(regressed)}건</b> · 해결 <b>{len(fixed)}건</b>"
-            + (f" · 새 케이스 {added}건" if added else "")
-            + (f" · 사라진 케이스 {removed}건" if removed else "") + "</div>"]
-    rows += [f"<div>· 새로 실패: {_esc(t)}</div>" for t in regressed]
-    rows += [f"<div>· 해결: {_esc(t)}</div>" for t in fixed]
-    if history.get("partial"):
-        rows.append("<div class='why'>둘 중 한쪽은 일부만 실행한 결과입니다 — 양쪽에 다 있는 "
-                    "케이스만 비교했고, 케이스 증감은 기획서 변화를 뜻하지 않습니다.</div>")
-    return (
-        f"<div class='gap'><b>{history.get('round', '?')}차 실행 — 직전 실행과 비교</b>"
-        f"<div class='why'>직전: <code>{_esc(history['previous_run'])}</code> "
-        f"{_esc((history.get('previous_at') or '')[:16].replace('T', ' '))}</div>{''.join(rows)}</div>"
-    )
-
-
 def _headline(verdict: Verdict) -> tuple[str, str]:
     """실패 카드의 대제목과 사유의 나머지.
 
@@ -888,8 +862,7 @@ def _source_html(source, expected: str, label: str | None = None) -> str:
             f"{source.page}쪽 표</caption><tr>{tds}</tr></table>")
 
 
-def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str = "",
-                  planner: bool = False) -> str:
+def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str = "") -> str:
     """기획서가 말한 것과 실제 화면을 나란히 놓는다.
 
     표의 두 줄('기대'·'실제')로 두면 위아래로 읽어 견줘야 한다. 이 도구가 하는 일이 바로
@@ -897,15 +870,13 @@ def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str =
     그 기대에 이르는 절차를, 실제 쪽에는 판정한 화면과 그때의 주소를 붙인다 — 캡처를 칸 밖에
     따로 두면 오른쪽 절반이 비고 카드가 한 화면을 넘겼다.
 
-    `planner` 는 기획자용 보고서(planner_view)다 — 그때의 주소, 이름마다의 까닭 같은 원인 추적용
-    자료를 빼고, 멈춘 건은 내부 문장('스텝 2 에서 중단') 대신 무엇을 하려다 멈췄는지를 적는다.
     """
     ev = verdict.evidence or {}
     expected = ev.get("expected")
     sources = "".join(_source_html(s, str(expected or ""), verdict.target_label)
                       for s in verdict.spec_sources)
     url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
-           if ev.get("url") and not planner else "")
+           if ev.get("url") else "")
     seen = ev.get("actual")
     if kind == "infra" and any(r.status == "error" for r in verdict.step_results):
         # 판정이 남긴 관찰은 '스텝 7 에서 중단' 뿐이다 — 재현 절차가 이미 그 자리를 짚는다.
@@ -922,7 +893,7 @@ def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str =
             "<p class='src'><b>찾지 못함</b>"
             + ", ".join(f"<span class='miss'>{_esc(n)}</span>" for n in missing) + "</p>"
             + (f"<p class='src'><b>확인됨</b>{_esc(', '.join(found))}</p>" if found else "")
-            + ("" if planner else f"<p class='src'><b>자세히</b>{_esc(ev.get('actual'))}</p>"))
+            + f"<p class='src'><b>자세히</b>{_esc(ev.get('actual'))}</p>")
     return (
         f"<div class='cmp {verdict.verdict} {kind}'>"
         f"<div class='want'><h4>기획서</h4><p>{_esc(expected)}</p>{sources}{repro}</div>"
@@ -1063,10 +1034,7 @@ def _stuck_rows_html(items: list[Verdict], fails: list[Verdict], names: dict, nu
 
 
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None, target_url: str = "", no: int | None = None,
-               planner: bool = False) -> str:
-    """케이스 카드. `planner` 는 기획자용 보고서(planner_view)가 쓴다 — 같은 카드에서 원인 추적용
-    자료(단계별 기록 표·단계마다의 캡처·소요 시간·주소)만 뺀다. 카드를 두 벌로 쓰면 한쪽이 뒤처진다."""
+               revised: dict | None = None, target_url: str = "", no: int | None = None) -> str:
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -1127,7 +1095,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     n_shots = sum(1 for r in verdict.step_results if r.screenshot)
     more = (f"<details class='raw'><summary>단계별 기록 {n_steps}개 · 캡처 {n_shots}장</summary>"
             f"<div class='url'>마지막 주소 <code>{_esc(ev.get('url'))}</code></div>"
-            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>" if n_steps and not planner else "")
+            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>" if n_steps else "")
     failed = verdict.verdict == "FAIL"
     copy = ""
     if failed:
@@ -1145,13 +1113,13 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         f"{' open' if open_by_default else ''}>"
         f"<summary>{no_tag}"
         f"{f'<span class=head>{_esc(shown)}</span>' if shown else ''}{copy}"
-        f"{'' if planner else f'<span class={chr(39)}tag {verdict.verdict}{chr(39)}>{verdict.verdict}</span>'}"
+        f"<span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
         f"{cat_tag}{rev_tag}{rule_tag}"
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
-        f"{'' if planner else f'<span class={chr(39)}ms{chr(39)}>{verdict.elapsed_ms}ms</span>'}</summary>"
+        f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
         f"<div class='body'>"
-        f"{_compare_html(verdict, kind, shot, repro, planner)}{f'<table class=kv>{kv}</table>' if kv else ''}"
+        f"{_compare_html(verdict, kind, shot, repro)}{f'<table class=kv>{kv}</table>' if kv else ''}"
         f"{more}"
         f"</div></details>"
     )
@@ -1480,6 +1448,22 @@ def _brief_html(report: TestReport, names: dict, checked: list, fails: list[Verd
         rest = len(stuck) - sum(len(g) for _, g in top)
         items.append(f"<li><b>실행 문제 {len(stuck)}건이 멈춘 이유</b>" + "<br>".join(lines)
                      + (f"<br>그 밖의 이유 {rest}건" if rest else "") + "</li>")
+    history = s.get("history") or {}
+    regressed, fixed = history.get("regressed") or [], history.get("fixed") or []
+    added, removed = history.get("added", 0), history.get("removed", 0)
+    if history.get("previous_run") and (regressed or fixed or added or removed or history.get("partial")):
+        when = _esc((history.get("previous_at") or "")[:16].replace("T", " "))
+        parts = [f"새로 실패 {len(regressed)}건 · 해결 {len(fixed)}건"
+                 + (f" · 새 케이스 {added}건" if added else "")
+                 + (f" · 사라진 케이스 {removed}건" if removed else "")]
+        parts += [f"새로 실패: {_esc(t)}" for t in regressed[:3]]
+        parts += [f"해결: {_esc(t)}" for t in fixed[:3]]
+        if len(regressed) > 3 or len(fixed) > 3:
+            parts.append("나머지는 엑셀에 있습니다")
+        if history.get("partial"):
+            parts.append("둘 중 한쪽은 일부만 실행한 결과라 양쪽에 다 있는 케이스만 비교했습니다")
+        items.append(f"<li><b>{history.get('round', '?')}차 — 직전 실행({when})과 비교</b>"
+                     + "<br>".join(parts) + "</li>")
     if s.get("healed"):
         items.append(f"<li><b>화면 이미지로 찾아 진행 {s['healed']}건</b>기획서의 라벨이 구현과 이어져 있지 않습니다.</li>")
     if s.get("settled"):
@@ -1497,6 +1481,11 @@ def _brief_html(report: TestReport, names: dict, checked: list, fails: list[Verd
         run.append(f"화면 크기 {_esc(s['viewport'])}")
     if s.get("sut_build"):
         run.append("대상 빌드 " + ("일치" if s["sut_build"] == "match" else "확인 불가"))
+    if s.get("workers"):
+        run.append(f"병렬 {_esc(s['workers'])}")
+    cache = s.get("llm_cache") or {}
+    if cache.get("hits"):
+        run.append(f"저장된 모델 응답 {_esc(cache['hits'])}건 재사용 · 새 호출 {_esc(cache.get('misses', 0))}건")
     items.append(f"<li><b>실행 조건</b>{' · '.join(run)}</li>")
     # 계획을 세운 뒤 기획서가 바뀌었다는 경고는 판정의 전제를 흔든다 — 짧게라도 남긴다.
     if plan.get("warnings"):
@@ -1767,7 +1756,6 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
         )
 
     history = s.get("history") or {}
-    history_html = _history_html(history)
     if s.get("project"):
         build_meta += f"\n프로젝트 <code>{_esc(s['project'])}</code>"
     if history.get("round"):
@@ -1808,8 +1796,6 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
         (v for items in _groups(fails, names).values() for v in items), 1)}
     # 결론 아래 한 줄 — 웹 UI 결과 화면과 같은 말(app.js 의 cond).
     changed = len(history.get("regressed") or []) + len(history.get("fixed") or [])
-    screens_html = _scope_html(report, names, checked, numbers, gaps, s.get("spec_warnings") or [],
-                               spec_figures or {})
     cond = " · ".join(x for x in (
         _screens_phrase(names, checked),
         f"{history['round']}번째 실행" if history.get("round") else "",

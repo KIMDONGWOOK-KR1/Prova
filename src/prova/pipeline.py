@@ -45,7 +45,6 @@ from prova.nodes import (
 )
 from prova.plan_store import load_plan, plan_warnings, save_plan
 from prova.s2_case_generator.selector import select_by_ids, select_cases
-from prova.s6_report.planner_view import save_planner_html
 from prova.s6_report.report_builder import save_csv, save_html, save_json
 from prova.s6_report.xlsx_export import save_xlsx
 
@@ -598,7 +597,6 @@ def _execute(
     attach_history(state.report, run_dir.parent)
     save_json(state.report, run_dir)
     save_html(state.report, run_dir)
-    save_planner_html(state.report, run_dir)  # 기획자용 — 웹 UI 결과 화면이 이것을 보인다
     save_xlsx(state.report, run_dir)
     save_csv(state.report, run_dir)
 
