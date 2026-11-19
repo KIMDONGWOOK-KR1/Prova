@@ -73,7 +73,7 @@ class TestReportBadges:
     def test_실행_문제가_있으면_도구부터_보라는_줄이_나온다(self):
         # 기획서와 다름·실행 문제의 수는 원형차트 범례가 보여 준다. 한 줄은 실행 문제가 있을 때만.
         html = self._html()
-        assert "실행 문제 1건은" in html
+        assert "<b>실행 문제 1건</b>은" in html
 
     def test_폴더째_공유하라는_안내가_있다(self):
         assert "폴더째" in self._html()
