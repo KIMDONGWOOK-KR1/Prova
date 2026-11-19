@@ -26,7 +26,7 @@ from typing import Optional
 
 import yaml
 from fastapi import FastAPI, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -518,6 +518,49 @@ def report(run_id: str) -> RedirectResponse:
     if not path.is_relative_to(RUNS.resolve()) or not path.exists():
         raise HTTPException(404, f"리포트를 찾을 수 없습니다: {run_id}")
     return RedirectResponse(f"/runs/{run_id}/report.html")
+
+
+def _run_dir(run_id: str) -> Path:
+    path = (RUNS / run_id).resolve()
+    if path.parent != RUNS.resolve() or not (path / "report.json").exists():
+        raise HTTPException(404, f"리포트를 찾을 수 없습니다: {run_id}")
+    return path
+
+
+@app.get("/api/report/{run_id}/planner")
+def planner_report(run_id: str) -> RedirectResponse:
+    """기획자용 보고서(planner.html)로 넘긴다. 이 기능 전의 실행이면 report.json 으로 그 자리에서 만든다."""
+    run_dir = _run_dir(run_id)
+    if not (run_dir / "planner.html").exists():
+        from prova.s6_report.planner_view import build_from_run_dir
+        build_from_run_dir(run_dir)
+    return RedirectResponse(f"/runs/{run_id}/planner.html")
+
+
+@app.get("/api/report/{run_id}/pdf")
+def report_pdf(run_id: str, view: str = "planner") -> FileResponse:
+    """리포트를 PDF 로 내려준다 — view=planner(기획자용) 또는 dev(고치는 사람용).
+
+    받을 때 만들어 실행 폴더에 둔다(planner.pdf · report.pdf). HTML 이 더 새것이면 다시 만든다.
+    """
+    if view not in ("planner", "dev"):
+        raise HTTPException(400, "view 는 planner 또는 dev 입니다")
+    run_dir = _run_dir(run_id)
+    html = run_dir / ("planner.html" if view == "planner" else "report.html")
+    if view == "planner" and not html.exists():
+        from prova.s6_report.planner_view import build_from_run_dir
+        build_from_run_dir(run_dir)
+    if not html.exists():
+        raise HTTPException(404, f"리포트를 찾을 수 없습니다: {run_id}")
+    pdf = html.with_suffix(".pdf")
+    if not pdf.exists() or pdf.stat().st_mtime < html.stat().st_mtime:
+        from prova.s6_report.pdf_export import save_pdf
+        try:
+            save_pdf(html, pdf)
+        except Exception as e:  # 브라우저가 없거나 뜨지 못한 환경
+            raise HTTPException(500, f"PDF 를 만들지 못했습니다: {e}") from e
+    name = f"prova-{'planner' if view == 'planner' else 'report'}-{run_id}.pdf"
+    return FileResponse(pdf, media_type="application/pdf", filename=name)
 
 
 # 정적 파일은 마지막에 붙인다. 위의 /static/tokens.css 라우트가 먼저 잡혀야

@@ -508,6 +508,8 @@ def _precondition_unmet_verdict(state: AgentState, case: TestCase) -> Verdict:
         evidence={"actual": detail},
         elapsed_ms=0,
         step_results=[],
+        pending_steps=[{"action": s.action, "target": s.target, "value": s.value, "phase": "test"}
+                       for s in case.steps],
     )
 
 

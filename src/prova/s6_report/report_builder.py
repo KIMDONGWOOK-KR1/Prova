@@ -54,17 +54,44 @@ STATUS_LABELS = {"ok": "성공", "error": "오류"}
 #: 인쇄(PDF 저장) 때는 접힌 카드·통과 목록·단계 기록을 모두 펼친다 — 종이에는 [펼치기] 가
 #: 없어서, 접힌 채 인쇄하면 실패 카드의 근거가 빠진 문서가 된다. 인쇄가 끝나면 원래대로.
 _PRINT_JS = """(function () {
-  var opened = [];
+  var opened = [], theme = null, root = document.documentElement;
   window.addEventListener('beforeprint', function () {
+    // 종이는 늘 밝은 화면이다 — 어두운 화면으로 보던 중이어도 검은 바탕으로 찍히지 않게.
+    theme = root.getAttribute('data-theme'); root.setAttribute('data-theme', 'light');
     opened = [];
     document.querySelectorAll('details:not([open])').forEach(function (d) {
       d.open = true; opened.push(d);
     });
   });
   window.addEventListener('afterprint', function () {
+    if (theme) root.setAttribute('data-theme', theme); else root.removeAttribute('data-theme');
     opened.forEach(function (d) { d.open = false; });
     opened = [];
   });
+})();"""
+
+# 밝게 / 어둡게 — 파일로 연 리포트에는 웹 UI 의 버튼이 없어 PC 설정을 따라 어둡게만 나왔다(2026-11-19).
+# 웹 UI 의 버튼과 같은 말·같은 저장 키(prova-theme)를 쓴다. 웹 UI 안에서는 위쪽 막대째 숨는다.
+THEME_BUTTON = "<button class='theme' id='themeBtn' type='button'></button>"
+_THEME_BTN_JS = """(function () {
+  var btn = document.getElementById('themeBtn'), root = document.documentElement;
+  if (!btn) return;
+  function dark() {
+    var set = root.getAttribute('data-theme');
+    if (set === 'light' || set === 'dark') return set === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function label() {
+    btn.textContent = dark() ? '밝게' : '어둡게';
+    btn.setAttribute('aria-label', dark() ? '밝은 화면으로 바꾸기' : '어두운 화면으로 바꾸기');
+  }
+  btn.addEventListener('click', function () {
+    var next = dark() ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('prova-theme', next); } catch (e) {}
+    label();
+  });
+  label();
 })();"""
 
 CATEGORY_LABELS = {
@@ -206,7 +233,12 @@ a { color:inherit; text-underline-offset:2px; }
 .crumbs > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .crumbs b { color:var(--text); font-weight:600; flex:none; max-width:100%; }
 .topbar .name { font-size:var(--tx-xl); font-weight:660; letter-spacing:-0.03em; }
-.topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums; }
+.topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
+                display:flex; align-items:center; gap:var(--sp-3); }
+button.theme { font:inherit; font-size:12px; font-weight:650; padding:4px 12px; border-radius:var(--r-full);
+               border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
+button.theme:hover { border-color:var(--text); }
+button.theme:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 .result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
                flex-wrap:wrap; margin-bottom:var(--sp-4); }
 h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0;
@@ -403,6 +435,11 @@ table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset
                   border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
 .repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; }
 .repro em { font-style:normal; font-size:13px; color:var(--fail); }
+/* 멈춘 단계 — 어긴 단계와 같은 무게. 꼬리표는 실행 문제의 색(보라)이다. 뒤의 단계는 실행하지 못했다. */
+.repro em.stop { font-size:11px; font-weight:650; color:var(--note-fg); background:var(--note-bg);
+                 padding:1px 6px; border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
+.repro li.todo { opacity:.55; }
+.repro-note { font-size:12px; color:var(--muted); margin:6px 0 0 22px; }
 .shots.last { margin-top:12px; }
 .shots.last a { display:block; width:100%; }
 .shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
@@ -438,10 +475,10 @@ h3.grp { font-size:13px; margin:20px 0 0; color:var(--muted); font-weight:650; }
   .wrap { padding:var(--sp-6) var(--sp-4) var(--sp-10); }
   h1 { font-size:25px; }
   .topbar { grid-template-columns:minmax(0,1fr) auto; padding:var(--sp-3) var(--sp-4); }
-  .topbar .name { order:-1; } .topbar .when, .crumbs span { display:none; } .crumbs { justify-content:flex-end; }
+  .topbar .name { order:-1; } .topbar .when > span, .crumbs span { display:none; } .crumbs { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .btn, .btn:hover, .btn:active { transition:none; transform:none; } }
-@media print { .actions, button.copy { display:none; } .case { break-inside:avoid; } }
+@media print { .actions, button.copy, button.theme { display:none; } .case { break-inside:avoid; } }
 """
 
 
@@ -835,21 +872,28 @@ def _source_html(source, expected: str, label: str | None = None) -> str:
             f"{source.page}쪽 표</caption><tr>{tds}</tr></table>")
 
 
-def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str = "") -> str:
+def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str = "",
+                  planner: bool = False) -> str:
     """기획서가 말한 것과 실제 화면을 나란히 놓는다.
 
     표의 두 줄('기대'·'실제')로 두면 위아래로 읽어 견줘야 한다. 이 도구가 하는 일이 바로
     그 대조이므로 한눈에 좌우로 보이게 한다. 기획서 쪽에는 어느 쪽 어느 줄인지(근거)와
     그 기대에 이르는 절차를, 실제 쪽에는 판정한 화면과 그때의 주소를 붙인다 — 캡처를 칸 밖에
     따로 두면 오른쪽 절반이 비고 카드가 한 화면을 넘겼다.
+
+    `planner` 는 기획자용 보고서(planner_view)다 — 그때의 주소, 이름마다의 까닭 같은 원인 추적용
+    자료를 빼고, 멈춘 건은 내부 문장('스텝 2 에서 중단') 대신 무엇을 하려다 멈췄는지를 적는다.
     """
     ev = verdict.evidence or {}
     expected = ev.get("expected")
     sources = "".join(_source_html(s, str(expected or ""), verdict.target_label)
                       for s in verdict.spec_sources)
     url = (f"<p class='src'><b>그때의 주소</b> <code>{_esc(ev.get('url'))}</code></p>"
-           if ev.get("url") else "")
-    actual = f"<p>{_esc(ev.get('actual'))}</p>"
+           if ev.get("url") and not planner else "")
+    seen = ev.get("actual")
+    if planner and kind == "infra":
+        seen = stop_reason(verdict)[1]
+    actual = f"<p>{_esc(seen)}</p>"
     missing, found = missing_names(verdict)
     if missing:
         # 이름 대조(2026-11-19, 기획자용 보고서에서 옮김) — 관찰 문장은 못 찾은 이름과 까닭을 한 줄로
@@ -860,7 +904,7 @@ def _compare_html(verdict: Verdict, kind: str = "", shot: str = "", repro: str =
             "<p class='src'><b>찾지 못함</b>"
             + ", ".join(f"<span class='miss'>{_esc(n)}</span>" for n in missing) + "</p>"
             + (f"<p class='src'><b>확인됨</b>{_esc(', '.join(found))}</p>" if found else "")
-            + f"<p class='src'><b>자세히</b>{_esc(ev.get('actual'))}</p>")
+            + ("" if planner else f"<p class='src'><b>자세히</b>{_esc(ev.get('actual'))}</p>"))
     return (
         f"<div class='cmp {verdict.verdict} {kind}'>"
         f"<div class='want'><h4>기획서</h4><p>{_esc(expected)}</p>{sources}{repro}</div>"
@@ -873,21 +917,33 @@ def _repro_html(verdict: Verdict, broke: str | None = None) -> str:
     """재현 절차 — 손으로 그대로 따라 할 수 있는 문장으로.
 
     엑셀의 '재현 절차' 칸과 같은 문장이다(wording.step_sentence). 기획자가 개발사에
-    "이렇게 하면 나온다" 고 넘길 때 표를 풀어 쓸 필요가 없게 한다. 멈춘 스텝에는 표시를 단다.
+    "이렇게 하면 나온다" 고 넘길 때 표를 풀어 쓸 필요가 없게 한다.
     `broke` 는 규칙을 어긴 항목의 이름이다 — 그 항목을 건드린 단계만 진하게 둔다. 나머지 단계는
     케이스마다 같아서, 다 같은 무게면 무엇을 다르게 넣었는지 찾아 읽어야 한다.
+
+    멈춘 단계도 같은 무게로 진하게 둔다 — 전체 가운데 어디서 멈췄는지가 한눈에 보여야 한다.
+    그 뒤의 실행하지 못한 단계(verdict.pending_steps)는 흐리게 이어 적는다. 멈춘 데서 목록이
+    끊기면 '이게 전부인가' 를 알 수 없다 (2026-11-19).
     """
-    if not verdict.step_results:
+    if not (verdict.step_results or verdict.pending_steps):
         return ""
     items = []
     for r in verdict.step_results:
         prefix = "<span class='pre'>준비</span> " if r.phase == "setup" else ""
-        stopped = " <em>← 여기서 멈춤</em>" if r.status == "error" else ""
+        stuck = r.status == "error"
+        stopped = " <em class='stop'>여기서 멈춤</em>" if stuck else ""
         hit = bool(broke) and r.phase != "setup" and r.target == broke and r.action != "click"
         mark = " <em class='broke'>기획서를 어긴 단계</em>" if hit else ""
-        items.append(f"<li{' class=broke' if hit else ''}>{prefix}"
+        cls = " class=broke" if hit else " class='broke stuck'" if stuck else ""
+        items.append(f"<li{cls}>{prefix}"
                      f"{_esc(step_sentence(r.action, r.target, r.value))}{mark}{stopped}</li>")
-    return f"<h4>재현 절차</h4><ol class='repro'>{''.join(items)}</ol>"
+    for s in verdict.pending_steps:
+        prefix = "<span class='pre'>준비</span> " if s.get("phase") == "setup" else ""
+        items.append(f"<li class='todo'>{prefix}"
+                     f"{_esc(step_sentence(s.get('action', ''), s.get('target', ''), s.get('value')))}</li>")
+    note = ("<p class='repro-note'>흐린 단계는 앞에서 멈춰 실행하지 못했습니다.</p>"
+            if verdict.pending_steps else "")
+    return f"<h4>재현 절차</h4><ol class='repro'>{''.join(items)}</ol>{note}"
 
 
 def _conclusion(verdicts: list[Verdict], total: int) -> str:
@@ -989,7 +1045,10 @@ def _stuck_rows_html(items: list[Verdict], fails: list[Verdict], names: dict, nu
 
 
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None, target_url: str = "", no: int | None = None) -> str:
+               revised: dict | None = None, target_url: str = "", no: int | None = None,
+               planner: bool = False) -> str:
+    """케이스 카드. `planner` 는 기획자용 보고서(planner_view)가 쓴다 — 같은 카드에서 원인 추적용
+    자료(단계별 기록 표·단계마다의 캡처·소요 시간·주소)만 뺀다. 카드를 두 벌로 쓰면 한쪽이 뒤처진다."""
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -1025,6 +1084,9 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     # 나눠 적는다(_compare_html). 복사하는 글에는 원래 문장을 둔다 — 개발사에는 이름이 필요하다.
     missing, found = missing_names(verdict)
     shown = _names_sentence(missing, found) if missing and verdict.verdict == "FAIL" else headline
+    if planner and kind == "infra":
+        # 사유의 첫 문장은 내부 말('스텝 3(fill …) 실패')이다 — 무엇을 하려다 멈췄는지로 바꿔 적는다.
+        shown, rest = stop_reason(verdict)[1], ""
 
     rows = [("이번 판에서 바뀐 것", _esc(" / ".join(why)))] if why else []
     # 기대·실제·기획서 근거는 아래 비교 칸(_compare_html)이 좌우로 나란히 보인다.
@@ -1046,7 +1108,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
     n_shots = sum(1 for r in verdict.step_results if r.screenshot)
     more = (f"<details class='raw'><summary>단계별 기록 {n_steps}개 · 캡처 {n_shots}장</summary>"
             f"<div class='url'>마지막 주소 <code>{_esc(ev.get('url'))}</code></div>"
-            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>" if n_steps else "")
+            f"{_steps_html(verdict)}{_shots_html(verdict)}</details>" if n_steps and not planner else "")
     failed = verdict.verdict == "FAIL"
     copy = ""
     if failed:
@@ -1064,13 +1126,13 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         f"{' open' if open_by_default else ''}>"
         f"<summary>{no_tag}"
         f"{f'<span class=head>{_esc(shown)}</span>' if shown else ''}{copy}"
-        f"<span class='tag {verdict.verdict}'>{verdict.verdict}</span>"
+        f"{'' if planner else f'<span class={chr(39)}tag {verdict.verdict}{chr(39)}>{verdict.verdict}</span>'}"
         f"{cat_tag}{rev_tag}{rule_tag}"
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
-        f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
+        f"{'' if planner else f'<span class={chr(39)}ms{chr(39)}>{verdict.elapsed_ms}ms</span>'}</summary>"
         f"<div class='body'>"
-        f"{_compare_html(verdict, kind, shot, repro)}{f'<table class=kv>{kv}</table>' if kv else ''}"
+        f"{_compare_html(verdict, kind, shot, repro, planner)}{f'<table class=kv>{kv}</table>' if kv else ''}"
         f"{more}"
         f"</div></details>"
     )
@@ -1671,7 +1733,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 <header class="topbar">
 <div class="crumbs">{f"<b title='{_esc(report.spec_source)}'>{_esc(spec_name)}</b><span aria-hidden='true'>→</span>" if spec_name else ""}<span>{_esc(report.target_url)}</span></div>
 <div class="name">Prova</div>
-<div class="when">검증 리포트 · {_esc(when)}</div>
+<div class="when"><span>검증 리포트 · {_esc(when)}</span>{THEME_BUTTON}</div>
 </header>
 <div class="wrap">
 <div class="result-head">
@@ -1697,7 +1759,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 <p class="metanote">스크린샷은 이 파일 옆 폴더에 있습니다. 공유할 때는 결과 폴더째 보내세요.
   · <a href='report.xlsx' download>엑셀로 받기</a> (요약·케이스·기획서와 다름 시트)
   · <a href="report.csv" download>결과표 CSV</a> · <a href="run.log" target="_blank">실행 로그</a></p>
-</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script></body></html>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
 """
 
 

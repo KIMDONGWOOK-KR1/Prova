@@ -642,6 +642,21 @@ _JUDGES = {
 # ---------------------------------------------------------------------------
 
 
+def pending_steps(case: TestCase, step_results: list[StepResult]) -> list[dict]:
+    """멈춘 뒤 실행하지 못한 스텝 — 리포트의 재현 절차가 멈춘 단계 뒤에 이어 보인다.
+
+    끝까지 갔으면 빈 목록이다. 전제(setup)에서 멈췄으면 남은 전제 스텝과 본 스텝 전부가 남는다.
+    """
+    if not any(r.status == "error" for r in step_results):
+        return []
+    done_setup = sum(1 for r in step_results if r.phase == "setup")
+    done_test = sum(1 for r in step_results if r.phase != "setup")
+    rest = ([("setup", s) for s in case.setup_steps[done_setup:]]
+            + [("test", s) for s in case.steps[done_test:]])
+    return [{"action": s.action, "target": s.target, "value": s.value, "phase": phase}
+            for phase, s in rest]
+
+
 def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> Verdict:
     """케이스 하나를 판정한다.
 
@@ -656,6 +671,7 @@ def verify(case: TestCase, step_results: list[StepResult], state: PageState) -> 
         violates=case.violates, target_element=case.target_element,
         target_label=case.target_label, spec_sources=case.spec_sources,
         elapsed_ms=elapsed, step_results=step_results,
+        pending_steps=pending_steps(case, step_results),
         # 보정으로 **진행한** 스텝이 있을 때만 healed 다.
         #
         # 시도만 하고 막힌 경우(좌표에 조작 가능한 요소가 없어 되돌린 경우)는

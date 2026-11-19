@@ -856,6 +856,9 @@ function showResult(out) {
       : "직전과 같은 결과"),
   ].filter(Boolean).join(" · ");
   const base = out.report_url.replace(/report\.html$/, "");
+  // 결과 화면은 기획자용 보고서를 보인다. 고치는 사람용(report.html)은 PDF 로 받는다.
+  const runId = base.replace(/\/$/, "").split("/").pop();
+  const api = `/api/report/${encodeURIComponent(runId)}`;
 
   $("stage").innerHTML = `
     <div class="head result-head">
@@ -871,7 +874,8 @@ function showResult(out) {
       </div>
       <div class="actions">
         <a class="btn primary" href="${esc(base)}report.xlsx" download>엑셀 받기</a>
-        <a class="btn ghost" href="${esc(out.report_url)}" target="_blank" rel="noopener">리포트 파일 열기</a>
+        <a class="btn ghost" href="${esc(api)}/pdf?view=planner" download>PDF 받기</a>
+        <a class="btn ghost" href="${esc(api)}/pdf?view=dev" download>고치는 사람용 PDF</a>
         ${state.plan ? `<button class="btn ghost" id="againBtn" type="button">다시 실행</button>` : ""}
       </div>
     </div>
@@ -879,7 +883,7 @@ function showResult(out) {
     <div class="tally">기획서와 다름 ${defects} · 실행 문제 ${infra}${unv ? ` · 확인 불가 ${unv}` : ""} · 통과 ${s.pass} · 통과율 ${s.pass_rate}%</div>
     ${notes.join("")}
     <div class="reportbox">
-      <iframe id="reportFrame" src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
+      <iframe id="reportFrame" src="${esc(api)}/planner" title="기획서 대조 결과" scrolling="no"
               allow="clipboard-write"></iframe>
     </div>`;
   // 같은 항목·같은 옵션으로 한 번 더 — 고친 뒤 확인할 때 1·2단계를 다시 밟지 않는다.

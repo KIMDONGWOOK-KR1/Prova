@@ -45,6 +45,7 @@ from prova.nodes import (
     page_opener,
     run_cases,
 )
+from prova.s6_report.planner_view import save_planner_html
 from prova.s6_report.report_builder import save_csv, save_html, save_json
 from prova.s6_report.xlsx_export import save_xlsx
 
@@ -132,6 +133,7 @@ def run_graph(
     note_viewport(report.summary, viewport)
     save_json(report, run_dir)
     save_html(report, run_dir)
+    save_planner_html(report, run_dir)  # 기획자용 — 웹 UI 결과 화면이 이것을 보인다
     save_xlsx(report, run_dir)
     save_csv(report, run_dir)
     return report, run_dir

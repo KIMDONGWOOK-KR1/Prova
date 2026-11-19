@@ -726,6 +726,10 @@ class Verdict(BaseModel):
     healed: bool = False
     elapsed_ms: int = 0
     step_results: list[StepResult] = Field(default_factory=list)
+    # 멈춘 뒤 실행하지 못한 스텝(action·target·value·phase). 실행기는 스텝이 실패하면 멈추므로
+    # step_results 에는 거기까지만 있다. 리포트의 재현 절차가 '어디서 멈췄고 그 뒤에 무엇이
+    # 남았는지' 를 보이려면 남은 스텝이 필요하다 (2026-11-19). 끝까지 갔으면 비어 있다.
+    pending_steps: list[dict] = Field(default_factory=list)
 
 
 class TestReport(BaseModel):
