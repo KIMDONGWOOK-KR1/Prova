@@ -879,9 +879,10 @@ function showResult(out) {
         ${state.plan ? `<button class="btn ghost" id="againBtn" type="button">다시 실행</button>` : ""}
       </div>
     </div>
-    <div class="meter" aria-hidden="true"><i class="f" style="flex:${defects}"></i><i class="x" style="flex:${infra}"></i><i class="u" style="flex:${unv}"></i><i style="flex:${s.pass}"></i></div>
-    <div class="tally">기획서와 다름 ${defects} · 실행 문제 ${infra}${unv ? ` · 확인 불가 ${unv}` : ""} · 통과 ${s.pass} · 통과율 ${s.pass_rate}%</div>
     ${notes.join("")}
+    ${donutBlock(
+      { defect: defects, infra, unv, pass: s.pass },
+      `기획서와 다름 ${defects} · 실행 문제 ${infra}${unv ? ` · 확인 불가 ${unv}` : ""} · 통과 ${s.pass} · 통과율 ${s.pass_rate}%`)}
     <div class="reportbox">
       <iframe id="reportFrame" src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
               allow="clipboard-write"></iframe>
@@ -890,6 +891,46 @@ function showResult(out) {
   const again = $("againBtn");
   if (again) again.addEventListener("click", startRun);
   fitFrame($("stage").querySelector("iframe"));
+}
+
+// ── 원형차트(도넛) ────────────────────────────────────────────────────────
+// 리포트 파일의 도넛(report_builder._donut_svg)과 같은 그림이다 — 결함 → 실행 문제 →
+// 확인 불가 → 통과, 12시에서 시계 방향. 색만으로 말하지 않게 이름표에 이름·수·비율을 적는다.
+// 알림 상자 아래에 둔다 — 알림이 숫자보다 눈에 덜 띄면 안 된다(요구서 4절 1번).
+const DONUT_LABELS = { defect: "기획서와 다름", infra: "실행 문제", unv: "확인 불가", pass: "통과" };
+
+function donutBlock(n, tally) {
+  const keys = Object.keys(DONUT_LABELS).filter((k) => n[k] > 0);
+  const total = keys.reduce((a, k) => a + n[k], 0);
+  if (!total) return "";
+  const size = 132, c = size / 2, w = 16, r = c - w / 2 - 1, len = 2 * Math.PI * r;
+  const gap = keys.length > 1 ? 2 : 0;
+  const pct = (k) => `${Math.round((n[k] / total) * 100)}%`;
+  let off = 0;
+  const arcs = keys.map((k) => {
+    const arc = (n[k] / total) * len, drawn = Math.max(arc - gap, 0.5);
+    const el = `<circle class="seg ${k}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"
+      stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}">
+      <title>${DONUT_LABELS[k]} ${n[k]}건 (${pct(k)})</title></circle>`;
+    off += arc;
+    return el;
+  }).join("");
+  const aria = keys.map((k) => `${DONUT_LABELS[k]} ${n[k]}건`).join(", ");
+  const legend = keys.map((k) =>
+    `<li><i class="swatch ${k}"></i><span>${DONUT_LABELS[k]}</span><b>${n[k]}</b><span class="pct">${pct(k)}</span></li>`).join("");
+  return `
+    <div class="donut">
+      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="전체 ${total}건 — ${aria}">
+        <circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"/>
+        <g transform="rotate(-90 ${c} ${c})">${arcs}</g>
+        <text x="${c}" y="${c + 4}" class="big">${total}</text>
+        <text x="${c}" y="${c + 22}" class="small">케이스</text>
+      </svg>
+      <div class="donut-side">
+        <ul class="legend">${legend}</ul>
+        <div class="tally">${tally}</div>
+      </div>
+    </div>`;
 }
 
 // ── 밝게 / 어둡게 ─────────────────────────────────────────────────────────

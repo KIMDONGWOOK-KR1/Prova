@@ -937,3 +937,32 @@ mark.unv { background: var(--bg-inset); }
 .newproj input { flex: 1; min-width: 0; }
 .newproj .btn { flex: none; }
 .field .hint.err { color: var(--fail-fg); }
+
+/* 결과 원형차트(도넛) — 리포트 파일의 .chart 와 같은 그림. 색은 --chart-* 토큰, 이름표에 글자로도. */
+.donut { display: flex; align-items: center; gap: var(--sp-8); flex-wrap: wrap;
+         margin: var(--sp-4) 0 var(--sp-6); }
+.donut svg { flex: none; display: block; }
+.donut text { text-anchor: middle; fill: var(--fg-default); font-variant-numeric: tabular-nums; }
+.donut .big { font-size: 28px; font-weight: 600; letter-spacing: -0.02em; }
+.donut .small { font-size: var(--tx-xs); fill: var(--fg-muted); }
+.donut .track { stroke: var(--border-subtle); }
+.donut .seg.defect { stroke: var(--chart-defect); }
+.donut .seg.infra { stroke: var(--chart-infra); }
+.donut .seg.unv { stroke: var(--chart-unv); }
+.donut .seg.pass { stroke: var(--chart-pass); }
+.donut-side { flex: 1; min-width: 220px; }
+.donut .legend { list-style: none; margin: 0 0 var(--sp-2); padding: 0; display: grid; gap: 6px; max-width: 320px; }
+.donut .legend li { display: grid; grid-template-columns: 10px auto 1fr auto; align-items: center; gap: var(--sp-2);
+                    font-size: var(--tx-md); font-variant-numeric: tabular-nums; }
+.donut .legend b { justify-self: end; font-weight: 650; }
+.donut .legend .pct { min-width: 3.2em; text-align: right; color: var(--fg-muted); }
+.donut .swatch { width: 10px; height: 10px; border-radius: 2px; }
+.donut .swatch.defect { background: var(--chart-defect); }
+.donut .swatch.infra { background: var(--chart-infra); }
+.donut .swatch.unv { background: var(--chart-unv); }
+.donut .swatch.pass { background: var(--chart-pass); }
+.donut .tally { margin-bottom: 0; color: var(--fg-muted); }
+@media (prefers-reduced-motion: no-preference) {
+  .donut .seg { animation: donut-in 520ms cubic-bezier(.22, 1, .36, 1) both; }
+}
+@keyframes donut-in { from { opacity: 0; } to { opacity: 1; } }
