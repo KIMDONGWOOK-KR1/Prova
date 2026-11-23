@@ -31,26 +31,26 @@
 """
 
 _DARK = """    --bg-canvas:  var(--gray-950);
-    --bg-surface: #181715;
-    --bg-raised:  #1e1d1a;
-    --bg-inset:   #0d0c0b;
-    --bg-hover:   #24221f;
-    --bg-active:  #2c2a26;
+    --bg-surface: #171718;
+    --bg-raised:  #1c1d1e;
+    --bg-inset:   #0c0c0d;
+    --bg-hover:   #222224;
+    --bg-active:  #292a2c;
 
-    --fg-default: #ece9e2;
+    --fg-default: #e8e9eb;
     --fg-muted:   var(--gray-400);
     --fg-subtle:  var(--gray-500);
     --fg-onaccent: var(--gray-950);
 
-    --border-default: #2e2c28;
-    --border-subtle:  #24221f;
-    --border-strong:  #3d3a35;
+    --border-default: #2b2c2e;
+    --border-subtle:  #222224;
+    --border-strong:  #3a3a3c;
 
-    --accent-fg:     #ece9e2;
-    --accent-solid:  #ece9e2;
+    --accent-fg:     #e8e9eb;
+    --accent-solid:  #e8e9eb;
     --accent-hover:  var(--gray-0);
-    --accent-bg:     #24221f;
-    --accent-border: #3d3a35;
+    --accent-bg:     #222224;
+    --accent-border: #3a3a3c;
 
     --pass-fg: var(--green-400);
     --pass-bg: #12241b;
@@ -58,8 +58,8 @@ _DARK = """    --bg-canvas:  var(--gray-950);
     --fail-bg: #2a1612;
     --warn-fg: var(--amber-400);
     --warn-bg: #261d0c;
-    --info-fg: #ece9e2;
-    --info-bg: #1e1d1a;
+    --info-fg: #e8e9eb;
+    --info-bg: #1c1d1e;
     --note-fg: var(--violet-400);
     --note-bg: #1f1a2c;
 
@@ -74,27 +74,29 @@ _DARK = """    --bg-canvas:  var(--gray-950);
     --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.45);
     --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
 
-    --focus-ring: 0 0 0 3px rgba(236, 233, 226, 0.30);"""
+    --focus-ring: 0 0 0 3px rgba(232, 233, 235, 0.30);"""
 
 _TOKENS_TEMPLATE = """
 /* ===========================================================================
    1. primitive — 원시값. 여기서만 색을 만든다.
    =========================================================================== */
 :root {
+  /* 회색은 중성이다. 노란 기가 도는 따뜻한 회색(#f3f1ec 등)은 넓게 깔리면 크림색 바탕처럼
+     보여서, 밝기(CIELAB L*)는 그대로 두고 색기만 뺐다 — 글자 대비는 전과 같다. */
   --gray-0:   #ffffff;
-  --gray-25:  #fdfcfa;
-  --gray-50:  #f8f6f2;
-  --gray-100: #f3f1ec;
-  --gray-150: #eae7e0;
-  --gray-200: #d9d5cc;
-  --gray-300: #c2bdb2;
-  --gray-400: #9a958a;
-  --gray-500: #77736b;
-  --gray-600: #5a564f;
-  --gray-700: #4a4740;
-  --gray-800: #2e2c28;
-  --gray-900: #1c1b19;
-  --gray-950: #121110;
+  --gray-25:  #fbfcfe;
+  --gray-50:  #f5f6f8;
+  --gray-100: #f0f1f3;
+  --gray-150: #e6e7e9;
+  --gray-200: #d4d5d7;
+  --gray-300: #bcbdbf;
+  --gray-400: #949597;
+  --gray-500: #737375;
+  --gray-600: #565658;
+  --gray-700: #464749;
+  --gray-800: #2b2c2e;
+  --gray-900: #1a1b1c;
+  --gray-950: #111112;
 
   --indigo-100: #e8ebfb;
   --indigo-200: #ccd3f6;
@@ -188,7 +190,7 @@ _TOKENS_TEMPLATE = """
   --shadow-md: 0 2px 8px rgba(16, 20, 28, 0.07);
   --shadow-lg: 0 8px 28px rgba(16, 20, 28, 0.10);
 
-  --focus-ring: 0 0 0 3px rgba(28, 27, 25, 0.28);
+  --focus-ring: 0 0 0 3px rgba(26, 27, 28, 0.28);
 }
 
 /* 화면 설정(OS)을 따르되, 사람이 고른 값(data-theme)이 있으면 그쪽이 이긴다.
