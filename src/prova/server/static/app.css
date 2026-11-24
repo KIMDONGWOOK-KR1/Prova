@@ -1477,3 +1477,15 @@ details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabula
   .log .chunk { animation: log-in var(--dur-2) var(--ease-out); }
 }
 @keyframes log-in { from { opacity: 0; } }
+
+/* ── 계획 전체를 먼저 — 21st.dev AI Planning 에서 '남은 단계를 처음부터 보인다' 와 '단계를 잇는 선' 만.
+   남은 단계는 빈 원 + 흐린 글자(대비는 지킨다 — 투명도·흑백 처리는 쓰지 않는다).
+   선은 원과 원 사이만 잇고, 지나온 구간만 한 단계 진하다. 상태별 색은 쓰지 않는다. */
+.pstep { position: relative; --mid: calc(var(--sp-2) + var(--tx-md) * 0.775); }
+.pstep:not(:last-child)::before {
+  content: ""; position: absolute; left: calc(var(--sp-3) + 7.5px); width: 1px;
+  top: calc(var(--mid) + 9px); bottom: calc(7px - var(--mid));
+  background: var(--border-default);
+}
+.pstep.done:not(:last-child)::before { background: var(--border-strong); }
+.pstep.todo .body { color: var(--fg-muted); }

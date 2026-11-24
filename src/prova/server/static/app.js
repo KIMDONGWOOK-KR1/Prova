@@ -493,7 +493,7 @@ function showProgress(title, lines) {
     <div class="pbar" id="pTrack" hidden aria-hidden="true"><i id="pFill"></i></div>
     <div class="ptally" id="pTally" hidden></div>
     ${title === "실행 중" ? `<button class="btn ghost" id="pStop" type="button" hidden>멈추기</button>` : ""}
-    <div class="steps" id="pSteps"></div>
+    <div class="steps" id="pSteps">${planSteps(title)}</div>
     <details class="raw" id="pRaw"><summary>진행 로그 전체<span class="n" id="pLogN"></span></summary>
       <div class="logbox"><pre class="log" id="pLog" role="log" aria-live="polite"></pre>
         <button class="btn ghost log-jump" id="pLogJump" type="button" hidden></button></div></details>`;
@@ -597,7 +597,7 @@ function pushProgress(messages) {
     const text = raw.trim();
     if (!text) continue;
     if (isDetail) {
-      const last = steps.lastElementChild;
+      const last = currentStep(steps);
       if (last) {
         const d = document.createElement("div");
         d.className = "detail";
@@ -613,15 +613,51 @@ function pushProgress(messages) {
         continue;
       }
     }
-    const prev = steps.lastElementChild;
+    const prev = currentStep(steps);
     if (prev) doneStep(prev);
-    const el = document.createElement("div");
+    const label = text.replace(/^S\d(~S\d)?\s+/, "");
+    const key = (PLAN_STEPS.find(([, name]) => label.startsWith(name)) || [])[0];
+    let el = key && steps.querySelector(`.pstep.todo[data-key="${key}"]`);
+    if (el) {
+      // 건너뛴 앞 단계(이미 만든 계획으로 바로 실행 등)는 지운다 — 남겨 두면 안 한 일이 '할 일'로 보인다.
+      while (el.previousElementSibling && el.previousElementSibling.classList.contains("todo")) {
+        el.previousElementSibling.remove();
+      }
+      el.classList.remove("todo");
+    } else {
+      el = document.createElement("div");
+      steps.insertBefore(el, steps.querySelector(".pstep.todo"));
+    }
     el.className = "pstep active";
     el.dataset.t0 = Date.now();
     el.innerHTML = `<span class="mark">${STEP_MARK}</span>` +
-      `<div class="body">${esc(text.replace(/^S\d(~S\d)?\s+/, ""))}</div><span class="t"></span>`;
-    steps.appendChild(el);
+      `<div class="body">${esc(label)}</div><span class="t"></span>`;
   }
+}
+
+/**
+ * 앞으로 할 단계를 처음부터 깐다 — 21st.dev 'AI Planning' 에서 '계획 전체를 먼저 보이고
+ * 하나씩 채운다' 만 가져왔다. 몇 단계 중 어디쯤이고 무엇이 남았는지가 처음부터 보인다.
+ * 남은 단계는 빈 원과 흐린 글자, 시작되면 도는 호, 끝나면 체크와 걸린 시간.
+ * 상태별 색·아이콘, 단계마다 접는 칸, 위에서 미끄러져 들어오는 등장은 쓰지 않는다
+ * (색은 판정에만, HIG Motion). 이름은 PROGRESS_WORDS 가 바꾼 말과 같아야 켜진다.
+ */
+const PLAN_STEPS = [
+  ["read", "기획서 읽기"],
+  ["cases", "확인할 항목 만들기"],
+  ["browse", "브라우저로 하나씩 확인"],
+  ["report", "리포트 만들기"],
+];
+function planSteps(title) {
+  const keys = title === "실행 중" ? ["read", "cases", "browse", "report"] : ["read", "cases"];
+  return PLAN_STEPS.filter(([k]) => keys.includes(k)).map(([k, name]) =>
+    `<div class="pstep todo" data-key="${k}"><span class="mark">${STEP_MARK}</span>` +
+    `<div class="body"><span class="sr">할 차례: </span>${esc(name)}</div><span class="t"></span></div>`).join("");
+}
+// 지금 단계 = 남은 단계(todo)를 뺀 마지막 줄.
+function currentStep(steps) {
+  const all = steps.querySelectorAll(".pstep:not(.todo)");
+  return all[all.length - 1] || null;
 }
 
 /**
@@ -677,7 +713,7 @@ function doneStep(el) {
 }
 
 function finishProgress() {
-  const last = $("pSteps") && $("pSteps").lastElementChild;
+  const last = $("pSteps") && currentStep($("pSteps"));
   if (last) doneStep(last);
 }
 
