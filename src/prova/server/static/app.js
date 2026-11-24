@@ -1738,7 +1738,7 @@ function showResult(out) {
         : unv
         ? `${s.total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없어요.</mark>`
         : `<mark class="pass">${s.total}건 모두 통과했어요.</mark>`}</h2>
-      ${cond ? `<p class="cond">${esc(cond)}</p>` : ""}
+      <p class="cond" id="resCond"${cond ? "" : " hidden"}>${esc(cond)}</p>
       <div class="next" id="nextActs">
         ${state.plan && s.fail ? `<button class="btn primary" id="retryBtn" type="button" disabled>${ICON.again}통과 못 한 ${s.fail}건만 다시 실행</button>` : ""}
         <button class="btn" id="copyBtn" type="button">${ICON.copy}개발팀에 보낼 요약 복사</button>
@@ -1794,6 +1794,16 @@ async function loadReport(out, base) {
   }
   const counts = { defect: 0, infra: 0, unv: 0, pass: 0 };
   rep.cases.forEach((c) => { counts[kindOf(c)] += 1; });
+  // 걸린 시간 — 항목마다 잰 시간의 합(브라우저는 하나라 차례로 돈다). 조건 줄 끝에 붙인다.
+  // 레퍼런스: 21st.dev Test Results 머리 줄 오른쪽의 전체 시간, GitHub Actions 실행 요약의 'Total duration'.
+  const ms = rep.cases.reduce((t, c) => t + (c.elapsed_ms || 0), 0);
+  const cond = $("resCond");
+  if (cond && ms > 0) {
+    const sec = Math.max(1, Math.round(ms / 1000));
+    const took = sec < 60 ? `${sec}초` : `${Math.floor(sec / 60)}분${sec % 60 ? ` ${sec % 60}초` : ""}`;
+    cond.textContent = [cond.textContent, `걸린 시간 ${took}`].filter(Boolean).join(" · ");
+    cond.hidden = false;
+  }
   const retry = $("retryBtn");
   if (retry) retry.disabled = !rep.cases.some((c) => c.verdict !== "PASS" && planCase(c.case_id));
   if (!state.resKind) state.resKind = ["defect", "infra", "unv", "pass"].find((k) => counts[k]) || "pass";
