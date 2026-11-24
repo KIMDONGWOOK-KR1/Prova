@@ -1722,9 +1722,12 @@ function showResult(out) {
 
   const n = { pass: s.pass, defect: defects, infra, unv };
   const total = s.total || 1;
+  // 숫자 칸이 곧 거르기 — 누르면 아래 목록이 그 판정만 보인다(사이드바 '결과 보기' 와 같은 일).
+  // 21st.dev Test Results 의 '개수 버튼 = 필터'. 0건인 칸은 누를 일이 없으니 막아 둔다.
   const tile = (k, label, mark) =>
-    `<div class="tile${n[k] ? "" : " zero"}" data-k="${k}"><small>${vmark(mark, { dot: true, say: false })}${label}</small>` +
-    `<b><span class="rn">${n[k]}</span></b></div>`;
+    `<button class="tile${n[k] ? "" : " zero"}" type="button" data-k="${k}" aria-pressed="false"${n[k] ? "" : " disabled"}>` +
+    `<small>${vmark(mark, { dot: true, say: false })}${label}</small>` +
+    `<b><span class="rn">${n[k]}</span><span class="sr">건만 보기</span></b></button>`;
   const parts = ["pass", "defect", "infra", "unv"].filter((k) => n[k]);
   $("stage").innerHTML = `
     <div class="scroll result-scroll" id="resScroll">
@@ -1754,6 +1757,10 @@ function showResult(out) {
     </div>`;
   $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
   linkDonut($("stage").querySelector(".tiles"));
+  $("stage").querySelector(".tiles").addEventListener("click", (e) => {
+    const b = e.target.closest("button.tile[data-k]");
+    if (b && !b.disabled) pickResKind(b.dataset.k);
+  });
   $("copyBtn").addEventListener("click", async () => {
     const ok = await copyText(summaryText(out));
     toast(ok ? "요약을 복사했어요 — 메신저나 이슈에 붙여 넣으면 돼요" : "복사하지 못했어요 — 보고서 열기에서 직접 골라 주세요");
@@ -1791,6 +1798,7 @@ async function loadReport(out, base) {
   if (retry) retry.disabled = !rep.cases.some((c) => c.verdict !== "PASS" && planCase(c.case_id));
   if (!state.resKind) state.resKind = ["defect", "infra", "unv", "pass"].find((k) => counts[k]) || "pass";
   renderSideResult(rep, counts, (out.summary && out.summary.history) || {});
+  syncResPressed();
   renderFlist();
 }
 
@@ -1853,13 +1861,23 @@ function renderSideResult(rep, n, h) {
 
 $("sideResult").addEventListener("click", (e) => {
   const b = e.target.closest("[data-kind]");
-  if (!b || !state.report) return;
-  state.resKind = b.dataset.kind;
-  state.resSel = "";
-  $("sideResult").querySelectorAll("[data-kind]").forEach((x) =>
-    x.setAttribute("aria-pressed", String(x === b)));
-  renderFlist();
+  if (b) pickResKind(b.dataset.kind);
 });
+
+/** 판정 묶음 고르기 — 사이드바 줄과 위 숫자 칸 어느 쪽으로 골라도 같다. 둘 다 눌린 표시를 맞춘다. */
+function pickResKind(k) {
+  if (!state.report || !k) return;
+  state.resKind = k;
+  state.resSel = "";
+  syncResPressed();
+  renderFlist();
+}
+function syncResPressed() {
+  $("sideResult").querySelectorAll("[data-kind]").forEach((x) =>
+    x.setAttribute("aria-pressed", String(x.dataset.kind === state.resKind)));
+  document.querySelectorAll("#stage .tile[data-k]").forEach((x) =>
+    x.setAttribute("aria-pressed", String(x.dataset.k === state.resKind)));
+}
 
 function resCases() {
   const rep = state.report;
