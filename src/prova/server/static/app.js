@@ -209,6 +209,168 @@ function stretchThumb(host) {
   };
 }
 
+/**
+ * 끌 수 있는 켜기/끄기 스위치 (21st.dev 'Liquid Toggle — Surface Tension').
+ *
+ * 손잡이는 stretchThumb 과 같은 앞·뒤 두 점 용수철이다. 누르면 조금 넓어지고, 끌면 앞쪽만
+ * 따라오고 뒤쪽은 제자리에 붙잡혀 늘어난다. 70% 를 넘기면 놓아 버리고 반대편으로 건너간다.
+ * 바탕은 손잡이를 조금 늦게 따라 찬다. 클릭·Space·Enter·← → 모두 된다.
+ * 원본의 물 셰이더·물방울·물결·유리·소리·진동·구르는 아이콘은 쓰지 않는다.
+ *
+ * btn 안에 .tw-fill · .tw-knob · .tw-ico(svg 두 개: 끔, 켬) 가 있어야 한다.
+ * onCommit(on) 은 사람이 바꿨을 때만 부른다. 밖에서 상태를 맞출 때는 set(on, instant).
+ */
+function liquidSwitch(btn, onCommit) {
+  const fill = btn.querySelector(".tw-fill"), knob = btn.querySelector(".tw-knob"),
+        ico = btn.querySelector(".tw-ico");
+  const G = { w: btn.offsetWidth || 46, h: btn.offsetHeight || 22 };
+  G.pad = 2; G.r = G.h / 2 - G.pad; G.xOff = G.pad + G.r; G.xOn = G.w - G.pad - G.r;
+  const s = { a: { x: G.xOff, v: 0 }, b: { x: G.xOff, v: 0 }, lead: 0, lagUntil: 0, sy: { s: 1, v: 0 },
+              q: 0, qT: 0, fill: { x: -6, v: 0 }, on: false, moving: false, raf: 0, last: 0,
+              drag: { id: -1, startX: 0, grab: 0, moved: false, x: 0 }, suppressClick: false };
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+
+  const paint = () => {
+    const head = s.lead === 0 ? s.a : s.b, tail = s.lead === 0 ? s.b : s.a;
+    const sep = Math.abs(head.x - tail.x);
+    knob.style.width = `${sep + 2 * (s.q + G.r)}px`;
+    knob.style.transform = `translateX(${Math.min(head.x, tail.x) - s.q - G.r}px) scaleY(${s.sy.s.toFixed(4)})`;
+    fill.style.width = `${clamp(s.fill.x - 2, 0, G.w - 4)}px`;
+    if (ico) {
+      // 해·달은 손잡이를 따라가며 하나가 작아져 사라진 뒤 다른 하나가 커진다 (겹치지 않게)
+      const cx = head.x * 0.7 + tail.x * 0.3, box = 12;
+      const t = clamp((cx - G.xOff) / (G.xOn - G.xOff), 0, 1);
+      ico.style.transform = `translate(${cx - box / 2}px, ${G.h / 2 - box / 2}px)`;
+      const [off, on] = ico.children;
+      const a = 1 - clamp((t - 0.25) / 0.3, 0, 1), b = clamp((t - 0.5) / 0.3, 0, 1);
+      off.style.opacity = a; off.style.transform = `scale(${0.4 + 0.6 * a})`;
+      on.style.opacity = b; on.style.transform = `scale(${0.4 + 0.6 * b})`;
+    }
+  };
+
+  const step = (dt, now) => {
+    s.q += (s.qT - s.q) * Math.min(1, dt * 14);
+    const home = s.on ? G.xOn : G.xOff;
+    const dragging = s.drag.id !== -1 && s.drag.moved;
+    const hT = dragging ? s.drag.x : home;
+    const fillT = s.on ? G.w + 6 : -6;
+    let still = true;
+    [s.a, s.b].forEach((B, i) => {
+      const lead = i === s.lead;
+      // 끄는 동안 뒤쪽은 표면장력처럼 제자리에 붙들린다
+      const T = lead ? hT : dragging ? home + (hT - home) * 0.06 : home;
+      const k = lead ? 260 : dragging ? 150 : 72, c = lead ? 28 : 13;
+      const f = !lead && now < s.lagUntil ? 0.06 : 1;
+      B.v += (k * (T - B.x) - c * B.v) * dt * f;
+      B.x += B.v * dt;
+      const lo = G.xOff + s.q - 2, hi = G.xOn - s.q + 2;
+      if (B.x < lo || B.x > hi) {
+        s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0018;
+        B.x = clamp(B.x, lo, hi);
+        B.v *= -0.25;
+      }
+      if (Math.abs(T - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
+    });
+    const L = s.lead === 0 ? s.a : s.b;
+    // 원본 18% · 감쇠 9 → 12% · 18 (stretchThumb 과 같은 값)
+    const syT = 1 - 0.12 * Math.min(Math.abs(L.v) / 1500, 1);
+    s.sy.v += (280 * (syT - s.sy.s) - 18 * s.sy.v) * dt;
+    s.sy.s += s.sy.v * dt;
+    if (Math.abs(s.sy.s - 1) > 0.002 || Math.abs(s.sy.v) > 0.02) still = false;
+    s.fill.v += (70 * (fillT - s.fill.x) - 12 * s.fill.v) * dt;
+    s.fill.x += s.fill.v * dt;
+    if (Math.abs(fillT - s.fill.x) > 0.3 || Math.abs(s.fill.v) > 2) still = false;
+    if (Math.abs(s.q - s.qT) > 0.05 || dragging) still = false;
+    return still;
+  };
+
+  const snap = () => {
+    const x = s.on ? G.xOn : G.xOff;
+    s.a.x = s.b.x = x; s.a.v = s.b.v = 0; s.sy.s = 1; s.sy.v = 0; s.q = s.qT;
+    s.fill.x = s.on ? G.w + 6 : -6; s.fill.v = 0;
+    cancelAnimationFrame(s.raf); s.raf = 0; s.moving = false;
+    paint();
+  };
+  const loop = () => {
+    if (reduceMotion()) { snap(); return; }
+    if (s.raf) return;
+    s.last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min((now - s.last) / 1000, 1 / 30);
+      s.last = now;
+      if (step(dt, now)) { s.raf = 0; snap(); return; }
+      paint();
+      s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  };
+
+  const goTo = (on, lag = true) => {
+    if (s.on === on) return;
+    s.on = on;
+    const target = on ? G.xOn : G.xOff;
+    s.lead = Math.abs(target - s.a.x) >= Math.abs(target - s.b.x) ? 0 : 1;
+    if (lag) s.lagUntil = performance.now() + 90;
+    s.moving = true;
+    loop();
+  };
+  const commit = (on) => {
+    if (s.on === on) return;
+    goTo(on, s.drag.id === -1);
+    btn.setAttribute("aria-checked", String(on));
+    onCommit(on);
+  };
+
+  const localX = (clientX) => clientX - btn.getBoundingClientRect().left;
+  btn.addEventListener("pointerdown", (e) => {
+    if (btn.disabled || (e.pointerType === "mouse" && e.button !== 0)) return;
+    const x = localX(e.clientX), head = s.lead === 0 ? s.a : s.b;
+    s.drag = { id: e.pointerId, startX: x, grab: x - head.x, moved: false, x: head.x };
+    s.suppressClick = false;
+    s.qT = G.r * 0.32;                       // 누르면 손잡이가 조금 넓어진다
+    try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 없어도 된다 */ }
+    loop();
+  });
+  btn.addEventListener("pointermove", (e) => {
+    if (s.drag.id !== e.pointerId) return;
+    const x = localX(e.clientX);
+    if (!s.drag.moved && Math.abs(x - s.drag.startX) > 4) {
+      s.drag.moved = true; s.suppressClick = true;
+      s.lead = Math.abs(x - s.a.x) <= Math.abs(x - s.b.x) ? 0 : 1;
+      s.lagUntil = 0; s.moving = true;
+    }
+    if (!s.drag.moved) return;
+    s.drag.x = clamp(x - s.drag.grab, G.xOff - G.r * 0.3, G.xOn + G.r * 0.3);
+    const t = (s.drag.x - G.xOff) / (G.xOn - G.xOff);
+    if (!s.on && t > 0.68) commit(true);       // 절반을 넘기면 놓고 건너간다
+    else if (s.on && t < 0.32) commit(false);
+    loop();
+  });
+  const endDrag = (e) => {
+    if (s.drag.id !== e.pointerId) return;
+    s.drag.id = -1; s.qT = 0; s.moving = true;
+    loop();
+  };
+  btn.addEventListener("pointerup", endDrag);
+  btn.addEventListener("pointercancel", endDrag);
+  btn.addEventListener("click", () => {
+    if (s.suppressClick) { s.suppressClick = false; return; }
+    commit(!s.on);
+  });
+  btn.addEventListener("keydown", (e) => {
+    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
+    e.preventDefault();
+    commit(e.key === "ArrowRight");
+  });
+
+  return {
+    set(on, instant = false) {
+      btn.setAttribute("aria-checked", String(on));
+      if (instant) { s.on = on; snap(); } else goTo(on);
+    },
+  };
+}
+
 // ── 서버 통신 ──────────────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -1170,22 +1332,20 @@ function applyThemeToReport() {
   } catch (e) { /* 같은 출처가 아니면 리포트는 제 설정대로 둔다 */ }
 }
 
-function renderThemeBtn() {
-  const dark = currentTheme() === "dark";
-  // 버튼은 누르면 바뀔 쪽을 말한다.
-  $("themeBtn").textContent = dark ? "밝게" : "어둡게";
-  $("themeBtn").setAttribute("aria-label", dark ? "밝은 화면으로 바꾸기" : "어두운 화면으로 바꾸기");
-}
-
-$("themeBtn").addEventListener("click", () => {
-  const next = currentTheme() === "dark" ? "light" : "dark";
+// 글자 버튼(어둡게/밝게) 대신 스위치 하나. 켜짐 = 어두운 화면. 해·달 기호가 지금 쪽을 보여 준다.
+const themeSwitch = liquidSwitch($("themeBtn"), (dark) => {
+  const next = dark ? "dark" : "light";
   document.documentElement.setAttribute("data-theme", next);
   try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* 저장 못 해도 이번 화면은 바뀐다 */ }
-  renderThemeBtn();
   applyThemeToReport();
 });
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", renderThemeBtn);
-renderThemeBtn();
+
+function renderThemeBtn(instant = false) {
+  themeSwitch.set(currentTheme() === "dark", instant);
+}
+
+window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderThemeBtn());
+renderThemeBtn(true);
 
 /**
  * 리포트 틀의 높이를 내용에 맞춘다 — 틀 안에 스크롤이 또 생기면 페이지 스크롤과 겹쳐

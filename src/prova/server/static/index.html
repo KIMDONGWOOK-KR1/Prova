@@ -29,7 +29,13 @@ try { var t = localStorage.getItem("prova-theme");
   <div class="crumbs" id="crumbs"></div>
   <div class="topright">
     <div class="chips" id="stageChips"></div>
-    <button class="btn ghost quiet" id="themeBtn" type="button"></button>
+    <!-- 켜짐 = 어두운 화면. 끌어도 되고 눌러도 된다(app.js liquidSwitch). -->
+    <button class="tswitch" id="themeBtn" type="button" role="switch" aria-checked="false"
+            aria-label="어두운 화면" title="어두운 화면">
+      <span class="tw-fill" aria-hidden="true"></span>
+      <span class="tw-knob" aria-hidden="true"></span>
+      <span class="tw-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M20 14.6A8.3 8.3 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6Z"/></svg></span>
+    </button>
   </div>
   <!-- 번호 원 + 잇는 선. 지금 단계의 검은 원은 하나뿐이고 단계가 바뀌면 그 원이 옆으로
        미끄러진다(app.js placeThumb) — 한 칸이 꺼지고 다른 칸이 켜지는 깜빡임 대신. -->
