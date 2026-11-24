@@ -33,6 +33,9 @@ body {
 
 h1, h2, h3, h4, h5, h6, p, ol, ul, dl, dd, figure { margin: 0; }
 p, .why, .ev > div { text-wrap: pretty; }
+/* 제목·가운데 짧은 글은 줄 길이를 고르게, 한 문장에 한 줄로 나눈 곳(.ln)은 문장마다 줄을 바꾼다(hh 11-25) */
+h1, h2, h3, h4, .verdict-line, .rc-v, dialog.confirm h2, .toast span, .empty, .alert b { text-wrap: balance; }
+.ln { display: block; }
 ol, ul { padding: 0; }
 button, input, select, textarea { font: inherit; color: inherit; letter-spacing: inherit; }
 a { color: var(--accent-fg); text-underline-offset: 2px; }
@@ -1204,7 +1207,7 @@ dialog.confirm {
 dialog.confirm::backdrop { background: var(--scrim); }
 dialog.confirm .ai { width: 48px; height: 48px; margin: 0 auto 10px; border-radius: 12px; display: grid; place-items: center; background: var(--fill-hover); color: var(--warn-fg); }
 dialog.confirm h2 { font-size: var(--tx-md); line-height: var(--lh-row); font-weight: 700; }
-dialog.confirm p { margin: 6px 4px var(--sp-4); font-size: var(--tx-sm); line-height: var(--lh-sm); color: var(--fg-muted); }
+dialog.confirm p { margin: 6px 0 var(--sp-4); font-size: var(--tx-sm); line-height: var(--lh-sm); color: var(--fg-muted); }
 dialog.confirm .col { display: flex; flex-direction: column; gap: 8px; }
 dialog.confirm .btn { width: 100%; }
 

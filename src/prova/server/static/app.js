@@ -41,8 +41,17 @@ const ALERT_SAY = { fail: ["alert", "오류"], warn: ["status", "주의"], info:
 
 function alertBox(kind, title, why) {
   const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
+  why = oneSentencePerLine(why);
   return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
     `<b><span class="sr">${say}: </span>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
+}
+
+/** 짧은 두 문장(각 25자 안팎)은 한 줄에 한 문장 — 문장 끝에서 줄을 바꿔 낱말 중간에서 꺾이지 않게. 태그가 든 글은 그대로. */
+function oneSentencePerLine(html) {
+  if (!html || /[<>]/.test(html)) return html;
+  const parts = String(html).split(/(?<=[.!?])\s+(?=\S)/);
+  if (parts.length !== 2 || parts.some((p) => p.length > 27)) return html;
+  return parts.map((p) => `<span class="ln">${p}</span>`).join(" ");
 }
 
 /**
@@ -79,7 +88,10 @@ function confirmDialog({ title, body, keep, go }) {
     d.className = "confirm";
     d.setAttribute("aria-labelledby", "cfTitle");
     d.setAttribute("aria-describedby", "cfBody");
-    d.innerHTML = `<div class="ai">${ICON.caution}</div><h2 id="cfTitle">${esc(title)}</h2><p id="cfBody">${esc(body)}</p>` +
+    // 본문은 문장마다 한 줄 — 배열로 받으면 줄을 나눈다(짧은 두 문장이 낱말 중간에서 꺾이지 않게, hh 11-25)
+    const lines = Array.isArray(body) ? body : [body];
+    d.innerHTML = `<div class="ai">${ICON.caution}</div><h2 id="cfTitle">${esc(title)}</h2>` +
+      `<p id="cfBody">${lines.map((l) => `<span class="ln">${esc(l)}</span>`).join(" ")}</p>` +
       `<div class="col"><button class="btn primary" type="button" value="keep" autofocus>${esc(keep)}</button>` +
       `<button class="btn" type="button" value="go">${esc(go)}</button></div>`;
     document.body.appendChild(d);
@@ -1790,8 +1802,9 @@ async function startRun() {
         const done = Number($("pBar") && $("pBar").value) || 0;
         const ok = await confirmDialog({
           title: "실행을 멈출까요?",
-          body: `${done ? `지금까지 확인한 ${done}건을 포함해 ` : ""}이번 실행의 결과는 저장하지 않아요. ` +
-            "지금 확인 중인 항목이 끝나면 멈춰요.",
+          // 한 문장에 한 줄. '지금' 은 '확인 중인' 과 겹쳐 뺐다. 확인한 건수가 있으면 그것도 버려진다는 것을 말한다.
+          body: [done ? `확인한 ${done}건도 저장하지 않아요.` : "이번 실행 결과는 저장하지 않아요.",
+                 "확인 중인 항목이 끝나면 멈춰요."],
           keep: "계속 실행", go: "멈추기",
         });
         if (!ok || !stop.isConnected) return;  // 묻는 사이 실행이 끝났으면 할 일이 없다
