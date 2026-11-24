@@ -103,14 +103,15 @@ a.brand:hover .wm { opacity: 0.8; }
 
 .side-toggle {
   position: relative; margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
-  border: 0; border-radius: var(--r-md); background: none; color: var(--fg-muted);
+  padding: 0; border: 0; border-radius: var(--r-md); background: none; color: var(--fg-muted);
   transition: background-color 150ms ease, color 150ms ease;
 }
 .side-toggle:hover { background: var(--fill-hover); color: var(--fg-default); }
 .side-toggle .ic-panel { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 /* 단추 안의 두 그림 — 판 모양과 심볼이 같은 28px 칸에 겹친다. 보이는 쪽만 visibility: visible */
 .side-toggle .ic-panel, .side-toggle .sym { grid-area: 1 / 1; transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
-.side-toggle .sym { width: 28px; height: 28px; opacity: 0; visibility: hidden; }
+/* 심볼은 단추(28) 안 24 — 단추 기본 안쪽 여백(가로 6)을 0 으로 해야 칸 가운데에 놓인다(70: 6px 오른쪽으로 밀려 있었다) */
+.side-toggle .sym { width: 24px; height: 24px; opacity: 0; visibility: hidden; }
 .side-toggle .sym .body { fill: var(--accent-blue); }
 .side-toggle .sym .eyes { fill: var(--fg-onaccent); }
 :root.side-rail .side-toggle .sym { opacity: 1; visibility: visible; transition: opacity var(--dur-1) var(--ease-out); }
@@ -122,7 +123,7 @@ a.brand:hover .wm { opacity: 0.8; }
 :root.side-rail .side-toggle { background: none; }
 :root.side-rail .side-toggle:hover { background: var(--fill-hover); }
 /* 접힌 줄의 첫 화면 길 — '+ 새 확인' 의 짧은 꼴 */
-.rail-new { display: none; width: 28px; height: 28px; place-items: center; border: 0; border-radius: var(--r-md);
+.rail-new { display: none; width: 28px; height: 28px; place-items: center; padding: 0; border: 0; border-radius: var(--r-md);
   background: none; color: var(--accent-blue); }
 .rail-new:hover { background: var(--fill-hover); }
 .rail-new svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
@@ -131,7 +132,7 @@ a.brand:hover .wm { opacity: 0.8; }
 .side-panes { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden;
   transition: opacity 120ms ease; }
 /* 접힌 줄 — 로고(첫 화면으로)와 펴기 단추만. 목록은 흐려지며 숨는다 */
-:root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 21px 0 10px; }   /* 심볼 가운데 = 위쪽 막대 가운데(44px) */
+:root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 22px 0 10px; }   /* 심볼 가운데 = 위쪽 막대 가운데(44px) */
 :root.side-rail .brand { width: 28px; height: 28px; margin-top: 0; }
 :root.side-rail .brand .wm { opacity: 0; visibility: hidden; }
 :root.side-rail .brand .sym { opacity: 1; visibility: visible; transition: opacity var(--dur-1) var(--ease-out); }
