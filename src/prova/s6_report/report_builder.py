@@ -76,7 +76,17 @@ _PRINT_JS = """(function () {
 
 # 밝게 / 어둡게 — 파일로 연 리포트에는 웹 UI 의 버튼이 없어 PC 설정을 따라 어둡게만 나왔다(2026-11-19).
 # 웹 UI 의 버튼과 같은 말·같은 저장 키(prova-theme)를 쓴다. 웹 UI 안에서는 위쪽 막대째 숨는다.
-THEME_BUTTON = "<button class='theme' id='themeBtn' type='button'></button>"
+# 2026-11-25 hh: 21st.dev 'Liquid Toggle' · 'Liquid Glass Theme Toggle' 의 움직임을 이 스위치에 옮겼다 —
+# 누르면 손잡이가 길어지고, 끌면 앞 끝이 먼저 가서 늘어났다가 반을 훌쩍 넘기면 반대쪽으로 넘어간다.
+# 물(WebGL)·유리 굴절·소리·떨어지는 물방울은 빼고, 색은 모두 토큰이다. 이름은 늘 '어둡게', 상태는 켬/끔.
+_SUN = ("<svg viewBox='0 0 16 16'><circle cx='8' cy='8' r='2.7'/>"
+        "<path d='M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9'/></svg>")
+_MOON = "<svg viewBox='0 0 16 16'><path d='M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z'/></svg>"
+THEME_BUTTON = ("<button class='theme' id='themeBtn' type='button' role='switch' aria-checked='false'>"
+                "<span class='tg' aria-hidden='true'><i class='tg-fill'></i>"
+                f"<i class='tg-ico sun'>{_SUN}</i><i class='tg-ico moon'>{_MOON}</i>"
+                f"<i class='tg-knob'><i class='k-sun'>{_SUN}</i><i class='k-moon'>{_MOON}</i></i></span>"
+                "<span>어둡게</span></button>")
 # 받기 단추의 그림 — 웹 UI 도구 막대의 ICON.download 와 같은 선 그림.
 _ICON_DOWNLOAD = ("<svg viewBox='0 0 16 16' aria-hidden='true'><path d='M8 2.5v8M5 7.5l3 3 3-3M3 13h10'/></svg>")
 # PDF 는 서버가 받을 때 만든다(/api/report/<실행>/pdf). 파일로 연 리포트(폴더째 받은 사람)에는 서버가 없어
@@ -91,22 +101,102 @@ _PDF_BTN_JS = r"""(function () {
 _THEME_BTN_JS = """(function () {
   var btn = document.getElementById('themeBtn'), root = document.documentElement;
   if (!btn) return;
+  var knob = btn.querySelector('.tg-knob'), fill = btn.querySelector('.tg-fill');
+  var sun = btn.querySelector('.tg-ico.sun'), moon = btn.querySelector('.tg-ico.moon');
+  var ks = btn.querySelector('.k-sun'), km = btn.querySelector('.k-moon');
+  var still = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var W = 46, PAD = 2, KW = 24, GROW = 6, TRAVEL = W - 2 * PAD - KW;
   function dark() {
     var set = root.getAttribute('data-theme');
     if (set === 'light' || set === 'dark') return set === 'dark';
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  function label() {
-    btn.textContent = dark() ? '밝게' : '어둡게';
-    btn.setAttribute('aria-label', dark() ? '밝은 화면으로 바꾸기' : '어두운 화면으로 바꾸기');
+  function setDark(on) {
+    root.setAttribute('data-theme', on ? 'dark' : 'light');
+    try { localStorage.setItem('prova-theme', on ? 'dark' : 'light'); } catch (e) {}
+    btn.setAttribute('aria-checked', String(on));
   }
-  btn.addEventListener('click', function () {
-    var next = dark() ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    try { localStorage.setItem('prova-theme', next); } catch (e) {}
-    label();
+  // 손잡이의 두 끝(L·R)이 따로 따라간다. 가는 쪽 끝이 빨라서 움직이는 동안만 늘어난다(임계 감쇠 — 넘치지 않는다).
+  // p 는 놓일 자리(0 밝게 · 1 어둡게), q 는 그림이 따라가는 값(해·달이 돌며 바뀐다).
+  var s = { L: { x: 0, v: 0 }, R: { x: 0, v: 0 }, p: 0, q: 0, press: false, drag: null, moved: false, raf: 0, last: 0 };
+  function goal() {
+    var l = PAD + s.p * TRAVEL, r = l + KW;
+    if (s.press) { if (s.p < 0.5) r += GROW; else l -= GROW; }   // 누르면 가운데 쪽으로 길어진다
+    return [l, r];
+  }
+  function paint() {
+    var l = s.L.x, r = Math.max(s.R.x, l + 12), q = s.q;
+    knob.style.width = (r - l) + 'px';
+    knob.style.transform = 'translateX(' + l + 'px)';
+    fill.style.width = (r + PAD) + 'px';
+    fill.style.opacity = Math.min(1, q * 1.4);
+    // 손잡이가 늘어나 덮기 시작하면 바탕의 해·달은 잘린 채 보이지 않게 먼저 사라진다
+    sun.style.opacity = q * Math.max(0, Math.min(1, (l - 16) / 4));
+    moon.style.opacity = (1 - q) * Math.max(0, Math.min(1, (30 - r) / 4));
+    ks.style.opacity = 1 - q; km.style.opacity = q;
+    ks.style.transform = 'rotate(' + (q * 90) + 'deg) scale(' + (1 - q * 0.5) + ')';
+    km.style.transform = 'rotate(' + ((q - 1) * 90) + 'deg) scale(' + (0.5 + q * 0.5) + ')';
+  }
+  function step(dt) {
+    var g = goal(), calm = true;
+    [[s.L, g[0], false], [s.R, g[1], true]].forEach(function (e) {
+      var b = e[0], x = e[1], lead = e[2] === (x > b.x), w = lead ? 34 : 22;
+      var off = b.x - x, slope = b.v + w * off, d = Math.exp(-w * dt);
+      b.x = x + (off + slope * dt) * d; b.v = (b.v - w * slope * dt) * d;
+      if (Math.abs(b.x - x) > 0.2 || Math.abs(b.v) > 2) calm = false;
+    });
+    s.q += (s.p - s.q) * Math.min(1, dt * 16);
+    if (Math.abs(s.p - s.q) > 0.003) calm = false; else s.q = s.p;
+    return calm;
+  }
+  function go() {
+    if (still && still.matches) {
+      var g = goal(); s.L.x = g[0]; s.R.x = g[1]; s.L.v = s.R.v = 0; s.q = s.p; paint(); return;
+    }
+    if (s.raf) return;
+    s.last = performance.now();
+    var tick = function (now) {
+      var dt = Math.min((now - s.last) / 1000, 1 / 30); s.last = now;
+      var calm = step(dt); paint();
+      s.raf = calm && !s.drag ? 0 : requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  }
+  function settle() { s.p = dark() ? 1 : 0; go(); }
+  btn.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    s.drag = { id: e.pointerId, x0: e.clientX, p0: s.p }; s.moved = false; s.press = true;
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    go();
   });
-  label();
+  btn.addEventListener('pointermove', function (e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    var dx = e.clientX - s.drag.x0;
+    if (!s.moved && Math.abs(dx) > 3) s.moved = true;
+    if (!s.moved) return;
+    s.p = Math.max(0, Math.min(1, s.drag.p0 + dx / TRAVEL));
+    // 반을 훌쩍 넘기면 그 자리에서 넘어간다 — 되돌아 끌면 다시 넘어온다(0.68 · 0.32 로 사이를 둔다)
+    if (!dark() && s.p > 0.68) setDark(true); else if (dark() && s.p < 0.32) setDark(false);
+    go();
+  });
+  function end(e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    s.drag = null; s.press = false; settle();
+  }
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
+  btn.addEventListener('click', function () {      // 누름 · 스페이스 · 엔터
+    if (s.moved) { s.moved = false; return; }
+    setDark(!dark()); settle();
+  });
+  btn.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault(); setDark(e.key === 'ArrowRight'); settle();
+  });
+  s.p = s.q = dark() ? 1 : 0;
+  var g0 = goal(); s.L.x = g0[0]; s.R.x = g0[1];
+  btn.setAttribute('aria-checked', String(dark()));
+  paint();
 })();"""
 
 CATEGORY_LABELS = {
@@ -259,12 +349,31 @@ a { color:inherit; text-underline-offset:2px; }
                 padding-right:var(--sp-4); border-right:1px solid var(--sep); }
 .topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
                 display:flex; align-items:center; gap:var(--sp-3); white-space:nowrap; }
-/* 도구 막대 버튼 — 키트의 알약(28px). 테두리 대신 컨트롤 그림자 한 겹. */
-button.theme { font:inherit; font-size:var(--tx-sm); font-weight:500; height:var(--ctl-md); padding:0 12px;
-               border-radius:var(--r-full); border:0; background:var(--bg-raised); color:var(--text);
-               box-shadow:var(--shadow-control); cursor:pointer; }
-button.theme:hover { background:var(--bg-hover); }
-button.theme:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+/* 어둡게 스위치 — 이름표 + 스위치(46×26). 켜진 쪽은 강조색이 손잡이 뒤를 따라 찬다.
+   움직임은 _THEME_BTN_JS. 아래 [aria-checked] 규칙은 스크립트가 그리기 전의 모습. */
+button.theme { display:inline-flex; align-items:center; gap:var(--sp-2); height:var(--ctl-md); padding:0 2px;
+               border:0; background:none; font:inherit; font-size:var(--tx-sm); font-weight:500; color:var(--text);
+               cursor:pointer; touch-action:pan-y; -webkit-user-select:none; user-select:none; }
+button.theme:focus-visible { outline:none; }
+button.theme:focus-visible .tg { box-shadow:var(--focus-ring); }
+.tg { position:relative; flex:none; width:46px; height:26px; border-radius:var(--r-full); overflow:hidden;
+      background:var(--fill-track); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
+.tg i { position:absolute; display:block; }
+.tg-fill { left:0; top:0; bottom:0; width:28px; border-radius:inherit; background:var(--accent-solid); opacity:0; }
+.tg-ico { top:6px; width:14px; height:14px; color:var(--fg-muted); }
+.tg-ico.sun { left:6px; color:var(--fg-onaccent); opacity:0; }
+.tg-ico.moon { right:6px; }
+.tg-knob { left:0; top:2px; width:24px; height:22px; border-radius:var(--r-full); background:var(--fg-onaccent);
+           box-shadow:var(--shadow-control); transform:translateX(2px); }
+.tg-knob > i { inset:0; margin:auto; width:14px; height:14px; }
+.tg-knob .k-sun { color:var(--fg-muted); }
+.tg-knob .k-moon { color:var(--accent-solid); opacity:0; }
+.tg svg { display:block; width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.5;
+          stroke-linecap:round; stroke-linejoin:round; }
+button.theme[aria-checked='true'] .tg-knob { transform:translateX(20px); }
+button.theme[aria-checked='true'] .tg-fill { width:46px; opacity:1; }
+button.theme[aria-checked='true'] .tg-ico.sun, button.theme[aria-checked='true'] .k-moon { opacity:1; }
+button.theme[aria-checked='true'] .tg-ico.moon, button.theme[aria-checked='true'] .k-sun { opacity:0; }
 .result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
                flex-wrap:wrap; margin-bottom:var(--sp-5); }
 /* 결론 한 줄 — 웹 UI 결과 화면의 .verdict-line 과 같은 크기. 판정 부분은 바탕 없이 판정 색 글자. */
