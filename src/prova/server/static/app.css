@@ -349,7 +349,7 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
 @property --thumb-l { syntax: "<length>"; inherits: true; initial-value: 0px; }
 @property --thumb-w { syntax: "<length>"; inherits: true; initial-value: 0px; }
 .path {
-  transition: --thumb-l 300ms cubic-bezier(0.22, 1, 0.36, 1), --thumb-w 300ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: --thumb-l 300ms cubic-bezier(0.4, 0, 0.2, 1), --thumb-w 300ms cubic-bezier(0.4, 0, 0.2, 1);
   list-style: none; position: relative; isolation: isolate;
   display: inline-flex; align-items: center; gap: 0;
   height: var(--ctl-lg); padding: 2px; border-radius: var(--r-full);
@@ -1159,7 +1159,7 @@ button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offse
 .donut .seg.unv { stroke: var(--chart-unv); }
 /* 처음 그릴 때만 — 조각마다 제 길이까지 400ms, 60ms 차이로 차례로 */
 @media (prefers-reduced-motion: no-preference) {
-  .donut.draw .seg { animation: seg-draw 400ms var(--ease-out) calc(var(--i, 0) * 60ms) both; }
+  .donut.draw .seg { animation: seg-draw 400ms var(--ease-out) calc(var(--d0, 0ms) + var(--i, 0) * 60ms) both; }
 }
 @keyframes seg-draw { from { stroke-dasharray: 0 var(--len); } }
 .tiles[data-on] .donut .seg { opacity: 0.35; }

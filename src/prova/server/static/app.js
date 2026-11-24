@@ -17,6 +17,13 @@
 
 const $ = (id) => document.getElementById(id);
 
+/**
+ * 이 요소에 걸린 화면 비율(body zoom --z: 1 · 1.1 · 1.2). getBoundingClientRect·clientX 는 확대된 값이고
+ * style 의 px 는 확대 전 값이다 — 잰 값으로 자리를 잡을 때는 이 값으로 나눈다(71·72b). offset* 는 이미 확대 전 값이다.
+ */
+function cssZoom(el) {
+  return (el && el.currentCSSZoom) || parseFloat(getComputedStyle(document.body).zoom) || 1;
+}
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
@@ -625,7 +632,7 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     pill.classList.toggle("snap", snap);
     // 화면 비율(body zoom --z, 1760px 이상 1.1 · 2080px 이상 1.2)이 걸리면 getBoundingClientRect 는 확대된 값이고
     // style 의 px 는 확대 전 값이다 — 그대로 넣으면 판이 z 배로 커지고 아래 줄일수록 더 밀렸다(hh 11-25 05:21). z 로 나눈다.
-    const z = panes.currentCSSZoom || parseFloat(getComputedStyle(document.body).zoom) || 1;
+    const z = cssZoom(panes);
     pill.style.width = `${a.width / z}px`;
     pill.style.height = `${a.height / z}px`;
     pill.style.transform = `translate(${(a.left - b.left) / z}px, ${(a.top - b.top) / z}px)`;
@@ -1968,10 +1975,20 @@ function countUp(el, to, ms) {
   requestAnimationFrame(tick);
 }
 
+/**
+ * 결과 단계로 — 단계 막대가 먼저 움직이기 시작하고, 결과 화면은 그 첫 프레임이 그려진 다음에 만든다(72b).
+ * 같은 프레임에서 만들면 화면 그리기가 첫 프레임을 늦춰 흰 판이 한 번에 건너뛰었다. 고리는 판이 멎은 뒤 그린다.
+ * 이미 결과 단계에 있거나(다른 기록을 열 때) 동작 줄이기면 바로 만든다.
+ */
 function showResult(out) {
   state.result = out;
   state.report = null;
+  const moving = Number(document.body.dataset.step) !== 4 && !reduceMotion();
   setView("result", 4);
+  if (!moving) { buildResult(out, false); return; }
+  requestAnimationFrame(() => setTimeout(() => { if (state.result === out) buildResult(out, true); }, 0));
+}
+function buildResult(out, moving) {
   const s = out.summary;
   const planned = state.plan ? state.plan.cases.length : s.total;
   const off = planned - s.total;
@@ -2089,7 +2106,12 @@ function showResult(out) {
     </div>`;
   $("stage").querySelectorAll("button.tile .rn").forEach(rollIn);
   // 통과율은 도넛이 다 그려지는 동안(400ms + 조각마다 60ms) 0 에서 세어 올라간다
-  countUp($("stage").querySelector(".tile.rate .rn"), s.pass_rate, 400 + 60 * Math.max(parts.length - 1, 0));
+  // 단계 막대가 옮겨 가는 중이면(300ms) 고리·숫자는 판이 멎은 뒤 시작한다 — 두 움직임이 겹치지 않게
+  const rateEl = $("stage").querySelector(".tile.rate .rn"), ms = 400 + 60 * Math.max(parts.length - 1, 0);
+  const ring = $("stage").querySelector(".donut");
+  if (moving && ring) ring.style.setProperty("--d0", "300ms");
+  if (moving && rateEl && !reduceMotion()) { rateEl.textContent = "0"; setTimeout(() => countUp(rateEl, s.pass_rate, ms), 300); }
+  else countUp(rateEl, s.pass_rate, ms);
   linkDonut($("stage").querySelector(".tiles"), n, total, s.pass_rate);
   tileDeltas(out, n);
   $("stage").querySelector(".tiles").addEventListener("click", (e) => {
@@ -3328,7 +3350,7 @@ document.addEventListener("keydown", (e) => {
   });
   btn.addEventListener('pointermove', function (e) {
     if (!s.drag || s.drag.id !== e.pointerId) return;
-    var dx = e.clientX - s.drag.x0;
+    var dx = (e.clientX - s.drag.x0) / cssZoom(btn);   // 손가락이 간 만큼만 — 넓은 창(zoom 1.2)에서 1.2배 빨리 가던 것
     if (!s.moved && Math.abs(dx) > 3) s.moved = true;
     if (!s.moved) return;
     s.p = Math.max(0, Math.min(1, s.drag.p0 + dx / TRAVEL));
