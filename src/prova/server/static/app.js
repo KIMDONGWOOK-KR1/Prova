@@ -590,7 +590,9 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
   pill.setAttribute("aria-hidden", "true");
   panes.prepend(pill);
   let lastPane = null, shown = false, hideT = 0;
-  const place = () => {
+  const place = (instant = false) => {
+    // 접힌 줄에서는 목록이 숨어 있다 — 그 좁은 모양으로 재 두면 펼친 뒤에도 판이 작게 남았다(hh 11-25 '+ 새 확인')
+    if (root.classList.contains("side-rail")) { shown = false; return; }
     const pane = [...panes.querySelectorAll(".side-pane")].find((p) => p.offsetParent);
     const sel = pane ? [...pane.querySelectorAll('.sitem[aria-current="true"], .sitem[aria-pressed="true"]')] : [];
     panes.querySelectorAll(".sitem.pilled").forEach((x) => { if (x !== sel[0]) x.classList.remove("pilled"); });
@@ -603,7 +605,7 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     clearTimeout(hideT);
     const it = sel[0], a = it.getBoundingClientRect(), b = panes.getBoundingClientRect();
     // 다른 단계의 목록으로 넘어갔거나 처음이면 미끄러지지 않고 그 자리에 놓는다
-    const snap = pane !== lastPane || !shown;
+    const snap = instant || pane !== lastPane || !shown;
     pill.classList.toggle("snap", snap);
     pill.style.width = `${a.width}px`;
     pill.style.height = `${a.height}px`;
@@ -619,6 +621,8 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     attributeFilter: ["aria-current", "aria-pressed", "hidden"] });
   new MutationObserver(later).observe(document.body, { attributes: true, attributeFilter: ["data-view"] });
   addEventListener("resize", later);
+  // 사이드바 폭이 바뀌면(접기·펴기, 창 크기) 판도 줄 크기에 맞춰 바로 다시 놓는다 — 미끄러지지 않고
+  if (window.ResizeObserver) new ResizeObserver(() => place(true)).observe(panes);
 
   // 굴리는 동안만 스크롤 막대. 굴리면 판도 줄을 따라간다(이때는 미끄러지지 않는다).
   const timers = new WeakMap();
