@@ -511,8 +511,11 @@ function renderScreenUrlsErr() {
 // 화면에 보이는 이름. 값(mock·vllm·replay)은 서버와 주고받는 이름이라 그대로 둔다.
 const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
 
+const BASE_TITLE = document.title;
+
 function renderChrome() {
   syncStepper();
+  if (!state.busy) document.title = BASE_TITLE;
   const f = form();
   const spec = (f.pdf || "").split("/").pop() || "기획서 없음";
   $("crumbs").innerHTML =
@@ -687,9 +690,13 @@ function pushProgress(messages) {
       $("pNow").textContent = `${m[2]}건 중 ${m[1]}번째 — ${m[3]}`;
       const bar = $("pBar");
       bar.hidden = false; bar.max = Number(m[2]); bar.value = Number(m[1]) - 1;
+      bar.setAttribute("aria-valuetext", `${bar.max}건 중 ${bar.value}건 끝남`);
       // 보이는 막대는 따로 그린다 — <progress> 는 값이 바뀔 때 부드럽게 차오르지 않는다.
       $("pTrack").hidden = false;
       $("pFill").style.width = `${(bar.value / bar.max) * 100}%`;
+      meterStep(steps.querySelector(".pstep.active"), bar.value / bar.max);
+      // 다른 탭에 가 있어도 탭 이름에서 어디쯤인지 보이게 한다. 끝나면 renderChrome 이 되돌린다.
+      document.title = `${bar.value}/${bar.max} 실행 중 — Prova`;
       continue;
     }
     const isDetail = /^\s{2,}/.test(raw) || raw.trimStart().startsWith("!");
@@ -751,6 +758,19 @@ const STEP_MARK = `<svg class="st" viewBox="0 0 20 20" aria-hidden="true">` +
   `<circle class="trk" cx="10" cy="10" r="7"/>` +
   `<circle class="arc" cx="10" cy="10" r="7" pathLength="100"/>` +
   `<path class="ok" d="M6.7 10.3l2.3 2.3 4.4-4.6" pathLength="1"/></svg>`;
+
+/**
+ * 셀 수 있는 단계(케이스를 하나씩 도는 단계)는 도는 호 대신 끝난 만큼 찬 원을 그린다.
+ * 21st.dev Circle Progress 에서 '값만큼 차오르는 원'만 가져왔다 — 채운 비율에 따라 색이
+ * 바뀌는 부분과 그라데이션은 버렸다. 진행은 좋고 나쁨이 아니고, 색은 판정에만 쓴다.
+ * 첫 케이스가 끝나기 전에는 도는 호를 그대로 둔다 — 멈춘 것처럼 보이지 않게.
+ * 끝나면(doneStep) 원이 마저 차고 체크가 그려진다.
+ */
+function meterStep(el, ratio) {
+  if (!el || !(ratio > 0)) return;
+  el.classList.add("metered");
+  el.style.setProperty("--left", (100 - Math.min(Math.max(ratio, 0), 1) * 100).toFixed(2));
+}
 
 // 끝난 단계에 걸린 시간을 오른쪽에 적는다 — 1초 넘게 걸린 단계만.
 function doneStep(el) {

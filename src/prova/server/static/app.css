@@ -1139,6 +1139,11 @@ label.check input[type=checkbox] { margin: 0; }
 .st .ok { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .pstep.done .st .trk { opacity: 1; }
 .pstep.done .st .ok { stroke-dashoffset: 0; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
+/* 셀 수 있는 단계: 도는 호 대신 끝난 만큼 찬 원(12시에서 시계 방향). 다 끝나면 마저 차고 체크. */
+.pstep.metered .st .arc { animation: none; opacity: 1; stroke-dasharray: 100 100;
+                          stroke-dashoffset: var(--left, 100); transform: rotate(-90deg);
+                          transition: stroke-dashoffset var(--dur-4) var(--ease-out); }
+.pstep.done.metered .st .arc { stroke-dashoffset: 0; }
 
 /* ── 결과 — 요약 줄(색 네모 + 이름 + 큰 숫자), 숫자는 처음 한 번 자리마다 굴러 선다 ── */
 .sumstrip { display: flex; flex-wrap: wrap; margin: var(--sp-3) 0 var(--sp-6); padding: 0;
@@ -1366,4 +1371,6 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
   .case input[type=checkbox]::before, label.check input[type=checkbox]::before { transition: none !important; }
   label.check input[role="switch"]::before { animation: none !important; }
   .pstep.active .st .arc { animation: none; stroke-dasharray: 100 0; opacity: 0.5; }
+  /* 찬 정도는 장식이 아니라 정보다 — 움직임만 빼고 보인다. */
+  .pstep.metered .st .arc { stroke-dasharray: 100 100; opacity: 1; transition: none; }
 }
