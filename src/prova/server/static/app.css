@@ -1465,3 +1465,15 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 }
 /* 글자만 있는 버튼(올리기)은 왼쪽에 붙어 있다 — 하는 중에도 제자리에서 시작한다 */
 .btn.quiet[aria-busy="true"] { justify-content: flex-start; }
+
+/* ── 진행 로그 — 흘러 들어오는 글 (app.js appendLog) ──────────────────────────
+   21st.dev Response Stream 에서 '도착한 묶음을 그대로 붙인다' 만. 새 묶음만 0.18초 옅게 들어온다.
+   위로 올려 읽는 중이면 끌어내리지 않고 '새 줄 n개 — 맨 아래로' 를 띄운다. 타자기·낱말 페이드는 버렸다. */
+details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
+.logbox { position: relative; }
+.log-jump { position: absolute; right: var(--sp-3); bottom: var(--sp-3); padding: 4px var(--sp-3); font-size: var(--tx-sm); }
+.log-jump[hidden] { display: none; }  /* .btn 의 inline-flex 가 hidden 을 이긴다 */
+@media (prefers-reduced-motion: no-preference) {
+  .log .chunk { animation: log-in var(--dur-2) var(--ease-out); }
+}
+@keyframes log-in { from { opacity: 0; } }

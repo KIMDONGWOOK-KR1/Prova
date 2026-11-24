@@ -494,8 +494,10 @@ function showProgress(title, lines) {
     <div class="ptally" id="pTally" hidden></div>
     ${title === "실행 중" ? `<button class="btn ghost" id="pStop" type="button" hidden>멈추기</button>` : ""}
     <div class="steps" id="pSteps"></div>
-    <details class="raw"><summary>진행 로그 전체</summary>
-      <pre class="log" id="pLog" role="log" aria-live="polite"></pre></details>`;
+    <details class="raw" id="pRaw"><summary>진행 로그 전체<span class="n" id="pLogN"></span></summary>
+      <div class="logbox"><pre class="log" id="pLog" role="log" aria-live="polite"></pre>
+        <button class="btn ghost log-jump" id="pLogJump" type="button" hidden></button></div></details>`;
+  followLog();
   pushProgress(lines || []);
   clearInterval(elapsedTimer);
   const t0 = Date.now();
@@ -504,6 +506,42 @@ function showProgress(title, lines) {
     if (!el) { clearInterval(elapsedTimer); return; }  // 화면이 결과로 바뀌면 멈춘다
     el.textContent = `${Math.round((Date.now() - t0) / 1000)}초`;
   }, 1000);
+}
+
+/* ── 진행 로그 — 흘러 들어오는 글 ─────────────────────────────────────────
+ * 21st.dev 'Response Stream' 에서 '도착하는 대로 덧붙인다(AsyncIterable)' 와 '멈춤·이어 보기' 만.
+ * 서버가 보내온 줄 묶음을 받은 그대로 붙이고, 새 묶음만 잠깐 옅게 들어온다. 이미 다 온 글을
+ * 한 글자·한 낱말씩 흘려 보이는 타자기·페이드 연출은 쓰지 않는다 — 읽기만 늦어진다.
+ * 맨 아래를 보고 있으면 따라 내려가고, 위로 올려 읽는 중이면 끌어내리지 않는다. 그동안 온 줄 수를
+ * '새 줄 n개 — 맨 아래로' 로 알려 준다. 접혀 있어도 머리줄의 줄 수가 늘어 일이 도는 것이 보인다. */
+const atLogEnd = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+
+function followLog() {
+  const log = $("pLog"), jump = $("pLogJump"), raw = $("pRaw");
+  if (!log || !jump) return;
+  // 바로 맨 아래로 간다. 부드럽게 굴리면 그사이 온 줄을 놓치고, 기다리게 할 이유도 없다(HIG Motion).
+  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; };
+  jump.addEventListener("click", toEnd);
+  log.addEventListener("scroll", () => { if (atLogEnd(log)) { jump.hidden = true; log.dataset.unseen = 0; } });
+  raw.addEventListener("toggle", () => { if (raw.open) { log.scrollTop = log.scrollHeight; jump.hidden = true; } });
+}
+
+function appendLog(log, lines) {
+  if (!lines.length) return;
+  const follow = atLogEnd(log) || !$("pRaw").open;
+  const chunk = document.createElement("span");
+  chunk.className = "chunk";
+  chunk.textContent = lines.join("\n") + "\n";
+  log.appendChild(chunk);
+  const n = (Number(log.dataset.n) || 0) + lines.length;
+  log.dataset.n = n;
+  $("pLogN").textContent = ` · ${n}줄`;
+  if (follow) { log.scrollTop = log.scrollHeight; return; }
+  const unseen = (Number(log.dataset.unseen) || 0) + lines.length;
+  log.dataset.unseen = unseen;
+  const jump = $("pLogJump");
+  jump.textContent = `새 줄 ${unseen}개 — 맨 아래로`;
+  jump.hidden = false;
 }
 
 /**
@@ -516,8 +554,7 @@ function showProgress(title, lines) {
 function pushProgress(messages) {
   const log = $("pLog"), steps = $("pSteps");
   if (!log || !steps) return;
-  log.textContent += messages.join("\n") + "\n";
-  log.scrollTop = log.scrollHeight;
+  appendLog(log, messages);
 
   for (const raw0 of messages) {
     // 지금까지의 판정 수 (nodes.run_cases 의 '집계' 줄). 단계 목록에 쌓지 않는다.
