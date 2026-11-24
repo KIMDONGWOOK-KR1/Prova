@@ -1387,15 +1387,17 @@ function showResult(out) {
         ${state.plan ? `<button class="btn ghost" id="againBtn" type="button">다시 실행</button>` : ""}
       </div>
     </div>
-    <div class="meter" aria-hidden="true"><i class="f" style="flex:${defects}"></i><i class="x" style="flex:${infra}"></i><i class="u" style="flex:${unv}"></i><i style="flex:${s.pass}"></i></div>
-    <dl class="sumstrip">
-      <div class="f${defects ? " hot" : ""}"><dt>기획서와 다름</dt><dd>${defects}</dd></div>
-      <div class="x${infra ? " hot" : ""}"><dt>실행 문제</dt><dd>${infra}</dd></div>
-      ${unv ? `<div class="u"><dt>확인 불가</dt><dd>${unv}</dd></div>` : ""}
-      <div class="p"><dt>통과</dt><dd>${s.pass}</dd></div>
-      <div class="r"><dt>통과율</dt><dd>${s.pass_rate}%</dd></div>
-    </dl>
     ${notes.join("")}
+    <div class="result-chart">
+      ${donutBlock({ defect: defects, infra, unv, pass: s.pass })}
+      <dl class="sumstrip">
+        <div class="f${defects ? " hot" : ""}" data-k="defect"><dt>기획서와 다름</dt><dd>${defects}</dd></div>
+        <div class="x${infra ? " hot" : ""}" data-k="infra"><dt>실행 문제</dt><dd>${infra}</dd></div>
+        ${unv ? `<div class="u" data-k="unv"><dt>확인 불가</dt><dd>${unv}</dd></div>` : ""}
+        <div class="p" data-k="pass"><dt>통과</dt><dd>${s.pass}</dd></div>
+        <div class="r" data-k="pass"><dt>통과율</dt><dd>${s.pass_rate}%</dd></div>
+      </dl>
+    </div>
     <div class="reportbox">
       <iframe id="reportFrame" src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
               allow="clipboard-write"></iframe>
@@ -1404,7 +1406,80 @@ function showResult(out) {
   const again = $("againBtn");
   if (again) again.addEventListener("click", startRun);
   $("stage").querySelectorAll(".sumstrip dd").forEach(rollIn);
+  linkDonut($("stage").querySelector(".result-chart"));
   fitFrame($("stage").querySelector("iframe"));
+}
+
+// ── 원형차트(도넛) ────────────────────────────────────────────────────────
+// 리포트 파일의 도넛(report_builder._donut_svg)과 같은 그림이다 — 결함 → 실행 문제 →
+// 확인 불가 → 통과, 12시에서 시계 방향. 이름표는 옆의 숫자 칸(sumstrip)이 맡는다 —
+// 색만으로 말하지 않는다. 알림 상자 아래에 둔다 — 알림이 숫자보다 눈에 덜 띄면 안 된다(요구서 4절 1번).
+//
+// 21st.dev Donut Chart 에서 가져온 것: 12시부터 한 번에 그려지는 것, 조각이나 숫자 칸에
+// 올리면 서로 짚고 가운데 글자가 그 조각의 수·비율로 바뀌는 것. 버린 것: 빛 번짐·커짐,
+// 조각마다 따로 늦게 나타나기, 이름표가 하나씩 미끄러져 들어오기, 그림자 카드.
+const DONUT_LABELS = { defect: "기획서와 다름", infra: "실행 문제", unv: "확인 불가", pass: "통과" };
+let donutSeq = 0;
+
+function donutBlock(n) {
+  const keys = Object.keys(DONUT_LABELS).filter((k) => n[k] > 0);
+  const total = keys.reduce((a, k) => a + n[k], 0);
+  if (!total) return "";
+  const size = 132, c = size / 2, w = 16, r = c - w / 2 - 1, len = 2 * Math.PI * r;
+  const gap = keys.length > 1 ? 2 : 0;
+  const pct = (k) => `${Math.round((n[k] / total) * 100)}%`;
+  const id = `donutSweep${++donutSeq}`;
+  let off = 0;
+  const arcs = keys.map((k) => {
+    const arc = (n[k] / total) * len, drawn = Math.max(arc - gap, 0.5);
+    const el = `<circle class="seg ${k}" data-k="${k}" data-n="${n[k]}" data-pct="${pct(k)}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"
+      stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}">
+      <title>${DONUT_LABELS[k]} ${n[k]}건 (${pct(k)})</title></circle>`;
+    off += arc;
+    return el;
+  }).join("");
+  const aria = keys.map((k) => `${DONUT_LABELS[k]} ${n[k]}건`).join(", ");
+  return `
+    <div class="donut" data-total="${total}">
+      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="전체 ${total}건 — ${aria}">
+        <mask id="${id}" class="sweep-mask"><circle class="sweep" cx="${c}" cy="${c}" r="${r}" fill="none"
+          stroke-width="${w + 4}" pathLength="100"/></mask>
+        <circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"/>
+        <g transform="rotate(-90 ${c} ${c})" mask="url(#${id})">${arcs}</g>
+        <text x="${c}" y="${c + 4}" class="big">${total}</text>
+        <text x="${c}" y="${c + 22}" class="small">케이스</text>
+      </svg>
+    </div>`;
+}
+
+/**
+ * 조각 ↔ 숫자 칸을 잇는다. 어느 쪽에 올려도 그 조각과 칸만 진하고, 가운데가 '16 / 41%' 로
+ * 바뀐다. 0건인 칸은 조각이 없으니 잇지 않는다. 글자는 모두 화면에 이미 있으니 마우스용 덧붙임이다.
+ */
+function linkDonut(root) {
+  const donut = root && root.querySelector(".donut");
+  if (!donut) return;
+  const big = donut.querySelector(".big"), small = donut.querySelector(".small");
+  const has = new Set([...donut.querySelectorAll(".seg")].map((e) => e.dataset.k));
+  let on = "";
+  const show = (k) => {
+    k = has.has(k) ? k : "";
+    if (k === on) return;
+    on = k;
+    if (k) root.dataset.on = k; else delete root.dataset.on;
+    const seg = k && donut.querySelector(`.seg[data-k="${k}"]`);
+    big.textContent = seg ? seg.dataset.n : donut.dataset.total;
+    // 이름은 옆에서 진해진 숫자 칸이 말한다 — 가운데는 수와 비율만(구멍에 들어가는 길이).
+    small.textContent = seg ? seg.dataset.pct : "케이스";
+    if (!reduceMotion() && big.animate) {
+      for (const t of [big, small]) t.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
+    }
+  };
+  root.addEventListener("pointerover", (e) => {
+    const hit = e.target.closest(".seg, .sumstrip > div");
+    show(hit ? hit.dataset.k : "");
+  });
+  root.addEventListener("pointerleave", () => show(""));
 }
 
 // ── 밝게 / 어둡게 ─────────────────────────────────────────────────────────

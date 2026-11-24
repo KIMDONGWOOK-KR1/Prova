@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -255,14 +256,28 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 .btn.primary { background:var(--text); color:var(--bg); }
 .btn:hover { opacity:.88; }
 .btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
-/* 비율 막대 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순. 숫자는 아래 한 줄이 글자로 말한다. */
-.chart { margin-bottom:var(--sp-5); }
-.meter { display:flex; gap:2px; height:6px; margin-bottom:var(--sp-2); }
-.meter i { display:block; height:100%; }
-.meter .defect { background:var(--chart-defect); } .meter .infra { background:var(--chart-infra); }
-.meter .unv { background:var(--chart-unv); } .meter .weak { background:var(--chart-weak); }
-.meter .pass { background:var(--chart-pass); }
-.tally { font-size:var(--tx-md); font-variant-numeric:tabular-nums; }
+/* 원형차트(도넛) + 이름표 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순, 12시에서 시계 방향.
+   웹 UI 결과 화면(.donut)과 같은 그림이다. 숫자는 이름표와 아래 한 줄이 글자로 말한다. */
+.chart { display:flex; align-items:center; gap:var(--sp-8); flex-wrap:wrap; margin-bottom:var(--sp-5); }
+.chart svg { flex:none; display:block; }
+.chart text { text-anchor:middle; fill:var(--text); font-variant-numeric:tabular-nums; }
+.chart .big { font-size:28px; font-weight:600; letter-spacing:-0.02em; }
+.chart .small { font-size:11px; fill:var(--muted); }
+.chart .track { stroke:var(--line); }
+.chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
+.chart .seg.unv { stroke:var(--chart-unv); } .chart .seg.weak { stroke:var(--chart-weak); }
+.chart .seg.pass { stroke:var(--chart-pass); }
+.chart .side { flex:1; min-width:220px; }
+.legend { list-style:none; margin:0 0 var(--sp-2); padding:0; display:grid; gap:6px; max-width:320px; }
+.legend li { display:grid; grid-template-columns:10px auto 1fr auto; align-items:center; gap:var(--sp-2);
+             font-size:var(--tx-md); font-variant-numeric:tabular-nums; }
+.legend b { justify-self:end; font-weight:650; }
+.legend .ms { min-width:3.2em; text-align:right; }
+.swatch { width:10px; height:10px; border-radius:2px; }
+.swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
+.swatch.unv { background:var(--chart-unv); } .swatch.weak { background:var(--chart-weak); }
+.swatch.pass { background:var(--chart-pass); }
+.tally { font-size:var(--tx-md); font-variant-numeric:tabular-nums; color:var(--muted); }
 .chart p { margin:var(--sp-1) 0 0; }
 /* 웹 UI 가 위쪽 막대·결론·숫자·같은 알림을 이미 보인다 — 한 화면에 두 번 나오지 않게 한다. */
 .embedded .topbar, .embedded .result-head, .embedded .chart, .embedded .dup,
@@ -805,7 +820,7 @@ def is_weak_pass(verdict: Verdict) -> bool:
 
 @dataclass(frozen=True)
 class ChartSegment:
-    """비율 막대 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
+    """원형차트 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
 
     key: str
     label: str
@@ -836,23 +851,61 @@ def chart_segments(verdicts: list[Verdict]) -> list[ChartSegment]:
     return [ChartSegment(k, labels[k], n) for k, n in counts.items() if n]
 
 
-def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
-    """비율 막대와 집계 한 줄 — 웹 UI 결과 화면의 막대(.meter · .tally)와 같은 모양이다.
+def _donut_svg(n: dict[str, int], labels: dict[str, str], size: int = 132) -> str:
+    """도넛 한 개. 외부 라이브러리 없이 SVG 를 문서에 넣는다 (file:// 로 열린다).
 
-    색은 토큰이고 이름과 수가 늘 아래 줄에 글자로 있다. 색만으로 뜻을 전하면 인쇄물과
+    조각 순서는 결함 → 실행 문제 → 확인 불가 → 약한 확인 → 통과, 12시에서 시계 방향.
+    조각이 하나면 틈을 두지 않는다 — 끊긴 고리가 뭔가 빠진 것처럼 보인다.
+    """
+    total = sum(n.values())
+    c = size / 2
+    width = 16.0
+    radius = c - width / 2 - 1
+    length = 2 * math.pi * radius
+    keys = [k for k in n if n[k]]
+    gap = 2.0 if len(keys) > 1 else 0.0
+    arcs, offset = [], 0.0
+    for k in keys:
+        arc = n[k] / total * length
+        drawn = max(arc - gap, 0.5)
+        tip = f"{labels[k]} {n[k]}건 ({n[k] / total:.0%})"
+        arcs.append(
+            f"<circle class='seg {k}' cx='{c:g}' cy='{c:g}' r='{radius:.2f}' fill='none' "
+            f"stroke-width='{width:g}' stroke-dasharray='{drawn:.2f} {length - drawn:.2f}' "
+            f"stroke-dashoffset='{-offset:.2f}'><title>{_esc(tip)}</title></circle>")
+        offset += arc
+    summary = ", ".join(f"{labels[k]} {n[k]}건" for k in keys)
+    return (
+        f"<svg viewBox='0 0 {size} {size}' width='{size}' height='{size}' role='img' "
+        f"aria-label='전체 {total}건 — {_esc(summary)}'>"
+        f"<circle class='track' cx='{c:g}' cy='{c:g}' r='{radius:.2f}' fill='none' stroke-width='{width:g}'/>"
+        f"<g transform='rotate(-90 {c:g} {c:g})'>{''.join(arcs)}</g>"
+        f"<text x='{c:g}' y='{c + 4:g}' class='big'>{total}</text>"
+        f"<text x='{c:g}' y='{c + 22:g}' class='small'>케이스</text></svg>")
+
+
+def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
+    """원형차트(도넛)와 이름표, 집계 한 줄 — 웹 UI 결과 화면의 도넛(.donut)과 같은 그림이다.
+
+    2026-11-18 에 비율 막대로 바꿨다가 11-24 에 원형차트로 되돌렸다(디자인 담당 요청 —
+    검사 뒤 결과의 구성이 한눈에 보이던 것이 사라졌다).
+
+    색은 토큰이고 이름과 수가 늘 곁에 글자로 있다. 색만으로 뜻을 전하면 인쇄물과
     색각 이상 독자에게 조각이 구별되지 않는다. 조각에 들어가지 않는 것(실행하지 않은
-    것)은 조각으로 만들지 않고 글로 쓴다 — 막대의 합은 실행한 케이스뿐이어서, 이 줄이
-    없으면 온통 초록인 막대가 '전부 확인됨' 으로 읽힌다.
+    것)은 조각으로 만들지 않고 글로 쓴다 — 도넛의 합은 실행한 케이스뿐이어서, 이 줄이
+    없으면 온통 초록인 차트가 '전부 확인됨' 으로 읽힌다.
     """
     segments = {s.key: s for s in chart_segments(verdicts)}
     if not segments:
         return ""
     total = sum(s.count for s in segments.values())
-    n = {k: segments[k].count if k in segments else 0 for k in ("defect", "infra", "unv", "weak", "pass")}
-    # 결함이 맨 앞, 통과가 맨 뒤 — 웹 UI 의 막대와 같은 순서.
-    bars = "".join(
-        f"<i class='{k}' style='flex:{n[k]}' title='{_esc(segments[k].label)} {n[k]}건 ({n[k] / total:.0%})'></i>"
-        for k in n if n[k])
+    order = ("defect", "infra", "unv", "weak", "pass")
+    n = {k: segments[k].count if k in segments else 0 for k in order}
+    labels = {k: segments[k].label for k in segments}
+    legend = "".join(
+        f"<li><i class='swatch {k}'></i><span>{_esc(labels[k])}</span>"
+        f"<b>{n[k]}</b><span class='ms'>{n[k] / total:.0%}</span></li>"
+        for k in order if n[k])
     # 기획서와 다름·실행 문제는 0이어도 적는다 — '없다' 도 읽는 사람이 찾는 답이다 (웹 UI 와 같다).
     parts = [f"기획서와 다름 {n['defect']}", f"실행 문제 {n['infra']}"]
     if n["unv"]:
@@ -866,11 +919,11 @@ def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=Non
     if excluded:
         outside.append(f"이번 실행에서 제외한 케이스 {excluded}건")
     note = (f"<p class='ms'>차트에 없는 것: {_esc(' · '.join(outside))}</p>" if outside else "")
-    summary = ", ".join(f"{s.label} {s.count}건" for s in segments.values())
     return (
         "<div class='chart'>"
-        f"<div class='meter' role='img' aria-label='전체 {total}건 — {_esc(summary)}'>{bars}</div>"
-        f"<div class='tally'>{_esc(' · '.join(parts))}</div>{note}</div>"
+        f"{_donut_svg(n, labels)}"
+        f"<div class='side'><ul class='legend'>{legend}</ul>"
+        f"<div class='tally'>{_esc(' · '.join(parts))}</div>{note}</div></div>"
     )
 
 

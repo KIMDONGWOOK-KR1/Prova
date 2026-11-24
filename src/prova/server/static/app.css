@@ -630,15 +630,6 @@ iframe.report {
   background: var(--bg-canvas);
 }
 
-.meter {
-  height: 6px;
-  border-radius: var(--r-full);
-  background: var(--fail-bg);
-  overflow: hidden;
-  margin-bottom: var(--sp-5);
-}
-
-.meter > i { display: block; height: 100%; background: var(--pass-fg); }
 
 /* ── 리포트 틀 ─────────────────────────────────────────────────────────── */
 
@@ -821,9 +812,6 @@ label.check input[type=checkbox], .case input[type=checkbox] { accent-color: var
 mark.fail { background: var(--fail-bg); }
 mark.pass { background: var(--pass-bg); }
 mark.infra { background: var(--note-bg); }
-.meter { display: flex; gap: 2px; background: none; border-radius: 0; margin-bottom: var(--sp-2); }
-.meter > i.f { background: var(--fail-fg); }
-.meter > i.x { background: var(--chart-infra); }
 .tally { font-size: var(--tx-md); margin-bottom: var(--sp-5); }
 .tally code { font-family: var(--font-mono); font-size: var(--tx-sm); color: var(--fg-subtle); margin-left: var(--sp-2); }
 
@@ -922,7 +910,6 @@ progress { height: 6px; }
 .reportbox { border-top: none; }
 
 /* 확인 불가 — 결함도 실행 문제도 아니다(요구서 4절 2번). 무채색으로, 글자와 함께. */
-.meter > i.u { background: var(--chart-unv); }
 .ptally .unv, .run .score.unv { color: var(--fg-muted); }
 .chip.unv { color: var(--fg-default); background: var(--bg-inset); border-color: var(--border-default); }
 mark.unv { background: var(--bg-inset); }
@@ -1170,7 +1157,6 @@ label.check input[type=checkbox] { margin: 0; }
 .dg .strip { position: absolute; left: 0; top: 0; width: 100%; display: flex; flex-direction: column;
              text-align: center; }
 .dg .strip > span { display: block; height: 1.15em; line-height: 1.15; }
-.meter { margin-bottom: 0; }
 .head h1 mark { border-radius: var(--r-lg); }
 
 /* ── 점검 후 다듬기 (AI 티 빼기) ────────────────────────────────────────── */
@@ -1395,4 +1381,39 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
   .pstep.active .st .arc { animation: none; stroke-dasharray: 100 0; opacity: 0.5; }
   /* 찬 정도는 장식이 아니라 정보다 — 움직임만 빼고 보인다. */
   .pstep.metered .st .arc { stroke-dasharray: 100 100; opacity: 1; transition: none; }
+}
+/* 결과 원형차트(도넛) — 리포트 파일의 .chart 와 같은 그림. 색은 --chart-* 토큰, 이름표는 옆 숫자 칸.
+   21st.dev Donut Chart 에서: 12시부터 한 번에 그려짐, 조각·숫자 칸을 올리면 서로 짚음. */
+.result-chart { display: flex; align-items: center; gap: var(--sp-6); margin: var(--sp-2) 0 var(--sp-6); }
+.result-chart .sumstrip { flex: 1; min-width: 0; margin: 0; }
+.donut { flex: none; }
+.donut svg { display: block; overflow: visible; }
+.donut text { text-anchor: middle; fill: var(--fg-default); font-variant-numeric: tabular-nums; }
+.donut .big { font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }
+.donut .small { font-size: var(--tx-xs); fill: var(--fg-muted); }
+.donut .track { stroke: var(--border-subtle); }
+.donut .seg { transition: opacity var(--dur-2) var(--ease-out); }
+.donut .seg.defect { stroke: var(--chart-defect); }
+.donut .seg.infra { stroke: var(--chart-infra); }
+.donut .seg.unv { stroke: var(--chart-unv); }
+.donut .seg.pass { stroke: var(--chart-pass); }
+/* 가림막은 알파만 본다 — 색 값이 무엇이든 칠한 곳만 보인다. */
+.donut .sweep-mask { mask-type: alpha; }
+.donut .sweep { stroke: currentColor; stroke-dasharray: 100 100; stroke-dashoffset: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .donut .sweep { animation: donut-sweep 720ms var(--ease-out) 120ms both; }
+}
+@keyframes donut-sweep { from { stroke-dashoffset: 100; } }
+
+/* 짚은 조각만 진하게, 숫자 칸도 짚은 칸만 진하게. 0건 칸은 조각이 없어 짚지 않는다. */
+.result-chart[data-on] .donut .seg { opacity: 0.28; }
+.result-chart[data-on="defect"] .seg.defect, .result-chart[data-on="infra"] .seg.infra,
+.result-chart[data-on="unv"] .seg.unv, .result-chart[data-on="pass"] .seg.pass { opacity: 1; }
+.result-chart .sumstrip > div { transition: opacity var(--dur-2) var(--ease-out); }
+.result-chart[data-on] .sumstrip > div { opacity: 0.45; }
+.result-chart[data-on="defect"] .sumstrip > [data-k="defect"], .result-chart[data-on="infra"] .sumstrip > [data-k="infra"],
+.result-chart[data-on="unv"] .sumstrip > [data-k="unv"], .result-chart[data-on="pass"] .sumstrip > [data-k="pass"] { opacity: 1; }
+@media (max-width: 640px) {
+  .result-chart { flex-direction: column; align-items: stretch; }
+  .donut { align-self: center; }
 }
