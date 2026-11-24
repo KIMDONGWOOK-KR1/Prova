@@ -1506,3 +1506,18 @@ details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabula
 .chip .cm { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor;
             stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
 @media (max-width: 640px) { .topbar .chips .chip .cm { display: inline-block; margin-right: 5px; vertical-align: -1px; } }
+
+/* 확인 창 — 21st.dev Dialog 에서 구조만. 뒤 화면은 옅은 먹색으로 낮추고(원본 검정 80% 는 과하다),
+   나타날 때 짧은 페이드만(확대·미끄러짐 없음, HIG Motion). 버튼 줄은 오른쪽, 안전한 쪽이 맨 오른쪽 주 버튼. */
+dialog.confirm {
+  width: min(420px, calc(100vw - 32px)); padding: var(--sp-6);
+  border: 1px solid var(--border-default); border-radius: var(--r-xl);
+  background: var(--bg-surface); color: var(--fg-default); box-shadow: var(--shadow-lg);
+}
+dialog.confirm::backdrop { background: rgb(26 27 28 / 0.24); background: color-mix(in srgb, var(--gray-900) 24%, transparent); }
+dialog.confirm h2 { margin: 0 0 var(--sp-2); font-size: var(--tx-lg); font-weight: 650; }
+dialog.confirm p { margin: 0 0 var(--sp-6); color: var(--fg-muted); font-size: var(--tx-md); line-height: var(--lh-normal); word-break: keep-all; }
+dialog.confirm .row { display: flex; justify-content: flex-end; gap: var(--sp-2); }
+@media (prefers-reduced-motion: no-preference) {
+  dialog.confirm[open], dialog.confirm[open]::backdrop { animation: log-in var(--dur-1) var(--ease-out); }
+}

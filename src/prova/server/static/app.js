@@ -46,6 +46,34 @@ function chipMark(kind) {
   return `<svg class="cm" viewBox="0 0 12 12" aria-hidden="true">${ring}</svg>`;
 }
 
+/**
+ * 되돌릴 수 없는 일 앞에서 한 번 묻는 창 — 21st.dev Dialog 의 구조(제목·설명·버튼 줄)만, 브라우저 <dialog> 로.
+ * 초점 가두기·Esc·뒤 화면 막기는 브라우저가 한다. HIG: 진행이 사라지는 취소는 확인을 받는다.
+ * 처음 초점은 안전한 쪽(keep). Esc·바깥 누르기도 keep. 닫기(×)는 keep 과 같은 일이라 두지 않는다.
+ * '멈추기' 를 빨갛게 칠하지 않는다 — 빨강은 '기획서와 다름' 에만 쓴다(디자인 기준 2번). 말이 뜻을 진다.
+ */
+function confirmDialog({ title, body, keep, go }) {
+  return new Promise((resolve) => {
+    const d = document.createElement("dialog");
+    d.className = "confirm";
+    d.setAttribute("aria-labelledby", "cfTitle");
+    d.setAttribute("aria-describedby", "cfBody");
+    d.innerHTML = `<h2 id="cfTitle">${esc(title)}</h2><p id="cfBody">${esc(body)}</p>` +
+      `<div class="row"><button class="btn ghost" type="button" value="go">${esc(go)}</button>` +
+      `<button class="btn primary" type="button" value="keep" autofocus>${esc(keep)}</button></div>`;
+    document.body.appendChild(d);
+    const done = (ok) => { if (d.open) d.close(); d.remove(); resolve(ok); };
+    d.addEventListener("click", (e) => {
+      const b = e.target.closest("button");
+      if (b) { done(b.value === "go"); return; }
+      const r = d.getBoundingClientRect();  // 창 바깥(뒤 화면)을 누르면 keep
+      if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) done(false);
+    });
+    d.addEventListener("cancel", (e) => { e.preventDefault(); done(false); });  // Esc
+    d.showModal();
+  });
+}
+
 function alertBox(kind, title, why) {
   const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
   return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
@@ -1308,6 +1336,15 @@ async function startRun() {
     if (stop) {
       stop.hidden = false;
       stop.onclick = async () => {
+        // 멈추면 그때까지 확인한 것도 저장하지 않는다(runner.py) — 되돌릴 수 없으니 한 번 묻는다.
+        const done = Number($("pBar") && $("pBar").value) || 0;
+        const ok = await confirmDialog({
+          title: "실행을 멈출까요?",
+          body: `${done ? `지금까지 확인한 ${done}건을 포함해 ` : ""}이번 실행의 결과는 저장하지 않습니다. ` +
+            "지금 확인 중인 항목이 끝나면 멈춥니다.",
+          keep: "계속 실행", go: "멈추기",
+        });
+        if (!ok || !stop.isConnected) return;  // 묻는 사이 실행이 끝났으면 할 일이 없다
         busyButton(stop, "지금 항목이 끝나면 멈춥니다");
         try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
       };
