@@ -158,6 +158,8 @@ body[data-view="result"] .side-pane[data-pane="result"] { display: block; }
 .sitem:disabled { color: var(--fg-muted); background: none; }
 .sitem .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--accent-blue); stroke-width: 1.5; stroke-linecap: round; }
 .sitem .ct { margin-left: auto; font-size: var(--tx-xs); color: var(--fg-muted); font-variant-numeric: tabular-nums; }
+/* 고른 줄 위의 개수 — 어두운 화면에서 fg-muted 는 고른 판 위 4.42:1 이라 기본 글자색으로 */
+.sitem[aria-pressed="true"] .ct, .sitem[aria-current="true"] .ct { color: var(--fg-default); }
 .sitem .two { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .sitem .two > b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sitem .two > span { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -252,7 +254,7 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
   font-size: var(--tx-2xs); line-height: 1; font-weight: 600;
   background: var(--fill-selected); color: var(--fg-default);
 }
-.path li[data-state="done"] .no { background: var(--accent-blue); color: var(--fg-onaccent); }
+.path li[data-state="done"] .no { background: var(--accent-solid); color: var(--fg-onaccent);   /* 흰 체크는 accent-blue 위에서 3.0:1 — solid 로 */ }
 /* 채움 위의 지난 단계 이름 — fg-muted 는 어두운 화면에서 4.5:1 이 안 나온다(4.32). 굵기로 지금 단계와 가른다. */
 .path li[data-state="done"] [data-step] { color: var(--fg-default); }
 .path li[data-state="done"] .no::after { content: ""; }
@@ -811,7 +813,7 @@ ol.tl .node { width: 20px; height: 20px; border-radius: 50%; display: grid; plac
   font-size: var(--tx-2xs); line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-default); }
 ol.tl .pre { font-size: var(--tx-2xs); color: var(--fg-muted); }
 ol.tl li.prep .node { background: none; box-shadow: inset 0 0 0 1.5px var(--fill-selected); }
-ol.tl li.done .node { background: var(--accent-blue); color: var(--fg-onaccent); }
+ol.tl li.done .node { background: var(--accent-solid); color: var(--fg-onaccent); }
 ol.tl li.stop .node { background: none; }
 ol.tl li.stop .node .vm { width: 20px; height: 20px; vertical-align: 0; }
 ol.tl .stop-lb { display: block; margin-top: 2px; font-size: var(--tx-xs); line-height: var(--lh-xs); font-weight: 600; }
@@ -1062,6 +1064,8 @@ button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offse
 .ev .act.pass { background: var(--pass-bg); box-shadow: none; }
 .ev .act.pass h6 { color: var(--pass-fg); }
 .ev .act .more { margin-top: 4px; color: var(--fg-muted); }
+/* 판정 바탕 위 코드 글자 — 어두운 화면에서 fg-muted 는 3.96:1 이라 기본 글자색으로 */
+.ev .act .more code { color: var(--fg-default); }
 
 .shot { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 0; border-radius: var(--r-card); overflow: hidden; box-shadow: inset 0 0 0 0.5px var(--border-default); background: var(--fill-group); }
 .shot figure { padding: 14px var(--sp-4) var(--sp-4); border-right: 0.5px solid var(--sep); min-width: 0; }

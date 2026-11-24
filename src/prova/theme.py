@@ -32,39 +32,39 @@
 
 import re
 
-_DARK = """    --bg-canvas:  #1e1e1e;
-    --bg-surface: #1e1e1e;
-    --bg-workspace: #1e1e1e;
-    --bg-sidebar: #262628;
-    --bg-raised:  #3a3a3c;
-    --bg-inset:   #252525;
-    --bg-hover:   #2a2a2b;
-    --bg-active:  #353536;
+_DARK = """    --bg-canvas:  #000000;
+    --bg-surface: #000000;
+    --bg-workspace: #000000;
+    --bg-sidebar: #16181c;
+    --bg-raised:  #202327;
+    --bg-inset:   #16181c;
+    --bg-hover:   #1d1f23;
+    --bg-active:  #2f3336;
 
-    --fill-group:    rgba(255, 255, 255, 0.04);
-    --fill-hover:    rgba(255, 255, 255, 0.06);
-    --fill-selected: rgba(255, 255, 255, 0.10);
-    --fill-track:    rgba(255, 255, 255, 0.07);
-    --fill-row-alt:  rgba(255, 255, 255, 0.04);
-    --sep:           rgba(255, 255, 255, 0.08);
-    --control-line:  rgba(255, 255, 255, 0.10);
+    --fill-group:    rgba(231, 233, 234, 0.05);
+    --fill-hover:    rgba(231, 233, 234, 0.07);
+    --fill-selected: rgba(231, 233, 234, 0.12);
+    --fill-track:    rgba(231, 233, 234, 0.08);
+    --fill-row-alt:  rgba(231, 233, 234, 0.04);
+    --sep:           rgba(231, 233, 234, 0.12);
+    --control-line:  rgba(231, 233, 234, 0.14);
 
-    --fg-default: #dddddd;
-    --fg-muted:   #a3a3a8;
-    --fg-subtle:  #98989d;
-    --fg-faint:   rgba(255, 255, 255, 0.25);
+    --fg-default: #e7e9ea;
+    --fg-muted:   #8b98a5;
+    --fg-subtle:  #8b98a5;
+    --fg-faint:   rgba(231, 233, 234, 0.25);
     --fg-onaccent: #ffffff;
 
-    --border-default: #383839;
-    --border-subtle:  #2e2e2f;
-    --border-strong:  #4d4d4f;
+    --border-default: #2f3336;
+    --border-subtle:  #202327;
+    --border-strong:  #536471;
 
-    --accent-blue:   #0a84ff;
-    --accent-fg:     #4ea1ff;
-    --accent-solid:  #0a6fe0;
-    --accent-hover:  #0a62c8;
-    --accent-bg:     rgba(10, 132, 255, 0.20);
-    --accent-border: #0a84ff;
+    --accent-blue:   #1d9bf0;
+    --accent-fg:     #1d9bf0;
+    --accent-solid:  #0d77bf;
+    --accent-hover:  #0c71b6;
+    --accent-bg:     rgba(29, 155, 240, 0.18);
+    --accent-border: #1d9bf0;
 
     --pass-fg: #32d74b;
     --pass-bg: #183520;
@@ -72,8 +72,8 @@ _DARK = """    --bg-canvas:  #1e1e1e;
     --fail-bg: #43231f;
     --warn-fg: #e3ad4a;
     --warn-bg: #33280f;
-    --info-fg: #dddddd;
-    --info-bg: #252525;
+    --info-fg: #e7e9ea;
+    --info-bg: #16181c;
     --note-fg: #d48eff;
     --note-bg: #33233d;
     --unv-fg:  #98989d;
@@ -84,7 +84,7 @@ _DARK = """    --bg-canvas:  #1e1e1e;
     --chart-infra:  #bf8ee8;
     --chart-unv:    #8e8e93;
 
-    --bg-bar: rgba(44, 44, 46, 0.78);
+    --bg-bar: rgba(0, 0, 0, 0.72);
     --shadow-control: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.40);
     --shadow-window:  0 0 0 1px rgba(255, 255, 255, 0.16), 0 10px 40px rgba(0, 0, 0, 0.55);
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
@@ -92,7 +92,7 @@ _DARK = """    --bg-canvas:  #1e1e1e;
     --shadow-lg: 0 8px 28px rgba(0, 0, 0, 0.5);
     --scrim: rgba(0, 0, 0, 0.40);
 
-    --focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.55);"""
+    --focus-ring: 0 0 0 3px rgba(29, 155, 240, 0.55);"""
 
 _TOKENS_TEMPLATE = """
 /* ===========================================================================
@@ -175,42 +175,42 @@ _TOKENS_TEMPLATE = """
   --bg-canvas:  #ffffff;
   --bg-surface: #ffffff;
   --bg-workspace: #ffffff;
-  --bg-sidebar: #f0f0f2;
+  --bg-sidebar: #f7f8f8;
   --bg-raised:  #ffffff;   /* 팝업·입력칸·버튼 같은 컨트롤 면 */
-  --bg-inset:   #f7f7f7;   /* 묶음 상자(Group Box)와 같은 3% 회색을 불투명하게 */
-  --bg-hover:   #f2f2f2;
-  --bg-active:  #e6e6e6;
+  --bg-inset:   #f7f9f9;   /* 묶음 상자(Group Box)와 같은 3% 회색을 불투명하게 */
+  --bg-hover:   #eff3f4;
+  --bg-active:  #e1e8ed;
 
   /* 키트의 채움(Fills)은 투명도다 — 어느 바탕 위에 놓여도 같은 깊이로 보인다. */
-  --fill-group:    rgba(0, 0, 0, 0.03);
-  --fill-hover:    rgba(0, 0, 0, 0.05);
-  --fill-selected: rgba(0, 0, 0, 0.10);
-  --fill-track:    rgba(0, 0, 0, 0.05);
-  --fill-row-alt:  rgba(0, 0, 0, 0.03);
-  --sep:           rgba(0, 0, 0, 0.08);
-  --control-line:  rgba(0, 0, 0, 0.12);
+  --fill-group:    rgba(15, 20, 25, 0.03);
+  --fill-hover:    rgba(15, 20, 25, 0.05);
+  --fill-selected: rgba(15, 20, 25, 0.09);
+  --fill-track:    rgba(15, 20, 25, 0.05);
+  --fill-row-alt:  rgba(15, 20, 25, 0.025);
+  --sep:           rgba(15, 20, 25, 0.08);
+  --control-line:  rgba(15, 20, 25, 0.12);
 
   /* 글자 — 키트 라벨은 검정 85/50/25%. 50%(보조 라벨)는 흰 바탕에서 3.9:1 이라 #616161(6.2:1)로 올렸다.
      subtle 은 사이드바(#f0f0f2) 위에서도 4.6:1. faint(25%)는 글자가 아닌 곳(빈 체크·자리 표시)에만. */
-  --fg-default: #262626;
-  --fg-muted:   #616161;
-  --fg-subtle:  #6b6b6b;
-  --fg-faint:   rgba(0, 0, 0, 0.25);
+  --fg-default: #0f1419;
+  --fg-muted:   #536471;
+  --fg-subtle:  #5b7083;
+  --fg-faint:   rgba(15, 20, 25, 0.25);
   --fg-onaccent: #ffffff;
 
-  --border-default: #e5e5e5;
-  --border-subtle:  #ededed;
-  --border-strong:  #c7c7c7;
+  --border-default: #e1e8ed;
+  --border-subtle:  #eff3f4;
+  --border-strong:  #cfd9de;
 
   /* 강조는 macOS 기본 파랑 하나다(키트 #0088ff). 진행 막대·선택 점처럼 글자가 아닌 곳은 그대로,
      흰 글자를 얹는 기본 버튼·선택 줄은 키트의 Selection Focused #0069f9(흰 글자 4.8:1),
      파란 글자(링크)는 사이드바 위에서도 4.7:1 이 되게 #0062e6. 주황은 쓰지 않는다. */
-  --accent-blue:   #0088ff;
-  --accent-fg:     #0062e6;
-  --accent-solid:  #0069f9;
-  --accent-hover:  #005ce0;
-  --accent-bg:     rgba(0, 136, 255, 0.12);
-  --accent-border: #0088ff;
+  --accent-blue:   #1d9bf0;
+  --accent-fg:     #0c71b6;
+  --accent-solid:  #0d77bf;
+  --accent-hover:  #0c6aaa;
+  --accent-bg:     rgba(29, 155, 240, 0.12);
+  --accent-border: #1d9bf0;
 
   /* 판정 색 — Apple 시스템 색의 '대비 높임' 값. 초록만 키트 값(#248a3d, 4.4:1)을 한 단계 더 눌렀다.
      색은 판정에만 쓰고 늘 글자(통과·기획서와 다름…)와 함께 놓는다. */
@@ -220,8 +220,8 @@ _TOKENS_TEMPLATE = """
   --fail-bg: #ffebea;
   --warn-fg: #8a5d0a;
   --warn-bg: #fbf3e0;
-  --info-fg: #262626;
-  --info-bg: #f7f7f7;
+  --info-fg: #0f1419;
+  --info-bg: #f7f9f9;
   --note-fg: #8944ab;
   --note-bg: #f5eefa;
   --unv-fg:  #6b6b70;
@@ -246,7 +246,7 @@ _TOKENS_TEMPLATE = """
   --scrim: rgba(0, 0, 0, 0.18);
 
   /* macOS 키보드 초점 고리 — 강조 파랑 3px */
-  --focus-ring: 0 0 0 3px rgba(0, 136, 255, 0.45);
+  --focus-ring: 0 0 0 3px rgba(29, 155, 240, 0.45);
 }
 
 /* 화면 설정(OS)을 따르되, 사람이 고른 값(data-theme)이 있으면 그쪽이 이긴다.
