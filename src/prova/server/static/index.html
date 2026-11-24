@@ -107,10 +107,10 @@ try { if (localStorage.getItem("prova-side") === "rail") document.documentElemen
       <!-- 네 단계 = 경로 세그먼트. 지금 단계의 흰 판은 하나뿐이고 단계가 바뀌면 그 판이 옆으로
            미끄러진다(app.js placeThumb). 가 본 단계만 누를 수 있다. -->
       <ol class="path" id="stepper" aria-label="진행 단계">
-        <li><button type="button" data-step="1"><b class="no">1</b><span class="lb">기획서</span></button></li>
-        <li><button type="button" data-step="2"><b class="no">2</b><span class="lb">항목 검토</span></button></li>
-        <li><span data-step="3"><b class="no">3</b><span class="lb">실행</span></span></li>
-        <li><button type="button" data-step="4"><b class="no">4</b><span class="lb">결과</span></button></li>
+        <li><button type="button" data-step="1"><b class="no">1</b><span class="lb" data-label="기획서">기획서</span></button></li>
+        <li><button type="button" data-step="2"><b class="no">2</b><span class="lb" data-label="항목 검토">항목 검토</span></button></li>
+        <li><span data-step="3"><b class="no">3</b><span class="lb" data-label="실행">실행</span></span></li>
+        <li><button type="button" data-step="4"><b class="no">4</b><span class="lb" data-label="결과">결과</span></button></li>
       </ol>
       <div class="bar-actions">
         <!-- 1단계에서만 보인다. 파일 창을 연다 — HIG: 끝에 말줄임 -->

@@ -519,13 +519,17 @@ function stepChanged(prev, n) {
   });
 }
 
-// 지금 단계의 흰 판은 하나뿐이고, 단계가 바뀌면 그 판이 옆 단계로 미끄러진다. 처음 자리는 움직이지 않는다.
-const stepThumb = stretchThumb($("stepper"));
+// 지금 단계의 흰 판은 하나뿐이고, 단계가 바뀌면 그 판이 옆 단계로 미끄러진다. 처음 자리·창 크기 바뀜은 움직이지 않는다.
+// 움직임은 CSS 가 맡는다(.path 의 --thumb-* 전환 300ms) — 여기서는 끝 자리만 적는다. offset* 는 확대 전 값이라 zoom 과 맞는다.
 function placeThumb() {
   const st = $("stepper");
   const now = st.querySelector("[data-step][aria-current]");
-  if (!now) return;
-  stepThumb.to(now, { instant: placeThumb.resizing });
+  if (!now || !now.offsetWidth) return;
+  const first = !st.dataset.ready;
+  if (first || placeThumb.resizing) st.classList.add("snap");
+  st.style.setProperty("--thumb-l", `${now.offsetLeft}px`);
+  st.style.setProperty("--thumb-w", `${now.offsetWidth}px`);
+  if (st.classList.contains("snap")) { void st.offsetWidth; st.classList.remove("snap"); }
   st.dataset.ready = "1";
 }
 window.addEventListener("resize", () => {
