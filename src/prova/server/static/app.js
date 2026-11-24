@@ -1887,6 +1887,7 @@ function showResult(out) {
   $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
   linkDonut($("stage").querySelector(".tiles"), n, total, s.pass_rate);
   donutDrawn.add(runId);   // 같은 결과로 다시 오면(단계 길·거르기) 다시 그리지 않는다
+  tileDeltas(out, n);
   $("stage").querySelector(".tiles").addEventListener("click", (e) => {
     const b = e.target.closest("button.tile[data-k]");
     if (b && !b.disabled) pickResKind(b.dataset.k);
@@ -2015,6 +2016,34 @@ function pickResKind(k) {
   syncResPressed();
   renderFlist();
 }
+/**
+ * 숫자 칸 아래 '직전보다 2건 늘었어요' — 21st.dev DashboardMetricCard 의 변화 줄만 가져왔다(오르내림 화살표·색은 뺐다:
+ * 통과가 느는 것과 실패가 느는 것은 좋고 나쁨이 반대라 색으로 말하면 헷갈린다). 직전 실행의 리포트를 실제로 읽어
+ * 같은 셈법(kindOf 와 같은 갈래)으로 센다. 직전이 없거나, 이번이 일부만 다시 돌린 실행이면 줄을 두지 않는다.
+ */
+const prevCounts = new Map();
+async function tileDeltas(out, n) {
+  const h = (out.summary && out.summary.history) || {};
+  if (!h.previous_run || h.partial) return;
+  let prev = prevCounts.get(h.previous_run);
+  if (!prev) {
+    try {
+      const ps = (await api(`/runs/${encodeURIComponent(h.previous_run)}/report.json`)).summary || {};
+      const defect = ps.defects ?? ps.fail ?? 0, unv = ps.unverifiable || 0;
+      prev = { pass: ps.pass || 0, defect, unv, infra: Math.max(0, (ps.fail || 0) - defect - unv) };
+      prevCounts.set(h.previous_run, prev);
+    } catch (e) { return; }   // 못 읽으면 지어내지 않고 비워 둔다
+  }
+  if (state.result !== out) return;   // 그사이 다른 결과를 열었다
+  for (const k of ["pass", "defect", "infra", "unv"]) {
+    const t = document.querySelector(`#stage button.tile[data-k="${k}"]`);
+    if (!t || t.querySelector(".delta")) continue;
+    const d = n[k] - prev[k];
+    t.insertAdjacentHTML("beforeend", `<small class="delta">${d === 0 ? "직전과 같아요"
+      : `직전보다 ${Math.abs(d)}건 ${d > 0 ? "늘었어요" : "줄었어요"}`}</small>`);
+  }
+}
+
 function syncResPressed() {
   $("sideResult").querySelectorAll("[data-kind]").forEach((x) =>
     x.setAttribute("aria-pressed", String(x.dataset.kind === state.resKind)));
