@@ -20,6 +20,8 @@
      예전 버전에서 저장해 둔 선택은 지운다 — 남아 있으면 OS 를 바꿔도 이 화면만 따라오지 않는다. -->
 <script>
 try { localStorage.removeItem("prova-theme"); } catch (e) {}
+// 사이드바를 접어 둔 채 닫았으면 그대로 연다 — 그리기 전에 붙여서 펼쳤다 접히는 깜빡임이 없다
+try { if (localStorage.getItem("prova-side") === "rail") document.documentElement.classList.add("side-rail"); } catch (e) {}
 </script>
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
@@ -31,9 +33,15 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
   <aside class="side" aria-label="목록">
     <!-- 로고 — v5 '겹침 p' (기획서 고리 ∩ 화면 고리, 겹친 곳이 맞춘 곳). 색은 강조 토큰. -->
-    <a class="brand" id="homeLink" href="/" title="처음 화면으로"><svg class="mark" viewBox="-15 -8 162 162" aria-hidden="true">
+    <div class="side-head">
+      <a class="brand" id="homeLink" href="/" title="처음 화면으로"><svg class="mark" viewBox="-15 -8 162 162" aria-hidden="true">
         <path class="lens" d="M66,15.36 A40,40 0 0 1 66,84.64 A40,40 0 0 1 66,15.36 Z"/>
         <circle cx="46" cy="50" r="40"/><circle cx="86" cy="50" r="40"/><path d="M6,50 V140"/></svg><b>Prova</b></a>
+      <!-- 접기 — 21st.dev Sidebar(collapsible) 의 폭 줄이기만 가져왔다. 접으면 로고만 남는 얇은 줄이 된다 -->
+      <button class="side-toggle" id="sideToggle" type="button" aria-controls="sidePanes" aria-expanded="true" title="사이드바 접기">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/><path class="chev" d="M15.5 10l-2 2 2 2"/></svg></button>
+    </div>
+    <div class="side-panes" id="sidePanes">
 
     <!-- 1 기획서 — 새 확인과 실행 기록 -->
     <nav class="side-pane" data-pane="form" aria-label="실행 기록">
@@ -56,6 +64,7 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
     <!-- 4 결과 — 판정별로 거르기 (app.js renderSideResult) -->
     <nav class="side-pane" data-pane="result" id="sideResult" aria-label="결과 거르기"></nav>
 
+    </div>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
 

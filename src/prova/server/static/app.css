@@ -59,7 +59,10 @@ code, pre { font-family: var(--font-mono); }
   grid-template-columns: 240px minmax(0, 1fr);
   height: calc(100vh / var(--z));
   min-width: 960px;
+  /* 사이드바 접기·펴기 — 옆 내용이 같이 밀려야 하니 폭 자체를 옮긴다(240ms, 끊고 되돌리기 가능) */
+  transition: grid-template-columns 240ms cubic-bezier(0.23, 1, 0.32, 1);
 }
+:root.side-rail .win { grid-template-columns: 56px minmax(0, 1fr); }
 
 /* 넓은 화면 — 2560 같은 넓은 모니터에서는 글자·칸이 작게 보이고 가운데만 쓴다. 창 폭에 따라 화면 전체를
    한 비율로 키운다(글자·칸·여백·아이콘이 같이 커져 모양이 그대로다). 비율을 바꾼 화면 안에서는 100vh 도
@@ -83,8 +86,9 @@ body { zoom: var(--z); }
   overflow: hidden;
 }
 
+.side-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 16px 10px 10px 20px; }
 .brand {
-  display: flex; align-items: center; gap: 8px; padding: 16px 20px 10px;
+  display: flex; align-items: center; gap: 8px; min-width: 0;
   font-size: var(--tx-lg); line-height: var(--lh-title); font-weight: 700; letter-spacing: -0.02em;
 }
 /* 로고 — 고리 둘은 강조색 선, 겹친 곳(맞춘 곳)만 옅게 채운다 */
@@ -93,6 +97,40 @@ a.brand:hover .mark { opacity: 0.8; }
 .brand .mark { width: 22px; height: 22px; flex: none; overflow: visible; }
 .brand .mark circle, .brand .mark path:not(.lens) { fill: none; stroke: var(--accent-solid); stroke-width: 13; stroke-linecap: round; }
 .brand .mark .lens { fill: var(--accent-blue); opacity: 0.35; }
+
+.side-toggle {
+  margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
+  border: 0; border-radius: var(--r-md); background: none; color: var(--fg-muted);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+.side-toggle:hover { background: var(--fill-hover); color: var(--fg-default); }
+.side-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.side-toggle .chev { transform-origin: 14.5px 12px; transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1); }
+.side-panes { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden;
+  transition: opacity 120ms ease; }
+/* 접힌 줄 — 로고(첫 화면으로)와 펴기 단추만. 목록은 흐려지며 숨는다 */
+:root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 16px 0 10px; }
+:root.side-rail .side-head .brand b { display: none; }
+:root.side-rail .side-toggle { margin: 0; }
+:root.side-rail .side-toggle .chev { transform: scaleX(-1); }
+:root.side-rail .side-panes, :root.side-rail .side-foot { opacity: 0; visibility: hidden; pointer-events: none; }
+
+/* 고른 줄의 판 — 하나만 두고 고른 줄로 미끄러진다(app.js glidePill). 판이 있으면 줄 자체 배경은 끈다 */
+.side-pill { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; border-radius: var(--r-sel);
+  background: var(--fill-selected); opacity: 0;
+  transition: transform 260ms cubic-bezier(0.23, 1, 0.32, 1), width 260ms cubic-bezier(0.23, 1, 0.32, 1),
+    height 260ms cubic-bezier(0.23, 1, 0.32, 1), opacity 120ms ease; }
+.side-pill.snap { transition: opacity 120ms ease; }
+.side.has-pill .sitem { position: relative; z-index: 1; }
+.side.has-pill .sitem.pilled { background: none; }
+.side.has-pill .sitem.pilled:hover { background: var(--fill-hover); }
+
+/* 목록 스크롤 막대 — 가만히 있으면 숨고 굴리는 동안만 보인다 */
+.side-pane { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+.side-pane.is-scrolling { scrollbar-color: var(--fill-selected) transparent; }
+.side-pane::-webkit-scrollbar { width: 4px; }
+.side-pane::-webkit-scrollbar-thumb { background: transparent; border-radius: 9999px; }
+.side-pane.is-scrolling::-webkit-scrollbar-thumb { background: var(--fill-selected); }
 
 .side-pane { display: none; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-3); }
 body[data-view="form"] .side-pane[data-pane="form"],

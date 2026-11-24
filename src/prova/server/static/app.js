@@ -523,6 +523,73 @@ $("stepper").addEventListener("click", (e) => {
 });
 
 $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
+
+// ── 사이드바 — 접기, 고른 줄로 미끄러지는 판, 굴릴 때만 보이는 스크롤 막대 (21st.dev Sidebar 에서 움직임만) ──
+(() => {
+  const root = document.documentElement, side = document.querySelector(".side"), panes = $("sidePanes");
+  const tog = $("sideToggle");
+  const say = () => {
+    const rail = root.classList.contains("side-rail");
+    tog.setAttribute("aria-expanded", String(!rail));
+    tog.title = tog.ariaLabel = rail ? "사이드바 펴기" : "사이드바 접기";
+    panes.inert = rail;
+  };
+  tog.addEventListener("click", () => {
+    const rail = root.classList.toggle("side-rail");
+    try { localStorage.setItem("prova-side", rail ? "rail" : "open"); } catch (e) { /* 저장은 덤 */ }
+    say();
+  });
+  say();
+
+  // 판 하나 — 보이는 목록에서 고른 줄이 딱 하나일 때만 쓴다. 여럿이면 줄마다 제 배경을 둔다.
+  const pill = document.createElement("span");
+  pill.className = "side-pill";
+  pill.setAttribute("aria-hidden", "true");
+  panes.prepend(pill);
+  let lastPane = null, shown = false, hideT = 0;
+  const place = () => {
+    const pane = [...panes.querySelectorAll(".side-pane")].find((p) => p.offsetParent);
+    const sel = pane ? [...pane.querySelectorAll('.sitem[aria-current="true"], .sitem[aria-pressed="true"]')] : [];
+    panes.querySelectorAll(".sitem.pilled").forEach((x) => { if (x !== sel[0]) x.classList.remove("pilled"); });
+    if (sel.length !== 1) {
+      // 목록을 새로 그리는 사이 한 프레임 비는 것은 무시한다 — 바로 숨기면 다음 줄로 미끄러지지 못한다
+      clearTimeout(hideT);
+      hideT = setTimeout(() => { side.classList.remove("has-pill"); pill.style.opacity = "0"; shown = false; }, 80);
+      return;
+    }
+    clearTimeout(hideT);
+    const it = sel[0], a = it.getBoundingClientRect(), b = panes.getBoundingClientRect();
+    // 다른 단계의 목록으로 넘어갔거나 처음이면 미끄러지지 않고 그 자리에 놓는다
+    const snap = pane !== lastPane || !shown;
+    pill.classList.toggle("snap", snap);
+    pill.style.width = `${a.width}px`;
+    pill.style.height = `${a.height}px`;
+    pill.style.transform = `translate(${a.left - b.left}px, ${a.top - b.top}px)`;
+    pill.style.opacity = a.bottom < b.top || a.top > b.bottom ? "0" : "1";
+    it.classList.add("pilled");
+    side.classList.add("has-pill");
+    lastPane = pane; shown = true;
+  };
+  // 관찰 콜백은 이미 한 번에 모아 오므로 바로 놓는다(그리기 전이라 깜빡이지 않는다)
+  const later = () => place();
+  new MutationObserver(later).observe(panes, { subtree: true, childList: true, attributes: true,
+    attributeFilter: ["aria-current", "aria-pressed", "hidden"] });
+  new MutationObserver(later).observe(document.body, { attributes: true, attributeFilter: ["data-view"] });
+  addEventListener("resize", later);
+
+  // 굴리는 동안만 스크롤 막대. 굴리면 판도 줄을 따라간다(이때는 미끄러지지 않는다).
+  const timers = new WeakMap();
+  panes.addEventListener("scroll", (e) => {
+    const p = e.target;
+    if (!p.classList || !p.classList.contains("side-pane")) return;
+    p.classList.add("is-scrolling");
+    clearTimeout(timers.get(p));
+    timers.set(p, setTimeout(() => p.classList.remove("is-scrolling"), 700));
+    pill.classList.add("snap");
+    place();
+  }, true);
+  later();
+})();
 // 사이드바 Prova 로고 = 홈(새 확인). 새 탭으로 여는 클릭(⌘·가운데)은 그대로 둔다
 $("homeLink").addEventListener("click", (e) => {
   if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
