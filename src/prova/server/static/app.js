@@ -635,7 +635,9 @@ function showProgress(title, lines) {
 
   // 실행할 항목을 처음부터 깔아 둔다 — 몇 개 중 어디쯤이고 무엇이 남았는지가 처음부터 보인다.
   const cases = run && state.plan ? state.plan.cases.filter((c) => c.selected) : [];
-  prog = { k: 0, n: cases.length, t0: 0, last: null, row: null, seen: [0, 0, 0, 0] };
+  // last 는 직전 집계 — 처음부터 0 으로 둔다. null 이면 첫 집계 줄에서 첫 항목을 판정하지 못해
+  // '진행 중' 으로 남았다(실행 시작 때 0 집계 줄이 오지 않으면).
+  prog = { k: 0, n: cases.length, t0: 0, last: [0, 0, 0, 0], row: null, seen: [0, 0, 0, 0] };
   if (run) $("barActions").innerHTML = `<button class="btn" id="pStop" type="button" hidden>중지</button>`;
 
   $("stage").innerHTML = `
