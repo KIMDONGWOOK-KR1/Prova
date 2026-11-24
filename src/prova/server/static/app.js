@@ -1751,6 +1751,10 @@ document.querySelector("#variantRow .seg").addEventListener("keydown", (e) => {
 });
 
 ["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", renderChrome));
+// 실행 옵션 스위치는 사람이 처음 바꾼 뒤부터만 눌림 동작을 한다 — 저장값을 불러올 때는 가만히.
+["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", (e) => {
+  e.target.dataset.interacted = "";
+}, { once: true }));
 $("screenUrls").addEventListener("input", () => {
   renderScreenUrlsErr(); renderChrome(); saveSettings();
 });

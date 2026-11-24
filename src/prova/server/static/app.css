@@ -1227,6 +1227,32 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 .tw-ico svg:first-child { color: var(--fg-muted); }
 .tw-ico svg:last-child { color: var(--fg-default); opacity: 0; }
 
+/* ── 실행 옵션 켜기/끄기 (21st.dev 'Liquid Switch' 에서 두 가지만) ─────────────
+   ① 진짜 체크 상자를 그대로 두고 스위치로 그린다 — 폼·<label>·읽기 프로그램이 그대로 안다.
+   ② 손잡이가 건너갈 때 한 번 눌렸다 펴진다. 켬/끔 키프레임 이름을 따로 두어 바꿀 때마다
+      다시 돈다. 처음 화면을 열 때는 돌지 않는다(data-interacted 는 사람이 바꿔야 붙는다).
+   원본 눌림(1.38 × 0.68)은 젤리처럼 크다 — 1.16 × 0.86 으로 줄였다. 유리·셰이더·반짝임은 없다. */
+label.check input[role="switch"] {
+  position: relative; display: inline-block; width: 32px; height: 18px; margin: 0; border: 0;
+  border-radius: var(--r-full); background: var(--bg-inset); box-shadow: inset 0 0 0 1px var(--border-strong);
+  transition: background-color var(--dur-2) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
+}
+label.check input[role="switch"]:hover { box-shadow: inset 0 0 0 1px var(--fg-muted); }
+label.check input[role="switch"]:focus-visible { box-shadow: inset 0 0 0 1px var(--border-strong), var(--focus-ring); }
+label.check input[role="switch"]::before,
+label.check input[role="switch"]:checked::before {
+  content: ""; position: absolute; left: 2px; top: 2px; width: 14px; height: 14px; margin: 0;
+  border: 0; border-radius: var(--r-full); background: var(--bg-surface);
+  box-shadow: 0 0 0 1px var(--border-strong); transform: none;
+  transition: translate var(--dur-3) var(--ease-out);
+}
+label.check input[role="switch"]:checked { background: var(--fg-default); box-shadow: inset 0 0 0 1px var(--fg-default); }
+label.check input[role="switch"]:checked::before { translate: 14px 0; box-shadow: none; }
+label.check input[role="switch"][data-interacted]::before { animation: sw-squash-off calc(var(--dur-3) * 1.6) var(--ease-out); }
+label.check input[role="switch"][data-interacted]:checked::before { animation-name: sw-squash-on; }
+@keyframes sw-squash-on  { 0% { scale: 1; } 30% { scale: 1.16 0.86; } 60% { scale: 0.95 1.05; } 100% { scale: 1; } }
+@keyframes sw-squash-off { 0% { scale: 1; } 30% { scale: 1.16 0.86; } 60% { scale: 0.95 1.05; } 100% { scale: 1; } }
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }
@@ -1253,5 +1279,6 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 @media (prefers-reduced-motion: reduce) {
   .stepper::before, .stepper li + li::before, .seg::before,
   .case input[type=checkbox]::before, label.check input[type=checkbox]::before { transition: none !important; }
+  label.check input[role="switch"]::before { animation: none !important; }
   .pstep.active .st .arc { animation: none; stroke-dasharray: 100 0; opacity: 0.5; }
 }
