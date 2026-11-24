@@ -1311,6 +1311,33 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
     transform: rotate(135deg); }
 }
 
+/* ── 접는 묶음 ────────────────────────────────────────────────────────────
+   21st.dev 'Sidebar' 의 Nested 에서: 머리줄의 꺾쇠가 돌고 내용이 높이째 펼쳐진다.
+   프로젝트 묶음과 '실행 옵션' 은 머리줄이 flex 라 기본 삼각형이 사라져 접힌다는 표시가
+   없었다. 펼침은 ::details-content 를 아는 브라우저에서만 움직이고, 나머지는 예전처럼
+   바로 열린다. */
+.run-group > summary, .opts > summary { justify-content: flex-start; align-items: center; }
+.run-group > summary > span, .opts > summary > .now { margin-left: auto; }
+.run-group > summary::before, .opts > summary::before {
+  content: ""; flex: none; width: 5px; height: 5px; margin: 0 var(--sp-1) 0 2px;
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: var(--fg-subtle); transform: rotate(-45deg);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.run-group[open] > summary::before, .opts[open] > summary::before { transform: translateY(-2px) rotate(45deg); }
+.run-group, .run-more, .opts, .case .how { interpolate-size: allow-keywords; }
+.run-group::details-content, .run-more::details-content, .opts::details-content, .case .how::details-content {
+  block-size: 0; opacity: 0; overflow: clip; overflow-clip-margin: var(--sp-1);
+  transition: block-size var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out),
+              content-visibility var(--dur-3) allow-discrete;
+}
+.run-group[open]::details-content, .run-more[open]::details-content,
+.opts[open]::details-content, .case .how[open]::details-content { block-size: auto; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .run-group::details-content, .run-more::details-content, .opts::details-content,
+  .case .how::details-content, .run-group > summary::before, .opts > summary::before { transition: none; }
+}
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }
