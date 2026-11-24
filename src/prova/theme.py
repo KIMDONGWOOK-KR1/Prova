@@ -66,24 +66,24 @@ _DARK = """    --bg-canvas:  #000000;
     --accent-bg:     rgba(29, 155, 240, 0.18);
     --accent-border: #1d9bf0;
 
-    --pass-fg: #00b87a;
-    --pass-bg: #001d14;
-    --fail-fg: #ff5d57;
-    --fail-bg: #2c0608;
-    --warn-fg: #f7b928;
-    --warn-bg: #231a06;
+    --pass-fg: #37acb8;
+    --pass-bg: #001a1d;
+    --fail-fg: #fb726b;
+    --fail-bg: #250e0d;
+    --warn-fg: #c79536;
+    --warn-bg: #1f1401;
     --info-fg: #e7e9ea;
     --info-bg: #16181c;
-    --note-fg: #9488fe;
-    --note-bg: #181133;
-    --unv-fg:  #8b98a5;
+    --note-fg: #af8bec;
+    --note-bg: #191125;
+    --unv-fg:  #8fa0ab;
     --fg-onverdict: #000000;
 
-    --chart-pass:   #00b87a;
-    --chart-weak:   #f7b928;
-    --chart-defect: #f4212e;
-    --chart-infra:  #7e63fe;
-    --chart-unv:    #8b98a5;
+    --chart-pass:   #37acb8;
+    --chart-weak:   #c79536;
+    --chart-defect: #fb726b;
+    --chart-infra:  #af8bec;
+    --chart-unv:    #8fa0ab;
 
     --bg-bar: rgba(0, 0, 0, 0.72);
     --shadow-control: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.40);
@@ -213,28 +213,30 @@ _TOKENS_TEMPLATE = """
   --accent-bg:     rgba(29, 155, 240, 0.12);
   --accent-border: #1d9bf0;
 
-  /* 판정 색 — X(Twitter) Azure 계열에서 골라 강조 #1d9bf0 와 어울리게. 밝기는 흰 바탕과 제 옅은 바탕 위에서
-     글자 4.5:1 이상(흰 바탕 약 5.2). 판정에만 쓰고 늘 글자(통과·기획서와 다름…)와 함께 놓는다.
-     --fg-onverdict 는 판정 색 동그라미 위 그림(✓ ✕ ! −) — 밝게 흰색, 어둡게 검정(밝은 판정 색 위 흰색은 1.8–4.1:1). */
-  --pass-fg: #067c52;
-  --pass-bg: #e6f8f2;
-  --fail-fg: #d1041f;
-  --fail-bg: #feebec;
-  --warn-fg: #896402;
-  --warn-bg: #fef5e1;
+  /* 판정 색 — 한 가족(hh 11-25: 통과는 초록 대신 청록, 나머지도 청록에 맞춰). 로고·강조 파랑(#1d9bf0, --accent-*)은 그대로.
+     글자 색은 모두 같은 대비(흰 바탕 약 5.25:1, 곧 같은 밝기), 차트 색은 모두 OKLCh 밝기 0.62, 채도는 중간 — 어느 색도 튀지 않게.
+     색상: 통과 청록 205° · 기획서와 다름 산호 빨강 25°(청록의 보색) · 실행 문제 보라 300°(강조 파랑과 55° 떨어짐) ·
+     약한 통과 황토 80° · 확인 불가 슬레이트 240°. 판정에만 쓰고 늘 글자(통과·기획서와 다름…)와 함께 놓는다.
+     --fg-onverdict 는 판정 색 동그라미 위 그림(✓ ✕ ! −) — 밝게 흰색, 어둡게 검정. */
+  --pass-fg: #067782;
+  --pass-bg: #e4f9fb;
+  --fail-fg: #c83435;
+  --fail-bg: #fef1f0;
+  --warn-fg: #8d6411;
+  --warn-bg: #fcf3e4;
   --info-fg: #0f1419;
   --info-bg: #f7f9f9;
-  --note-fg: #6c45ef;
-  --note-bg: #f3f0ff;
-  --unv-fg:  #606d79;
+  --note-fg: #7f58b9;
+  --note-bg: #f6f2fe;
+  --unv-fg:  #5f6e79;
   --fg-onverdict: #ffffff;
 
   /* 차트 색 — 면으로 칠하는 곳(진행 막대·도넛). 페이지와 카드 바탕에 3:1 이상. */
-  --chart-pass:   #029f69;
-  --chart-weak:   #b58404;
-  --chart-defect: #f4212e;
-  --chart-infra:  #7856ff;
-  --chart-unv:    #7f8b98;
+  --chart-pass:   #0d98a4;
+  --chart-weak:   #ad7c0e;
+  --chart-defect: #e64343;
+  --chart-infra:  #976ad9;
+  --chart-unv:    #798994;
 
   /* 컨트롤 층(도구 막대)의 반투명 재질 — Apple HIG Materials: 재질은 내용 위에 뜬 컨트롤에만.
      '투명도 줄이기'·'대비 높이기' 에서는 불투명으로 바뀐다(아래). */
