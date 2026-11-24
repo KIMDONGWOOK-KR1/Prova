@@ -630,8 +630,10 @@ function pushProgress(messages) {
     }
     el.className = "pstep active";
     el.dataset.t0 = Date.now();
+    // 지금 단계는 모양(도는 호·바탕)만이 아니라 글자로도 말한다 — HIG '색·모양만으로 전하지 않는다'.
+    // 21st.dev AI Thought Chain 의 'In progress' 꼬리표에서. 끝나면 같은 자리가 걸린 시간이 된다.
     el.innerHTML = `<span class="mark">${STEP_MARK}</span>` +
-      `<div class="body">${esc(label)}</div><span class="t"></span>`;
+      `<div class="body">${esc(label)}</div><span class="t">진행 중</span>`;
   }
 }
 
@@ -709,7 +711,7 @@ function doneStep(el) {
   el.classList.add("done");
   const sec = Math.round((Date.now() - Number(el.dataset.t0 || Date.now())) / 1000);
   const t = el.querySelector(".t");
-  if (t && sec >= 1) t.textContent = `${sec}초`;
+  if (t) t.textContent = sec >= 1 ? `${sec}초` : "";
 }
 
 function finishProgress() {
