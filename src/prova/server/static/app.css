@@ -88,6 +88,8 @@ body { zoom: var(--z); }
   font-size: var(--tx-lg); line-height: var(--lh-title); font-weight: 700; letter-spacing: -0.02em;
 }
 /* 로고 — 고리 둘은 강조색 선, 겹친 곳(맞춘 곳)만 옅게 채운다 */
+a.brand { color: inherit; text-decoration: none; border-radius: var(--r-md); outline-offset: -4px; }
+a.brand:hover .mark { opacity: 0.8; }
 .brand .mark { width: 22px; height: 22px; flex: none; overflow: visible; }
 .brand .mark circle, .brand .mark path:not(.lens) { fill: none; stroke: var(--accent-solid); stroke-width: 13; stroke-linecap: round; }
 .brand .mark .lens { fill: var(--accent-blue); opacity: 0.35; }
@@ -175,7 +177,7 @@ body[data-view="result"] .side-pane[data-pane="result"] { display: block; }
 
 /* 도구 막대 — 왼쪽 제목, 가운데 단계, 오른쪽 할 일 (키트 Toolbar) */
 .bar {
-  flex: none; height: 56px;
+  flex: none; height: 72px; /* 창 위 끝에 붙어 보이지 않게 — 가운데가 왼쪽 로고 줄(36px)과 맞는다 */
   /* 단계는 가운데. 오른쪽 할 일이 반보다 넓으면(결과 화면) 제목 칸이 줄어든다 — 겹치지 않는다 */
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
   align-items: center; gap: var(--sp-4);

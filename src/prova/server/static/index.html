@@ -31,9 +31,9 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
   <aside class="side" aria-label="목록">
     <!-- 로고 — v5 '겹침 p' (기획서 고리 ∩ 화면 고리, 겹친 곳이 맞춘 곳). 색은 강조 토큰. -->
-    <div class="brand"><svg class="mark" viewBox="-15 -8 162 162" aria-hidden="true">
+    <a class="brand" id="homeLink" href="/" title="처음 화면으로"><svg class="mark" viewBox="-15 -8 162 162" aria-hidden="true">
         <path class="lens" d="M66,15.36 A40,40 0 0 1 66,84.64 A40,40 0 0 1 66,15.36 Z"/>
-        <circle cx="46" cy="50" r="40"/><circle cx="86" cy="50" r="40"/><path d="M6,50 V140"/></svg><b>Prova</b></div>
+        <circle cx="46" cy="50" r="40"/><circle cx="86" cy="50" r="40"/><path d="M6,50 V140"/></svg><b>Prova</b></a>
 
     <!-- 1 기획서 — 새 확인과 실행 기록 -->
     <nav class="side-pane" data-pane="form" aria-label="실행 기록">

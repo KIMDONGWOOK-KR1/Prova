@@ -523,6 +523,12 @@ $("stepper").addEventListener("click", (e) => {
 });
 
 $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
+// 사이드바 Prova 로고 = 홈(새 확인). 새 탭으로 여는 클릭(⌘·가운데)은 그대로 둔다
+$("homeLink").addEventListener("click", (e) => {
+  if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+  e.preventDefault();
+  if (!state.busy) showBlank();
+});
 
 function showBlank() {
   setView("form", 1);
