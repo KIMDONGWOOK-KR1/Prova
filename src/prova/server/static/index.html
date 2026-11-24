@@ -12,11 +12,10 @@
   tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
   두 벌로 갈라진다.
 -->
-<!-- 고른 화면 모드를 첫 그림 전에 건다. app.js 에서 하면 어두웠다 밝아지며 깜빡인다. -->
+<!-- 화면 모드는 OS 설정을 따른다(Apple HIG Dark Mode: 앱 안에 밝게/어둡게 설정을 따로 두지 않는다).
+     예전 버전에서 저장해 둔 선택은 지운다 — 남아 있으면 OS 를 바꿔도 이 화면만 따라오지 않는다. -->
 <script>
-try { var t = localStorage.getItem("prova-theme");
-      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
-} catch (e) {}
+try { localStorage.removeItem("prova-theme"); } catch (e) {}
 </script>
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
@@ -29,15 +28,6 @@ try { var t = localStorage.getItem("prova-theme");
   <div class="crumbs" id="crumbs"></div>
   <div class="topright">
     <div class="chips" id="stageChips"></div>
-    <!-- 켜짐 = 어두운 화면. 끌어도 되고 눌러도 된다(app.js liquidSwitch). -->
-    <button class="tswitch" id="themeBtn" type="button" role="switch" aria-checked="false"
-            aria-label="어두운 화면" title="어두운 화면">
-      <span class="tw-fill" aria-hidden="true"></span>
-      <!-- 손잡이 건너편에 옅게 보이는 기호 — 밀면 어느 쪽이 되는지 알려 준다 -->
-      <span class="tw-dest" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M20 14.6A8.3 8.3 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6Z"/></svg></span>
-      <span class="tw-knob" aria-hidden="true"></span>
-      <span class="tw-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M5.5 18.5 7 17M17 7l1.5-1.5"/></svg><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linejoin="round"><path d="M20 14.6A8.3 8.3 0 1 1 9.4 4a6.6 6.6 0 0 0 10.6 10.6Z"/></svg></span>
-    </button>
   </div>
   <!-- 번호 원 + 잇는 선. 지금 단계의 검은 원은 하나뿐이고 단계가 바뀌면 그 원이 옆으로
        미끄러진다(app.js placeThumb) — 한 칸이 꺼지고 다른 칸이 켜지는 깜빡임 대신. -->
@@ -69,7 +59,7 @@ try { var t = localStorage.getItem("prova-theme");
         <div class="field">
           <label for="pdf">기획서</label>
           <select id="pdf"></select>
-          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF/JSON 올리기</button>
+          <button class="btn ghost quiet" id="uploadBtn" type="button">PDF/JSON 올리기…</button>
           <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
         </div>
 
@@ -142,7 +132,7 @@ try { var t = localStorage.getItem("prova-theme");
 
         <div class="field">
           <label class="check" for="vlm">
-            <input type="checkbox" role="switch" id="vlm"> 화면 이미지로 찾기
+            <input type="checkbox" id="vlm"> 화면 이미지로 찾기
           </label>
           <div class="hint">요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
             좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
@@ -150,7 +140,7 @@ try { var t = localStorage.getItem("prova-theme");
 
         <div class="field">
           <label class="check" for="dryRun">
-            <input type="checkbox" role="switch" id="dryRun"> 쓰기 요청 막기
+            <input type="checkbox" id="dryRun"> 쓰기 요청 막기
           </label>
           <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
             막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>

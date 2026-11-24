@@ -1202,63 +1202,6 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 /* 주소가 예시(good/bad)가 아니면 어느 쪽도 고른 것이 아니다 — 판을 숨긴다 */
 .seg:not(:has(> button[aria-pressed="true"]))::before { opacity: 0; }
 
-/* ── 밝게/어둡게 스위치 (21st.dev 'Liquid Toggle — Surface Tension' 에서 움직임만) ──
-   손잡이 폭·위치·세로 배율, 바탕이 찬 폭은 app.js liquidSwitch 가 용수철로 계산한다.
-   물빛 그라데이션·유리·그림자 대신 기존 토큰: 빈 바탕 = 안쪽 회색, 찬 바탕 = 먹색. */
-.tswitch { position: relative; flex: none; width: 46px; height: 22px; padding: 0; margin: 0; border: 0;
-  border-radius: var(--r-full); background: var(--bg-inset); box-shadow: inset 0 0 0 1px var(--border-strong);
-  cursor: pointer; touch-action: pan-y; -webkit-tap-highlight-color: transparent; user-select: none;
-  transition: box-shadow var(--dur-1) var(--ease-out); }
-.tswitch:hover { box-shadow: inset 0 0 0 1px var(--fg-muted); }
-.tswitch:focus-visible { outline: none; box-shadow: inset 0 0 0 1px var(--border-strong), var(--focus-ring); }
-.tswitch > span { position: absolute; pointer-events: none; }
-.tw-fill { left: 2px; top: 2px; bottom: 2px; width: 0; border-radius: var(--r-full); background: var(--fg-default); }
-.tw-knob { left: 0; top: 2px; width: 18px; height: 18px; border-radius: var(--r-full);
-  background: var(--bg-surface); box-shadow: 0 0 0 1px var(--border-strong); }
-/* 건너편 기호: 해는 왼쪽(어두울 때 찬 바탕 위), 달은 오른쪽(밝을 때 빈 바탕 위). 손잡이 밑은 가려진다. */
-.tw-dest { inset: 0; }
-.tw-dest svg { position: absolute; top: 6px; width: 10px; height: 10px; }
-.tw-dest svg:first-child { left: 6px; color: var(--bg-surface); opacity: 0.75; }
-.tw-dest svg:last-child { right: 6px; color: var(--fg-subtle); }
-.tw-ico { left: 0; top: 0; width: 12px; height: 12px; }
-.tw-ico svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-.tw-ico svg:first-child { color: var(--fg-muted); }
-.tw-ico svg:last-child { color: var(--fg-default); opacity: 0; }
-
-/* ── 실행 옵션 켜기/끄기 (21st.dev 'Liquid Switch' + 'Gel Toggle' 에서) ──────────
-   ① Liquid Switch: 진짜 체크 상자를 그대로 두고 스위치로 그린다 — 폼·<label>·읽기 프로그램이 그대로 안다.
-   ② Gel Toggle: 손잡이의 앞 끝이 먼저 가고 뒤 끝이 70ms 늦게 따라와 잠깐 늘어난다(어둡게 스위치와 같은 느낌).
-      CSS 만으로 — 가는 쪽 끝(left/right)마다 전환 시간을 다르게 준다. 켬/끔 규칙에 각자 transition 을
-      두어서, 켤 때는 오른쪽 끝이, 끌 때는 왼쪽 끝이 앞장선다.
-   ③ 앞 끝이 닿을 즈음 한 번 납작해졌다 펴진다(착지). 켬/끔 키프레임 이름을 따로 두어 바꿀 때마다 다시 돈다.
-      처음 화면을 열 때는 돌지 않는다(data-interacted 는 사람이 바꿔야 붙는다).
-   버린 것: 끈적한 다리(SVG goo 필터)·그림자·광택·바탕 물결·초록/보라/주황 강조색(판정 색과 겹친다). */
-label.check input[role="switch"] {
-  position: relative; display: inline-block; width: 32px; height: 18px; margin: 0; border: 0;
-  border-radius: var(--r-full); background: var(--bg-inset); box-shadow: inset 0 0 0 1px var(--border-strong);
-  transition: background-color var(--dur-2) var(--ease-out), box-shadow var(--dur-1) var(--ease-out);
-}
-label.check input[role="switch"]:hover { box-shadow: inset 0 0 0 1px var(--fg-muted); }
-label.check input[role="switch"]:focus-visible { box-shadow: inset 0 0 0 1px var(--border-strong), var(--focus-ring); }
-label.check input[role="switch"]::before,
-label.check input[role="switch"]:checked::before {
-  content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px; right: 16px; width: auto; height: auto; margin: 0;
-  border: 0; border-radius: var(--r-full); background: var(--bg-surface);
-  box-shadow: 0 0 0 1px var(--border-strong); transform: none;
-  /* 끌 때: 왼쪽 끝이 앞장, 오른쪽 끝이 늦게 */
-  transition: left var(--dur-2) var(--ease-out), right var(--dur-3) var(--ease-out) 70ms;
-}
-label.check input[role="switch"]:checked { background: var(--fg-default); box-shadow: inset 0 0 0 1px var(--fg-default); }
-label.check input[role="switch"]:checked::before {
-  left: 16px; right: 2px; box-shadow: none;
-  /* 켤 때: 오른쪽 끝이 앞장, 왼쪽 끝이 늦게 */
-  transition: right var(--dur-2) var(--ease-out), left var(--dur-3) var(--ease-out) 70ms;
-}
-label.check input[role="switch"][data-interacted]::before { animation: sw-land-off 400ms var(--ease-out); }
-label.check input[role="switch"][data-interacted]:checked::before { animation-name: sw-land-on; }
-/* 원본 착지 1.12 × 0.86 — 이미 옆으로 늘어나 있으므로 세로로만 누른다 */
-@keyframes sw-land-on  { 0% { scale: 1 1; } 40% { scale: 1 0.82; } 65% { scale: 1 1.06; } 85% { scale: 1 0.98; } 100% { scale: 1 1; } }
-@keyframes sw-land-off { 0% { scale: 1 1; } 40% { scale: 1 0.82; } 65% { scale: 1 1.06; } 85% { scale: 1 0.98; } 100% { scale: 1 1; } }
 
 /* ── 화면 흐름 지도 ─────────────────────────────────────────────────────
    21st.dev 'Interactive Workflow Blueprint' 에서 노드 상자·연결 단자·연결선만 가져왔다.
@@ -1381,7 +1324,6 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
 @media (prefers-reduced-motion: reduce) {
   .stepper::before, .stepper li + li::before, .seg::before,
   .case input[type=checkbox]::before, label.check input[type=checkbox]::before { transition: none !important; }
-  label.check input[role="switch"]::before { animation: none !important; }
   .pstep.active .st .arc { animation: none; stroke-dasharray: 100 0; opacity: 0.5; }
   /* 찬 정도는 장식이 아니라 정보다 — 움직임만 빼고 보인다. */
   .pstep.metered .st .arc { stroke-dasharray: 100 100; opacity: 1; transition: none; }
@@ -1468,4 +1410,43 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
 .case .how .srcs.picked .srcs-list p.on { color: var(--fg-default); border-left-color: var(--fg-default); }
 @media (prefers-reduced-motion: reduce) {
   .case .how .cite, .case .how .srcs-btn::after, .case .how .srcs-list, .case .how .srcs-list p { transition: none; }
+}
+
+/* ══ Apple HIG 반영 (2026-11-24) ══════════════════════════════════════════════
+   developer.apple.com/design/human-interface-guidelines 를 장마다 열어 읽고 맞춘 것.
+   색·글자 크기·대비 높이기·투명도 줄이기는 theme.py 토큰 쪽에 있다. */
+
+/* Layout·Materials: 컨트롤과 내용을 나눈다 — 스크롤 위에 뜬 위쪽 바와 도구 줄만 반투명 재질.
+   내용 층(카드·목록·리포트)에는 쓰지 않는다. 투명도 줄이기·대비 높이기에서는 --bg-bar 가 불투명. */
+.topbar, .toolbar {
+  background: var(--bg-bar);
+  -webkit-backdrop-filter: saturate(180%) blur(20px); backdrop-filter: saturate(180%) blur(20px);
+}
+
+/* Layout(macOS): 창 아래쪽에 컨트롤을 두지 않는다 — 창을 내리면 화면 밖으로 밀려난다.
+   '고친 내용으로 항목 다시 만들기' 는 고친 칸들 바로 뒤, 제자리에 둔다. */
+.runbar { position: static; background: none; border-top: 1px solid var(--border-subtle); margin-top: var(--sp-3); }
+
+/* Typography: 시스템 글꼴은 크기마다 글자 간격을 스스로 맞춘다 — 손으로 좁히지 않는다. */
+.panel > h1, .head h1, .topbar .name { letter-spacing: normal; }
+
+/* Buttons: 직접 만든 버튼에는 꼭 눌림 상태를 둔다. 뜨거나 커지지 않고 바탕 톤만 한 단계 진해진다. */
+.btn.primary:active:not(:disabled) { opacity: 0.82; }
+.btn.ghost:active:not(:disabled), .btn.quiet:active:not(:disabled),
+.seg button:active, .stepper button[data-step]:active:not(:disabled),
+.case .how .cite:active, .case .how .srcs-btn:active { background: var(--bg-active); }
+.case input[type=checkbox]:active, label.check input[type=checkbox]:active { background: var(--bg-active); }
+.case input[type=checkbox]:checked:active, label.check input[type=checkbox]:checked:active { opacity: 0.82; }
+
+/* Accessibility(크기): macOS 컨트롤 최소 20×20pt. 근거 칩은 18 → 20px.
+   체크 상자는 그림은 16px 그대로 두고 누르는 자리를 사방 6px 넓힌다(28px — 터치 최소와 같다). */
+.case .how .cite { height: 20px; }
+.case input[type=checkbox], label.check input[type=checkbox] { position: relative; }
+.case input[type=checkbox]::after, label.check input[type=checkbox]::after { content: ""; position: absolute; inset: -6px; }
+
+/* designing-for-macOS(터치 화면): 손가락으로 누를 때는 누르는 자리만 넓히고 생김새·밀도는 그대로 둔다. */
+@media (any-pointer: coarse) {
+  .btn.quiet, .case .how .cite, .seg button { position: relative; }
+  .btn.quiet::after, .case .how .cite::after, .seg button::after { content: ""; position: absolute; inset: -6px -4px; }
+  .case input[type=checkbox]::after, label.check input[type=checkbox]::after { inset: -10px; }
 }

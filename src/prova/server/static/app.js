@@ -37,8 +37,8 @@ const reduceMotion = () =>
 /**
  * 목록 위를 미끄러지는 호버 배경 한 장 (21st.dev 'Fluid Hover Highlight').
  *
- * 줄마다 배경이 켜졌다 꺼지는 대신 한 장이 줄 사이를 따라간다. 목록 밖에서 처음
- * 들어올 때는 그 자리에서 나타나고(멀리서 날아오지 않는다), 나가면 사라진다.
+ * 줄마다 배경이 켜졌다 꺼지는 대신 한 장이 올린 줄로 옮겨 선다 — Apple HIG 에 맞춰(2026-11-24)
+ * 줄 사이를 날아가지는 않고 바로 선다. 펼쳐서 키가 바뀌면 따라 늘어난다. 나가면 사라진다.
  * 상자를 innerHTML 로 다시 그려도 다음 호버 때 배경을 새로 만든다. 터치에서는 쓰지 않는다.
  */
 function fluidHover(box, selector) {
@@ -83,12 +83,11 @@ function fluidHover(box, selector) {
     if (e.pointerType === "touch") return;
     const r = e.target.closest(selector);
     if (!r || !box.contains(r) || r === row) return;
-    const hl = box.querySelector(":scope > .hl");
-    const fresh = !hl || !hl.classList.contains("on");
     row = r;
     rowH = r.getBoundingClientRect().height;
     if (ro) { ro.disconnect(); ro.observe(r); }
-    place(fresh || reduceMotion());
+    // Apple HIG Motion: 목록 위를 훑는 일은 아주 잦다 — 배경이 줄 사이를 날아가지 않고 그 줄에 바로 선다.
+    place(true);
   });
   box.addEventListener("pointerleave", hide);
   // ResizeObserver 가 없는 브라우저 — 펼친 직후 한 번만 맞춘다. toggle 은 올라오지 않아 잡는 단계에서 받는다.
@@ -159,25 +158,14 @@ function stretchThumb(host) {
   const step = (dt, now) => {
     let still = true;
     s.hwNow += (s.hw - s.hwNow) * Math.min(1, dt * 12);
-    [s.a, s.b].forEach((B, i) => {
-      const lead = i === s.lead;
-      const k = lead ? 210 : 72, c = lead ? 25 : 13;
-      const f = !lead && now < s.lagFrom ? 0.08 : 1;
-      B.v += (k * (s.x - B.x) - c * B.v) * dt * f;
-      B.x += B.v * dt;
-      if (B.x < s.lo || B.x > s.hi) {                // 끝에 닿으면 살짝 눌리고 되튄다
-        s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0016;
-        B.x = Math.max(s.lo, Math.min(s.hi, B.x));
-        B.v *= -0.25;
-      }
+    // Apple HIG Motion(2026-11-24): 자주 누르는 컨트롤의 움직임은 짧고 정확하게. 앞·뒤 끝의 시간차로
+    // 늘어나던 것, 빨리 갈 때 납작해지던 것, 끝에서 되튀던 것을 뺐다. 두 끝이 같은 용수철(임계 감쇠 —
+    // 넘치지 않는다)로 함께 가서 판은 0.25초 안에 미끄러져 멎기만 한다.
+    [s.a, s.b].forEach((B) => {
+      B.v += (260 * (s.x - B.x) - 32 * B.v) * dt;
+      B.x = Math.max(s.lo, Math.min(s.hi, B.x + B.v * dt));
       if (Math.abs(s.x - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
     });
-    const L = s.lead === 0 ? s.a : s.b;
-    // 원본은 20% 까지 눌리고 오래 출렁인다(감쇠 9). 검수 도구라 12% · 감쇠 18 로 줄였다.
-    const syT = 1 - 0.12 * Math.min(Math.abs(L.v) / 1500, 1);
-    s.sy.v += (280 * (syT - s.sy.s) - 18 * s.sy.v) * dt;
-    s.sy.s += s.sy.v * dt;
-    if (Math.abs(s.sy.s - 1) > 0.002 || Math.abs(s.sy.v) > 0.02) still = false;
     return still;
   };
   const snap = () => {
@@ -217,175 +205,6 @@ function stretchThumb(host) {
   };
 }
 
-/**
- * 끌 수 있는 켜기/끄기 스위치 (21st.dev 'Liquid Toggle — Surface Tension').
- *
- * 손잡이는 stretchThumb 과 같은 앞·뒤 두 점 용수철이다. 누르면 조금 넓어지고, 끌면 앞쪽만
- * 따라오고 뒤쪽은 제자리에 붙잡혀 늘어난다. 70% 를 넘기면 놓아 버리고 반대편으로 건너간다.
- * 바탕은 손잡이를 조금 늦게 따라 찬다. 클릭·Space·Enter·← → 모두 된다.
- * 끌 때는 손잡이만 건너가고, 실제로 바뀌는 것(onCommit)은 손을 뗄 때다 — 21st.dev
- * 'Liquid Glass Theme Toggle' 처럼. 끄는 도중 화면 전체가 뒤집히지 않고, 되돌려 끌면 취소된다.
- * 원본의 물 셰이더·물방울·물결·유리·소리·진동·구르는 아이콘은 쓰지 않는다.
- *
- * btn 안에 .tw-fill · .tw-knob · .tw-ico(svg 두 개: 끔, 켬) 가 있어야 한다.
- * onCommit(on) 은 사람이 바꿨을 때만 부른다. 밖에서 상태를 맞출 때는 set(on, instant).
- */
-function liquidSwitch(btn, onCommit) {
-  const fill = btn.querySelector(".tw-fill"), knob = btn.querySelector(".tw-knob"),
-        ico = btn.querySelector(".tw-ico");
-  const G = { w: btn.offsetWidth || 46, h: btn.offsetHeight || 22 };
-  G.pad = 2; G.r = G.h / 2 - G.pad; G.xOff = G.pad + G.r; G.xOn = G.w - G.pad - G.r;
-  const s = { a: { x: G.xOff, v: 0 }, b: { x: G.xOff, v: 0 }, lead: 0, lagUntil: 0, sy: { s: 1, v: 0 },
-              q: 0, qT: 0, fill: { x: -6, v: 0 }, on: false, committed: false, moving: false, raf: 0, last: 0,
-              drag: { id: -1, startX: 0, grab: 0, moved: false, x: 0 }, suppressClick: false };
-  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
-
-  const paint = () => {
-    const head = s.lead === 0 ? s.a : s.b, tail = s.lead === 0 ? s.b : s.a;
-    const sep = Math.abs(head.x - tail.x);
-    knob.style.width = `${sep + 2 * (s.q + G.r)}px`;
-    knob.style.transform = `translateX(${Math.min(head.x, tail.x) - s.q - G.r}px) scaleY(${s.sy.s.toFixed(4)})`;
-    fill.style.width = `${clamp(s.fill.x - 2, 0, G.w - 4)}px`;
-    if (ico) {
-      // 해·달은 손잡이를 따라가며 하나가 작아져 사라진 뒤 다른 하나가 커진다 (겹치지 않게)
-      const cx = head.x * 0.7 + tail.x * 0.3, box = 12;
-      const t = clamp((cx - G.xOff) / (G.xOn - G.xOff), 0, 1);
-      ico.style.transform = `translate(${cx - box / 2}px, ${G.h / 2 - box / 2}px)`;
-      const [off, on] = ico.children;
-      const a = 1 - clamp((t - 0.25) / 0.3, 0, 1), b = clamp((t - 0.5) / 0.3, 0, 1);
-      off.style.opacity = a; off.style.transform = `scale(${0.4 + 0.6 * a})`;
-      on.style.opacity = b; on.style.transform = `scale(${0.4 + 0.6 * b})`;
-    }
-  };
-
-  const step = (dt, now) => {
-    s.q += (s.qT - s.q) * Math.min(1, dt * 14);
-    const home = s.on ? G.xOn : G.xOff;
-    const dragging = s.drag.id !== -1 && s.drag.moved;
-    const hT = dragging ? s.drag.x : home;
-    const fillT = s.on ? G.w + 6 : -6;
-    let still = true;
-    [s.a, s.b].forEach((B, i) => {
-      const lead = i === s.lead;
-      // 끄는 동안 뒤쪽은 표면장력처럼 제자리에 붙들린다
-      const T = lead ? hT : dragging ? home + (hT - home) * 0.06 : home;
-      const k = lead ? 260 : dragging ? 150 : 72, c = lead ? 28 : 13;
-      const f = !lead && now < s.lagUntil ? 0.06 : 1;
-      B.v += (k * (T - B.x) - c * B.v) * dt * f;
-      B.x += B.v * dt;
-      const lo = G.xOff + s.q, hi = G.xOn - s.q;   // 원본은 2px 넘친다 — 테두리를 덮지 않게 안쪽에서 멈춘다
-      if (B.x < lo || B.x > hi) {
-        s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0018;
-        B.x = clamp(B.x, lo, hi);
-        B.v *= -0.25;
-      }
-      if (Math.abs(T - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
-    });
-    const L = s.lead === 0 ? s.a : s.b;
-    // 원본 18% · 감쇠 9 → 12% · 18 (stretchThumb 과 같은 값)
-    const syT = 1 - 0.12 * Math.min(Math.abs(L.v) / 1500, 1);
-    s.sy.v += (280 * (syT - s.sy.s) - 18 * s.sy.v) * dt;
-    s.sy.s += s.sy.v * dt;
-    if (Math.abs(s.sy.s - 1) > 0.002 || Math.abs(s.sy.v) > 0.02) still = false;
-    s.fill.v += (70 * (fillT - s.fill.x) - 12 * s.fill.v) * dt;
-    s.fill.x += s.fill.v * dt;
-    if (Math.abs(fillT - s.fill.x) > 0.3 || Math.abs(s.fill.v) > 2) still = false;
-    if (Math.abs(s.q - s.qT) > 0.05 || dragging) still = false;
-    return still;
-  };
-
-  const snap = () => {
-    const x = s.on ? G.xOn : G.xOff;
-    s.a.x = s.b.x = x; s.a.v = s.b.v = 0; s.sy.s = 1; s.sy.v = 0; s.q = s.qT;
-    s.fill.x = s.on ? G.w + 6 : -6; s.fill.v = 0;
-    cancelAnimationFrame(s.raf); s.raf = 0; s.moving = false;
-    paint();
-  };
-  const loop = () => {
-    if (reduceMotion()) { snap(); return; }
-    if (s.raf) return;
-    s.last = performance.now();
-    const tick = (now) => {
-      const dt = Math.min((now - s.last) / 1000, 1 / 30);
-      s.last = now;
-      if (step(dt, now)) { s.raf = 0; snap(); return; }
-      paint();
-      s.raf = requestAnimationFrame(tick);
-    };
-    s.raf = requestAnimationFrame(tick);
-  };
-
-  const goTo = (on, lag = true) => {
-    if (s.on === on) return;
-    s.on = on;
-    const target = on ? G.xOn : G.xOff;
-    s.lead = Math.abs(target - s.a.x) >= Math.abs(target - s.b.x) ? 0 : 1;
-    if (lag) s.lagUntil = performance.now() + 90;
-    s.moving = true;
-    loop();
-  };
-  // 보이는 것과 확정된 값을 나눈다: 끄는 동안은 goTo 만, 손을 떼면 commit.
-  const commit = (on) => {
-    goTo(on, s.drag.id === -1);
-    if (s.committed === on) return;
-    s.committed = on;
-    btn.setAttribute("aria-checked", String(on));
-    onCommit(on);
-  };
-
-  const localX = (clientX) => clientX - btn.getBoundingClientRect().left;
-  btn.addEventListener("pointerdown", (e) => {
-    if (btn.disabled || (e.pointerType === "mouse" && e.button !== 0)) return;
-    const x = localX(e.clientX), head = s.lead === 0 ? s.a : s.b;
-    s.drag = { id: e.pointerId, startX: x, grab: x - head.x, moved: false, x: head.x };
-    s.suppressClick = false;
-    s.qT = G.r * 0.32;                       // 누르면 손잡이가 조금 넓어진다
-    try { btn.setPointerCapture(e.pointerId); } catch (err) { /* 없어도 된다 */ }
-    loop();
-  });
-  btn.addEventListener("pointermove", (e) => {
-    if (s.drag.id !== e.pointerId) return;
-    const x = localX(e.clientX);
-    if (!s.drag.moved && Math.abs(x - s.drag.startX) > 4) {
-      s.drag.moved = true; s.suppressClick = true;
-      s.lead = Math.abs(x - s.a.x) <= Math.abs(x - s.b.x) ? 0 : 1;
-      s.lagUntil = 0; s.moving = true;
-    }
-    if (!s.drag.moved) return;
-    s.drag.x = clamp(x - s.drag.grab, G.xOff - G.r * 0.3, G.xOn + G.r * 0.3);
-    const t = (s.drag.x - G.xOff) / (G.xOn - G.xOff);
-    if (!s.on && t > 0.68) goTo(true, false);       // 70% 를 넘기면 손잡이가 놓고 건너간다
-    else if (s.on && t < 0.32) goTo(false, false);
-    loop();
-  });
-  const endDrag = (e) => {
-    if (s.drag.id !== e.pointerId) return;
-    const moved = s.drag.moved;
-    s.drag.id = -1; s.qT = 0; s.moving = true;
-    if (moved && e.type === "pointerup") commit(s.on);   // 손을 뗀 쪽으로 확정
-    else if (moved) goTo(s.committed);                    // 끌다 취소되면 제자리로
-    loop();
-  };
-  btn.addEventListener("pointerup", endDrag);
-  btn.addEventListener("pointercancel", endDrag);
-  btn.addEventListener("click", () => {
-    if (s.suppressClick) { s.suppressClick = false; return; }
-    commit(!s.on);
-  });
-  btn.addEventListener("keydown", (e) => {
-    if (e.key !== "ArrowRight" && e.key !== "ArrowLeft") return;
-    e.preventDefault();
-    commit(e.key === "ArrowRight");
-  });
-
-  return {
-    set(on, instant = false) {
-      s.committed = on;
-      btn.setAttribute("aria-checked", String(on));
-      if (instant) { s.on = on; snap(); } else goTo(on);
-    },
-  };
-}
 
 // ── 서버 통신 ──────────────────────────────────────────────────────────────
 
@@ -519,11 +338,14 @@ function renderScreenUrlsErr() {
 // 화면에 보이는 이름. 값(mock·vllm·replay)은 서버와 주고받는 이름이라 그대로 둔다.
 const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
 
-const BASE_TITLE = document.title;
+// Apple HIG Toolbars: 창 제목은 앱 이름이 아니라 지금 보는 곳을 짧게 — 탭을 여러 개 띄워도 구별된다.
+// 실행 중에는 'n/N 실행 중' 이 대신 선다(pushProgress).
+const STEP_TITLE = { 1: "기획서", 2: "항목 검토", 3: "실행", 4: "결과" };
+const pageTitle = () => `${STEP_TITLE[document.body.dataset.step] || STEP_TITLE[1]} — Prova`;
 
 function renderChrome() {
   syncStepper();
-  if (!state.busy) document.title = BASE_TITLE;
+  if (!state.busy) document.title = pageTitle();
   const f = form();
   const spec = (f.pdf || "").split("/").pop() || "기획서 없음";
   $("crumbs").innerHTML =
@@ -558,6 +380,7 @@ function setStep(n) {
   }
   syncStepper();
   placeThumb();
+  if (!state.busy) document.title = pageTitle();
   if (prev && prev !== n) stepChanged(prev, n);
 }
 
@@ -1557,40 +1380,9 @@ function linkDonut(root) {
   root.addEventListener("pointerleave", () => show(""));
 }
 
-// ── 밝게 / 어둡게 ─────────────────────────────────────────────────────────
-// 기본은 화면 설정(OS)을 따른다. 버튼을 누르면 그 선택을 기억한다 — 발표·시연 때
-// PC 설정과 상관없이 한쪽으로 고정할 수 있게. 리포트(iframe)도 같이 바꾼다.
-const THEME_KEY = "prova-theme";
-
-function currentTheme() {
-  const set = document.documentElement.getAttribute("data-theme");
-  if (set === "light" || set === "dark") return set;
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
-}
-
-function applyThemeToReport() {
-  const frame = $("reportFrame");
-  try {
-    if (frame && frame.contentDocument) {
-      frame.contentDocument.documentElement.setAttribute("data-theme", currentTheme());
-    }
-  } catch (e) { /* 같은 출처가 아니면 리포트는 제 설정대로 둔다 */ }
-}
-
-// 글자 버튼(어둡게/밝게) 대신 스위치 하나. 켜짐 = 어두운 화면. 해·달 기호가 지금 쪽을 보여 준다.
-const themeSwitch = liquidSwitch($("themeBtn"), (dark) => {
-  const next = dark ? "dark" : "light";
-  document.documentElement.setAttribute("data-theme", next);
-  try { localStorage.setItem(THEME_KEY, next); } catch (e) { /* 저장 못 해도 이번 화면은 바뀐다 */ }
-  applyThemeToReport();
-});
-
-function renderThemeBtn(instant = false) {
-  themeSwitch.set(currentTheme() === "dark", instant);
-}
-
-window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => renderThemeBtn());
-renderThemeBtn(true);
+// 화면 모드는 OS 설정만 따른다 — Apple HIG Dark Mode: 앱 안에 밝게/어둡게 설정을 따로 두면
+// 사람이 두 곳을 맞춰야 하고, OS 를 바꿨는데 이 화면만 안 바뀌면 고장 난 줄 안다.
+// 리포트(iframe)도 같은 OS 설정을 따르므로 따로 맞출 것이 없다.
 
 /**
  * 리포트 틀의 높이를 내용에 맞춘다 — 틀 안에 스크롤이 또 생기면 페이지 스크롤과 겹쳐
@@ -1600,7 +1392,6 @@ function fitFrame(frame) {
   frame.addEventListener("load", () => {
     const doc = frame.contentDocument;
     if (!doc) return;
-    applyThemeToReport();  // 리포트도 고른 화면 모드로 연다
     const fit = () => { frame.style.height = doc.documentElement.scrollHeight + "px"; };
     new ResizeObserver(fit).observe(doc.body);
     fit();
@@ -1904,7 +1695,7 @@ $("planBtn").addEventListener("click", (e) => {
 function syncUploadLabel() {
   const current = $("project").value.trim();
   $("uploadBtn").textContent = current
-    ? `＋ '${current}' 에 기획서 올리기` : "＋ PDF/JSON 올리기";
+    ? `'${current}' 에 기획서 올리기…` : "PDF/JSON 올리기…";   // 파일 창을 연다 — HIG: 끝에 말줄임
 }
 
 async function refreshSpecs(select) {
@@ -2009,10 +1800,6 @@ document.querySelector("#variantRow .seg").addEventListener("keydown", (e) => {
 });
 
 ["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", renderChrome));
-// 실행 옵션 스위치는 사람이 처음 바꾼 뒤부터만 눌림 동작을 한다 — 저장값을 불러올 때는 가만히.
-["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", (e) => {
-  e.target.dataset.interacted = "";
-}, { once: true }));
 $("screenUrls").addEventListener("input", () => {
   renderScreenUrlsErr(); renderChrome(); saveSettings();
 });

@@ -38,8 +38,8 @@ _DARK = """    --bg-canvas:  var(--gray-950);
     --bg-active:  #292a2c;
 
     --fg-default: #e8e9eb;
-    --fg-muted:   var(--gray-400);
-    --fg-subtle:  var(--gray-500);
+    --fg-muted:   var(--gray-350);
+    --fg-subtle:  var(--gray-400);
     --fg-onaccent: var(--gray-950);
 
     --border-default: #2b2c2e;
@@ -90,6 +90,7 @@ _TOKENS_TEMPLATE = """
   --gray-150: #e6e7e9;
   --gray-200: #d4d5d7;
   --gray-300: #bcbdbf;
+  --gray-350: #a7a8aa;
   --gray-400: #949597;
   --gray-500: #737375;
   --gray-600: #565658;
@@ -123,8 +124,10 @@ _TOKENS_TEMPLATE = """
   --violet-500: #5d4a8c;
   --violet-400: #ab92e0;
 
-  --font-sans: "Pretendard", -apple-system, BlinkMacSystemFont, "Segoe UI",
-               "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+  /* Apple HIG(Typography): 시스템 글꼴을 먼저 쓴다 — 맥에서는 SF Pro + Apple SD Gothic Neo 가 잡히고
+     글자 간격도 크기마다 시스템이 맞춘다. 시스템 글꼴이 없는 곳(윈도)에서만 다음 글꼴로 넘어간다. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard",
+               "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: "Cascadia Mono", "SF Mono", ui-monospace, Consolas,
                "D2Coding", "Menlo", monospace;
 
@@ -135,8 +138,11 @@ _TOKENS_TEMPLATE = """
   /* 모서리는 둘만 눈에 띈다 — 버튼·입력칸 6px(r-lg), 묶음 상자 8px(r-xl). 알약(r-full)은 점·꼬리표에만. */
   --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-xl: 8px; --r-full: 999px;
 
+  /* 글자 크기 — Apple HIG 의 macOS 글자 스타일에 맞춘다. xs 11 Subheadline · sm 12 Callout ·
+     md 13 Body · base 15 Title 3 · lg 17 Title 2 · xl 22 Title 1 · 2xl/3xl 26 Large Title.
+     본문은 한글 가독성 때문에 base(15)를 그대로 쓴다 — HIG 는 기본보다 큰 것은 막지 않는다. */
   --tx-xs: 11px; --tx-sm: 12px; --tx-md: 13px; --tx-base: 15px;
-  --tx-lg: 16px; --tx-xl: 20px; --tx-2xl: 26px; --tx-3xl: 28px;
+  --tx-lg: 17px; --tx-xl: 22px; --tx-2xl: 26px; --tx-3xl: 26px;
 
   /* 움직임 — 상태가 바뀔 때만 쓴다(단계 이동·항목 완료·숫자 바뀜·호버 위치).
      들어올 때 장식으로 쓰지 않는다. 화면 설정에서 '동작 줄이기' 면 app.css 가 모두 끈다. */
@@ -158,14 +164,20 @@ _TOKENS_TEMPLATE = """
   --bg-hover:   var(--gray-100);
   --bg-active:  var(--gray-150);
 
+  /* 글자 대비 — Apple HIG: 4.5:1 아래로 내려가지 않고, 작은 글자는 7:1 을 노린다.
+     muted 는 흰 바탕에서 7.3:1, subtle 은 4.7:1 (어둡게: 7.5:1 · 5.6:1). */
   --fg-default: var(--gray-900);
-  --fg-muted:   var(--gray-500);
-  --fg-subtle:  var(--gray-400);
+  --fg-muted:   var(--gray-600);
+  --fg-subtle:  var(--gray-500);
   --fg-onaccent: var(--gray-0);
 
   --border-default: var(--gray-200);
   --border-subtle:  var(--gray-150);
   --border-strong:  var(--gray-300);
+
+  /* 컨트롤 층(위쪽 바·도구 줄)의 반투명 재질 — Apple HIG Materials: 재질은 내용 위에 뜬 컨트롤에만,
+     내용 층에는 쓰지 않는다. '투명도 줄이기'·'대비 높이기' 에서는 불투명으로 바뀐다(아래). */
+  --bg-bar: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
 
   /* 강조는 먹색이다 — 색은 판정(통과·기획서와 다름·실행 문제)과 알림에만 쓴다. */
   --accent-fg:     var(--gray-900);
@@ -216,6 +228,27 @@ __DARK__
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"]  { color-scheme: dark; }
 
+/* 대비 높이기(OS 설정) — Apple HIG Color: 밝게·어둡게·대비 높임 세 경우 모두에서 읽혀야 한다.
+   흐린 글자와 선을 한 단계씩 진하게 하고, 반투명 바는 불투명으로 바꾼다. */
+@media (prefers-contrast: more) {
+  :root {
+__MORE_LIGHT__
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+__MORE_DARK__
+    }
+  }
+  :root[data-theme="dark"] {
+__MORE_DARK__
+  }
+}
+
+/* 투명도 줄이기(OS 설정) — 반투명 재질을 불투명으로 */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --bg-bar: var(--bg-canvas); }
+}
+
 /* ===========================================================================
    3. 레거시 별칭 — 리포트 CSS 의 옛 이름을 새 semantic 으로 잇는다.
       이 별칭이 있는 한 UI 와 리포트의 색이 두 벌로 갈라질 수 없다.
@@ -232,4 +265,19 @@ __DARK__
 }
 """
 
-TOKENS_CSS = _TOKENS_TEMPLATE.replace("__DARK__", _DARK)
+_MORE_LIGHT = """    --fg-muted:   var(--gray-700);
+    --fg-subtle:  var(--gray-600);
+    --border-default: var(--gray-400);
+    --border-subtle:  var(--gray-300);
+    --border-strong:  var(--gray-600);
+    --bg-bar: var(--bg-canvas);"""
+
+_MORE_DARK = """    --fg-muted:   var(--gray-300);
+    --fg-subtle:  var(--gray-350);
+    --border-default: var(--gray-600);
+    --border-subtle:  var(--gray-700);
+    --border-strong:  var(--gray-500);
+    --bg-bar: var(--bg-canvas);"""
+
+TOKENS_CSS = (_TOKENS_TEMPLATE.replace("__DARK__", _DARK)
+              .replace("__MORE_LIGHT__", _MORE_LIGHT).replace("__MORE_DARK__", _MORE_DARK))
