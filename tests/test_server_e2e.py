@@ -277,7 +277,9 @@ class TestShell:
     def test_첫_화면이_뜬다(self, client):
         page = client.get("/")
         assert page.status_code == 200
-        assert "설계 문서 기반 QA 에이전트" in page.text
+        # 탭 제목은 앱 이름만(2026-11-25 hh). 웹 UI 껍데기가 왔는지는 단계 길로 본다.
+        assert "<title>Prova</title>" in page.text
+        assert 'id="stepper"' in page.text
 
     def test_외부_자원을_불러오지_않는다(self, client):
         """리포트와 같은 원칙이다 — 폐쇄망에서도 열려야 한다."""

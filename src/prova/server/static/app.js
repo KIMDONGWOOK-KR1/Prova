@@ -133,7 +133,7 @@ async function copyText(text) {
  */
 function notifyDone(title) {
   if (!document.hidden) return;
-  document.title = `${title} — Prova`;
+  document.title = `${title} · Prova`;
   const back = () => {
     if (document.hidden) return;
     document.removeEventListener("visibilitychange", back);
@@ -411,10 +411,8 @@ const specName = () => (form().pdf || "").split(/[\\/]/).pop() || "기획서 없
 // 화면에 보이는 이름. 값(mock·vllm·replay)은 서버와 주고받는 이름이라 그대로 둔다.
 const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
 
-// Apple HIG Toolbars: 창 제목은 앱 이름이 아니라 지금 보는 곳을 짧게 — 탭을 여러 개 띄워도 구별된다.
-// 실행 중에는 'n/N 실행 중' 이 대신 선다(pushProgress).
-const STEP_TITLE = { 1: "기획서", 2: "항목 검토", 3: "실행", 4: "결과" };
-const pageTitle = () => `${STEP_TITLE[document.body.dataset.step] || STEP_TITLE[1]} — Prova`;
+// 탭에는 앱 이름만 — 할 말이 있을 때만(실행 중, 숨은 탭에서 끝남) 앞에 상태를 붙인다(hh 11-25).
+const pageTitle = () => "Prova";
 
 function renderChrome() {
   syncStepper();
@@ -932,7 +930,7 @@ function pushProgress(messages) {
           growBar(nums);
           clockTick();
           bar.setAttribute("aria-valuetext", `${bar.max}건 중 ${done}건 끝남`);
-          document.title = `${done}/${bar.max} 실행 중 — Prova`;
+          document.title = `${done}/${bar.max} 실행 중 · Prova`;
           const active = steps.querySelector(".pstep.active .t");
           if (active) active.textContent = `${done}/${bar.max}`;
         }
