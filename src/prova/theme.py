@@ -133,21 +133,28 @@ _TOKENS_TEMPLATE = """
   --r-sm: 4px; --r-md: 5px; --r-lg: 6px; --r-ctl-lg: 7px; --r-sel: 8px;
   --r-xl: 12px; --r-card: 12px; --r-window: 16px; --r-popover: 20px; --r-full: 999px;
 
-  /* 컨트롤 높이 — 키트 mini 16 · small 20 · regular 24 · large 28 · x-large 36 */
-  --ctl-sm: 20px; --ctl-md: 24px; --ctl-lg: 28px; --ctl-xl: 36px;
+  /* 컨트롤 높이 — 키트의 small 20 · regular 24 · large 28 · x-large 36 을 웹 데스크톱 눈금으로 한 칸씩
+     올렸다(2026-11-24 hh '글자·카드 크기 최적화'). 손이 아니라 마우스로 누르지만, 키트 값 그대로면
+     브라우저 안에서 입력 칸이 24px 로 작다. 입력·팝업·버튼 32, 큰 버튼 36. */
+  --ctl-sm: 24px; --ctl-md: 28px; --ctl-lg: 32px; --ctl-xl: 36px;
 
-  /* 글자 크기 — 키트의 글자 스타일. 2xs 10 Footnote · xs 11 Subheadline · sm 12 Callout ·
-     md 13 Body(본문) · base 15 Title 3 · lg 17 Title 2 · xl 22 Title 1 · 2xl/3xl 26 Large Title.
-     본문은 키트 그대로 13px(2026-11-24 hh). 한 줄짜리는 16px 줄 높이, 여러 줄 문단은 18px. */
-  --tx-2xs: 10px; --tx-xs: 11px; --tx-sm: 12px; --tx-md: 13px; --tx-base: 15px;
-  --tx-lg: 17px; --tx-xl: 22px; --tx-2xl: 26px; --tx-3xl: 26px;
-  --lh-row: 16px; --lh-para: 18px;
+  /* 글자 크기 — 키트의 글자 스타일 순서(Footnote · Subheadline · Callout · Body · Title 3 · 2 · 1 ·
+     Large Title)는 그대로 두고, 값은 한글 웹 데스크톱에 맞춰 한 칸씩 올렸다(2026-11-24 hh).
+     키트 본문 13px 은 맥 앱 기준이라 브라우저 속 한글로는 작다 — 한국 웹 서비스·개발 도구 웹앱
+     (Mobbin·UIBowl 레퍼런스)이 쓰는 14px 를 본문으로, 메타 12px, 쪽 제목 24px, 숫자 칸 30px.
+     2xs 11 · xs 12 · sm 13 · md 14 본문 · base 16 · lg 18 · xl 24 · 2xl 30 · 3xl 32.
+     줄 높이: 12px 글 16, 13px 글 18, 본문 한 줄 20, 본문 문단 22, 16px 제목 22, 24px 제목 30. */
+  --tx-2xs: 11px; --tx-xs: 12px; --tx-sm: 13px; --tx-md: 14px; --tx-base: 16px;
+  --tx-lg: 18px; --tx-xl: 24px; --tx-2xl: 30px; --tx-3xl: 32px;
+  --lh-xs: 16px; --lh-sm: 18px; --lh-row: 20px; --lh-para: 22px; --lh-title: 22px; --lh-xl: 30px;
 
   /* 움직임 — 상태가 바뀔 때만 쓴다(단계 이동·항목 완료·숫자 바뀜). 들어올 때 장식으로 쓰지 않는다.
      화면 설정에서 '동작 줄이기' 면 app.css 가 모두 끈다. */
   --dur-1: 150ms; --dur-2: 180ms; --dur-3: 250ms; --dur-4: 700ms;
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-roll: cubic-bezier(0.3, 0.5, 0.2, 1);
+  /* 살짝 넘쳤다 돌아오는 끝 — 끌어 놓기 문서 카드가 벌어질 때만(21st.dev File Upload 의 spring) */
+  --ease-spring: cubic-bezier(0.3, 1.35, 0.5, 1);
 
   --lh-tight: 1.35; --lh-normal: 1.5; --lh-relaxed: 1.65;
 }

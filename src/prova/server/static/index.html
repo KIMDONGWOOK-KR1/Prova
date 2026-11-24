@@ -97,9 +97,26 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
             <div id="formNote"></div>
 
             <div class="gbox" id="dropZone">
-              <div class="row">
-                <label class="lbl" for="pdf">기획서<small>PDF 를 끌어 놓아도 됩니다</small></label>
-                <div class="ctl"><span class="pop wide"><select id="pdf"></select></span></div>
+              <div class="row top">
+                <label class="lbl" for="pdf">기획서</label>
+                <div class="ctl">
+                  <span class="pop wide"><select id="pdf"></select></span>
+                  <!-- 끌어 놓는 자리 (21st.dev File Upload) — 파일을 끌고 오면 문서 카드 셋이 벌어진다. 상자 전체가 받는다(app.js dropToUpload). -->
+                  <div class="drop" id="dropArea">
+                    <span class="fan" aria-hidden="true">
+                      <span class="fcard l"><i></i><i></i><i></i></span>
+                      <span class="fcard r"><i></i><i></i><i></i></span>
+                      <span class="fcard c"><i></i><i></i><i></i><b>PDF</b></span>
+                    </span>
+                    <span class="drop-say">
+                      <b class="idle">새 기획서는 여기로 끌어 놓거나 <button type="button" class="link" id="dropPick">파일에서 고르기</button></b>
+                      <b class="over" aria-hidden="true">놓으면 올라갑니다</b>
+                      <small>기획서 PDF · Figma 응답 JSON</small>
+                    </span>
+                  </div>
+                  <!-- 올린 파일 한 줄 (21st.dev Attachment States) — 올리는 중 · 올림 · 못 올림 -->
+                  <div class="attach" id="attach"></div>
+                </div>
               </div>
               <div class="row">
                 <label class="lbl" for="url">검사할 사이트 주소</label>

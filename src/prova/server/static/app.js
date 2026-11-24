@@ -1548,7 +1548,7 @@ function runWhen(iso) {
 let donutSeq = 0;
 function donut(n, keys, total, say) {
   if (!total) return "";
-  const size = 60, c = size / 2, w = 9, r = c - w / 2 - 1, len = 2 * Math.PI * r;
+  const size = 64, c = size / 2, w = 10, r = c - w / 2 - 1, len = 2 * Math.PI * r;
   const gap = keys.length > 1 ? 1.5 : 0;
   const id = `dsw${++donutSeq}`;
   let off = 0;
@@ -2180,17 +2180,86 @@ $("upload").addEventListener("change", async (e) => {
   if (file) await uploadFile(file);
 });
 
+$("dropPick").addEventListener("click", () => $("upload").click());
+
+/**
+ * 올린 파일 한 줄 — 21st.dev Attachment States 에서. 상태는 서버가 실제로 하는 일만 보인다:
+ * 올리는 중(몇 % 는 브라우저가 보낸 양), 올림, 못 올림. 서버는 받은 파일을 저장만 하므로
+ * '처리 중' 단계는 두지 않는다 — 없는 일을 있는 척 보여 주지 않는다.
+ * 못 올림은 알림이라 닫지 못하고(디자인 기준 1번) 다시 시도만 있다. 올리는 중의 × 는 멈추기다.
+ */
+const ATT_X = `<svg viewBox="0 0 12 12" aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>`;
+const upload = { xhr: null, file: null };
+
+function sizeText(bytes) {
+  if (!Number.isFinite(bytes)) return "";
+  return bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+}
+
+function showAttach(stateName, file, { pct = 0, why = "", retry = false, picked = "" } = {}) {
+  const box = $("attach");
+  if (!stateName) { box.innerHTML = ""; return; }
+  const media = stateName === "uploading" ? vmark("run", { say: false })
+    : stateName === "done" ? vmark("done", { say: false }) : ICON.warn;
+  const say = stateName === "uploading" ? `올리는 중 · <span class="pct">${Math.round(pct * 100)}%</span>`
+    : stateName === "done" ? [`올렸습니다`, sizeText(file.size), picked].filter(Boolean).join(" · ")
+    : `<span class="sr">오류: </span>올리지 못했습니다 — ${why}`;
+  const acts = stateName === "uploading"
+    ? `<button type="button" class="att-x" id="attStop" aria-label="올리기 멈추기" title="올리기 멈추기">${ATT_X}</button>`
+    : stateName === "error" && retry ? `<button type="button" class="btn sm" id="attRetry">다시 시도</button>` : "";
+  box.innerHTML = `<div class="att" data-state="${stateName}" role="${stateName === "error" ? "alert" : "status"}">` +
+    `<span class="att-media">${media}</span>` +
+    `<span class="att-body"><b>${esc(file.name)}</b><small>${say}</small></span>` +
+    (acts ? `<span class="att-acts">${acts}</span>` : "") +
+    (stateName === "uploading" ? `<span class="att-bar" aria-hidden="true"><i></i></span>` : "") + `</div>`;
+  if ($("attStop")) $("attStop").addEventListener("click", () => upload.xhr && upload.xhr.abort());
+  if ($("attRetry")) $("attRetry").addEventListener("click", () => upload.file && uploadFile(upload.file));
+  if (stateName === "uploading") setAttachPct(pct);
+}
+
+// 몇 % 만 바꾼다 — 줄을 새로 그리면 도는 호가 처음부터 다시 돈다.
+function setAttachPct(pct) {
+  const row = $("attach").querySelector('.att[data-state="uploading"]');
+  if (!row) return;
+  row.querySelector(".pct").textContent = `${Math.round(pct * 100)}%`;
+  row.style.setProperty("--p", String(pct));
+}
+
+// fetch 는 보낸 양을 알려 주지 않는다 — 몇 % 를 보이려고 업로드만 XMLHttpRequest 로 보낸다.
+function postWithProgress(path, body, onProgress) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    upload.xhr = xhr;
+    xhr.open("POST", path);
+    xhr.responseType = "json";
+    xhr.upload.addEventListener("progress", (e) => { if (e.lengthComputable) onProgress(e.loaded / e.total); });
+    xhr.addEventListener("load", () => {
+      const out = xhr.response || {};
+      if (xhr.status >= 200 && xhr.status < 300) resolve(out);
+      else reject(new ApiError(detailText(out.detail) || `${xhr.status} ${xhr.statusText}`, xhr.status));
+    });
+    xhr.addEventListener("error", () =>
+      reject(new ApiError("서버에 연결하지 못했습니다. prova serve 가 살아 있는지 확인하세요.", 0)));
+    xhr.addEventListener("abort", () => reject(new ApiError("멈췄습니다", -1)));
+    xhr.send(body);
+  });
+}
+
 async function uploadFile(file) {
   const btn = $("uploadBtn");
+  if (btn.getAttribute("aria-busy") === "true") return;
+  upload.file = file;
   busyButton(btn, "올리는 중");
+  showAttach("uploading", file);
   try {
     const fd = new FormData();
     fd.append("file", file);
     // 기획서는 지금 적힌 프로젝트의 폴더로 들어간다 (서버가 이름을 확인한다).
     fd.append("project", $("project").value.trim());
-    const out = await api("/api/upload", { method: "POST", body: fd });
+    const out = await postWithProgress("/api/upload", fd, setAttachPct);
     // JSON 은 Figma 응답, PDF 는 기획서 — 올라간 쪽 셀렉트에 넣고 선택한다.
-    if (out.path.toLowerCase().endsWith(".json")) {
+    const isJson = out.path.toLowerCase().endsWith(".json");
+    if (isJson) {
       const target = $("figma");
       if (![...target.options].some((o) => o.value === out.path)) {
         const opt = document.createElement("option");
@@ -2202,21 +2271,25 @@ async function uploadFile(file) {
       await refreshSpecs(out.path);
     }
     $("formNote").innerHTML = "";
+    showAttach("done", file, { picked: isJson ? "실행 옵션의 Figma 자료로 골랐습니다" : "기획서로 골랐습니다" });
     saveSettings();
     syncVariant();
     renderChrome();
   } catch (err) {
-    // 조용히 사라지면 사용자는 올라간 줄 안다.
-    $("formNote").innerHTML = alertBox("fail", "업로드 실패", esc(err.message));
+    // 멈춘 것은 사람이 한 일이니 줄을 거둔다. 실패는 조용히 사라지면 올라간 줄 안다 — 남긴다.
+    if (err.status === -1) showAttach(null);
+    else showAttach("error", file, { why: esc(err.message), retry: true });
   } finally {
+    upload.xhr = null;
     idleButton(btn); syncUploadLabel();
   }
 }
 
 /**
- * 기획서 상자에 파일을 끌어 놓아도 올라간다 — 21st.dev 'AI Chat with File Attachments' 의 '끌어 놓기'.
- * 놓을 수 있는 동안 상자에 파란 테두리가 선다. PDF·JSON 이 아니면 올리지 않고 알린다.
- * 상자 밖에 놓쳐도 브라우저가 파일을 열어 화면을 떠나지 않게 막는다.
+ * 기획서 상자에 파일을 끌어 놓아도 올라간다 — 21st.dev File Upload 의 '끌어 놓기'.
+ * 놓을 수 있는 동안 끌어 놓는 자리가 파랗게 서고 문서 카드 셋이 벌어진다(app.css .gbox.dropping).
+ * PDF·JSON 이 아니면 올리지 않고 그 줄에 알린다. 상자 밖에 놓쳐도 브라우저가 파일을 열어
+ * 화면을 떠나지 않게 막는다.
  */
 (function dropToUpload() {
   const zone = $("dropZone");
@@ -2237,8 +2310,8 @@ async function uploadFile(file) {
     const file = e.dataTransfer.files[0];
     if (!file) return;
     if (!/\.(pdf|json)$/i.test(file.name)) {
-      $("formNote").innerHTML = alertBox("fail", "올리지 않았습니다",
-        `${esc(file.name)} — PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.`);
+      upload.file = null;
+      showAttach("error", file, { why: "PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다." });
       return;
     }
     await uploadFile(file);
