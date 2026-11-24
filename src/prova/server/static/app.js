@@ -2519,6 +2519,28 @@ async function renderRecap(last) {
   list.innerHTML = bad.slice(0, SHOW).map((c) =>
     `<li>${vmark(KIND[kindOf(c)].mark)}<span>${esc(c.plain || c.title)}</span></li>`).join("") +
     (bad.length > SHOW ? `<li class="more hint">외 ${bad.length - SHOW}건</li>` : "");
+  fitRecapList(list, bad.length);
+}
+
+// 카드가 왼쪽 카드 높이에 맞춰 잘리면(넓은 화면) 다 보이지 않는 항목을 빼고 '외 N건' 으로 센다 — 반쯤 잘린 줄을 남기지 않는다.
+// 카드 크기가 바뀌면(창 크기·사이드바 접기, 좁은 창에서 숨어 있다가 나타남) 처음 목록으로 되돌려 다시 맞춘다.
+const recapFitRO = window.ResizeObserver ? new ResizeObserver((es) => es.forEach((e) => {
+  const list = e.target, h = Math.round(e.contentRect.height);
+  if (!list.isConnected || list.dataset.fitH === String(h) || list._full === undefined) return;
+  list.dataset.fitH = String(h);
+  list.innerHTML = list._full;
+  fitRecapList(list, list._total, true);
+})) : null;
+function fitRecapList(list, total, again = false) {
+  if (!again) { list._full = list.innerHTML; list._total = total; if (recapFitRO) recapFitRO.observe(list); }
+  if (!list.clientHeight || list.scrollHeight <= list.clientHeight + 1) return;
+  const items = () => [...list.querySelectorAll("li:not(.more)")];
+  let more = list.querySelector("li.more");
+  if (!more) { list.insertAdjacentHTML("beforeend", `<li class="more hint"></li>`); more = list.lastElementChild; }
+  while (items().length > 1 && list.scrollHeight > list.clientHeight + 1) {
+    items().pop().remove();
+    more.textContent = `외 ${total - items().length}건`;
+  }
 }
 
 // 처음 온 사람에게만 — 예시 기획서와 결함을 심은 예시 사이트로 한 번에 끝까지 가 보게 한다.

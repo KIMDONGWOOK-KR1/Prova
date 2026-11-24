@@ -325,7 +325,9 @@ body:not([data-view="form"]) .pane-form { display: none; }
 
 .form-col { max-width: 720px; margin: 0 auto; }
 .recap { display: none; }
-.pane-form .scroll { padding-top: var(--sp-10); padding-bottom: var(--sp-12); }
+/* 첫 화면은 창 높이에 맞춰 내려 앉힌다 — 위:아래 빈칸이 대략 4:6. 내용 높이가 아니라 창 높이로만 정하므로
+   '더 설정하기' 를 펼쳐도 제목·카드가 제자리에 있다 */
+.pane-form .scroll { padding-top: clamp(var(--sp-10), calc((100vh / var(--z) - 720px) * 0.5), 200px); padding-bottom: var(--sp-12); }
 
 .hero-t { font-size: var(--tx-2xl); line-height: 38px; font-weight: 700; letter-spacing: -0.025em; }
 .pane-form .lede { margin-top: 10px; font-size: var(--tx-base); line-height: var(--lh-para); }
@@ -368,7 +370,8 @@ body:not([data-view="form"]) .pane-form { display: none; }
   background: var(--fg-default); color: var(--bg-raised);
 }
 .doc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
-.doc-body .pop.wide { width: 100%; max-width: 420px; }
+/* 오른쪽 끝을 아래 올리기 칸·주소 줄과 맞춘다 */
+.doc-body .pop.wide { width: 100%; }
 
 /* 주소 칸 — 지구 모양을 앞에 둔 40px 칸 */
 .urlf { position: relative; flex: 1; min-width: 0; display: flex; }
@@ -397,10 +400,17 @@ body:not([data-view="form"]) .pane-form { display: none; }
     grid-template-columns: minmax(0, 720px) minmax(300px, 1fr); column-gap: var(--sp-10);
   }
   .form-col > * { grid-column: 1; }
+  .form-col > .start { align-self: start; }
+  #recapOpen { margin-top: auto; }
+  /* 지난 확인 카드는 왼쪽 카드 높이를 따른다 — 제 내용으로 줄 높이를 늘리지 않는다(contain: size).
+     넘치는 항목은 app.js fitRecapList 가 '외 N건' 으로 접는다. '이렇게 확인해요'(처음) 는 제 높이 그대로 */
+  .recap[data-k="last"] { contain: size; }
+  .recap[data-k="last"] .rc-list { flex: 1 1 auto; min-height: 0; overflow: hidden; }
   .recap {
     display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
-    grid-column: 2; grid-row: 4 / span 3; align-self: start;
-    margin-top: var(--sp-8); padding: var(--sp-5) var(--sp-6) var(--sp-6);
+    /* 왼쪽 카드와 위·아래 끝을 맞추고, '결과 자세히 보기' 는 '확인할 항목 뽑기' 와 같은 줄에 */
+    grid-column: 2; grid-row: 4; align-self: stretch;
+    margin-top: var(--sp-8); padding: var(--sp-5) var(--sp-6) var(--sp-4);
     border-radius: var(--r-window); background: var(--fill-group);
   }
 }
