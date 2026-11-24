@@ -544,13 +544,20 @@ function runRow(c, i, k) {
  * 맨 아래를 보고 있으면 따라 내려가고, 위로 올려 읽는 중이면 끌어내리지 않는다. 그동안 온 줄 수를
  * '새 줄 n개 — 맨 아래로' 로 알려 준다. 접혀 있어도 머리줄의 줄 수가 늘어 일이 도는 것이 보인다. */
 const atLogEnd = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+// 가려진 줄이 있는 쪽 가장자리만 흐린다 — macOS 의 스크롤 가장자리 효과와 같은 뜻(21st.dev AI Thinking 에서).
+// 다 보이면 걸지 않는다. 바탕은 .logbox 가 가져서 흐림이 글에만 걸린다.
+function logEdges(log) {
+  log.classList.toggle("cut-top", log.scrollTop > 2);
+  log.classList.toggle("cut-bottom", log.scrollHeight - log.scrollTop - log.clientHeight > 2);
+}
 
 function followLog() {
   const log = $("pLog"), jump = $("pLogJump"), raw = $("pRaw");
   if (!log || !jump) return;
-  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; };
+  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; logEdges(log); };
   jump.addEventListener("click", toEnd);
   log.addEventListener("scroll", () => {
+    logEdges(log);
     if (atLogEnd(log)) { jump.hidden = true; log.dataset.unseen = 0; }
   }, { passive: true });
   raw.addEventListener("toggle", () => { if (raw.open) toEnd(); });
@@ -566,7 +573,8 @@ function appendLog(log, lines) {
   const n = (Number(log.dataset.n) || 0) + lines.length;
   log.dataset.n = n;
   $("pLogN").textContent = ` · ${n}줄`;
-  if (follow) { log.scrollTop = log.scrollHeight; return; }
+  if (follow) { log.scrollTop = log.scrollHeight; logEdges(log); return; }
+  logEdges(log);
   const unseen = (Number(log.dataset.unseen) || 0) + lines.length;
   log.dataset.unseen = unseen;
   const jump = $("pLogJump");
@@ -1532,6 +1540,43 @@ function runWhen(iso) {
   return diff === 0 ? `오늘 ${hm}` : diff === 1 ? `어제 ${hm}` : `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${hm}`;
 }
 
+/**
+ * 통과율 칸의 원형 차트 — 리포트 파일의 도넛과 같은 조각·같은 색(chart 토큰). hh 11-23 첫 요청
+ * '검사 후 원형 차트 복구' 를 화면에도 지킨다. 숫자는 옆 칸들이 말하므로 가운데는 비운다.
+ * 들어올 때 한 번 시계 방향으로 그려지고(동작 줄이기면 바로), 숫자 칸에 올리면 그 조각만 진하다.
+ */
+let donutSeq = 0;
+function donut(n, keys, total, say) {
+  if (!total) return "";
+  const size = 60, c = size / 2, w = 9, r = c - w / 2 - 1, len = 2 * Math.PI * r;
+  const gap = keys.length > 1 ? 1.5 : 0;
+  const id = `dsw${++donutSeq}`;
+  let off = 0;
+  const arcs = keys.map((k) => {
+    const arc = (n[k] / total) * len, drawn = Math.max(arc - gap, 0.5);
+    const el = `<circle class="seg ${k}" data-k="${k}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"` +
+      ` stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`;
+    off += arc;
+    return el;
+  }).join("");
+  return `<svg class="donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(say)}">` +
+    `<mask id="${id}" class="sweep-mask"><circle class="sweep" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w + 4}"` +
+    ` pathLength="100" transform="rotate(-90 ${c} ${c})"/></mask>` +
+    `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"/>` +
+    `<g transform="rotate(-90 ${c} ${c})" mask="url(#${id})">${arcs}</g></svg>`;
+}
+
+// 숫자 칸 ↔ 조각. 칸에 올리면 그 조각만 진하다 — 글자는 이미 다 보이니 마우스용 덧붙임이다.
+function linkDonut(tiles) {
+  if (!tiles || !tiles.querySelector(".donut")) return;
+  tiles.addEventListener("pointerover", (e) => {
+    const t = e.target.closest(".tile[data-k], .seg");
+    const k = t && t.dataset.k;
+    if (k && tiles.querySelector(`.seg[data-k="${k}"]`)) tiles.dataset.on = k; else delete tiles.dataset.on;
+  });
+  tiles.addEventListener("pointerleave", () => { delete tiles.dataset.on; });
+}
+
 function showResult(out) {
   state.result = out;
   state.report = null;
@@ -1618,7 +1663,7 @@ function showResult(out) {
   const n = { pass: s.pass, defect: defects, infra, unv };
   const total = s.total || 1;
   const tile = (k, label, mark) =>
-    `<div class="tile${n[k] ? "" : " zero"}"><small>${vmark(mark, { dot: true, say: false })}${label}</small>` +
+    `<div class="tile${n[k] ? "" : " zero"}" data-k="${k}"><small>${vmark(mark, { dot: true, say: false })}${label}</small>` +
     `<b><span class="rn">${n[k]}</span></b></div>`;
   const parts = ["pass", "defect", "infra", "unv"].filter((k) => n[k]);
   $("stage").innerHTML = `
@@ -1633,10 +1678,8 @@ function showResult(out) {
       ${cond ? `<p class="cond">${esc(cond)}</p>` : ""}
       <div class="notes">${notes.join("")}</div>
       <div class="tiles">
-        <div class="tile"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b>
-          <div class="ratio" role="img" aria-label="${esc(parts.map((k) =>
-            `${KIND[k].label} ${n[k]}건`).join(", "))}">${
-            parts.map((k) => `<i class="${k}" style="flex:${n[k] / total}"></i>`).join("")}</div></div>
+        <div class="tile rate"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b>
+          ${donut(n, parts, total, parts.map((k) => `${KIND[k].label} ${n[k]}건`).join(", "))}</div>
         ${tile("pass", "통과", "ok")}${tile("defect", "기획서와 다름", "fail")}${tile("infra", "실행 문제", "infra")}${tile("unv", "확인 불가", "unv")}
       </div>
       <div class="split">
@@ -1645,6 +1688,7 @@ function showResult(out) {
       </div>
     </div>`;
   $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
+  linkDonut($("stage").querySelector(".tiles"));
   $("detail").addEventListener("click", onCite);
   $("sideFoot").textContent = out.target || runId;
   $("sideFoot").title = `실행 기록 ${runId}`;
@@ -1918,12 +1962,29 @@ function renderRuns() {
     const shown = open ? list : list.slice(0, RUNS_SHOWN);
     return `<h4>${esc(key || "프로젝트 없음")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
       shown.map((r) => `<li><button class="sitem tall" type="button" data-run="${esc(r.run_id)}"
-          title="${esc(`${r.run_id} · ${r.target} · ${r.pass}/${r.total} 통과`)}">${vmark(runKind(r), { dot: true })}
+          title="${esc([`${r.target} · ${r.pass}/${r.total} 통과`, runWhere(r)].filter(Boolean).join("\n"))}">${vmark(runKind(r), { dot: true })}
         <span class="two"><b>${esc((r.spec || r.run_id).replace(/\.pdf$/i, ""))}${r.round ? ` · ${r.round}차` : ""}</b>
         <span>${esc([runWhen(r.created_at), `${r.pass}/${r.total} 통과`].filter(Boolean).join(" · "))}</span></span></button></li>`).join("") +
       (list.length > RUNS_SHOWN ? `<li><button class="sitem more" type="button" data-more="${esc(key)}">${open
         ? "접기" : `이전 기록 ${list.length - RUNS_SHOWN}개 더 보기`}</button></li>` : "") + `</ul>`;
   }).join("");
+}
+
+/**
+ * 통과 못 한 케이스가 어느 화면에서 났는지 — 많은 순으로, 흐름 케이스는 '흐름' 하나로.
+ * 사이드바 줄 위에 올리면 뜨는 도움말에 한 줄로 붙인다(macOS 도움말 태그). 예전에는 둘째 줄이
+ * 위로 빠지며 바뀌었는데, 사이드바 줄이 저절로 모양을 바꾸는 것은 macOS 답지 않아 글만 남겼다.
+ */
+function runWhere(r) {
+  const s = r.summary || {};
+  const names = s.screen_names || {};
+  const parts = Object.entries(s.by_screen || {})
+    .filter(([, v]) => v && v.fail).map(([k, v]) => [names[k] || k, v.fail]);
+  const flows = Object.values(s.by_flow || {}).reduce((n, v) => n + ((v && v.fail) || 0), 0);
+  if (flows) parts.push(["흐름", flows]);
+  if (!parts.length) return "";
+  parts.sort((a, b) => b[1] - a[1]);
+  return `통과 못 한 곳: ${parts.map(([nm, c]) => `${nm} ${c}`).join(" · ")}`;
 }
 
 $("runs").addEventListener("click", (e) => {
