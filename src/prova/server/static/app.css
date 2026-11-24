@@ -1450,3 +1450,18 @@ input[type=text], input[type=url], input[type=search], select, textarea {
   .btn.quiet::after, .case .how .cite::after, .seg button::after { content: ""; position: absolute; inset: -6px -4px; }
   .case input[type=checkbox]::after, label.check input[type=checkbox]::after { inset: -10px; }
 }
+
+/* ── 버튼 안의 '하는 중' (app.js busyButton) ─────────────────────────────────
+   21st.dev Animated Generate Button 에서 '누른 버튼이 진행 중 이름으로 바뀐다' 만. Apple HIG Buttons:
+   바로 끝나지 않는 동작은 버튼 안에 진행 표시를 띄운다. 눌린 동안 흐려지지 않는다 — 꺼진 버튼이
+   아니라 일하는 버튼이다. 반짝이 기호·글자 반짝임·빛 번짐·그림자는 버렸다. */
+.btn[aria-busy="true"]:disabled { opacity: 1; cursor: progress; color: var(--fg-default); }
+.btn-spin {
+  flex: none; width: 11px; height: 11px; border-radius: var(--r-full);
+  border: 1.5px solid currentColor; border-right-color: transparent; opacity: 0.7;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .btn-spin { animation: spin 0.8s linear infinite; }
+}
+/* 글자만 있는 버튼(올리기)은 왼쪽에 붙어 있다 — 하는 중에도 제자리에서 시작한다 */
+.btn.quiet[aria-busy="true"] { justify-content: flex-start; }

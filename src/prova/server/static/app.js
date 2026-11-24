@@ -134,6 +134,32 @@ function rollIn(el) {
 }
 
 /**
+ * 누른 뒤 바로 끝나지 않는 버튼 — 버튼 안에서 '하는 중' 으로 바뀐다.
+ *
+ * 21st.dev 'Animated Generate Button' 에서 '누르면 그 버튼이 진행 중 이름으로 바뀐다' 만 가져왔다.
+ * Apple HIG Buttons 도 같은 말을 한다 — 바로 끝나지 않는 동작은 버튼 안에 진행 표시를 띄운다.
+ * 버튼은 줄어들지 않는다(옆 버튼이 밀려 움직이지 않게). 눌린 동안은 다시 누를 수 없다.
+ * 원본의 반짝이 기호·글자별 반짝임·빛 번짐·확대·흐림·그림자 여러 겹은 버렸다.
+ */
+function busyButton(btn, label) {
+  if (!btn || btn.getAttribute("aria-busy") === "true") return;
+  btn.dataset.idle = btn.innerHTML;
+  btn.style.minWidth = `${btn.offsetWidth}px`;
+  btn.disabled = true;
+  btn.setAttribute("aria-busy", "true");
+  btn.innerHTML = `<span class="btn-spin" aria-hidden="true"></span><span>${esc(label)}</span>`;
+}
+
+function idleButton(btn) {
+  if (!btn || btn.getAttribute("aria-busy") !== "true") return;
+  btn.innerHTML = btn.dataset.idle || btn.innerHTML;
+  delete btn.dataset.idle;
+  btn.style.minWidth = "";
+  btn.disabled = false;
+  btn.removeAttribute("aria-busy");
+}
+
+/**
  * 늘어났다 줄어드는 선택 판 (21st.dev 'Liquid Navbar — Waterline' 의 CSS 대체 경로).
  *
  * 판의 앞쪽은 빠른 용수철로 새 자리에 먼저 닿고, 뒤쪽은 70ms 늦게 느린 용수철로
@@ -1171,8 +1197,7 @@ async function startRun() {
     if (stop) {
       stop.hidden = false;
       stop.onclick = async () => {
-        stop.disabled = true;
-        stop.textContent = "지금 항목이 끝나면 멈춥니다…";
+        busyButton(stop, "지금 항목이 끝나면 멈춥니다");
         try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
       };
     }
@@ -1729,7 +1754,7 @@ $("upload").addEventListener("change", async (e) => {
   const file = e.target.files[0];
   if (!file) return;
   const btn = $("uploadBtn");
-  btn.disabled = true; btn.textContent = "올리는 중…";
+  busyButton(btn, "올리는 중");
   try {
     const form = new FormData();
     form.append("file", file);
@@ -1755,7 +1780,7 @@ $("upload").addEventListener("change", async (e) => {
     $("stage").insertAdjacentHTML("afterbegin",
       alertBox("fail", "업로드 실패", esc(err.message)));
   } finally {
-    btn.disabled = false; syncUploadLabel();
+    idleButton(btn); syncUploadLabel();
     e.target.value = "";
   }
 });
