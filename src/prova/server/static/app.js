@@ -46,7 +46,12 @@ function fluidHover(box, selector) {
   box.classList.add("has-hl");
   if (box.dataset.hl) return;            // 이벤트는 상자마다 한 번만 건다
   box.dataset.hl = "1";
-  let row = null;
+  let row = null, rowH = 0;
+  // 펼친 줄은 키가 바뀐다 — 펼침이 260ms 동안 자라므로 매 프레임 따라간다(처음 관찰은 건너뛴다).
+  const ro = window.ResizeObserver ? new ResizeObserver(([en]) => {
+    const h = en.target.getBoundingClientRect().height;
+    if (en.target === row && Math.abs(h - rowH) > 0.5) { rowH = h; place(true); }
+  }) : null;
   const layer = () => {
     let hl = box.querySelector(":scope > .hl");
     if (!hl) {
@@ -59,6 +64,7 @@ function fluidHover(box, selector) {
   };
   const hide = () => {
     row = null;
+    if (ro) ro.disconnect();
     const hl = box.querySelector(":scope > .hl");
     if (hl) hl.classList.remove("on");
   };
@@ -80,11 +86,13 @@ function fluidHover(box, selector) {
     const hl = box.querySelector(":scope > .hl");
     const fresh = !hl || !hl.classList.contains("on");
     row = r;
+    rowH = r.getBoundingClientRect().height;
+    if (ro) { ro.disconnect(); ro.observe(r); }
     place(fresh || reduceMotion());
   });
   box.addEventListener("pointerleave", hide);
-  // 펼친 줄은 키가 바뀐다 — 배경도 따라 늘어난다. toggle 은 올라오지 않아 잡는 단계에서 받는다.
-  box.addEventListener("toggle", () => place(false), true);
+  // ResizeObserver 가 없는 브라우저 — 펼친 직후 한 번만 맞춘다. toggle 은 올라오지 않아 잡는 단계에서 받는다.
+  if (!ro) box.addEventListener("toggle", () => place(false), true);
 }
 
 /**
@@ -945,6 +953,7 @@ function showPlan() {
     $("request").focus();
   });
   $("runBtn").addEventListener("click", startRun);
+  $("groups").addEventListener("click", onCite);
 
   state.draft = JSON.parse(JSON.stringify(p.doc || { screens: [] }));
   state.dirty = false;
@@ -1224,13 +1233,79 @@ function caseRow(c, grouped) {
 // 무슨 값을 넣고 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다 (prova/wording.py).
 function caseHow(c, head) {
   if (!(c.steps || []).length && !c.expected) return "";
+  const src = (c.sources || []).map(readSource);
+  const id = `src-${c.case_id}`;
   return `<details class="how">
     <summary class="line">${head}</summary>
     <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
-    ${c.expected ? `<div class="expect"><b>기대</b> ${esc(c.expected)}</div>` : ""}
-    ${(c.sources || []).map((s) => `<div class="expect src"><b>기획서</b> ${esc(s)}</div>`).join("")}
+    ${c.expected ? `<div class="expect"><b>기대</b> <span>${citedExpect(c.expected, src, id)}</span></div>` : ""}
+    ${src.length ? `<div class="srcs" id="${esc(id)}">
+      <button type="button" class="srcs-btn" aria-expanded="false" aria-controls="${esc(id)}-list">
+        <b>기획서 근거</b> ${src.length}곳</button>
+      <div class="srcs-list" id="${esc(id)}-list"><div>${src.map((s, i) =>
+        `<p data-i="${i}"><b>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</b> ${esc(s.quote)}</p>`).join("")}</div></div>
+    </div>` : ""}
     <div class="expect src"><b>케이스 번호</b> ${esc(c.case_id)}</div>
   </details>`;
+}
+
+/* ── 기획서 근거를 그 말이 나온 자리에 ─────────────────────────────────────
+ * 21st.dev Streaming Text 에서 '문장 안의 출처 칩' 과 '출처 목록이 펼쳐진다' 만 가져왔다.
+ * 기대 문장의 따옴표 값('가입이 완료되었습니다')이 기획서 원문에 있으면 그 값이 든 마디 끝에
+ * '2쪽' 칩을 붙인다. 못 찾은 근거는 문장 끝에 붙는다. 칩을 누르면 아래 근거 목록이 펼쳐지고
+ * 그 칩의 원문만 진해진다. 낱말이 하나씩 흐려졌다 나타나는 효과는 버렸다 — Prova 의 문장은 이미
+ * 다 만들어진 것이라 흘려 보여 주면 읽기만 늦어진다. 아바타·후속 질문·좋아요 버튼도 버렸다. */
+function readSource(text) {
+  const m = /^(\d+)쪽 (표|본문): ([\s\S]*)$/.exec(text);
+  return m ? { page: +m[1], kind: m[2], quote: m[3] } : { page: 0, kind: "", quote: text };
+}
+
+function citedExpect(expected, src, id) {
+  if (!src.length) return esc(expected);
+  const quoted = [...expected.matchAll(/'([^']{2,})'/g)];
+  const at = new Map();   // 칩을 끼울 자리 → 근거 번호들
+  src.forEach((s, i) => {
+    const hit = quoted.filter((m) => s.quote.includes(m[1]))
+      .sort((a, b) => b[1].length - a[1].length)[0];
+    let pos = expected.length;
+    if (hit) {
+      const from = hit.index + hit[0].length;
+      const stop = expected.slice(from).search(/ 또는 | 그리고 |, |\)/);
+      if (stop >= 0) pos = from + stop;
+    }
+    at.set(pos, [...(at.get(pos) || []), i]);
+  });
+  let html = "", last = 0;
+  for (const pos of [...at.keys()].sort((a, b) => a - b)) {
+    const idx = at.get(pos);
+    const pages = [...new Set(idx.map((i) => src[i].page).filter(Boolean))];
+    const label = pages.length ? `${pages.join("·")}쪽` : "기획서";
+    html += esc(expected.slice(last, pos)) +
+      `<button type="button" class="cite" data-src="${idx.join(" ")}" aria-controls="${esc(id)}-list"
+         aria-expanded="false" title="기획서 원문 보기">${label}<span class="sr"> 기획서 원문 보기</span></button>`;
+    last = pos;
+  }
+  return html + esc(expected.slice(last));
+}
+
+// 칩은 목록을 펼치고 제 원문만 진하게 한다. 같은 칩을 다시 누르면 접는다. 목록 머리줄은 그냥 펼치고 접는다.
+function onCite(e) {
+  const btn = e.target.closest(".cite, .srcs-btn");
+  if (!btn) return;
+  const how = btn.closest(".how"), box = how && how.querySelector(".srcs");
+  if (!box) return;
+  const chip = btn.classList.contains("cite");
+  const same = chip && btn.classList.contains("on");
+  const open = chip ? !same || !box.classList.contains("open") : !box.classList.contains("open");
+  const on = new Set(chip && open ? btn.dataset.src.split(" ") : []);
+  box.classList.toggle("open", open);
+  box.classList.toggle("picked", on.size > 0);
+  box.querySelectorAll(".srcs-list p").forEach((p) => p.classList.toggle("on", on.has(p.dataset.i)));
+  how.querySelectorAll(".cite").forEach((c) => {
+    c.classList.toggle("on", open && c === btn);
+    c.setAttribute("aria-expanded", String(open));
+  });
+  box.querySelector(".srcs-btn").setAttribute("aria-expanded", String(open));
 }
 
 function picked() {

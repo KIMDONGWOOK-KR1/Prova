@@ -1421,3 +1421,51 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
   .result-chart { flex-direction: column; align-items: stretch; }
   .donut { align-self: center; }
 }
+
+/* ── 기획서 근거를 그 말이 나온 자리에 ─────────────────────────────────────
+   21st.dev Streaming Text 의 '문장 안 출처 칩' 과 '출처 목록이 펼쳐진다' 만. 칩은 기대 문장의
+   그 마디 끝에 붙고, 누르면 아래 원문 목록이 펼쳐지며 그 칩의 원문만 진해진다. 원본의 낱말
+   흘리기·흐림·튀어나오기·아바타·후속 질문은 버렸다 — 칩은 접힌 단락이 열릴 때 이미 제자리에 있다. */
+.case .how .cite {
+  display: inline-flex; align-items: center; height: 18px; padding: 1px 5px 0; margin: 0 2px 0 4px;
+  vertical-align: 1px; font: 500 var(--tx-xs)/1 var(--font-mono); color: var(--fg-muted);
+  background: var(--bg-inset); border: 1px solid var(--border-subtle); border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out),
+              border-color var(--dur-1) var(--ease-out);
+}
+.case .how .cite:hover { background: var(--bg-hover); color: var(--fg-default); }
+.case .how .cite.on { color: var(--fg-default); background: var(--bg-active); border-color: var(--border-strong); }
+.case .how .cite:focus-visible, .case .how .srcs-btn:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+.case .how .srcs { margin-top: 2px; }
+.case .how .srcs-btn {
+  appearance: none; display: inline-flex; align-items: center; padding: 0; border: 0; background: none;
+  font: inherit; font-size: var(--tx-sm); color: var(--fg-muted); cursor: pointer; border-radius: var(--r-sm);
+}
+.case .how .srcs-btn b { font-weight: 600; margin-right: var(--sp-2); }
+.case .how .srcs-btn::after {
+  content: ""; width: 5px; height: 5px; margin-left: var(--sp-2);
+  border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+  color: var(--fg-subtle); transform: translateY(-1px) rotate(-45deg);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.case .how .srcs-btn:hover { color: var(--fg-default); }
+.case .how .srcs.open .srcs-btn::after { transform: translateY(-3px) rotate(45deg); }
+.case .how .srcs-list {
+  display: grid; grid-template-rows: 0fr; opacity: 0; visibility: hidden;
+  transition: grid-template-rows var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out),
+              visibility 0s linear var(--dur-3);
+}
+.case .how .srcs.open .srcs-list { grid-template-rows: 1fr; opacity: 1; visibility: visible; transition-delay: 0s; }
+.case .how .srcs-list > div { min-height: 0; overflow: hidden; }
+.case .how .srcs-list p {
+  margin: 4px 0 0; padding: 2px 0 2px var(--sp-3); font-size: var(--tx-sm); color: var(--fg-muted);
+  border-left: 2px solid var(--border-default); word-break: keep-all; overflow-wrap: anywhere;
+  transition: color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+.case .how .srcs-list p:last-child { margin-bottom: 4px; }
+.case .how .srcs-list p b { font-weight: 600; margin-right: var(--sp-2); white-space: nowrap; }
+.case .how .srcs.picked .srcs-list p.on { color: var(--fg-default); border-left-color: var(--fg-default); }
+@media (prefers-reduced-motion: reduce) {
+  .case .how .cite, .case .how .srcs-btn::after, .case .how .srcs-list, .case .how .srcs-list p { transition: none; }
+}
