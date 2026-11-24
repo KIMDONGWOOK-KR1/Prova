@@ -19,6 +19,8 @@ _PREPARE_JS = """async () => {
   document.documentElement.classList.remove('embedded');
   document.querySelectorAll('details').forEach(d => { d.open = true; });
   document.querySelectorAll('.passfold details.case').forEach(d => { d.open = false; });
+  // 긴 단계의 접어 둔 앞 회차는 종이에서도 접힌 한 줄로 — 멈춘 회차만 펼쳐 둔다.
+  document.querySelectorAll('.tr-grp > details').forEach(d => { d.open = false; });
   document.querySelectorAll('section.pg').forEach(p => { p.hidden = false; });
   const imgs = [...document.querySelectorAll('img')];
   imgs.forEach(i => { i.loading = 'eager'; });

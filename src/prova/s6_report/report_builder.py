@@ -64,6 +64,8 @@ _PRINT_JS = """(function () {
     // 통과 케이스는 한 줄씩 목록으로 둔다 — 다 펼치면 같은 단계와 캡처가 케이스마다 되풀이된다.
     document.querySelectorAll('details:not([open])').forEach(function (d) {
       if (d.classList.contains('case') && d.closest('.passfold')) return;
+      // 긴 단계의 접어 둔 앞 회차는 접힌 한 줄로 둔다 — 멈춘 회차는 늘 펼쳐져 있다.
+      if (d.parentNode.classList.contains('tr-grp')) return;
       d.open = true; opened.push(d);
     });
   });
@@ -733,6 +735,21 @@ button.tr-name:focus-visible, .tr-scrub:focus-visible { outline:none; box-shadow
 .tr-foot { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:11px;
            color:var(--muted); margin:2px calc(var(--msw) + var(--gap)) 0 calc(var(--gut) + var(--gap)); }
 .tr-rows > li.broke .tr-name { color:var(--tr-hit); font-weight:600; }
+/* 긴 단계는 앞쪽 통과한 단계를 한 줄로 접는다(step_plan). 펼치면 회차마다 'N회째' 머리. */
+.tr-rows > li.tr-grp { display:block; height:auto; }
+.tr-grp > details > summary { display:grid; grid-template-columns:var(--gut) minmax(0,1fr) var(--msw); gap:var(--gap);
+                              align-items:center; height:24px; list-style:none; cursor:pointer; }
+.tr-grp > details > summary::-webkit-details-marker { display:none; }
+.tr-grp > details > summary .tr-name { cursor:pointer; display:flex; align-items:center; gap:4px; }
+.tr-grp > details > summary .n { color:var(--pass); }
+.tr-grp > details > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); border-radius:var(--r-sm); }
+.tr-grp .chev { flex:none; width:6px; height:6px; margin-left:4px; border:solid var(--muted); border-width:0 1.5px 1.5px 0;
+                transform:rotate(-45deg); transition:transform .15s ease-out; }
+.tr-grp > details[open] .chev { transform:rotate(45deg); }
+/* 묶음 이름은 막대 칸까지 써서 잘리지 않게 — 접힌 구간의 시간은 오른쪽 합계가 말한다 */
+.tr-grp > details > summary .tr-name { grid-column:1 / 3; overflow:visible; }
+.tr-grp > details > summary .tr-track { display:none; }
+.tr-rows > li.tr-rnd { display:block; height:auto; padding:6px 0 0 2px; font-size:11px; color:var(--muted); }
 @media (max-width:640px) { .trace { --gut:7.5rem; } }
 @media print { .tr-head, .tr-scrub { display:none; } }
 /* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
@@ -853,7 +870,7 @@ _TRACE_JS = r"""
 (function () {
   document.querySelectorAll('.trace').forEach(function (tr) {
     var total = +tr.dataset.total || 1;
-    var rows = Array.prototype.slice.call(tr.querySelectorAll('.tr-rows > li[data-start]'));
+    var rows = Array.prototype.slice.call(tr.querySelectorAll('.tr-rows li[data-start]'));
     var img = tr.querySelector('.shots img'), link = tr.querySelector('.shots a');
     var cap = tr.querySelector('.shots .cap'), scrub = tr.querySelector('.tr-scrub');
     if (!rows.length || !img || !scrub) return;
@@ -876,6 +893,9 @@ _TRACE_JS = r"""
       if (cap.textContent !== text) cap.textContent = text;
       if (on) on.removeAttribute('data-on');
       on = end ? null : rows[at]; if (on) on.setAttribute('data-on', '');
+      // 접어 둔 단계를 짚으면 그 묶음을 연다 — 짚은 줄이 늘 보여야 한다.
+      var fold = on && on.closest('details');
+      if (fold && !fold.open) fold.open = true;
       scrub.setAttribute('aria-valuenow', String(Math.round(t)));
       scrub.setAttribute('aria-valuetext', end ? '끝, 판정한 화면' : text);
       tr.t = t;
@@ -1085,6 +1105,45 @@ def _shots_html(verdict: Verdict, last: bool = False) -> str:
     return f"<div class='shots'>{items}</div>"
 
 
+def step_period(steps) -> int:
+    """같은 단계 묶음이 처음부터 되풀이되는 가장 짧은 길이(2 ≤ p ≤ n/2). 없으면 0.
+
+    동작·대상만 본다 — 넣은 값(다른 이메일 등)은 회차마다 달라도 같은 단계다. 마지막 회차가
+    중간에 끝나도(멈춤) 된다. 웹 UI(app.js stepPeriod)와 같은 규칙이다.
+    """
+    sig = [f"{getattr(r, 'phase', '') or ''}|{getattr(r, 'action', '') or ''}|{getattr(r, 'target', '') or ''}"
+           for r in steps]
+    n = len(sig)
+    for p in range(2, n // 2 + 1):
+        if all(x == sig[i % p] for i, x in enumerate(sig)):
+            return p
+    return 0
+
+
+def step_plan(steps, stop: int) -> dict | None:
+    """긴 단계(9개 이상)에서 앞쪽 통과한 단계를 한 줄로 접을 계획. 8개 이하·접을 게 없으면 None.
+
+    `stop` 은 멈춘 단계의 자리(모두 통과면 -1). 되풀이면 멈춘 회차 앞의 회차를 '1–4회째 · 16단계 모두 통과' 로,
+    아니면 멈춘 단계 앞 3개만 남기고 '앞 단계 N개 통과', 모두 통과면 마지막 하나만 남기고 '단계 N개 모두 통과'.
+    웹 UI(app.js stepPlan)와 같은 규칙이다.
+    """
+    n = len(steps)
+    if n <= 8:
+        return None
+    p = step_period(steps)
+    if p:
+        at = (stop if stop >= 0 else n - 1) // p
+        if at < 1:
+            return None
+        return {"hide": at * p, "period": p,
+                "label": f"{f'1–{at}' if at > 1 else '1'}회째 · {at * p}단계 모두 통과"}
+    hide = stop - 3 if stop >= 0 else n - 1
+    if hide < 2:
+        return None
+    return {"hide": hide, "period": 0,
+            "label": f"앞 단계 {hide}개 통과" if stop >= 0 else f"단계 {hide}개 모두 통과"}
+
+
 def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
     """실패 카드의 '판정한 화면' 자리 — 단계마다 걸린 시간을 한 축에 놓고, 끌면 그 단계 뒤 화면이 뜬다.
 
@@ -1115,6 +1174,9 @@ def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
         return f"{target or ''} {ACTION_LABELS.get(action, action or '')}".strip()
 
     rows, t = [], 0
+    stop = next((i for i, r in enumerate(steps) if r.status == "error"), len(steps) - 1)
+    plan = step_plan(steps, stop)
+    period = plan["period"] if plan else 0
     for i, r in enumerate(steps):
         dur = max(r.elapsed_ms, 0)
         state = "error" if r.status == "error" else "done"
@@ -1122,6 +1184,8 @@ def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
         name = what(r.action, r.target)
         hit = bool(broke) and r.phase != "setup" and r.target == broke and r.action != "click"
         cls = " ".join(c for c in ("setup" if r.phase == "setup" else "", "broke" if hit else "") if c)
+        if period and i % period == 0:
+            rows.append(f"<li class='tr-rnd' aria-hidden='true'><span>{i // period + 1}회째</span></li>")
         rows.append(
             f"<li data-state='{state}' data-start='{t}' data-end='{t + dur}'"
             f"{f' data-shot={chr(39)}{_esc(r.screenshot)}{chr(39)}' if r.screenshot else ''}"
@@ -1131,6 +1195,13 @@ def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
             f"width:{dur / total * 100:.3f}%'><i></i></span></span>"
             f"<span class='tr-ms'>{dur}ms</span></li>")
         t += dur
+        if plan and i == plan["hide"] - 1:
+            # 앞쪽 통과한 단계를 한 줄로 접는다 — 막대는 그 구간 전체. 인쇄에서도 접힌 채다.
+            inner = "".join(rows)
+            rows = [f"<li class='tr-grp'><details><summary><span class='tr-name'><span class='n'>✓</span>"
+                    f"{_esc(plan['label'])}<span class='chev' aria-hidden='true'></span></span>"
+                                        f"<span class='tr-ms'>{t}ms</span></summary>"
+                    f"<ol class='tr-rows' aria-label='접어 둔 단계 {plan['hide']}개'>{inner}</ol></details></li>"]
     for k, p in enumerate(verdict.pending_steps or []):
         pre = "준비 " if p.get("phase") == "setup" else ""
         name = what(p.get("action") or "", p.get("target") or "")

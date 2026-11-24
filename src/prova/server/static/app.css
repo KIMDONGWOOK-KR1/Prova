@@ -933,6 +933,29 @@ ol.tl li.defect .stop-lb { color: var(--fail-fg); }
 ol.tl li.infra .stop-lb { color: var(--note-fg); }
 ol.tl li.unv .stop-lb { color: var(--unv-fg); }
 ol.tl code { font-size: var(--tx-xs); line-height: var(--lh-sm); background: var(--fill-hover); border-radius: var(--r-sm); padding: 0 4px; }
+/* 긴 단계는 앞쪽 통과한 단계를 한 줄로 접는다 (app.js stepPlan). 접힌 줄 아래 선은 점선 — 숨은 단계가 있다는 표시.
+   펼치면 회차마다 작은 'N회째' 머리가 붙는다. */
+ol.tl li.grp { display: block; }
+ol.tl li.grp > details.disc { margin-top: 0; }
+ol.tl li.grp:has(> details:not([open]))::before { background: repeating-linear-gradient(to bottom, var(--sep) 0 3px, transparent 3px 6px); }
+ol.tl li.grp > details > summary { list-style: none; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: var(--sp-2);
+  cursor: default; border-radius: var(--r-sm); width: fit-content; padding-right: 6px; }
+ol.tl li.grp > details > summary::-webkit-details-marker { display: none; }
+ol.tl li.grp > details > summary .node { background: var(--accent-solid); color: var(--fg-onaccent); }
+ol.tl li.grp > details > summary .tx { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tx-sm); font-weight: 500; color: var(--fg-default); }
+ol.tl li.grp > details > summary:hover .tx { color: var(--accent-fg); }
+ol.tl li.grp > details > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+ol.tl li.grp > details > ol.tl { margin-top: 10px; }
+ol.tl li.grp > details > ol.tl > li:last-child { padding-bottom: 0; }
+ol.tl li.rnd { padding-bottom: 2px; font-size: var(--tx-2xs); line-height: 16px; color: var(--fg-muted); }
+ol.tl li.rnd::before { top: 0; bottom: 0; }
+ol.tl li:first-child.rnd::before { display: none; }
+/* '크게 보기' 는 화면 칸 안에만 — 브라우저 말풍선(title)은 옆 칸을 덮어서 쓰지 않는다 */
+.shot figure a { position: relative; }
+.zoom-hint { position: absolute; left: 50%; bottom: 8px; transform: translate(-50%, 2px); padding: 2px 8px; border-radius: var(--r-sm);
+  background: var(--fg-default); color: var(--bg-raised); font-size: var(--tx-2xs); line-height: 18px; white-space: nowrap;
+  opacity: 0; pointer-events: none; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
+.shot figure a:hover .zoom-hint, .shot figure a:focus-visible .zoom-hint { opacity: 1; transform: translate(-50%, 0); }
 /* 다른 항목을 고르면 줄이 40ms 씩 늦게 올라온다 — 다 합쳐 300ms 안 */
 ol.tl.enter li { animation: tl-in 160ms var(--ease-out) calc(min(var(--i, 0), 3.5) * 40ms) both; }
 @keyframes tl-in { from { opacity: 0; transform: translateY(4px); } }

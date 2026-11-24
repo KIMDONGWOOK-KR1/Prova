@@ -2344,7 +2344,7 @@ function resultSteps(c, steps) {
   const k = kindOf(c);
   let stop = steps.findIndex((st) => st.status !== "ok");
   if (stop < 0 && k !== "pass") stop = steps.length - 1;
-  return steps.map((st, i) => {
+  const line = (st, i) => {
     const prep = st.phase && st.phase !== "test";
     const done = stop < 0 || i < stop;
     const node = i === stop ? vmark(KIND[k].mark, { say: false }) : done ? "✓" : esc(String(st.seq));
@@ -2353,7 +2353,51 @@ function resultSteps(c, steps) {
       `<span class="tx">${prep ? `<span class="pre">준비</span> ` : ""}${stepWords(st)}` +
       `${st.status !== "ok" && st.error_detail ? ` — ${esc(st.error_detail)}` : ""}` +
       `${i === stop ? `<span class="stop-lb">여기서 멈춤 · ${KIND[k].label}</span>` : done && stop >= 0 ? `<span class="sr"> (지나감)</span>` : ""}</span></li>`;
-  }).join("");
+  };
+  const rnd = (r) => `<li class="rnd" aria-hidden="true"><span></span><span>${r}회째</span></li>`;
+  const plan = stepPlan(steps, stop);
+  if (!plan) return steps.map(line).join("");
+  const rows = (from, to, p) => steps.slice(from, to).map((st, j) =>
+    (p && (from + j) % p === 0 ? rnd((from + j) / p + 1) : "") + line(st, from + j)).join("");
+  const grp = `<li class="grp"><details class="disc"><summary><span class="node" aria-hidden="true">✓</span>` +
+    `<span class="tx">${esc(plan.label)}<span class="chev" aria-hidden="true"></span></span></summary>` +
+    `<ol class="tl">${rows(0, plan.hide, plan.period)}</ol></details></li>`;
+  return grp + rows(plan.hide, steps.length, plan.period);
+}
+
+/**
+ * 단계가 길면 앞쪽 통과한 단계를 한 줄로 접는다 (8개 이하는 그대로). report_builder.step_plan 과 같은 규칙.
+ * - 같은 단계 묶음이 되풀이되면(동작·대상만 본다, 넣은 값은 무시) 멈춘 회차 앞의 회차를 '1–4회째 · 16단계 모두 통과' 로.
+ * - 되풀이가 없으면 멈춘 단계 앞 3개만 두고 그 앞을 '앞 단계 N개 통과', 모두 통과면 마지막 하나만 두고 '단계 N개 모두 통과'.
+ * 돌려주는 것: { hide: 접을 단계 수, period, rounds, label } 또는 접을 게 없으면 null.
+ */
+function stepPeriod(steps) {
+  const sig = steps.map((st) => `${st.phase || ""}|${st.action || ""}|${st.target || ""}`);
+  const n = sig.length;
+  for (let p = 2; p <= n / 2; p++) {
+    if (sig.every((x, i) => x === sig[i % p])) return p;
+  }
+  return 0;
+}
+function stepPlan(steps, stop) {
+  const n = steps.length;
+  if (n <= 8) return null;
+  const p = stepPeriod(steps);
+  if (p) {
+    const at = Math.floor((stop >= 0 ? stop : n - 1) / p);
+    if (at < 1) return null;
+    return { hide: at * p, period: p, rounds: n / p,
+             label: `${at > 1 ? `1–${at}` : "1"}회째 · ${at * p}단계 모두 통과` };
+  }
+  const hide = stop >= 0 ? stop - 3 : n - 1;
+  if (hide < 2) return null;
+  return { hide, period: 0, label: stop >= 0 ? `앞 단계 ${hide}개 통과` : `단계 ${hide}개 모두 통과` };
+}
+function stepsHead(steps) {
+  const n = steps.length, p = n > 8 ? stepPeriod(steps) : 0;
+  if (!p) return `실행한 단계 ${n}`;
+  const full = Math.floor(n / p), rest = n % p;
+  return `실행한 단계 ${n} · ${p}단계 × ${full}회${rest ? ` + ${rest}단계` : ""}`;
 }
 
 /** 오른쪽 상세 — 기대·실제, 기획서 원문, 마지막 화면과 실행한 단계. 리포트 파일을 열지 않아도 원인을 본다. */
@@ -2383,10 +2427,10 @@ function renderDetail(c) {
       `<div class="quote" data-i="${i}"><cite>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</cite>${markQuote(s.quote, ev.expected)}</div>`).join("")}</div>` : ""}
     <div class="shot">
       ${ev.screenshot ? `<figure><figcaption>${shotStep ? `${shotStep.seq}단계 ${esc(stepWords(shotStep, false))} 뒤 화면` : "마지막 화면"}</figcaption>
-        <a href="${esc(base + ev.screenshot)}" target="_blank" rel="noopener" title="크게 보기">
-          <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"></a></figure>`
+        <a href="${esc(base + ev.screenshot)}" target="_blank" rel="noopener" aria-label="마지막 화면 크게 보기 (새 탭)">
+          <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"><span class="zoom-hint" aria-hidden="true">크게 보기</span></a></figure>`
         : `<figure><p class="noshot">이 항목은 화면을 찍지 않았어요.</p></figure>`}
-      <div class="keysteps"><b>실행한 단계 ${steps.length}</b>
+      <div class="keysteps"><b>${esc(stepsHead(steps))}</b>
         <ol class="tl">${resultSteps(c, steps)}</ol>
         <p class="idline" style="margin-top:8px">${esc(c.case_id)}</p></div>
     </div>`;
