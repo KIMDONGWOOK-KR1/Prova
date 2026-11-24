@@ -452,8 +452,14 @@ function setView(view, step) {
     if (s === step) el.setAttribute("aria-current", "step");
     else el.removeAttribute("aria-current");
     // 지난 단계는 파란 체크, 지금 단계는 흰 판 위의 파란 번호, 남은 단계는 회색 번호.
-    el.parentElement.dataset.state = s < step ? "done" : s === step ? "now" : "next";
-    el.querySelector(".no").textContent = s < step ? "✓" : String(s);
+    const li = el.parentElement, was = li.dataset.state, no = el.querySelector(".no");
+    li.dataset.state = s < step ? "done" : s === step ? "now" : "next";
+    no.textContent = s < step ? "✓" : String(s);
+    // 방금 지난 단계가 됐으면 체크가 튀어 들어온다 — 처음 그릴 때(was 없음)와 동작 줄이기에서는 없다
+    if (was && was !== "done" && li.dataset.state === "done" && !reduceMotion()) {
+      no.classList.remove("pop"); void no.offsetWidth; no.classList.add("pop");
+      no.addEventListener("animationend", () => no.classList.remove("pop"), { once: true });
+    }
   }
   $("barActions").innerHTML = "";
   $("sideFoot").textContent = "";
@@ -490,8 +496,11 @@ function stepChanged(prev, n) {
   $("stepSay").textContent = `4단계 중 ${n}단계, ${lb ? lb.textContent : ""}`;
   if (!reduceMotion() && content.animate && n !== prev) {
     const d = n > prev ? 1 : -1;
+    // 길이·곡선은 토큰(--dur-3 · --ease-out)을 읽는다
+    const css = getComputedStyle(document.documentElement);
     content.animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }],
-                    { duration: 250, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+                    { duration: parseFloat(css.getPropertyValue("--dur-3")) || 250,
+                      easing: css.getPropertyValue("--ease-out").trim() || "ease-out" });
   }
   requestAnimationFrame(() => {
     const a = document.activeElement;

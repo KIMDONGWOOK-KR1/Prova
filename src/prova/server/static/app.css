@@ -233,7 +233,7 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
 
 /* 단계 = 경로 세그먼트. 흰 판(thumb)은 하나뿐이고 단계가 바뀌면 미끄러진다(app.js placeThumb) */
 .path {
-  list-style: none; position: relative;
+  list-style: none; position: relative; isolation: isolate;
   display: inline-flex; align-items: center; gap: 0;
   height: var(--ctl-lg); padding: 2px; border-radius: var(--r-full);
   background: var(--fill-track);
@@ -253,6 +253,8 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
   background: var(--fill-selected); color: var(--fg-default);
 }
 .path li[data-state="done"] .no { background: var(--accent-blue); color: var(--fg-onaccent); }
+/* 채움 위의 지난 단계 이름 — fg-muted 는 어두운 화면에서 4.5:1 이 안 나온다(4.32). 굵기로 지금 단계와 가른다. */
+.path li[data-state="done"] [data-step] { color: var(--fg-default); }
 .path li[data-state="done"] .no::after { content: ""; }
 .path li[data-state="now"] [data-step] { color: var(--fg-default); font-weight: 600; }
 .path li[data-state="now"] .no { background: var(--accent-solid); color: var(--fg-onaccent); }
@@ -263,6 +265,17 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
   opacity: 0;
 }
 .path[data-ready]::before { opacity: 1; }
+/* 지난 단계 채움 — 길 왼쪽 끝부터 흰 판의 오른쪽 끝까지 옅은 강조색. 흰 판과 같은 용수철 값(--thumb-*)을 읽어서
+   판이 미끄러지면 같이 늘고 준다. 흰 판 아래·길 바탕 위에 깔린다. */
+.path::after {
+  content: ""; position: absolute; z-index: -1; top: 2px; bottom: 2px; left: 2px;
+  width: max(0px, calc(var(--thumb-l, 0px) + var(--thumb-w, 0px) - 2px));
+  border-radius: var(--r-full); background: var(--accent-bg); opacity: 0;
+}
+.path[data-ready]::after { opacity: 1; }
+/* 방금 지난 단계가 된 번호 — 체크가 튀어 들어온다. 처음 그릴 때는 없다(app.js setView) */
+.path .no.pop { animation: no-pop var(--dur-3) var(--ease-spring); }
+@keyframes no-pop { from { transform: scale(0.6); } }
 
 /* 도구 막대 단추 — 유리 위 알약 (키트 Toolbar Button). 재질은 이 작은 컨트롤 층에만 쓴다. */
 .glass {
