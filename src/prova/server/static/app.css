@@ -966,8 +966,11 @@ button.tile:disabled { cursor: default; }
 button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
 /* 통과율 칸 — 왼쪽 글, 오른쪽 원형 차트(리포트의 도넛과 같은 조각·색) */
 .tile.rate { display: grid; grid-template-columns: 1fr auto; column-gap: var(--sp-4); align-items: center; }
-.tile.rate > small, .tile.rate > b { grid-column: 1; }
-.tile.rate .donut { grid-column: 2; grid-row: 1 / span 2; }
+.tile.rate > .rd { grid-column: 1; grid-row: 1; min-width: 0; }
+.tile.rate > .rd > small { display: block; font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); overflow-wrap: anywhere; }
+.tile.rate > .rd > b { display: block; margin-top: 6px; font-size: var(--tx-2xl); line-height: 36px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tile.rate > .rd > b .u { font-size: var(--tx-md); font-weight: 500; color: var(--fg-muted); margin-left: 3px; letter-spacing: 0; }
+.tile.rate .donut { grid-column: 2; grid-row: 1; }
 .donut { display: block; overflow: visible; }
 .donut .track { stroke: var(--fill-track); }
 .donut .seg { transition: opacity var(--dur-2) var(--ease-out); }
@@ -975,14 +978,12 @@ button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offse
 .donut .seg.defect { stroke: var(--chart-defect); }
 .donut .seg.infra { stroke: var(--chart-infra); }
 .donut .seg.unv { stroke: var(--chart-unv); }
-/* 처음 한 번 시계 방향으로 그려진다. mask 의 currentColor 는 색이 아니라 '보임' 이다(alpha). */
-.donut .sweep-mask { mask-type: alpha; }
-.donut .sweep { stroke: currentColor; stroke-dasharray: 100 100; stroke-dashoffset: 0; }
+/* 처음 그릴 때만 — 조각마다 제 길이까지 400ms, 60ms 차이로 차례로 */
 @media (prefers-reduced-motion: no-preference) {
-  .donut .sweep { animation: donut-sweep 600ms var(--ease-out) 80ms both; }
+  .donut.draw .seg { animation: seg-draw 400ms var(--ease-out) calc(var(--i, 0) * 60ms) both; }
 }
-@keyframes donut-sweep { from { stroke-dashoffset: 100; } }
-.tiles[data-on] .donut .seg { opacity: 0.25; }
+@keyframes seg-draw { from { stroke-dasharray: 0 var(--len); } }
+.tiles[data-on] .donut .seg { opacity: 0.35; }
 .tiles[data-on="pass"] .seg.pass, .tiles[data-on="defect"] .seg.defect,
 .tiles[data-on="infra"] .seg.infra, .tiles[data-on="unv"] .seg.unv { opacity: 1; }
 

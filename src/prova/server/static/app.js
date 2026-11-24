@@ -1717,39 +1717,52 @@ function runWhen(iso) {
 
 /**
  * 통과율 칸의 원형 차트 — 리포트 파일의 도넛과 같은 조각·같은 색(chart 토큰). hh 11-23 첫 요청
- * '검사 후 원형 차트 복구' 를 화면에도 지킨다. 숫자는 옆 칸들이 말하므로 가운데는 비운다.
- * 들어올 때 한 번 시계 방향으로 그려지고(동작 줄이기면 바로), 숫자 칸에 올리면 그 조각만 진하다.
+ * '검사 후 원형 차트 복구' 를 화면에도 지킨다.
+ * hh 11-25 DonutChart 참고: 조각은 기획서와 다름 → 실행 문제 → 확인 불가 → 통과 순서, 끝은 각지게(둥근 끝은
+ * 적은 건수를 크게 보이게 한다) 2px 틈. 결과를 처음 그릴 때만 조각이 차례로 그려진다(400ms, 60ms 차이).
+ * 0건 조각은 그리지 않는다. 숫자 칸이 범례 — 칸에 올리거나 초점을 주면 그 조각만 진하고(나머지 35%),
+ * 통과율 칸의 글자가 그 판정의 이름·건수·비율로 바뀐다. 화면 읽기에는 통과율이 늘 그대로 있다.
  */
-let donutSeq = 0;
-function donut(n, keys, total, say) {
+const DONUT_ORDER = ["defect", "infra", "unv", "pass"];
+const donutDrawn = new Set();
+function donut(n, total, say, { draw = true } = {}) {
   if (!total) return "";
+  const keys = DONUT_ORDER.filter((k) => n[k]);
   const size = 64, c = size / 2, w = 10, r = c - w / 2 - 1, len = 2 * Math.PI * r;
-  const gap = keys.length > 1 ? 1.5 : 0;
-  const id = `dsw${++donutSeq}`;
+  const gap = keys.length > 1 ? 2 : 0;
   let off = 0;
-  const arcs = keys.map((k) => {
+  const arcs = keys.map((k, i) => {
     const arc = (n[k] / total) * len, drawn = Math.max(arc - gap, 0.5);
     const el = `<circle class="seg ${k}" data-k="${k}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"` +
-      ` stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"/>`;
+      ` stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"` +
+      ` style="--len:${len.toFixed(2)};--i:${i}"/>`;
     off += arc;
     return el;
   }).join("");
-  return `<svg class="donut" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(say)}">` +
-    `<mask id="${id}" class="sweep-mask"><circle class="sweep" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w + 4}"` +
-    ` pathLength="100" transform="rotate(-90 ${c} ${c})"/></mask>` +
+  return `<svg class="donut${draw ? " draw" : ""}" viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="${esc(say)}">` +
     `<circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"/>` +
-    `<g transform="rotate(-90 ${c} ${c})" mask="url(#${id})">${arcs}</g></svg>`;
+    `<g transform="rotate(-90 ${c} ${c})">${arcs}</g></svg>`;
 }
 
-// 숫자 칸 ↔ 조각. 칸에 올리면 그 조각만 진하다 — 글자는 이미 다 보이니 마우스용 덧붙임이다.
-function linkDonut(tiles) {
+// 숫자 칸 = 범례. 올리거나 초점을 주면 그 조각만 진하고, 통과율 칸 글자가 그 판정으로 바뀐다(눈으로만 — 화면 읽기에는
+// 칸마다 제 글자가 있고 통과율은 숨은 글자로 늘 남는다). 벗어나면 통과율로 돌아간다.
+function linkDonut(tiles, n, total, rate) {
   if (!tiles || !tiles.querySelector(".donut")) return;
-  tiles.addEventListener("pointerover", (e) => {
-    const t = e.target.closest(".tile[data-k], .seg");
-    const k = t && t.dataset.k;
-    if (k && tiles.querySelector(`.seg[data-k="${k}"]`)) tiles.dataset.on = k; else delete tiles.dataset.on;
-  });
-  tiles.addEventListener("pointerleave", () => { delete tiles.dataset.on; });
+  const rd = tiles.querySelector(".tile.rate .rd");
+  // 돌아갈 때는 굴림 없이 숫자만(처음 들어올 때 이미 굴렸다)
+  const base = `<small>통과율</small><b>${esc(String(rate))}<span class="u">%</span></b>`;
+  const on = (k) => {
+    if (k && n[k] && tiles.querySelector(`.seg[data-k="${k}"]`)) {
+      tiles.dataset.on = k;
+      // 통과율과 같은 꼴(큰 숫자 = 비율)로 — 칸 폭이 좁아도 넘치지 않는다. 이름·건수는 위 작은 줄에.
+      if (rd) rd.innerHTML = `<small>${esc(KIND[k].label)} ${n[k]}건</small><b>${Math.round((n[k] / total) * 1000) / 10}<span class="u">%</span></b>`;
+    } else off();
+  };
+  const off = () => { delete tiles.dataset.on; if (rd) rd.innerHTML = base; };
+  tiles.addEventListener("pointerover", (e) => { const t = e.target.closest(".tile[data-k], .seg"); on(t && t.dataset.k); });
+  tiles.addEventListener("pointerleave", off);
+  tiles.addEventListener("focusin", (e) => { const t = e.target.closest(".tile[data-k]"); on(t && t.dataset.k); });
+  tiles.addEventListener("focusout", (e) => { if (!tiles.contains(e.relatedTarget)) off(); });
 }
 
 function showResult(out) {
@@ -1861,8 +1874,9 @@ function showResult(out) {
       </div>
       <div class="notes">${notes.join("")}</div>
       <div class="tiles">
-        <div class="tile rate"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b>
-          ${donut(n, parts, total, parts.map((k) => `${KIND[k].label} ${n[k]}건`).join(", "))}</div>
+        <div class="tile rate"><span class="sr">통과율 ${s.pass_rate}%</span>
+          <span class="rd" aria-hidden="true"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b></span>
+          ${donut(n, total, parts.map((k) => `${KIND[k].label} ${n[k]}건`).join(", "), { draw: !donutDrawn.has(runId) })}</div>
         ${tile("pass", "통과", "ok")}${tile("defect", "기획서와 다름", "fail")}${tile("infra", "실행 문제", "infra")}${tile("unv", "확인 불가", "unv")}
       </div>
       <div class="split">
@@ -1871,7 +1885,8 @@ function showResult(out) {
       </div>
     </div>`;
   $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
-  linkDonut($("stage").querySelector(".tiles"));
+  linkDonut($("stage").querySelector(".tiles"), n, total, s.pass_rate);
+  donutDrawn.add(runId);   // 같은 결과로 다시 오면(단계 길·거르기) 다시 그리지 않는다
   $("stage").querySelector(".tiles").addEventListener("click", (e) => {
     const b = e.target.closest("button.tile[data-k]");
     if (b && !b.disabled) pickResKind(b.dataset.k);
