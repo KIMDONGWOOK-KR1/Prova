@@ -620,8 +620,6 @@ function showError(title, message) {
 
 // ── 진행 (기획서 읽는 중 · 실행 중) ──────────────────────────────────────────
 
-// 경과 시간. 몇 분 걸리는 실행에서 멈춘 것과 도는 것을 구별하게 한다.
-let elapsedTimer = null;
 // 실행 중 항목별 상태 — 직전 집계와 비교해 방금 끝난 항목의 판정을 안다(서버를 바꾸지 않는다).
 let prog = null;
 
@@ -637,20 +635,20 @@ function showProgress(title, lines) {
 
   // 실행할 항목을 처음부터 깔아 둔다 — 몇 개 중 어디쯤이고 무엇이 남았는지가 처음부터 보인다.
   const cases = run && state.plan ? state.plan.cases.filter((c) => c.selected) : [];
-  prog = { k: 0, n: cases.length, t0: 0, last: null, row: null };
+  prog = { k: 0, n: cases.length, t0: 0, last: null, row: null, seen: [0, 0, 0, 0] };
   if (run) $("barActions").innerHTML = `<button class="btn" id="pStop" type="button" hidden>중지</button>`;
 
   $("stage").innerHTML = `
     <div class="scroll" id="pScroll">
       <div class="run-head">
-        <h2 class="lt nums" id="pHead">${run ? `0 / ${cases.length || "—"}` : esc(title)}</h2>
+        <h2 class="lt nums" id="pHead">${run ? "" : esc(title)}</h2>
         <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-        <span class="hint nums" id="pElapsed">0초 지남</span>
+        <span class="hint nums" id="pElapsed"><span class="el"></span> 지남<span class="eta"></span><span class="per"></span></span>
       </div>
       <div class="pnow" id="pNow" aria-live="polite"></div>
       <div class="pnotes" id="pNotes"></div>
       <progress id="pBar" class="sr" max="${cases.length || 1}" value="0" ${run ? "" : "hidden"}></progress>
-      <div class="pbar" id="pTrack" ${run ? "" : "hidden"} aria-hidden="true"><i id="pFill"></i></div>
+      <div class="pbar seg" id="pTrack" ${run ? "" : "hidden"} aria-hidden="true" style="--n:${cases.length || 1}"></div>
       <div class="ptally" id="pTally" hidden></div>
       ${run ? `<table class="tbl run-table">
         <colgroup><col style="width:34px"><col><col style="width:140px"><col style="width:72px"></colgroup>
@@ -659,26 +657,111 @@ function showProgress(title, lines) {
         <div class="logbox"><pre class="log" id="pLog" role="log" aria-live="polite"></pre>
           <button class="btn sm log-jump" id="pLogJump" type="button" hidden></button></div></details>
     </div>`;
+  if (run) rollText($("pHead"), `0 / ${cases.length || "—"}`, `${cases.length}건 중 0건 끝남`);
   followLog();
   pushProgress(lines || []);
-  clearInterval(elapsedTimer);
-  const t0 = Date.now();
-  elapsedTimer = setInterval(() => {
-    const el = $("pElapsed");
-    if (!el) { clearInterval(elapsedTimer); return; }  // 화면이 결과로 바뀌면 멈춘다
-    const sec = (Date.now() - t0) / 1000;
-    el.textContent = `${Math.round(sec)}초 지남${etaText(sec)}`;
-  }, 1000);
+  startClock();
+  watchRunHead();
 }
 
-// 남은 시간 — 끝난 항목의 평균 시간 × 남은 항목. 두 건은 끝나야 어림한다(첫 건은 브라우저를 띄우느라 길다).
-function etaText(sec) {
+/**
+ * 실행 머리의 시계 — 지난 시간(m:ss), 남은 시간 어림, 건당 시간. hh 11-25 '실행 중 화면을 공연 계기판처럼'.
+ * 1초에 한 번, 실행 화면이 떠 있고 탭이 보일 때만 돈다(숨으면 멈추고, 돌아오면 실제 시작 시각에서 다시 맞춘다).
+ * 틱 안에서는 글자만 바꾼다 — 크기·위치를 읽지 않는다. 바뀐 자리 숫자만 굴린다(rollText).
+ * 남은 시간 = 끝난 항목의 평균(첫 항목을 시작한 때부터) × 남은 항목. 한 건도 안 끝났으면 어림하지 않는다.
+ */
+const runClock = { start: 0, first: 0, timer: 0 };
+function startClock() {
+  clearTimeout(runClock.timer);
+  runClock.start = Date.now();
+  runClock.first = 0;
+  clockTick();
+}
+function clockTick() {
+  clearTimeout(runClock.timer);
+  const el = $("pElapsed");
+  if (!el || document.visibilityState !== "visible") return;   // 결과로 넘어갔거나 탭이 숨었다
+  const now = Date.now(), ms = now - runClock.start, sec = Math.floor(ms / 1000);
+  const mm = Math.floor(sec / 60), ss = sec % 60;
+  rollText(el.querySelector(".el"), `${mm}:${String(ss).padStart(2, "0")}`, mm ? `${mm}분 ${ss}초` : `${ss}초`);
   const bar = $("pBar");
-  if (!prog || !prog.n || !bar) return "";
-  const done = Number(bar.value) || 0, left = prog.n - done;
-  if (done < 2 || left <= 0) return "";
-  const est = (sec / done) * left;
-  return est < 10 ? " · 곧 끝나요" : est < 60 ? ` · 약 ${Math.ceil(est / 5) * 5}초 남음` : ` · 약 ${Math.ceil(est / 60)}분 남음`;
+  const done = bar ? Number(bar.value) || 0 : 0, n = prog ? prog.n : 0, left = n - done;
+  let eta = "", per = "";
+  if (n && done >= 1 && runClock.first) {
+    const avg = (now - runClock.first) / 1000 / done;
+    per = ` · 건당 ${avg.toFixed(1)}초`;
+    if (left > 0) {
+      const est = avg * left;
+      eta = est < 5 ? " · 곧 끝나요" : est < 60 ? ` · 약 ${Math.round(est)}초 남음`
+        : ` · 약 ${Math.floor(est / 60)}분 ${Math.round(est % 60)}초 남음`;
+    }
+  }
+  rollText(el.querySelector(".eta"), eta);
+  rollText(el.querySelector(".per"), per);
+  runClock.timer = setTimeout(clockTick, 1000 - (ms % 1000) + 5);
+}
+document.addEventListener("visibilitychange", () => {
+  const head = document.querySelector(".run-head");
+  if (head) head.classList.toggle("hidden-tab", document.visibilityState !== "visible");
+  if (document.visibilityState === "visible") clockTick(); else clearTimeout(runClock.timer);
+});
+// 실행 머리가 화면 밖으로 굴러 나가면 도는 점을 멈춘다
+let headIO = null;
+function watchRunHead() {
+  const head = document.querySelector(".run-head");
+  if (!head || !window.IntersectionObserver) return;
+  if (headIO) headIO.disconnect();
+  headIO = new IntersectionObserver(([e]) => head.classList.toggle("asleep", !e.isIntersecting));
+  headIO.observe(head);
+}
+
+/**
+ * 자리마다 바뀐 글자만 굴린다 — 21st.dev 'Animate Digits'. 새 글자는 아래에서(60% · 흐림 4px · 0.85배) 들어오고,
+ * 옛 글자는 같은 칸 안의 겹친 쌍둥이로 위로 빠지며 흐려진다. 칸은 넘친 것을 자른다. 자리는 오른쪽 끝에 맞춰
+ * 9 → 10 처럼 길어져도 일의 자리가 제자리에 있다. 화면 읽기에는 조각이 아니라 label 한 줄만.
+ */
+let rollTiming = null;
+function rollText(el, text, label) {
+  if (!el) return;
+  text = String(text);
+  if (el.dataset.v === text) return;
+  const first = el.dataset.v === undefined;
+  el.dataset.v = text;
+  let sr = el.querySelector(":scope > .sr"), box = el.querySelector(":scope > .rl");
+  if (!box) {
+    el.innerHTML = `<span class="sr"></span><span class="rl" aria-hidden="true"></span>`;
+    sr = el.firstChild; box = el.lastChild;
+  }
+  sr.textContent = label ?? text;
+  const go = !first && !reduceMotion() && !!el.animate;
+  if (go && !rollTiming) {
+    const css = getComputedStyle(document.documentElement);
+    rollTiming = { dur: parseFloat(css.getPropertyValue("--dur-3")) || 250,
+                   spring: css.getPropertyValue("--ease-spring").trim() || "ease-out",
+                   out: css.getPropertyValue("--ease-out").trim() || "ease-out" };
+  }
+  const chars = [...text], cells = [...box.children];
+  while (cells.length < chars.length) { const c = document.createElement("span"); c.className = "dc"; box.prepend(c); cells.unshift(c); }
+  while (cells.length > chars.length) cells.shift().remove();
+  chars.forEach((ch, i) => {
+    const c = cells[i];
+    if (c.dataset.c === ch) return;
+    c.dataset.c = ch;
+    const old = c.querySelector(".d:not(.out)");
+    const neu = document.createElement("span");
+    neu.className = "d"; neu.textContent = ch;
+    c.append(neu);
+    if (!go) { if (old) old.remove(); return; }
+    neu.animate([{ transform: "translateY(60%) scale(0.85)", filter: "blur(4px)", opacity: 0 },
+                 { transform: "none", filter: "none", opacity: 1 }],
+                { duration: rollTiming.dur, easing: rollTiming.spring });
+    if (old) {
+      old.classList.add("out");
+      old.animate([{ transform: "none", opacity: 1 }, { transform: "translateY(-60%)", opacity: 0 }],
+                  { duration: rollTiming.dur * 0.8, easing: rollTiming.out, fill: "forwards" })
+        .finished.then(() => old.remove(), () => old.remove());
+    }
+  });
 }
 
 function runRow(c, i, k) {
@@ -733,6 +816,20 @@ function appendLog(log, lines) {
 const TALLY_KEYS = ["ok", "fail", "infra", "unv"];
 
 /** 방금 끝난 항목 줄에 판정을 적는다 — 직전 집계에서 어느 수가 늘었는지로 안다. */
+/**
+ * 진행 막대를 판정별 조각으로 — 끝난 항목마다 한 칸이 그 판정 색으로 왼쪽에서 자란다(scaleX, 목업의 growx).
+ * 칸 순서는 끝난 순서. 색만으로 말하지 않는다 — 옆 집계 글자(pTally)가 같은 수를 말한다.
+ */
+const BAR_KIND = ["pass", "defect", "infra", "unv"];
+function growBar(nums) {
+  const track = $("pTrack");
+  if (!track || !prog) return;
+  nums.forEach((v, j) => {
+    for (let x = prog.seen[j]; x < v; x++) track.insertAdjacentHTML("beforeend", `<i class="${BAR_KIND[j]}"></i>`);
+    prog.seen[j] = Math.max(prog.seen[j], v);
+  });
+}
+
 function settleRow(t) {
   const row = prog.row;
   if (!row || !prog.last) return;
@@ -793,8 +890,9 @@ function pushProgress(messages) {
           const done = nums.reduce((a, b) => a + b, 0);
           const bar = $("pBar");
           bar.value = done;
-          $("pHead").textContent = `${done} / ${bar.max}`;
-          $("pFill").style.width = `${(done / (bar.max || 1)) * 100}%`;
+          rollText($("pHead"), `${done} / ${bar.max}`, `${bar.max}건 중 ${done}건 끝남`);
+          growBar(nums);
+          clockTick();
           bar.setAttribute("aria-valuetext", `${bar.max}건 중 ${done}건 끝남`);
           document.title = `${done}/${bar.max} 실행 중 — Prova`;
           const active = steps.querySelector(".pstep.active .t");
@@ -826,8 +924,11 @@ function pushProgress(messages) {
       setNow(`${n}건 중 ${k}번째 — ${m[3]}`);
       const bar = $("pBar");
       bar.hidden = false; bar.max = n; bar.value = k - 1;
-      $("pTrack").hidden = false;
-      $("pHead").textContent = `${k - 1} / ${n}`;
+      const track = $("pTrack");
+      track.hidden = false;
+      track.style.setProperty("--n", n);
+      rollText($("pHead"), `${k - 1} / ${n}`, `${n}건 중 ${k - 1}건 끝남`);
+      if (k === 1 && !runClock.first) runClock.first = Date.now();
       if (prog) {
         const prevRow = prog.row;
         prog.k = k; prog.n = n; prog.t0 = Date.now();

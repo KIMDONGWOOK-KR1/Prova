@@ -877,9 +877,27 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 @keyframes word-in { from { opacity: 0; filter: blur(4px); transform: translateY(2px); } }
 @keyframes caret-out { from { opacity: 1; } to { opacity: 0; } }
 
+/* 자리마다 굴리는 글자 (app.js rollText) — 칸은 넘친 것을 자르고, 옛 글자는 같은 칸에 겹쳐 빠진다.
+   tabular-nums 라 숫자가 바뀌어도 폭이 흔들리지 않는다. 움직이는 것은 transform·opacity(·한 번의 흐림)뿐. */
+.rl { display: inline-flex; font-variant-numeric: tabular-nums; }
+.dc { position: relative; display: inline-block; overflow: hidden; vertical-align: bottom; }
+.dc > .d { display: inline-block; white-space: pre; }
+.dc > .d.out { position: absolute; left: 0; top: 0; }
+/* 실행 머리가 화면 밖이거나 탭이 숨으면 도는 점을 멈춘다 */
+.run-head.asleep .dots i, .run-head.hidden-tab .dots i { animation-play-state: paused; }
+
 /* 진행 막대 — 끝이 보이는 6px 알약 (키트 Progress Indicator) */
 .pbar { margin-top: var(--sp-3); height: 6px; border-radius: var(--r-full); background: var(--fill-track); box-shadow: inset 0 0 0 0.5px var(--fill-hover); overflow: hidden; }
 .pbar > i { display: block; height: 100%; width: 0; background: var(--accent-blue); border-radius: inherit; transition: width var(--dur-3) var(--ease-out); }
+/* 판정별 조각 — 항목 하나에 한 칸, 끝나면 그 판정 색으로 왼쪽에서 자란다(목업의 growx). 결과 도넛과 같은 chart 토큰 */
+.pbar.seg { display: grid; grid-template-columns: repeat(var(--n, 1), minmax(0, 1fr)); column-gap: 1px; }
+.pbar.seg > i { width: auto; border-radius: 0; transform-origin: left center;
+  animation: growx var(--dur-4) var(--ease-data, cubic-bezier(0.22, 1, 0.36, 1)) both; }
+.pbar.seg > i.pass { background: var(--chart-pass); }
+.pbar.seg > i.defect { background: var(--chart-defect); }
+.pbar.seg > i.infra { background: var(--chart-infra); }
+.pbar.seg > i.unv { background: var(--chart-unv); }
+@keyframes growx { from { transform: scaleX(0); } }
 
 .ptally { display: flex; flex-wrap: wrap; gap: 6px var(--sp-4); margin-top: 10px; font-size: var(--tx-sm); color: var(--fg-muted); }
 .ptally > span { display: inline-flex; align-items: center; gap: 5px; }
