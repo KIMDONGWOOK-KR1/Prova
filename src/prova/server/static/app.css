@@ -1521,3 +1521,6 @@ dialog.confirm .row { display: flex; justify-content: flex-end; gap: var(--sp-2)
 @media (prefers-reduced-motion: no-preference) {
   dialog.confirm[open], dialog.confirm[open]::backdrop { animation: log-in var(--dur-1) var(--ease-out); }
 }
+
+/* 끌어 놓기 — 놓을 수 있는 동안만 칸에 점선 테두리(바탕색·그림자 없이). */
+.panel.dropping { outline: 1.5px dashed var(--border-strong); outline-offset: 6px; border-radius: var(--r-lg); }

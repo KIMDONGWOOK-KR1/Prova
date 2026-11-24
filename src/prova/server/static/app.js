@@ -1901,7 +1901,11 @@ $("uploadBtn").addEventListener("click", () => $("upload").click());
 
 $("upload").addEventListener("change", async (e) => {
   const file = e.target.files[0];
-  if (!file) return;
+  e.target.value = "";
+  if (file) await uploadFile(file);
+});
+
+async function uploadFile(file) {
   const btn = $("uploadBtn");
   busyButton(btn, "올리는 중");
   try {
@@ -1930,9 +1934,44 @@ $("upload").addEventListener("change", async (e) => {
       alertBox("fail", "업로드 실패", esc(err.message)));
   } finally {
     idleButton(btn); syncUploadLabel();
-    e.target.value = "";
   }
-});
+}
+
+/**
+ * 기획서 칸에 파일을 끌어 놓아도 올라간다 — 21st.dev 'AI Chat with File Attachments' 에서
+ * 처음 디벨롭 때 카드 모양만 옮기고 빠뜨렸던 '끌어 놓기'. 놓을 수 있는 동안 칸에 점선 테두리와
+ * '여기에 놓으면 올라갑니다' 가 선다. PDF·JSON 이 아니면 올리지 않고 알린다.
+ * 칸 밖에 놓쳐도 브라우저가 파일을 열어 화면을 떠나지 않게 막는다.
+ */
+(function dropToUpload() {
+  const zone = $("uploadBtn").closest(".panel");
+  if (!zone) return;
+  const hasFiles = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files");
+  let depth = 0;
+  const leave = () => { depth = 0; zone.classList.remove("dropping"); syncUploadLabel(); };
+  zone.addEventListener("dragenter", (e) => {
+    if (!hasFiles(e) || $("uploadBtn").getAttribute("aria-busy") === "true") return;
+    e.preventDefault();
+    if (depth++ === 0) { zone.classList.add("dropping"); $("uploadBtn").textContent = "여기에 놓으면 올라갑니다"; }
+  });
+  zone.addEventListener("dragover", (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
+  zone.addEventListener("dragleave", () => { if (--depth <= 0) leave(); });
+  zone.addEventListener("drop", async (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    leave();
+    const file = e.dataTransfer.files[0];
+    if (!file) return;
+    if (!/\.(pdf|json)$/i.test(file.name)) {
+      $("stage").insertAdjacentHTML("afterbegin", alertBox("fail", "올리지 않았습니다",
+        `${esc(file.name)} — PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.`));
+      return;
+    }
+    await uploadFile(file);
+  });
+  window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
+  window.addEventListener("drop", (e) => { if (hasFiles(e)) e.preventDefault(); });
+})();
 
 function setVariant(which) {
   const url = $("url").value.trim();
