@@ -2270,6 +2270,26 @@ function renderDocMeta() {
  * 확인한 적 없는 기획서면 네 단계가 각각 무엇을 하는지 적는다. 좁은 화면에서는 CSS 가 숨긴다.
  */
 const recapCases = new Map();   // run_id → 항목 결과(report.json cases). 한 번 읽으면 다시 안 읽는다.
+/**
+ * 지난 확인의 판정 고리 — 21st.dev Activity Card 의 '고리 + 숫자 + 비율' 배치만 가져왔다.
+ * 통과·기획서와 다름은 늘 두고, 실행 문제·확인 불가는 있을 때만 둔다(0건 고리가 늘어서면 시끄럽다).
+ * 원본은 테두리를 잘라 낸 가짜 고리라 실제 비율과 안 맞는다 — 여기서는 SVG 호 길이가 건수 비율 그대로다.
+ * 고리는 처음 그려질 때 0 에서 제 길이까지 차오르고(600ms), 색은 판정 토큰. 글자가 뜻을 말하고 색은 거든다.
+ */
+function recapRings(total, rows) {
+  const C = 2 * Math.PI * 30;   // r=30
+  rows = rows.filter(([k, , n]) => n > 0 || k === "pass" || k === "fail");
+  return `<ul class="rc-rings" aria-label="판정별 건수" style="--cols:${rows.length}">${rows.map(([k, label, n]) => {
+    const pct = total ? Math.round((n / total) * 100) : 0;
+    const len = total ? (n / total) * C : 0;
+    return `<li class="rc-ring ${k}">
+      <span class="ring"><svg viewBox="0 0 72 72" aria-hidden="true"><circle class="tr" cx="36" cy="36" r="30"/>
+        <circle class="arc" cx="36" cy="36" r="30" style="--len:${len.toFixed(1)};--c:${C.toFixed(1)}" stroke-dasharray="${len.toFixed(1)} ${C.toFixed(1)}"/></svg>
+        <b class="nums">${n}</b><small>건</small></span>
+      <span class="lb">${label}</span><span class="pc nums">${pct}%</span></li>`;
+  }).join("")}</ul>`;
+}
+
 async function renderRecap(last) {
   const el = $("recap");
   if (!el) return;
@@ -2301,6 +2321,7 @@ async function renderRecap(last) {
   el.innerHTML = `<p class="rc-k">이 기획서의 지난 확인</p>
     <p class="rc-when hint">${esc([last.round && `${last.round}차`, runAgo(last.created_at), host].filter(Boolean).join(" · "))}</p>
     <h3 class="rc-v">${verdict}</h3>
+    ${recapRings(total, [["pass", "통과", total - last.fail], ["fail", "기획서와 다름", defects], ["infra", "실행 문제", infra], ["unv", "확인 불가", unv]])}
     <ul class="rc-list" id="recapList">${last.fail ? `<li class="hint">항목을 불러오는 중…</li>` : ""}</ul>
     <button class="btn go" type="button" id="recapOpen">결과 자세히 보기<span class="arr" aria-hidden="true">→</span></button>`;
   $("recapOpen").addEventListener("click", () => openRun(last));

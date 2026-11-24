@@ -398,6 +398,24 @@ body:not([data-view="form"]) .pane-form { display: none; }
 .rc-v mark.infra { color: var(--note-fg); }
 .rc-v mark.unv { color: var(--unv-fg); }
 .rc-v mark.pass { color: var(--pass-fg); }
+/* 판정 고리 (app.js recapRings) */
+.rc-rings { list-style: none; width: 100%; display: grid; grid-template-columns: repeat(var(--cols, 2), minmax(0, 1fr)); gap: var(--sp-1); margin: var(--sp-3) 0 var(--sp-1); }
+.rc-ring { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.rc-ring .ring { position: relative; width: 64px; height: 64px; display: grid; place-content: center; justify-items: center; }
+.rc-ring svg { position: absolute; inset: 0; transform: rotate(-90deg); }
+.rc-ring circle { fill: none; stroke-width: 6; }
+.rc-ring .tr { stroke: var(--fill-track); }
+.rc-ring .arc { stroke: var(--rc, var(--fg-muted)); stroke-linecap: round; animation: ring-fill 600ms cubic-bezier(0.23, 1, 0.32, 1) both; }
+.rc-ring .arc[stroke-dasharray^="0.0 "] { display: none; }   /* 0건이면 점 하나도 그리지 않는다 */
+.rc-ring.pass { --rc: var(--pass-fg); }
+.rc-ring.fail { --rc: var(--fail-fg); }
+.rc-ring.infra { --rc: var(--note-fg); }
+.rc-ring.unv { --rc: var(--unv-fg); }
+.rc-ring .ring b { font-size: var(--tx-lg); line-height: 1.1; font-weight: 700; }
+.rc-ring .ring small { font-size: var(--tx-2xs); line-height: 1.2; color: var(--fg-muted); }
+.rc-ring .lb { margin-top: var(--sp-2); font-size: var(--tx-sm); line-height: var(--lh-sm); font-weight: 600; white-space: nowrap; }
+.rc-ring .pc { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); }
+@keyframes ring-fill { from { stroke-dasharray: 0 var(--c); } }
 .rc-list { list-style: none; width: 100%; margin: var(--sp-2) 0 var(--sp-3); }
 .rc-list li { display: flex; gap: var(--sp-2); padding: 7px 0; font-size: var(--tx-md); line-height: var(--lh-row); }
 .rc-list li + li { border-top: 0.5px solid var(--sep); }
