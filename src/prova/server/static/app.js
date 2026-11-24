@@ -1348,18 +1348,22 @@ function renderInsp(c) {
     ${c.expected ? `<div><h5>기대</h5><p class="expect">${citedExpect(c.expected, src, id)}</p></div>` : ""}
     ${src.length ? `<div id="${esc(id)}"><h5>기획서 근거 ${src.length}곳</h5>${src.map((s, i) =>
       `<div class="quote" data-i="${i}"><cite>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</cite>${markQuote(s.quote, c.expected)}</div>`).join("")}</div>` : ""}
-    ${steps.length ? `<div><h5>실행 단계 ${steps.length}</h5><ol class="steps">${steps.map(stepLine).join("")}</ol></div>` : ""}
+    ${steps.length ? `<div><h5>실행 단계 ${steps.length}</h5><ol class="tl enter">${steps.map(stepLine).join("")}</ol></div>` : ""}
     <div><h5>케이스 번호</h5><p class="idline">${esc(c.case_id)}</p></div>`;
 }
 
-// '1. '이메일' 칸에 'a@b' 입력' → 넣는 값·주소·고르는 값만 코드 글꼴로. 준비 단계는 번호 대신 '준비'.
-function stepLine(s) {
+// '1. '이메일' 칸에 'a@b' 입력' → 넣는 값·주소·고르는 값만 코드 글꼴로.
+// 세로 줄(21st.dev AgentPlanning 참고) — 번호 동그라미를 선으로 잇는다. 준비 단계는 속 빈 동그라미와 '준비'.
+// 계획의 단계는 사람 말 한 줄뿐이라(서버가 선택자·값을 따로 보내지 않는다) 펼칠 것을 지어내지 않는다.
+function stepLine(s, i = 0) {
   const prep = /^준비 /.test(s);
+  const no = (/^(?:준비 )?(\d+)\. /.exec(s) || [])[1] || "";
   let t = esc(s.replace(/^(준비 )?\d+\. /, ""));
   t = t.replace(/칸에 &#39;(.+?)&#39; 입력/, "칸에 <code>$1</code> 입력")
        .replace(/^&#39;(.+?)&#39; 주소로 이동/, "<code>$1</code> 주소로 이동")
        .replace(/에서 &#39;(.+?)&#39; 선택/, "에서 <code>$1</code> 선택");
-  return `<li${prep ? ` class="prep"` : ""}>${t}</li>`;
+  return `<li class="${prep ? "prep" : ""}" style="--i:${i}"><span class="node" aria-hidden="true">${prep ? "" : esc(no)}</span>` +
+    `<span class="tx">${prep ? `<span class="pre">준비</span> ` : ""}${t}</span></li>`;
 }
 
 // 기획서 원문에서 기대 문장이 따옴표로 옮긴 값만 진하게. 표 행의 칸 구분(|)은 가운뎃점으로.
@@ -2092,6 +2096,27 @@ function actualLines(c) {
   return lines.length ? lines : ["사유가 기록되지 않았어요."];
 }
 
+/**
+ * 결과의 실행한 단계 — 멈춘 단계 앞은 파란 체크, 멈춘 단계는 판정 색 표시와 글자('여기서 멈춤 · 기획서와 다름').
+ * 멈춘 단계 = 처음 실패한 단계, 모두 성공했는데 통과가 아니면 마지막 단계(그 뒤 확인에서 갈렸다).
+ * 통과면 모두 체크. 색만으로 말하지 않는다 — 글자가 같이 간다.
+ */
+function resultSteps(c, steps) {
+  const k = kindOf(c);
+  let stop = steps.findIndex((st) => st.status !== "ok");
+  if (stop < 0 && k !== "pass") stop = steps.length - 1;
+  return steps.map((st, i) => {
+    const prep = st.phase && st.phase !== "test";
+    const done = stop < 0 || i < stop;
+    const node = i === stop ? vmark(KIND[k].mark, { say: false }) : done ? "✓" : esc(String(st.seq));
+    return `<li class="${i === stop ? `stop ${k}` : done ? "done" : ""}${prep ? " prep" : ""}">` +
+      `<span class="node" aria-hidden="true">${node}</span>` +
+      `<span class="tx">${prep ? `<span class="pre">준비</span> ` : ""}${stepWords(st)}` +
+      `${st.status !== "ok" && st.error_detail ? ` — ${esc(st.error_detail)}` : ""}` +
+      `${i === stop ? `<span class="stop-lb">여기서 멈춤 · ${KIND[k].label}</span>` : done && stop >= 0 ? `<span class="sr"> (지나감)</span>` : ""}</span></li>`;
+  }).join("");
+}
+
 /** 오른쪽 상세 — 기대·실제, 기획서 원문, 마지막 화면과 실행한 단계. 리포트 파일을 열지 않아도 원인을 본다. */
 function renderDetail(c) {
   const box = $("detail");
@@ -2123,8 +2148,7 @@ function renderDetail(c) {
           <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"></a></figure>`
         : `<figure><p class="noshot">이 항목은 화면을 찍지 않았어요.</p></figure>`}
       <div class="keysteps"><b>실행한 단계 ${steps.length}</b>
-        <ol class="steps">${steps.map((st) => `<li class="${st.status !== "ok" ? "bad" : st.phase && st.phase !== "test" ? "prep" : ""}">` +
-          `${stepWords(st)}${st.status !== "ok" && st.error_detail ? ` — ${esc(st.error_detail)}` : ""}</li>`).join("")}</ol>
+        <ol class="tl">${resultSteps(c, steps)}</ol>
         <p class="idline" style="margin-top:8px">${esc(c.case_id)}</p></div>
     </div>`;
 }

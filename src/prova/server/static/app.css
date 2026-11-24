@@ -780,6 +780,28 @@ input[type="checkbox"]:focus-visible { box-shadow: var(--focus-ring); }
 .cite:hover { color: var(--fg-default); }
 .cite.on { background: var(--accent-solid); color: var(--fg-onaccent); }
 
+/* 세로 줄 단계 (app.js stepLine · resultSteps) — 20px 번호 동그라미를 2px 선으로 잇는다 */
+ol.tl { list-style: none; font-size: var(--tx-sm); line-height: 20px; }
+ol.tl li { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: var(--sp-2);
+  padding-bottom: 10px; overflow-wrap: anywhere; }
+ol.tl li:last-child { padding-bottom: 0; }
+ol.tl li::before { content: ""; position: absolute; left: 9px; top: 22px; bottom: 2px; width: 2px; border-radius: 1px; background: var(--sep); }
+ol.tl li:last-child::before { display: none; }
+ol.tl .node { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--fill-selected);
+  font-size: var(--tx-2xs); line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-default); }
+ol.tl .pre { font-size: var(--tx-2xs); color: var(--fg-muted); }
+ol.tl li.prep .node { background: none; box-shadow: inset 0 0 0 1.5px var(--fill-selected); }
+ol.tl li.done .node { background: var(--accent-blue); color: var(--fg-onaccent); }
+ol.tl li.stop .node { background: none; }
+ol.tl li.stop .node .vm { width: 20px; height: 20px; vertical-align: 0; }
+ol.tl .stop-lb { display: block; margin-top: 2px; font-size: var(--tx-xs); line-height: var(--lh-xs); font-weight: 600; }
+ol.tl li.defect .stop-lb { color: var(--fail-fg); }
+ol.tl li.infra .stop-lb { color: var(--note-fg); }
+ol.tl li.unv .stop-lb { color: var(--unv-fg); }
+ol.tl code { font-size: var(--tx-xs); line-height: var(--lh-sm); background: var(--fill-hover); border-radius: var(--r-sm); padding: 0 4px; }
+/* 다른 항목을 고르면 줄이 40ms 씩 늦게 올라온다 — 다 합쳐 300ms 안 */
+ol.tl.enter li { animation: tl-in 160ms var(--ease-out) calc(min(var(--i, 0), 3.5) * 40ms) both; }
+@keyframes tl-in { from { opacity: 0; transform: translateY(4px); } }
 ol.steps { list-style: none; counter-reset: s; font-size: var(--tx-sm); line-height: var(--lh-row); }
 ol.steps li { display: flex; gap: var(--sp-2); padding: 7px 0; border-top: 0.5px solid var(--sep); counter-increment: s; overflow-wrap: anywhere; }
 ol.steps li:first-child { border-top: 0; }
