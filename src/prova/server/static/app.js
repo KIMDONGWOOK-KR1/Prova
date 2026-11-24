@@ -747,7 +747,7 @@ function pushProgress(messages) {
     const m = /케이스 (\d+)\/(\d+) · (.+)/.exec(raw);
     if (m) {
       const k = Number(m[1]), n = Number(m[2]);
-      $("pNow").textContent = `${n}건 중 ${k}번째 — ${m[3]}`;
+      setNow(`${n}건 중 ${k}번째 — ${m[3]}`);
       const bar = $("pBar");
       bar.hidden = false; bar.max = n; bar.value = k - 1;
       $("pTrack").hidden = false;
@@ -785,7 +785,7 @@ function pushProgress(messages) {
         }
         last.querySelector(".body").appendChild(d);
         // 항목을 돌기 전에는 가장 최근 상세가 지금 하는 일이다.
-        if (!prog || !prog.k) $("pNow").textContent = text.replace(/^!\s*/, "");
+        if (!prog || !prog.k) setNow(text.replace(/^!\s*/, ""));
         continue;
       }
     }
@@ -815,8 +815,26 @@ function pushProgress(messages) {
     // 지금 단계는 모양(도는 호)만이 아니라 글자로도 말한다 — HIG '색·모양만으로 전하지 않는다'.
     el.innerHTML = `<span class="mark">${vmark("run")}</span>` +
       `<div class="body">${esc(label)}</div><span class="t">진행 중</span>`;
-    if (!prog || !prog.k) $("pNow").textContent = label;
+    if (!prog || !prog.k) setNow(label);
   }
+}
+
+/**
+ * '지금 하는 일' 줄 — 21st.dev streaming-text 의 움직임만 옮겼다: 낱말이 흐림에서 하나씩 또렷해지고,
+ * 다 나올 때까지 끝에 커서가 깜빡인다. 타이머 없이 CSS 지연(--i)으로만 돈다. 줄이 길면 한 낱말 간격을
+ * 줄여 0.8초 안에 다 나온다. 읽어 주는 프로그램에는 낱말 조각이 아니라 문장 하나로 알린다.
+ */
+function setNow(text) {
+  const el = $("pNow");
+  if (!el || el.dataset.text === text) return;
+  el.dataset.text = text;
+  const words = text.split(/\s+/).filter(Boolean);
+  const step = Math.min(80, Math.round(800 / Math.max(words.length, 1)));
+  el.style.setProperty("--step", `${step}ms`);
+  el.style.setProperty("--n", words.length);
+  el.innerHTML = `<span class="sr">${esc(text)}</span><span aria-hidden="true">` +
+    words.map((w, i) => `<span class="w" style="--i:${i}">${esc(w)}</span>`).join(" ") +
+    `<span class="caret"></span></span>`;
 }
 
 /**
