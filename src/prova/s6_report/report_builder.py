@@ -87,6 +87,9 @@ THEME_BUTTON = ("<button class='theme' id='themeBtn' type='button' role='switch'
                 f"<i class='tg-ico sun'>{_SUN}</i><i class='tg-ico moon'>{_MOON}</i>"
                 f"<i class='tg-knob'><i class='k-sun'>{_SUN}</i><i class='k-moon'>{_MOON}</i></i></span>"
                 "<span>어둡게</span></button>")
+# 글자 로고 'prova' — 웹 UI 사이드바와 같은 선(index.html .wm). 색은 토큰(--accent-blue), 리터럴 없음. hh 11-25.
+_WORDMARK = ("<svg class='wm' viewBox='0 0 357.4 100' role='img' aria-label='Prova'>"
+             "<path fill-rule='evenodd' d='M10.1 100c-5.4-0.8-9.2-4.7-9.9-10.2c-0.1-1-0.2-14.6-0.2-39.3c0.1-41.9 0-38.4 1.4-41.2c4.1-8.3 15.9-9.4 21.5-2.1l0.8 1 1.4-1.1c14.9-12 38.8-7.8 49.5 8.6c4.5 6.8 6.4 13.7 6.4 22.5c0 14.8-7.2 27.9-18.9 34.5c-9.4 5.3-21 6.1-30.8 2.2c-2.2-0.9-5.8-3-7.1-4.2l-0.5-0.5-0.2 1.3c0 0.8-0.1 5.2-0.1 9.9c0 7.8 0 8.7-0.4 10.1c-1.4 5.6-7.2 9.4-12.9 8.5zM166.3 78.1c-7.4-1-15-4.5-20.3-9.1c-19.3-16.9-16.7-47.9 5.2-62.3c11.2-7.4 25.9-8.6 37-3c1.7 0.9 1.8 0.9 0.8 1.6c-0.8 0.6-3.2 3-4.5 4.6c-1.8 2.2-3.9 6-5.3 9.5c-0.4 0.9-0.7 1.6-0.7 1.6c0 0-0.8-0.1-1.6-0.3c-9.1-1.6-16.9 2.2-20.9 10.2c-5.2 10.2 0.4 22.8 11.5 26.1c2.2 0.7 6.8 0.8 9.2 0.2c8.1-1.9 14.3-9.9 14.3-18.4c0-4.9-1.4-8.8-4.7-12.6l-1.4-1.7 0.4-1.4c1.8-7.5 7.3-13.8 14.1-15.9c3.7-1.1 8.8-1.3 12.3-0.3c5.9 1.6 10.3 5.1 14.8 11.9c2.6 4.1 8 14.4 12.9 24.6c0.6 1.5 1.2 2.6 1.3 2.6c0.1 0 1-1.6 2-3.7c1-2 2.7-5.6 3.9-8c1.2-2.5 2.2-4.5 2.2-4.6c0-0.1 2.4-4.9 8.8-18.1l3-6.1 1.7-1.6c6.9-6.8 18.2-3.7 19.9 5.4c0.2 1.2 0.5 0.5-5.8 13.4c-2.9 5.9-4.9 9.9-8 16.4c-0.7 1.5-2.1 4.4-3.1 6.4c-1 2-2.7 5.5-3.8 7.9c-4.1 8.6-7.6 15.5-8.3 16.6c-3.8 5.6-11.4 7.9-17.8 5.4c-4.3-1.7-6.3-4-9-10.2c-1.9-4.3-3.5-8.1-4.8-11c-0.5-1.3-2.2-5.1-3.7-8.5c-1.4-3.4-3.2-7.5-3.9-9.1c-1.3-3.1-2.3-5-2.6-5c-0.1 0-0.2 2.7-0.3 6c-0.1 6.5-0.3 8.3-1.5 12.4c-3.9 13.4-14.6 23.9-28 27.3c-4 1-11.1 1.4-15.3 0.8zM308.6 78.1c-8-1-14.3-3.8-19.8-8.7c-18.1-16.3-16.4-47.9 3.4-62.4c8.4-6.2 20.1-8.5 30.2-5.9c4 1 7.6 2.8 10.3 5.2l1.8 1.7 1-1.3c1.5-2.2 4.4-4 7.3-4.6c6.3-1.4 12.5 2.3 14.3 8.4c0.6 1.8 0.7 55.8 0.2 58.4c-0.8 4.1-4.1 7.6-8.2 8.8c-1.9 0.6-5.6 0.5-7.3-0.1c-3.8-1.5-6.5-4.3-7.4-7.9c-0.2-0.5-0.3-1-0.3-1c0-0.1-0.7 0.6-1.6 1.5c-5.1 4.9-12.1 7.7-19.9 7.9c-1.8 0-3.6 0-4 0zM92.7 76.1c-4-1-7.3-4.3-8.4-8.4c-0.4-1.4-0.5-53.7-0.1-55.6c0.8-4.1 4-7.8 8.2-9.2c6-2.1 13.1 0.7 15.4 6.1l0.4 0.8 0.9-1c6-6.6 16.8-9.4 23.4-6.2c4.2 2 6.3 5.5 6 10c-0.2 3.6-1.7 6.1-4.9 8.2c-2.3 1.5-3.2 1.6-9.2 1.8c-5.2 0.1-5.3 0.1-7.1 0.7c-5 1.8-8.5 5.9-9.5 11.5c-0.2 0.9-0.3 6-0.4 17.1c-0.1 13.9-0.2 15.9-0.4 16.6c-1.6 3.9-4.5 6.6-8.3 7.6c-1.5 0.4-4.4 0.4-6 0zM319.6 56.9c6.6-1.4 11.9-6.3 13.9-13c0.8-2.5 0.8-7.1 0.1-9.6c-2.5-8.8-10.5-14.5-19.1-13.5c-7.5 0.8-13.3 5.8-15.5 13.3c-0.7 2.3-0.7 7.2 0 9.7c2.4 9 11.7 14.9 20.6 13.1zM43.1 56.5c3.8-0.6 6.6-1.9 9.4-4.6c7.9-7.3 7.9-19.3-0.1-26.6c-8.1-7.4-20.5-5.6-26.4 4c-2 3.2-2.7 6.5-2.5 10.7c0.4 10.1 9.8 18 19.6 16.5z'/></svg>")
 # 받기 단추의 그림 — 웹 UI 도구 막대의 ICON.download 와 같은 선 그림.
 _ICON_DOWNLOAD = ("<svg viewBox='0 0 16 16' aria-hidden='true'><path d='M8 2.5v8M5 7.5l3 3 3-3M3 13h10'/></svg>")
 # PDF 는 서버가 받을 때 만든다(/api/report/<실행>/pdf). 파일로 연 리포트(폴더째 받은 사람)에는 서버가 없어
@@ -345,8 +348,10 @@ a { color:inherit; text-underline-offset:2px; }
 .crumbs { display:flex; gap:var(--sp-2); align-items:center; min-width:0; color:var(--muted); }
 .crumbs > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .crumbs b { color:var(--text); font-weight:600; flex:none; max-width:100%; }
-.topbar .name { order:-1; font-size:var(--tx-base); font-weight:700; letter-spacing:-0.01em;
+.topbar .name { order:-1; display:flex; align-items:center; align-self:stretch;
                 padding-right:var(--sp-4); border-right:1px solid var(--sep); }
+/* 글자 로고 18px — x-height 가운데가 막대 가운데에 오도록 조금 내린다 */
+.topbar .name .wm { display:block; width:64px; height:18px; margin-top:4px; fill:var(--accent-blue); }
 .topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
                 display:flex; align-items:center; gap:var(--sp-3); white-space:nowrap; }
 /* 어둡게 스위치 — 이름표 + 스위치(46×26). 켜진 쪽은 강조색이 손잡이 뒤를 따라 찬다.
@@ -2372,7 +2377,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 <body>
 <header class="topbar">
 <div class="crumbs">{f"<b title='{_esc(report.spec_source)}'>{_esc(spec_name)}</b><span aria-hidden='true'>→</span>" if spec_name else ""}<span>{_esc(report.target_url)}</span></div>
-<div class="name">Prova</div>
+<div class="name">{_WORDMARK}</div>
 <div class="when"><span>검증 리포트 · {_esc(when)}</span>{THEME_BUTTON}</div>
 </header>
 <div class="wrap">
