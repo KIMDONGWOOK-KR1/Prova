@@ -87,27 +87,43 @@ body { zoom: var(--z); }
 }
 
 .side-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 16px 10px 10px 20px; }
-/* 로고 — 펼치면 글자 로고(22px, x-height 약 17px), 접으면 심볼(28px). 같은 자리에 겹쳐 두고 흐려지며 바꾼다.
-   글자 로고의 왼쪽 끝 = '새 확인' 아이콘, x-height 가운데 = 위쪽 막대 가운데(36px). 걷거나 커지지 않는다. */
+/* 로고 — 펼치면 글자 로고(22px, x-height 약 17px, 첫 화면 링크). 접히면 심볼이 되는데, 심볼은 접기·펴기 단추 안에
+   있다(아래 .side-toggle). 글자 로고의 왼쪽 끝 = '새 확인' 아이콘, x-height 가운데 = 위쪽 막대 가운데. */
 .brand { position: relative; display: block; flex: none; width: 79px; height: 22px; margin-top: 3px;
   border-radius: var(--r-md); outline-offset: 3px; }
-/* 숨은 쪽은 흐려진 뒤 visibility 도 끈다 — 올려도·초점이 가도 나타나지 않고 접근성 트리에서도 빠진다 */
-.brand svg { position: absolute; left: 0; top: 0; display: block;
-  transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
-.brand .wm { width: 79px; height: 22px; fill: var(--accent-blue); }
-.brand .sym { width: 28px; height: 28px; opacity: 0; visibility: hidden; }
-.brand .sym .body { fill: var(--accent-blue); }
-.brand .sym .eyes { fill: var(--fg-onaccent); }
-/* 올렸을 때는 보이는 로고만 살짝 옅게 — 숨은 쪽을 건드리지 않는다(펼친 상태에서 심볼이 비치던 문제) */
+.brand .wm { position: absolute; left: 0; top: 0; display: block; width: 79px; height: 22px; fill: var(--accent-blue);
+  transition: opacity var(--dur-1) var(--ease-out); }
 a.brand:hover .wm { opacity: 0.8; }
+/* 숨은 쪽은 흐려진 뒤 visibility 도 끈다 — 올려도·초점이 가도 나타나지 않고 접근성 트리에서도 빠진다(56b) */
+:root.side-rail .brand { position: absolute; opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
 
 .side-toggle {
-  margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
+  position: relative; margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
   border: 0; border-radius: var(--r-md); background: none; color: var(--fg-muted);
   transition: background-color 150ms ease, color 150ms ease;
 }
 .side-toggle:hover { background: var(--fill-hover); color: var(--fg-default); }
-.side-toggle svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.side-toggle .ic-panel { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+/* 단추 안의 두 그림 — 판 모양과 심볼이 같은 28px 칸에 겹친다. 보이는 쪽만 visibility: visible */
+.side-toggle .ic-panel, .side-toggle .sym { grid-area: 1 / 1; transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
+.side-toggle .sym { width: 28px; height: 28px; opacity: 0; visibility: hidden; }
+.side-toggle .sym .body { fill: var(--accent-blue); }
+.side-toggle .sym .eyes { fill: var(--fg-onaccent); }
+:root.side-rail .side-toggle .sym { opacity: 1; visibility: visible; transition: opacity var(--dur-1) var(--ease-out); }
+:root.side-rail .side-toggle .ic-panel { opacity: 0; visibility: hidden; }
+:root.side-rail .side-toggle:hover .sym, :root.side-rail .side-toggle:focus-visible .sym { opacity: 0; visibility: hidden;
+  transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
+:root.side-rail .side-toggle:hover .ic-panel, :root.side-rail .side-toggle:focus-visible .ic-panel { opacity: 1; visibility: visible;
+  transition: opacity var(--dur-1) var(--ease-out); }
+:root.side-rail .side-toggle { background: none; }
+:root.side-rail .side-toggle:hover { background: var(--fill-hover); }
+/* 접힌 줄의 첫 화면 길 — '+ 새 확인' 의 짧은 꼴 */
+.rail-new { display: none; width: 28px; height: 28px; place-items: center; border: 0; border-radius: var(--r-md);
+  background: none; color: var(--accent-blue); }
+.rail-new:hover { background: var(--fill-hover); }
+.rail-new svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+:root.side-rail .rail-new { display: grid; }
 .side-toggle .chev { transform-origin: 14.5px 12px; transition: transform 240ms cubic-bezier(0.23, 1, 0.32, 1); }
 .side-panes { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden;
   transition: opacity 120ms ease; }

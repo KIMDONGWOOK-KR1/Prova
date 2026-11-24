@@ -540,7 +540,8 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
   const say = () => {
     const rail = root.classList.contains("side-rail");
     tog.setAttribute("aria-expanded", String(!rail));
-    tog.title = tog.ariaLabel = rail ? "사이드바 펴기" : "사이드바 접기";
+    tog.setAttribute("aria-label", rail ? "사이드바 표시" : "사이드바 숨기기");
+    tog.removeAttribute("title");
     panes.inert = rail;
   };
   tog.addEventListener("click", () => {
@@ -548,7 +549,10 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     try { localStorage.setItem("prova-side", rail ? "rail" : "open"); } catch (e) { /* 저장은 덤 */ }
     say();
     tip.hidden = true;
+    // 키보드로 접고 폈으면 이름표를 새 이름으로 다시 띄운다(초점은 같은 단추에 남는다)
+    if (document.activeElement === tog && tog.matches(":focus-visible")) showTip(tog, ...TIPS[0][1]());
   });
+  $("railNew").addEventListener("click", () => { if (!state.busy) showBlank(); });
   say();
 
   // ⌘\ (맥) · Ctrl+\ (그 밖) 로 접고 편다 — 브라우저 단축키와 겹치지 않는 자리
@@ -560,20 +564,23 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
 
   // 접힌 줄의 이름표 — 마우스는 0.5초 머문 뒤, 키보드 초점은 바로. 이름 + 단축키(있으면)
   const tip = $("railTip");
-  const TIPS = [[$("homeLink"), "Prova 첫 화면", ""], [tog, "사이드바 펴기", mac ? "⌘\\" : "Ctrl \\"]];
+  // 이름은 그때그때 — 접기 단추는 펼침·접힘에서 말이 다르다. 접기 단추 이름표는 펼친 상태에서도 뜬다.
+  const KEY = mac ? "⌘\\" : "Ctrl \\";
+  const TIPS = [[tog, () => [root.classList.contains("side-rail") ? "사이드바 표시" : "사이드바 숨기기", KEY]],
+                [$("railNew"), () => ["새 확인", ""]]];
   let tipT = 0;
   const showTip = (el, label, key) => {
-    if (!root.classList.contains("side-rail")) return;
+    if (!root.classList.contains("side-rail") && el !== tog) return;
     tip.innerHTML = `${esc(label)}${key ? `<kbd class="kbd">${esc(key)}</kbd>` : ""}`;
     tip.style.top = `${el.offsetTop + el.offsetHeight / 2}px`;   // .side 기준 — 화면 배율(zoom)과 상관없다
     tip.hidden = false;
     el.setAttribute("aria-describedby", "railTip");
   };
   const hideTip = (el) => { clearTimeout(tipT); tip.hidden = true; el.removeAttribute("aria-describedby"); };
-  TIPS.forEach(([el, label, key]) => {
-    el.addEventListener("pointerenter", () => { clearTimeout(tipT); tipT = setTimeout(() => showTip(el, label, key), 500); });
+  TIPS.forEach(([el, what]) => {
+    el.addEventListener("pointerenter", () => { clearTimeout(tipT); tipT = setTimeout(() => showTip(el, ...what()), 500); });
     el.addEventListener("pointerleave", () => hideTip(el));
-    el.addEventListener("focus", () => { if (el.matches(":focus-visible")) showTip(el, label, key); });
+    el.addEventListener("focus", () => { if (el.matches(":focus-visible")) showTip(el, ...what()); });
     el.addEventListener("blur", () => hideTip(el));
     el.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(el); });
   });
