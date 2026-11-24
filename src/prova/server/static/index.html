@@ -49,7 +49,11 @@ try { var t = localStorage.getItem("prova-theme");
   </ol>
 </header>
 
-<div class="app">
+<!-- 단계가 바뀌면 화면 읽기 프로그램에 알린다 (app.js stepChanged) -->
+<p class="sr" id="stepSay" aria-live="polite"></p>
+
+<!-- tabindex=-1: 누른 단추가 다음 단계 화면에 없으면 초점을 여기로 옮긴다 -->
+<div class="app" tabindex="-1">
 
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
   <aside class="side">

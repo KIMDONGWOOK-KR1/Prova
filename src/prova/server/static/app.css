@@ -989,8 +989,11 @@ mark.unv { background: var(--bg-inset); }
 }
 .stepper:not([data-ready])::before { visibility: hidden; }
 .stepper[data-ready]::before { transition: transform var(--dur-3) var(--ease-out); }
-.stepper button[data-step]:hover { border: none; color: var(--fg-default); }
-.stepper button[data-step]:hover .no { border-color: var(--fg-default); color: var(--fg-default); }
+.stepper button[data-step]:hover:not(:disabled) { border: none; color: var(--fg-default); }
+.stepper button[data-step]:hover:not(:disabled) .no { border-color: var(--fg-default); color: var(--fg-default); }
+/* 갈 곳이 없는 번호 — 모양(지난·지금·남은)은 그대로 두고 누를 수 있다는 표시만 뺀다 */
+.stepper button[data-step]:disabled { cursor: default; }
+.app:focus { outline: none; }
 .stepper button[aria-current]:hover .no { color: var(--fg-onaccent); border-color: transparent; }
 .stepper button[data-step]:focus-visible { box-shadow: none; }
 .stepper button[data-step]:focus-visible .no { box-shadow: var(--focus-ring); }

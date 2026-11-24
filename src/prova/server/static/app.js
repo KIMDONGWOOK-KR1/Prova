@@ -512,6 +512,7 @@ function renderScreenUrlsErr() {
 const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
 
 function renderChrome() {
+  syncStepper();
   const f = form();
   const spec = (f.pdf || "").split("/").pop() || "기획서 없음";
   $("crumbs").innerHTML =
@@ -535,6 +536,7 @@ function renderChrome() {
 
 // 지금 몇 단계인지. 1단계에서만 입력 양식이 보이고, 나머지는 무대가 화면을 다 쓴다.
 function setStep(n) {
+  const prev = Number(document.body.dataset.step) || 0;
   document.body.dataset.step = n;
   for (const el of $("stepper").querySelectorAll("[data-step]")) {
     const s = Number(el.dataset.step);
@@ -543,7 +545,44 @@ function setStep(n) {
     // 지난 단계는 체크, 지금 단계는 검은 원, 남은 단계는 빈 원. 잇는 선은 지난 구간만 채운다.
     el.parentElement.dataset.state = s < n ? "done" : s === n ? "now" : "next";
   }
+  syncStepper();
   placeThumb();
+  if (prev && prev !== n) stepChanged(prev, n);
+}
+
+/**
+ * 갈 수 있는 단계만 누를 수 있다 (21st.dev 'Wizard Steps' 의 '가 본 곳까지만').
+ * 계획이 없을 때의 '항목 검토', 실행 중의 번호는 눌러도 아무 일이 없었는데 단추처럼 보였다.
+ */
+function syncStepper() {
+  for (const b of $("stepper").querySelectorAll("button[data-step]")) {
+    b.disabled = state.busy || (b.dataset.step === "2" && !state.plan);
+  }
+}
+
+/**
+ * 단계가 바뀔 때 — 'Wizard Steps' 에서 세 가지만 가져왔다.
+ * 1) 앞 단계로 가면 새 화면이 오른쪽에서, 뒤로 가면 왼쪽에서 16px 들어온다. 어느 쪽으로
+ *    움직였는지가 보인다. 나가는 화면은 기다리지 않는다(화면을 늦게 바꾸지 않는다).
+ * 2) 화면 읽기 프로그램에 '4단계 중 2단계, 항목 검토' 를 알린다.
+ * 3) 누른 단추가 새 화면에 없으면 초점을 새 화면으로 옮긴다 — 문서 맨 앞으로 튀지 않게.
+ */
+function stepChanged(prev, n) {
+  const app = document.querySelector(".app");
+  const all = $("stepper").querySelectorAll("[data-step]");
+  // body 에도 data-step 이 있어서 "> .lb" 로 단추 바로 아래만 본다
+  const lb = $("stepper").querySelector(`[data-step="${n}"] > .lb`);
+  $("stepSay").textContent = `${all.length}단계 중 ${n}단계, ${lb ? lb.textContent : ""}`;
+  if (!reduceMotion() && app.animate) {
+    const d = n > prev ? 1 : -1;
+    app.animate([{ opacity: 0, transform: `translateX(${d * 16}px)` }, { opacity: 1, transform: "none" }],
+                { duration: 260, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+  }
+  requestAnimationFrame(() => {
+    const a = document.activeElement;
+    if (a && a !== document.body && a.isConnected && a.getClientRects().length) return;
+    app.focus({ preventScroll: true });
+  });
 }
 
 /**
