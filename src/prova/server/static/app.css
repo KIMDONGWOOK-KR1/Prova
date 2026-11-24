@@ -91,12 +91,15 @@ body { zoom: var(--z); }
    글자 로고의 왼쪽 끝 = '새 확인' 아이콘, x-height 가운데 = 위쪽 막대 가운데(36px). 걷거나 커지지 않는다. */
 .brand { position: relative; display: block; flex: none; width: 79px; height: 22px; margin-top: 3px;
   border-radius: var(--r-md); outline-offset: 3px; }
-.brand svg { position: absolute; left: 0; top: 0; display: block; transition: opacity var(--dur-1) var(--ease-out); }
+/* 숨은 쪽은 흐려진 뒤 visibility 도 끈다 — 올려도·초점이 가도 나타나지 않고 접근성 트리에서도 빠진다 */
+.brand svg { position: absolute; left: 0; top: 0; display: block;
+  transition: opacity var(--dur-1) var(--ease-out), visibility 0s linear var(--dur-1); }
 .brand .wm { width: 79px; height: 22px; fill: var(--accent-blue); }
-.brand .sym { width: 28px; height: 28px; opacity: 0; }
+.brand .sym { width: 28px; height: 28px; opacity: 0; visibility: hidden; }
 .brand .sym .body { fill: var(--accent-blue); }
 .brand .sym .eyes { fill: var(--fg-onaccent); }
-a.brand:hover svg { opacity: 0.8; }
+/* 올렸을 때는 보이는 로고만 살짝 옅게 — 숨은 쪽을 건드리지 않는다(펼친 상태에서 심볼이 비치던 문제) */
+a.brand:hover .wm { opacity: 0.8; }
 
 .side-toggle {
   margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
@@ -111,8 +114,9 @@ a.brand:hover svg { opacity: 0.8; }
 /* 접힌 줄 — 로고(첫 화면으로)와 펴기 단추만. 목록은 흐려지며 숨는다 */
 :root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 16px 0 10px; }
 :root.side-rail .brand { width: 28px; height: 28px; margin-top: 0; }
-:root.side-rail .brand .wm { opacity: 0; }
-:root.side-rail .brand .sym { opacity: 1; }
+:root.side-rail .brand .wm { opacity: 0; visibility: hidden; }
+:root.side-rail .brand .sym { opacity: 1; visibility: visible; transition: opacity var(--dur-1) var(--ease-out); }
+:root:not(.side-rail) .brand .wm { transition: opacity var(--dur-1) var(--ease-out); }
 :root.side-rail a.brand:hover .sym { opacity: 0.8; }
 :root.side-rail .side-toggle { margin: 0; }
 :root.side-rail .side-toggle .chev { transform: scaleX(-1); }
