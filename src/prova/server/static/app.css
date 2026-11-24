@@ -1217,6 +1217,11 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 .tw-fill { left: 2px; top: 2px; bottom: 2px; width: 0; border-radius: var(--r-full); background: var(--fg-default); }
 .tw-knob { left: 0; top: 2px; width: 18px; height: 18px; border-radius: var(--r-full);
   background: var(--bg-surface); box-shadow: 0 0 0 1px var(--border-strong); }
+/* 건너편 기호: 해는 왼쪽(어두울 때 찬 바탕 위), 달은 오른쪽(밝을 때 빈 바탕 위). 손잡이 밑은 가려진다. */
+.tw-dest { inset: 0; }
+.tw-dest svg { position: absolute; top: 6px; width: 10px; height: 10px; }
+.tw-dest svg:first-child { left: 6px; color: var(--bg-surface); opacity: 0.75; }
+.tw-dest svg:last-child { right: 6px; color: var(--fg-subtle); }
 .tw-ico { left: 0; top: 0; width: 12px; height: 12px; }
 .tw-ico svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .tw-ico svg:first-child { color: var(--fg-muted); }

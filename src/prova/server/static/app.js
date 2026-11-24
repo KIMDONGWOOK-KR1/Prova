@@ -215,6 +215,8 @@ function stretchThumb(host) {
  * 손잡이는 stretchThumb 과 같은 앞·뒤 두 점 용수철이다. 누르면 조금 넓어지고, 끌면 앞쪽만
  * 따라오고 뒤쪽은 제자리에 붙잡혀 늘어난다. 70% 를 넘기면 놓아 버리고 반대편으로 건너간다.
  * 바탕은 손잡이를 조금 늦게 따라 찬다. 클릭·Space·Enter·← → 모두 된다.
+ * 끌 때는 손잡이만 건너가고, 실제로 바뀌는 것(onCommit)은 손을 뗄 때다 — 21st.dev
+ * 'Liquid Glass Theme Toggle' 처럼. 끄는 도중 화면 전체가 뒤집히지 않고, 되돌려 끌면 취소된다.
  * 원본의 물 셰이더·물방울·물결·유리·소리·진동·구르는 아이콘은 쓰지 않는다.
  *
  * btn 안에 .tw-fill · .tw-knob · .tw-ico(svg 두 개: 끔, 켬) 가 있어야 한다.
@@ -226,7 +228,7 @@ function liquidSwitch(btn, onCommit) {
   const G = { w: btn.offsetWidth || 46, h: btn.offsetHeight || 22 };
   G.pad = 2; G.r = G.h / 2 - G.pad; G.xOff = G.pad + G.r; G.xOn = G.w - G.pad - G.r;
   const s = { a: { x: G.xOff, v: 0 }, b: { x: G.xOff, v: 0 }, lead: 0, lagUntil: 0, sy: { s: 1, v: 0 },
-              q: 0, qT: 0, fill: { x: -6, v: 0 }, on: false, moving: false, raf: 0, last: 0,
+              q: 0, qT: 0, fill: { x: -6, v: 0 }, on: false, committed: false, moving: false, raf: 0, last: 0,
               drag: { id: -1, startX: 0, grab: 0, moved: false, x: 0 }, suppressClick: false };
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
@@ -263,7 +265,7 @@ function liquidSwitch(btn, onCommit) {
       const f = !lead && now < s.lagUntil ? 0.06 : 1;
       B.v += (k * (T - B.x) - c * B.v) * dt * f;
       B.x += B.v * dt;
-      const lo = G.xOff + s.q - 2, hi = G.xOn - s.q + 2;
+      const lo = G.xOff + s.q, hi = G.xOn - s.q;   // 원본은 2px 넘친다 — 테두리를 덮지 않게 안쪽에서 멈춘다
       if (B.x < lo || B.x > hi) {
         s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0018;
         B.x = clamp(B.x, lo, hi);
@@ -314,9 +316,11 @@ function liquidSwitch(btn, onCommit) {
     s.moving = true;
     loop();
   };
+  // 보이는 것과 확정된 값을 나눈다: 끄는 동안은 goTo 만, 손을 떼면 commit.
   const commit = (on) => {
-    if (s.on === on) return;
     goTo(on, s.drag.id === -1);
+    if (s.committed === on) return;
+    s.committed = on;
     btn.setAttribute("aria-checked", String(on));
     onCommit(on);
   };
@@ -342,13 +346,16 @@ function liquidSwitch(btn, onCommit) {
     if (!s.drag.moved) return;
     s.drag.x = clamp(x - s.drag.grab, G.xOff - G.r * 0.3, G.xOn + G.r * 0.3);
     const t = (s.drag.x - G.xOff) / (G.xOn - G.xOff);
-    if (!s.on && t > 0.68) commit(true);       // 절반을 넘기면 놓고 건너간다
-    else if (s.on && t < 0.32) commit(false);
+    if (!s.on && t > 0.68) goTo(true, false);       // 70% 를 넘기면 손잡이가 놓고 건너간다
+    else if (s.on && t < 0.32) goTo(false, false);
     loop();
   });
   const endDrag = (e) => {
     if (s.drag.id !== e.pointerId) return;
+    const moved = s.drag.moved;
     s.drag.id = -1; s.qT = 0; s.moving = true;
+    if (moved && e.type === "pointerup") commit(s.on);   // 손을 뗀 쪽으로 확정
+    else if (moved) goTo(s.committed);                    // 끌다 취소되면 제자리로
     loop();
   };
   btn.addEventListener("pointerup", endDrag);
@@ -365,6 +372,7 @@ function liquidSwitch(btn, onCommit) {
 
   return {
     set(on, instant = false) {
+      s.committed = on;
       btn.setAttribute("aria-checked", String(on));
       if (instant) { s.on = on; snap(); } else goTo(on);
     },
