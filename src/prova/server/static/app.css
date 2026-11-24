@@ -315,6 +315,9 @@ button.theme[aria-checked="true"] .tg-mini .m-moon { display: block; }
 /* ── 내용 쪽 ─────────────────────────────────────────────────────────────── */
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: calc(100vh / var(--z)); outline: none; }
+/* 단계가 바뀌면 화면 읽기를 위해 초점을 본문(.main, tabindex=-1)으로 옮긴다 — 누르는 것이 아니니 고리를 그리지 않는다.
+   키보드로 단계를 바꾸면 전체 :focus-visible 고리가 본문 둘레에 얇게 보였다(hh 11-25). 실제 컨트롤의 고리는 그대로. */
+.main:focus, .main:focus-visible { outline: none; box-shadow: none; }
 
 /* 도구 막대 — 왼쪽 제목, 가운데 단계, 오른쪽 할 일 (키트 Toolbar) */
 .bar {
