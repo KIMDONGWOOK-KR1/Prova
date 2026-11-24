@@ -364,6 +364,54 @@ h2 { font-size:var(--tx-base); font-weight:700; margin:var(--sp-8) 0 0; padding-
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
 .body { padding:0 0 24px; }
+/* 화면 흐름 지도 — 흐름 실패 카드 맨 위. 웹 화면(app.css .flowmap)과 같은 모양이고 끊긴 곳만 판정 색 + 글자.
+   실선 = 요소를 눌러 옮김, 점선 = 주소로 바로 들어감(잇는 요소는 확인하지 않음). */
+.flowmap { list-style:none; margin:0 0 var(--sp-4); padding:var(--sp-3) 0; display:flex; align-items:center;
+           overflow-x:auto; }
+.fm-node { flex:none; position:relative; display:grid; gap:2px; min-width:104px; padding:var(--sp-2) var(--sp-3);
+           border:1px solid var(--border-strong); border-radius:var(--r-md); background:var(--card); }
+.fm-node b { font-size:13px; font-weight:640; white-space:nowrap; }
+.fm-node i, .fm-edge i { font-style:normal; font-size:11px; font-weight:600; }
+.fm-node:not(:first-child)::before, .fm-node:not(:last-child)::after { content:""; position:absolute; top:50%;
+           width:7px; height:7px; margin-top:-4px; border:1px solid var(--border-strong); border-radius:var(--r-full);
+           background:var(--card); }
+.fm-node:not(:first-child)::before { left:-4px; } .fm-node:not(:last-child)::after { right:-4px; }
+.fm-edge { flex:1 1 0; min-width:128px; max-width:240px; position:relative; display:grid; grid-template-rows:1fr 1fr;
+           justify-items:center; height:56px; padding:0 var(--sp-3); }
+.fm-edge::before { content:""; position:absolute; left:4px; right:5px; top:50%; border-top:1px solid var(--fg-subtle); }
+.fm-edge::after { content:""; position:absolute; right:6px; top:50%; width:6px; height:6px; margin-top:-3px;
+           border-top:1px solid var(--fg-subtle); border-right:1px solid var(--fg-subtle); transform:rotate(45deg); }
+/* 이동 방법은 선 위, 끊김 표시는 선 아래 — 바탕을 칠해 선을 끊지 않는다 */
+.fm-edge span { align-self:end; margin-bottom:5px; padding:0 var(--sp-2); font-size:12px; white-space:nowrap; }
+.fm-edge i { grid-row:2; align-self:start; margin-top:5px; }
+.fm-edge[data-via="url"]::before { border-top-style:dashed; }
+.fm-edge[data-via="url"] span { color:var(--muted); }
+.fm-node[data-state="ok"] i { color:var(--pass-fg); }
+.fm-node[data-state="unreached"] { border-style:dashed; border-color:var(--line); }
+.fm-node[data-state="unreached"] b, .fm-node[data-state="unreached"] i { color:var(--muted); font-weight:500; }
+.fm-edge[data-state="unreached"]::before, .fm-edge[data-state="unreached"]::after { border-color:var(--line); }
+/* 끊긴 곳 — 카드의 실패 분류와 같은 색(결함 빨강, 실행 문제 보라, 확인 불가 회색) */
+.flowmap { --fm-hit:var(--fail); --fm-hit-bg:var(--fail-bg); }
+.flowmap.infra { --fm-hit:var(--note-fg); --fm-hit-bg:var(--note-bg); }
+.flowmap.unv { --fm-hit:var(--text); --fm-hit-bg:var(--bg-inset); }
+.fm-node[data-state="broken"] { border-color:var(--fm-hit); background:var(--fm-hit-bg); }
+.fm-node[data-state="broken"] i, .fm-edge[data-state="broken"] span, .fm-edge[data-state="broken"] i { color:var(--fm-hit); }
+.fm-edge[data-state="broken"]::before { border-top:2px solid var(--fm-hit); margin-top:-1px; }
+.fm-edge[data-state="broken"][data-via="url"]::before { border-top-style:dashed; }
+.fm-edge[data-state="broken"]::after { border-color:var(--fm-hit); }
+@media (max-width:640px) {
+  .flowmap { flex-direction:column; align-items:stretch; overflow:visible; }
+  .fm-node::before, .fm-node::after { display:none; }
+  .fm-edge { min-width:0; max-width:none; height:auto; min-height:44px; justify-items:start;
+             grid-template-rows:none; align-content:center; padding:var(--sp-2) 0 var(--sp-2) var(--sp-8); }
+  .fm-edge span, .fm-edge i { grid-row:auto; align-self:auto; margin:0; padding:0; }
+  .fm-edge::before { left:var(--sp-5); right:auto; top:0; bottom:2px; border-top:0; border-left:1px solid var(--fg-subtle); }
+  .fm-edge[data-via="url"]::before { border-left-style:dashed; }
+  .fm-edge[data-state="broken"]::before { border-top:0; border-left:2px solid var(--fm-hit); margin:0 0 0 -1px; }
+  .fm-edge[data-state="broken"][data-via="url"]::before { border-left-style:dashed; }
+  .fm-edge[data-state="unreached"]::before { border-color:var(--line); }
+  .fm-edge::after { left:calc(var(--sp-5) - 3px); right:auto; top:auto; bottom:3px; transform:rotate(135deg); }
+}
 /* 실패 카드 — 대제목이 맨 위, 분류·규칙 꼬리표와 케이스 제목은 그 아래 작은 한 줄. */
 /* 번호는 왼쪽 칸에 따로 선다 — 제목·꼬리표·비교 칸이 같은 세로선에서 시작한다. */
 .case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:24px 0 12px 36px; position:relative;
@@ -1032,8 +1080,104 @@ def _stuck_rows_html(items: list[Verdict], fails: list[Verdict], names: dict, nu
     return "".join(out)
 
 
+# 흐름 케이스의 확인 스텝 이름 — s2_case_generator.generator._flow_case 가 짓는다.
+# '<screen_id> 성공' 은 중간 화면의 성공 조건, '<screen_id> 도착' 은 눌러 옮긴 뒤 경로 확인.
+_FLOW_MARK = re.compile(r"^(\S+) (성공|도착)$")
+
+
+def flow_route(v: Verdict) -> dict | None:
+    """흐름 케이스의 스텝에서 화면 순서·이동 방법·끊긴 곳을 읽는다.
+
+    리포트에는 기획서의 흐름 표가 없다 — 대신 케이스 스텝에 화면 경계가 이름으로 남아
+    있다('signup 성공', 'login 도착'). 실행한 스텝(step_results)과 멈춘 뒤 남은 스텝
+    (pending_steps)을 이으면 흐름 전체가 나온다. 모양이 맞지 않으면 None — 지도를
+    그리지 않고 예전처럼 글로만 둔다(틀린 지도보다 없는 지도가 낫다).
+
+    돌려주는 것: screens(screen_id 순서), via(전이마다 누른 요소 이름, 주소 이동은 ""),
+    broken(("node"|"edge", 번호) 또는 None).
+    """
+    if not v.flow_id:
+        return None
+    steps = [(r.action, r.target or "", r.status) for r in v.step_results if r.phase == "test"]
+    steps += [(d.get("action") or "", d.get("target") or "", "pending")
+              for d in v.pending_steps if d.get("phase", "test") == "test"]
+    screens: list[str] = []
+    via: list[str] = []
+    broken = None
+    for i, (action, target, status) in enumerate(steps):
+        mark = _FLOW_MARK.match(target) if action == "assert" else None
+        if mark and mark.group(2) == "성공":
+            if status == "error" and broken is None:
+                broken = ("node", len(screens))
+            screens.append(mark.group(1))
+            via.append("")
+            continue
+        if mark and mark.group(2) == "도착":
+            if not via:
+                return None
+            prev = steps[i - 1]
+            via[-1] = prev[1] if prev[0] == "click" else ""
+            if status == "error" and broken is None:
+                broken = ("edge", len(via) - 1)
+            continue
+        if status == "error" and broken is None:
+            nxt = steps[i + 1] if i + 1 < len(steps) else ("", "", "")
+            arrive = nxt[0] == "assert" and nxt[1].endswith(" 도착")
+            # 이동 요소를 못 찾아 누르지 못했다 — 화면 안이 아니라 화면 사이에서 끊겼다.
+            broken = ("edge", len(via) - 1) if action == "click" and arrive and via else ("node", len(screens))
+    screens.append(v.screen_id)
+    if len(screens) < 2 or len(via) != len(screens) - 1:
+        return None
+    if v.verdict == "FAIL" and broken is None and not any(
+            r.status == "error" and r.phase == "setup" for r in v.step_results):
+        # 스텝은 다 지났는데 마지막 화면의 확인(케이스 기대)이 틀렸다.
+        broken = ("node", len(screens) - 1)
+    if v.verdict == "PASS":
+        broken = None
+    return {"screens": screens, "via": via, "broken": broken}
+
+
+def _flow_map_html(v: Verdict, names: dict) -> str:
+    """흐름 실패 카드 맨 위의 화면 흐름 지도 — 어느 화면, 어느 이동에서 끊겼는지.
+
+    21st.dev 'Interactive Workflow Blueprint' 의 노드·연결선 그림만 가져왔다(웹 화면의
+    app.js flowMap 과 같은 모양). 판정 색은 카드의 실패 분류(fail_kind)를 따르고 늘
+    글자('여기서 끊김')와 함께 쓴다.
+    """
+    route = flow_route(v)
+    if not route:
+        return ""
+    kind, at = route["broken"] or ("", -1)
+
+    def state(part: str, i: int) -> str:
+        if not route["broken"]:
+            return "ok" if v.verdict == "PASS" else ""
+        if part == kind and i == at:
+            return "broken"
+        # 끊긴 곳보다 앞은 지나왔고, 뒤는 가지 못했다. 끊긴 이동의 앞 화면(i == at)도 지나왔다.
+        before = i < at or (part == "node" and kind == "edge" and i == at)
+        return "ok" if before else "unreached"
+
+    say = {"ok": "통과", "broken": "여기서 끊김", "unreached": "가지 못함"}
+    parts = []
+    for i, sid in enumerate(route["screens"]):
+        if i:
+            st = state("edge", i - 1)
+            m = route["via"][i - 1]
+            label = f"'{_esc(m)}' 누름" if m else "주소로 이동"
+            note = f"<i>{say[st]}</i>" if st == "broken" else ""
+            parts.append(f"<li class='fm-edge' data-via='{'click' if m else 'url'}' data-state='{st}'>"
+                         f"<span>{label}</span>{note}</li>")
+        st = state("node", i)
+        parts.append(f"<li class='fm-node' data-state='{st}'><b>{_esc(names.get(sid) or sid)}</b>"
+                     f"{f'<i>{say[st]}</i>' if st else ''}</li>")
+    return (f"<ol class='flowmap {fail_kind(v) if v.verdict == 'FAIL' else ''}' aria-label='화면 흐름'>"
+            f"{''.join(parts)}</ol>")
+
+
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None, target_url: str = "", no: int | None = None) -> str:
+               revised: dict | None = None, target_url: str = "", no: int | None = None,
+               names: dict | None = None) -> str:
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -1117,7 +1261,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
-        f"<div class='body'>"
+        f"<div class='body'>{_flow_map_html(verdict, names or {}) if verdict.flow_id else ''}"
         f"{_compare_html(verdict, kind, shot, repro)}{f'<table class=kv>{kv}</table>' if kv else ''}"
         f"{more}"
         f"</div></details>"
@@ -1186,7 +1330,8 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
     groups = _groups(verdicts, names)
 
     def card(v: Verdict) -> str:
-        return _case_html(v, open_by_default, revised, target_url, (numbers or {}).get(v.case_id))
+        return _case_html(v, open_by_default, revised, target_url, (numbers or {}).get(v.case_id),
+                          names)
 
     if len(groups) < 2:
         return "".join(card(v) for v in verdicts)

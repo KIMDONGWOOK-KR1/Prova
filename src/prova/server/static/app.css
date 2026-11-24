@@ -1262,6 +1262,52 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
 @keyframes sw-land-on  { 0% { scale: 1 1; } 40% { scale: 1 0.82; } 65% { scale: 1 1.06; } 85% { scale: 1 0.98; } 100% { scale: 1 1; } }
 @keyframes sw-land-off { 0% { scale: 1 1; } 40% { scale: 1 0.82; } 65% { scale: 1 1.06; } 85% { scale: 1 0.98; } 100% { scale: 1 1; } }
 
+/* ── 화면 흐름 지도 ─────────────────────────────────────────────────────
+   21st.dev 'Interactive Workflow Blueprint' 에서 노드 상자·연결 단자·연결선만 가져왔다.
+   끌기·잇기·확대·흐르는 점선·그라데이션 선·빛번짐은 버렸다 — 흐름은 기획서가 정한다.
+   실선 = 화면의 요소를 눌러 옮김(그 요소도 확인), 점선 = 주소로 바로 들어감. */
+.group > header h3 .fid { font-family: var(--font-mono); font-size: var(--tx-sm);
+  font-weight: 400; color: var(--fg-muted); margin-left: var(--sp-1); }
+.flowmap { list-style: none; margin: 0; padding: var(--sp-4) var(--sp-3);
+  display: flex; align-items: center; overflow-x: auto;
+  border-bottom: 1px solid var(--border-subtle); }
+.fm-node { flex: none; position: relative; display: grid; gap: 2px; min-width: 112px;
+  padding: var(--sp-2) var(--sp-3); border: 1px solid var(--border-strong);
+  border-radius: var(--r-md); background: var(--bg-surface); }
+.fm-node b { font-size: var(--tx-sm); font-weight: 640; white-space: nowrap; }
+.fm-node code { font-family: var(--font-mono); font-size: var(--tx-xs); color: var(--fg-subtle); }
+/* 연결 단자 — 선이 상자에 닿는 자리. 원본처럼 끌어서 잇지는 않는다 */
+.fm-node:not(:first-child)::before, .fm-node:not(:last-child)::after {
+  content: ""; position: absolute; top: 50%; width: 7px; height: 7px; margin-top: -4px;
+  border: 1px solid var(--border-strong); border-radius: var(--r-full); background: var(--bg-surface); }
+.fm-node:not(:first-child)::before { left: -4px; }
+.fm-node:not(:last-child)::after { right: -4px; }
+/* 이름은 선 위에 얹는다 — 바탕을 칠해 선을 끊지 않으니 어느 바탕색 위에서도 그대로다 */
+.fm-edge { flex: 1 1 0; min-width: 136px; max-width: 260px; position: relative; display: grid;
+  grid-template-rows: 1fr 1fr; justify-items: center; height: 52px; padding: 0 var(--sp-3); }
+.fm-edge::before { content: ""; position: absolute; left: 4px; right: 5px; top: 50%;
+  border-top: 1px solid var(--fg-subtle); }
+.fm-edge::after { content: ""; position: absolute; right: 6px; top: 50%; width: 6px; height: 6px;
+  margin-top: -3px; border-top: 1px solid var(--fg-subtle); border-right: 1px solid var(--fg-subtle);
+  transform: rotate(45deg); }
+.fm-edge span { align-self: end; margin-bottom: 5px; padding: 0 var(--sp-2);
+  font-size: var(--tx-xs); color: var(--fg-default); white-space: nowrap; }
+.fm-edge[data-via="url"]::before { border-top-style: dashed; }
+.fm-edge[data-via="url"] span { color: var(--fg-muted); }
+@media (max-width: 640px) {
+  /* 좁으면 위에서 아래로 — 가로로 밀어 보게 하지 않는다 */
+  .flowmap { flex-direction: column; align-items: stretch; overflow: visible; }
+  .fm-node::before, .fm-node::after { display: none; }
+  .fm-edge { min-width: 0; max-width: none; height: auto; min-height: 40px; justify-items: start;
+    grid-template-rows: none; align-content: center; padding: var(--sp-2) 0 var(--sp-2) var(--sp-8); }
+  .fm-edge span { align-self: auto; margin: 0; padding: 0; }
+  .fm-edge::before { left: var(--sp-5); right: auto; top: 0; bottom: 2px;
+    border-top: 0; border-left: 1px solid var(--fg-subtle); }
+  .fm-edge[data-via="url"]::before { border-left-style: dashed; }
+  .fm-edge::after { left: calc(var(--sp-5) - 3px); right: auto; top: auto; bottom: 3px;
+    transform: rotate(135deg); }
+}
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }

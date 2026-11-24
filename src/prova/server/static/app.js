@@ -1030,6 +1030,31 @@ async function replan() {
   }
 }
 
+/**
+ * 화면 흐름 지도 — 기획서의 '화면 흐름' 표(Flow)를 화면 상자와 이동 선으로 그린다.
+ *
+ * 21st.dev 'Interactive Workflow Blueprint' 의 노드·연결선 그림만 가져왔다. 흐름은
+ * 기획서가 정하는 것이라 여기서 끌어 옮기거나 잇지 않는다(편집기·내보내기는 버렸다).
+ * 실선은 화면의 요소를 눌러 옮기는 전이 — 그 요소도 확인한다. 점선은 주소로 바로
+ * 들어가는 전이 — 잇는 요소는 확인하지 않는다(models.Flow.via 의 설명).
+ */
+function flowMap(flow) {
+  const screens = (state.plan.doc && state.plan.doc.screens) || [];
+  const path = (sid) => (screens.find((s) => s.screen_id === sid) || {}).url_path || "";
+  const parts = [];
+  flow.screen_ids.forEach((sid, i) => {
+    if (i > 0) {
+      const via = (flow.via || [])[i - 1] || "";
+      parts.push(via
+        ? `<li class="fm-edge" data-via="click"><span>'${esc(via)}' 누름</span></li>`
+        : `<li class="fm-edge" data-via="url" title="주소로 바로 들어갑니다 — 화면을 잇는 버튼·링크는 확인하지 않습니다"><span>주소로 이동</span></li>`);
+    }
+    parts.push(`<li class="fm-node"><b>${esc(screenName(sid))}</b>` +
+      (path(sid) ? `<code>${esc(path(sid))}</code>` : "") + `</li>`);
+  });
+  return `<ol class="flowmap" aria-label="화면 흐름">${parts.join("")}</ol>`;
+}
+
 function renderPlanBody() {
   $("planNotes").innerHTML = planNotes();
   renderGroups();
@@ -1056,7 +1081,9 @@ function renderGroups() {
   $("groups").innerHTML = order.map((key) => {
     const list = byScreen.get(key);
     const title = key.startsWith("flow:")
-      ? `흐름 ${esc(key.slice(5))}` : esc(screenName(key));
+      ? `흐름 <code class="fid">${esc(key.slice(5))}</code>` : esc(screenName(key));
+    const flow = key.startsWith("flow:") &&
+      ((state.plan.doc && state.plan.doc.flows) || []).find((f) => f.flow_id === key.slice(5));
     const on = list.filter((c) => c.selected).length;
     return `<section class="group">
       <header>
@@ -1065,6 +1092,7 @@ function renderGroups() {
         <button class="btn ghost quiet" data-group="${esc(key)}" type="button">
           ${on === list.length ? "모두 끄기" : "모두 켜기"}</button>
       </header>
+      ${flow && flow.screen_ids.length > 1 ? flowMap(flow) : ""}
       ${byTarget(list)}
     </section>`;
   }).join("");
