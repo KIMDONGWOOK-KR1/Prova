@@ -1826,10 +1826,10 @@ function summaryText(out) {
     bad.forEach((c, i) => {
       const ev = c.evidence || {};
       const src = (c.spec_sources || []).map((x) => x.page && `${x.page}쪽`).filter(Boolean)[0];
-      lines.push("", `${i + 1}. ${c.title}`);
-      if (ev.expected) lines.push(`   기대: ${String(ev.expected).replace(/\s+/g, " ").trim()}`);
-      const actual = c.plain || ev.actual;
-      if (actual) lines.push(`   실제: ${String(actual).replace(/\s+/g, " ").trim()}`);
+      const flat = (x) => String(x).replace(/\s+/g, " ").trim();
+      lines.push("", `${i + 1}. ${c.plain || c.title}`);
+      if (ev.expected) lines.push(`   기대: ${flat(ev.expected)}`);
+      lines.push(`   실제: ${actualLines(c).map(flat).join(" — ")}`);
       if (ev.url) lines.push(`   화면: ${ev.url}`);
       if (src) lines.push(`   근거: 기획서 ${src}`);
     });
