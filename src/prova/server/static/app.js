@@ -22,9 +22,15 @@ const ICON = {
   search: `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.5"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
 };
 
+// 알림 상자의 종류를 읽어 주는 프로그램에도 알린다 — 21st.dev Notifications 의 role 에서.
+// 오류는 바로 끼어들어 읽고(alert), 주의·참고는 하던 말을 마친 뒤 읽는다(status).
+// 종류는 아이콘 모양과 색으로만 보이므로 앞에 낱말을 숨겨 붙인다(HIG: 색·모양만으로 전하지 않는다).
+// 닫기(×)는 넣지 않는다 — 디자인 기준 1번 '알림 상자는 숨기거나 접지 않는다'.
+const ALERT_SAY = { fail: ["alert", "오류"], warn: ["status", "주의"], info: ["status", "참고"] };
 function alertBox(kind, title, why) {
-  return `<div class="alert ${kind}">${ICON[kind] || ICON.info}<div>` +
-    `<b>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
+  const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
+  return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
+    `<b><span class="sr">${say}: </span>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
 }
 
 // ── 움직임 ─────────────────────────────────────────────────────────────────
