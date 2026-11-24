@@ -525,6 +525,16 @@ body:not([data-view="form"]) .pane-form { display: none; }
   .att[data-state="done"] .att-media svg { animation: att-pop var(--dur-3) var(--ease-spring); }
 }
 @keyframes att-in { from { opacity: 0; transform: translateY(4px); } }
+/* 올리는 중 — 파일 이름 위로 옅은 빛이 지나간다(21st.dev Attachment 참고). 글자색 두 토큰 사이만 오간다.
+   동작 줄이기에서는 그냥 글자. 서버는 받은 파일을 저장만 해서 '처리 중' 상태는 따로 없다. */
+@media (prefers-reduced-motion: no-preference) {
+  .att[data-state="uploading"] .att-body b {
+    color: transparent; -webkit-background-clip: text; background-clip: text;
+    background-image: linear-gradient(90deg, var(--fg-muted) 0%, var(--fg-muted) 35%, var(--fg-default) 50%, var(--fg-muted) 65%, var(--fg-muted) 100%);
+    background-size: 250% 100%; animation: att-shimmer 1.2s linear infinite;
+  }
+}
+@keyframes att-shimmer { from { background-position: 100% 0; } to { background-position: 0% 0; } }
 @keyframes att-pop { from { transform: scale(0.6); opacity: 0; } }
 .att-media {
   flex: none; display: grid; place-items: center; width: 36px; height: 36px;
