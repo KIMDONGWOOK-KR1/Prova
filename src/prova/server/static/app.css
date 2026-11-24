@@ -48,7 +48,8 @@ code, pre { font-family: var(--font-mono); }
 }
 
 .hint { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); }
-.hint.err { color: var(--fail-fg); }
+/* 입력 오류는 주의 색 — 빨강은 판정 '기획서와 다름' 몫이다 */
+.hint.err { color: var(--warn-fg); }
 .nums { font-variant-numeric: tabular-nums; }
 
 /* ── 창 ──────────────────────────────────────────────────────────────────── */
@@ -73,7 +74,14 @@ code, pre { font-family: var(--font-mono); }
   overflow: hidden;
 }
 
-.brand { padding: 18px 20px 8px; font-size: var(--tx-base); line-height: var(--lh-title); font-weight: 700; }
+.brand {
+  display: flex; align-items: center; gap: 8px; padding: 16px 20px 10px;
+  font-size: var(--tx-lg); line-height: var(--lh-title); font-weight: 700; letter-spacing: -0.02em;
+}
+/* 로고 — 고리 둘은 강조색 선, 겹친 곳(맞춘 곳)만 옅게 채운다 */
+.brand .mark { width: 22px; height: 22px; flex: none; overflow: visible; }
+.brand .mark circle, .brand .mark path:not(.lens) { fill: none; stroke: var(--accent-solid); stroke-width: 13; stroke-linecap: round; }
+.brand .mark .lens { fill: var(--accent-blue); opacity: 0.35; }
 
 .side-pane { display: none; flex: 1; min-height: 0; overflow-y: auto; padding-bottom: var(--sp-3); }
 body[data-view="form"] .side-pane[data-pane="form"],
@@ -106,6 +114,21 @@ body[data-view="result"] .side-pane[data-pane="result"] { display: block; }
 .sitem .two > span { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sitem.tall { padding: 6px 12px; align-items: flex-start; }
 .sitem.tall .vm { margin-top: 2px; }
+.sitem.tall .two { flex: 1; }
+
+/* 판정 알약 — 실행 기록 줄 오른쪽, 기획서 아래 '지난 확인' 줄. 글자가 판정을 말하고 색은 덧붙임(기준 2번). */
+.rpill {
+  flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; margin-top: 1px;
+  border-radius: var(--r-full); font-size: var(--tx-2xs); line-height: 1; font-weight: 600; white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.rpill.fail { background: var(--fail-bg); color: var(--fail-fg); }
+.rpill.ok { background: var(--pass-bg); color: var(--pass-fg); }
+.rpill.infra { background: var(--note-bg); color: var(--note-fg); }
+.rpill.unv { background: var(--fill-selected); color: var(--unv-fg); }
+.sitem[aria-current="true"] .rpill, .sitem:active .rpill { box-shadow: 0 0 0 0.5px var(--border-default); }
+#docMeta { display: inline-flex; align-items: center; gap: 6px; }
+#docMeta .rpill { margin-top: 0; }
 .sitem.more { color: var(--fg-muted); font-size: var(--tx-sm); }
 .side .empty { padding: 6px 20px; font-size: var(--tx-sm); line-height: var(--lh-para); color: var(--fg-muted); }
 
@@ -235,11 +258,73 @@ body:not([data-view="form"]) .pane-form { display: none; }
 .row-line { display: flex; align-items: center; gap: var(--sp-3); width: 100%; }
 .row-line .hint { flex: 1; }
 
-/* ── 1 기획서 — 시스템 설정식 묶음 상자 (키트 Group Box: 3% 채움, 모서리 12) ───── */
+/* ── 1 기획서 — 시작 화면. 큰 제목 한 줄, 할 일 둘(기획서·주소)이 든 카드 하나, 그 안의 버튼 하나.
+   레퍼런스: WeTransfer Sign · Fireflies 의 '올리기가 주인공인 첫 화면' 과 '예시 문서로 해 보기'. ── */
 
-.form-col { max-width: 800px; margin: 0 auto; }
-.pane-form .scroll { padding-top: var(--sp-6); }
-.pane-form .footbar .form-col { margin: 0 auto; max-width: 800px; }
+.form-col { max-width: 720px; margin: 0 auto; }
+.pane-form .scroll { padding-top: var(--sp-10); padding-bottom: var(--sp-12); }
+
+.hero-t { font-size: var(--tx-2xl); line-height: 38px; font-weight: 700; letter-spacing: -0.025em; }
+.pane-form .lede { margin-top: 10px; font-size: var(--tx-base); line-height: var(--lh-para); }
+
+.start {
+  margin-top: var(--sp-8);
+  border-radius: var(--r-window); background: var(--bg-raised);
+  box-shadow: 0 0 0 0.5px var(--border-default), var(--shadow-control);
+}
+.srow { display: flex; gap: var(--sp-4); padding: var(--sp-6) var(--sp-6) var(--sp-5); }
+.srow + .srow { border-top: 0.5px solid var(--sep); }
+.sno {
+  flex: none; display: grid; place-items: center; width: 24px; height: 24px; margin-top: -1px; border-radius: 50%;
+  font-size: var(--tx-xs); font-weight: 700; background: var(--fill-selected); color: var(--fg-default);
+}
+.sbody { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-3); }
+.slbl { font-size: var(--tx-base); line-height: var(--lh-title); font-weight: 600; }
+.sbody > .ctl { flex-wrap: nowrap; }
+.sfoot {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-6); border-top: 0.5px solid var(--sep);
+  border-radius: 0 0 var(--r-window) var(--r-window); background: var(--fill-group);
+}
+.sfoot .hint { flex: 1; }
+
+/* 고른 기획서 — 문서 카드(21st.dev File Card 의 흐린 줄 + 형식 띠) 옆에 이름 고르기, 아래에 지난 확인 */
+.doc { display: flex; align-items: center; gap: 14px; }
+.fthumb {
+  position: relative; flex: none; width: 40px; height: 50px; padding: 9px 7px 0;
+  display: flex; flex-direction: column; gap: 4px;
+  border-radius: var(--r-md); background: var(--bg-canvas); box-shadow: var(--shadow-control);
+}
+.fthumb i { display: block; height: 2px; border-radius: 1px; background: var(--fill-selected); }
+.fthumb i:nth-child(1) { width: 60%; background: var(--border-strong); }
+.fthumb i:nth-child(3) { width: 80%; }
+.fthumb i:nth-child(4) { width: 50%; }
+.fthumb b {
+  position: absolute; left: 4px; bottom: 5px; padding: 1px 3px; border-radius: 2px;
+  font-size: calc(var(--tx-2xs) - 2px); line-height: 1.2; font-weight: 700; letter-spacing: 0.02em;
+  background: var(--fg-default); color: var(--bg-raised);
+}
+.doc-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.doc-body .pop.wide { width: 100%; max-width: 420px; }
+
+/* 주소 칸 — 지구 모양을 앞에 둔 40px 칸 */
+.urlf { position: relative; flex: 1; min-width: 0; display: flex; }
+.urlf svg { position: absolute; left: 12px; top: 50%; width: 16px; height: 16px; margin-top: -8px; fill: none; stroke: var(--fg-muted); stroke-width: 1.3; pointer-events: none; }
+.field.big { height: 40px; padding-left: 36px; font-size: var(--tx-md); border-radius: 10px; }
+.sbody .seg { height: 40px; padding: 3px; }
+.sbody .seg > button { height: 34px; padding: 0 14px; }
+
+/* 단추 안 단축키 표시 — ⌘↵ */
+.kbd {
+  display: inline-flex; align-items: center; height: 20px; margin-left: 8px; padding: 0 6px; border-radius: var(--r-md);
+  font: inherit; font-size: var(--tx-xs); font-weight: 500; opacity: 0.8; background: color-mix(in srgb, currentColor 18%, transparent);
+}
+
+.try { margin-top: var(--sp-5); display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; color: var(--fg-muted); }
+.try .link { font-weight: 600; }
+.try .hint { flex-basis: 100%; }
+
+.opts { margin-top: var(--sp-6); }
 
 .gbox {
   margin-top: var(--sp-5);
@@ -271,7 +356,7 @@ body:not([data-view="form"]) .pane-form { display: none; }
   border: 1px dashed var(--border-strong); border-radius: var(--r-card);
   transition: border-color var(--dur-2) var(--ease-out), background-color var(--dur-2) var(--ease-out);
 }
-.gbox.dropping .drop { border-style: solid; border-color: var(--accent-blue); background: var(--accent-bg); }
+.dropping .drop { border-style: solid; border-color: var(--accent-blue); background: var(--accent-bg); }
 .fan { position: relative; flex: none; width: 112px; height: 62px; }
 .fcard {
   position: absolute; left: 50%; bottom: 0; width: 42px; height: 54px; margin-left: -21px;
@@ -295,14 +380,15 @@ body:not([data-view="form"]) .pane-form { display: none; }
 .drop:hover .fcard.l { transform: translateX(-17px) rotate(-12deg); }
 .drop:hover .fcard.r { transform: translateX(17px) rotate(12deg); }
 .drop:hover .fcard.c { transform: translateY(-2px); }
-.gbox.dropping .fcard.l { transform: translate(-24px, -1px) rotate(-17deg); }
-.gbox.dropping .fcard.r { transform: translate(24px, -1px) rotate(17deg); }
-.gbox.dropping .fcard.c { transform: translateY(-7px); }
-.drop-say { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dropping .fcard.l { transform: translate(-24px, -1px) rotate(-17deg); }
+.dropping .fcard.r { transform: translate(24px, -1px) rotate(17deg); }
+.dropping .fcard.c { transform: translateY(-7px); }
+.drop-say { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.drop > .btn { flex: none; }
 .drop-say b { font-weight: 500; }
 .drop-say .over { display: none; color: var(--accent-fg); }
-.gbox.dropping .drop-say .idle { display: none; }
-.gbox.dropping .drop-say .over { display: block; }
+.dropping .drop-say .idle { display: none; }
+.dropping .drop-say .over { display: block; }
 .drop-say small { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); }
 .link { padding: 0; border: 0; background: none; color: var(--accent-fg); font-weight: inherit; cursor: pointer; border-radius: var(--r-sm); }
 .link:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -380,6 +466,7 @@ body:not([data-view="form"]) .pane-form { display: none; }
   font-size: var(--tx-md); line-height: var(--lh-row);
 }
 .field::placeholder { color: var(--fg-subtle); }
+.field[aria-invalid="true"] { box-shadow: 0 0 0 1.5px var(--warn-fg); }
 .field:focus { outline: none; box-shadow: var(--shadow-control), var(--focus-ring); }
 textarea.field { height: auto; min-height: 64px; padding: 6px 10px; line-height: var(--lh-row); resize: vertical; }
 
@@ -684,6 +771,24 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 .verdict-line mark.unv { color: var(--unv-fg); }
 .verdict-line mark.pass { color: var(--pass-fg); }
 .cond { margin-top: 6px; color: var(--fg-muted); line-height: var(--lh-para); }
+
+/* 결과 다음 할 일 — 판정 문장 바로 아래. 고친 뒤 실패만 다시, 개발팀에 넘길 글 복사. */
+.next { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); margin-top: var(--sp-4); }
+.next .btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+.next .hint { color: var(--fg-muted); }
+
+/* 잠깐 뜨는 확인 한 줄 — 아래 가운데에서 올라왔다가 사라진다. 경고·오류는 여기 쓰지 않는다. */
+.toast {
+  position: fixed; left: 50%; bottom: 28px; z-index: 50; display: flex; align-items: center; gap: 8px;
+  max-width: min(560px, calc(100vw - 48px)); padding: 10px 16px; border-radius: var(--r-full);
+  background: var(--fg-default); color: var(--bg-raised); box-shadow: var(--shadow-lg);
+  font-size: var(--tx-md); line-height: var(--lh-row); font-weight: 500;
+  opacity: 0; transform: translate(-50%, 12px); pointer-events: none;
+  transition: opacity var(--dur-2) var(--ease-out), transform var(--dur-3) var(--ease-spring);
+}
+.toast[data-on] { opacity: 1; transform: translate(-50%, 0); }
+.toast svg { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+@media (prefers-reduced-motion: reduce) { .toast { transition: opacity var(--dur-2) linear; transform: translate(-50%, 0); } }
 
 .tiles { display: grid; grid-template-columns: 1.5fr repeat(4, minmax(0, 1fr)); gap: var(--sp-3); margin-top: var(--sp-5); }
 .tile { background: var(--fill-group); border-radius: var(--r-card); padding: 14px var(--sp-4) var(--sp-4); box-shadow: inset 0 0 0 0.5px var(--fill-hover); min-width: 0; }

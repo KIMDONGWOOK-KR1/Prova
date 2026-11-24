@@ -29,6 +29,8 @@ const ICON = {
   download: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 7.5l3 3 3-3M3 13h10"/></svg>`,
   open: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v4h-9v-9h4"/></svg>`,
   again: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.8v2.6h-2.6"/></svg>`,
+  copy: `<svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5.5" y="5.5" width="8" height="8" rx="1.6"/><path d="M10.5 3.6V3.5a1 1 0 0 0-1-1h-6a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h.1"/></svg>`,
+  check: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.4l3 3 6-6.6"/></svg>`,
 };
 
 // 알림 상자의 종류를 읽어 주는 프로그램에도 알린다 — 21st.dev Notifications 의 role 에서.
@@ -96,6 +98,50 @@ function confirmDialog({ title, body, keep, go }) {
 // ── 움직임 ─────────────────────────────────────────────────────────────────
 // 상태가 바뀔 때만 움직인다 — 단계 이동, 항목 완료, 숫자 바뀜. 들어올 때 장식으로 흔들지 않는다.
 // 화면 설정이 '동작 줄이기' 면 바뀐 모습만 바로 보인다.
+/**
+ * 잠깐 뜨는 확인 한 줄 — '복사했어요' 처럼 방금 한 일이 됐다는 말만. 경고·오류는 여기 쓰지 않는다
+ * (알림은 닫히거나 사라지지 않는다 — 디자인 기준 1번). 화면 읽기 프로그램에는 status 로 읽힌다.
+ */
+let toastTimer = null;
+function toast(text) {
+  let el = $("toast");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "toast"; el.className = "toast"; el.setAttribute("role", "status");
+    document.body.appendChild(el);
+  }
+  el.innerHTML = `${ICON.check || ""}<span>${esc(text)}</span>`;
+  el.dataset.on = "1";
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { delete el.dataset.on; }, 2600);
+}
+
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; } catch (e) { /* 아래 옛 방식으로 */ }
+  const ta = document.createElement("textarea");
+  ta.value = text; ta.setAttribute("readonly", ""); ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.appendChild(ta); ta.select();
+  let ok = false;
+  try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+  ta.remove();
+  return ok;
+}
+
+/**
+ * 다른 탭에 가 있는 사이 끝나면 탭 제목으로 알린다 — 알림 권한을 묻지 않는다.
+ * 돌아오면 원래 제목으로.
+ */
+function notifyDone(title) {
+  if (!document.hidden) return;
+  document.title = `${title} — Prova`;
+  const back = () => {
+    if (document.hidden) return;
+    document.removeEventListener("visibilitychange", back);
+    if (!state.busy) document.title = pageTitle();
+  };
+  document.addEventListener("visibilitychange", back);
+}
+
 const reduceMotion = () =>
   !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
 
@@ -230,7 +276,7 @@ async function api(path, opts) {
     res = await fetch(path, opts);
   } catch (e) {
     // 서버가 죽었거나 네트워크가 끊긴 경우. 원인을 사람 말로 바꿔 준다.
-    throw new ApiError("서버에 연결하지 못했습니다. prova serve 가 살아 있는지 확인하세요.", 0);
+    throw new ApiError("서버에 연결하지 못했어요. prova serve 가 켜져 있는지 확인해 주세요.", 0);
   }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(detailText(body.detail) || `${res.status} ${res.statusText}`, res.status);
@@ -241,7 +287,7 @@ async function api(path, opts) {
 function detailText(detail) {
   if (Array.isArray(detail)) {
     return detail.map((d) => d.msg || JSON.stringify(d)).join(" / ")
-      || "요청 형식이 올바르지 않습니다";
+      || "요청 형식이 올바르지 않아요";
   }
   return detail;
 }
@@ -264,7 +310,7 @@ async function follow(jobId, onMessages) {
       misses = 0;
     } catch (e) {
       if (++misses >= MAX_MISS) {
-        throw new ApiError("서버와의 연결이 끊겼습니다. 작업은 계속 돌고 있을 수 있습니다.", 0);
+        throw new ApiError("서버와 연결이 끊겼어요. 작업은 계속 돌고 있을 수 있어요.", 0);
       }
       await sleep(600);
       continue;
@@ -529,8 +575,19 @@ function showProgress(title, lines) {
   elapsedTimer = setInterval(() => {
     const el = $("pElapsed");
     if (!el) { clearInterval(elapsedTimer); return; }  // 화면이 결과로 바뀌면 멈춘다
-    el.textContent = `${Math.round((Date.now() - t0) / 1000)}초 지남`;
+    const sec = (Date.now() - t0) / 1000;
+    el.textContent = `${Math.round(sec)}초 지남${etaText(sec)}`;
   }, 1000);
+}
+
+// 남은 시간 — 끝난 항목의 평균 시간 × 남은 항목. 두 건은 끝나야 어림한다(첫 건은 브라우저를 띄우느라 길다).
+function etaText(sec) {
+  const bar = $("pBar");
+  if (!prog || !prog.n || !bar) return "";
+  const done = Number(bar.value) || 0, left = prog.n - done;
+  if (done < 2 || left <= 0) return "";
+  const est = (sec / done) * left;
+  return est < 10 ? " · 곧 끝나요" : est < 60 ? ` · 약 ${Math.ceil(est / 5) * 5}초 남음` : ` · 약 ${Math.ceil(est / 60)}분 남음`;
 }
 
 function runRow(c, i, k) {
@@ -775,15 +832,15 @@ function currentStep(steps) {
  * 개발자가 그 말로 코드를 찾는다.
  */
 const PROGRESS_WORDS = [
-  [/mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다\./, "연습용으로 실행합니다 — 기획서를 실제 모델로 읽지 않습니다."],
-  [/^(\s*)S1 사람이 고친 추출 결과를 씁니다.*$/, "$1기획서 읽기 — 고친 내용을 씁니다"],
+  [/mock 백엔드로 실행합니다 — 설계 문서 추출에 실제 모델을 쓰지 않습니다\./, "연습용으로 실행해요 — 기획서를 실제 모델로 읽지 않아요."],
+  [/^(\s*)S1 사람이 고친 추출 결과를 씁니다.*$/, "$1기획서 읽기 — 고친 내용을 써요"],
   [/^(\s*)S1 설계 문서 추출/, "$1기획서 읽기"],
   [/^(\s*)S2 테스트 케이스 생성/, "$1확인할 항목 만들기"],
   [/^(\s*)S3~S5 브라우저 실행 및 판정/, "$1브라우저로 하나씩 확인"],
   [/^(\s*)S6 리포트 생성/, "$1리포트 만들기"],
   [/화면 '(.+?)' · 요소 (\d+)개/, "'$1' 화면 · 입력칸·버튼 $2개"],
   [/케이스 (\d+)개 \(정상 (\d+) · 위반 (\d+)/, "항목 $1개 (정상 동작 $2 · 막혀야 하는 입력 $3"],
-  [/승인 목록 → (\d+)개 실행/, "승인한 $1개를 실행합니다"],
+  [/승인 목록 → (\d+)개 실행/, "승인한 $1개를 실행해요"],
 ];
 function plainProgress(line) {
   for (const [re, to] of PROGRESS_WORDS) line = line.replace(re, to);
@@ -855,22 +912,22 @@ function planNotes() {
   const out = [];
 
   // 대상 URL 을 도구가 고쳤다면 먼저 보인다 — 판정의 전제가 바뀐 것이다.
-  if (p.url_note) out.push(alertBox("info", "대상 URL 을 고쳤습니다", esc(p.url_note)));
+  if (p.url_note) out.push(alertBox("info", "대상 주소를 고쳤어요", esc(p.url_note)));
 
   // 기획↔디자인 불일치 — 케이스를 승인하기 전에 봐야 한다. 구현을 검증하기
   // 전에 입력끼리 모순이면 그것부터 정리하는 것이 순서다 (s1_merge).
   if ((p.design_mismatches || []).length) {
     out.push(alertBox("warn",
       `기획↔디자인 불일치 ${p.design_mismatches.length}건`,
-      "구현을 고치기 전에 두 입력 중 어느 쪽이 맞는지부터 정해야 합니다. " +
-      "어긋난 항목은 판정에서 빠집니다." +
+      "구현을 고치기 전에 두 입력 중 어느 쪽이 맞는지부터 정해야 해요. " +
+      "어긋난 항목은 판정에서 빠져요." +
       p.design_mismatches.map((m) => `<div style="margin-top:6px">${esc(m)}</div>`).join("")));
   }
 
   if (p.fallback) {
-    out.push(alertBox("warn", "요청을 해석하지 못해 전체 케이스를 골랐습니다",
-      "해석 실패는 적게 검사하는 쪽이 아니라 많이 검사하는 쪽으로 넘어집니다 — " +
-      "적게 고르면 결함이 숨지만 많이 고르면 숨지 않습니다." +
+    out.push(alertBox("warn", "요청을 해석하지 못해 전체 항목을 골랐어요",
+      "해석 실패는 적게 검사하는 쪽이 아니라 많이 검사하는 쪽으로 넘어가요 — " +
+      "적게 고르면 결함이 숨지만 많이 고르면 숨지 않아요." +
       (p.warnings || []).map((w) => `<div style="margin-top:6px">${esc(w)}</div>`).join("")));
   } else {
     if (p.request && p.reason) {
@@ -880,13 +937,13 @@ function planNotes() {
     if ((p.widened || []).length) {
       // 모델이 고른 것과 코드가 더한 것을 구분해 보인다 (selector.widen_selection).
       out.push(alertBox("info", `도구가 넓힌 케이스 ${p.widened.length}건`,
-        "모델이 가리킨 묶음(건수·정렬·흐름 등)을 코드가 채웠습니다: " + esc(p.widened.join(", "))));
+        "모델이 가리킨 묶음(건수·정렬·흐름 등)을 코드가 채웠어요: " + esc(p.widened.join(", "))));
     }
   }
 
   if ((p.spec_edits || []).length) {
-    out.push(alertBox("info", `사람이 고친 값 ${p.spec_edits.length}건으로 만든 항목입니다`,
-      "고친 칸은 위의 '기획서에서 읽은 내용' 에서 볼 수 있고, 리포트에도 '사람이 고친 것' 으로 남습니다."));
+    out.push(alertBox("info", `사람이 고친 값 ${p.spec_edits.length}건으로 만든 항목이에요`,
+      "고친 칸은 위의 '기획서에서 읽은 내용' 에서 볼 수 있고, 리포트에도 '사람이 고친 것' 으로 남아요."));
   }
 
   // 요청이 화면을 이름으로 지목했는데 일부만 골라진 경우. "몇 건 제외" 만
@@ -896,17 +953,17 @@ function planNotes() {
   for (const c of liveCoverage()) {
     if (c.named && c.selected > 0 && c.selected < c.total) {
       out.push(alertBox("warn",
-        `'${esc(c.name)}' 화면은 ${c.total}건 중 ${c.selected}건만 실행됩니다`,
-        `요청이 이 화면을 가리켰지만 일부만 골라졌습니다. 이대로 실행하면 ` +
-        `이 화면의 통과율은 <b>화면 전체의 상태를 뜻하지 않습니다.</b> ` +
-        `표의 화면 줄 체크 상자로 전부 켤 수 있습니다.`));
+        `'${esc(c.name)}' 화면은 ${c.total}건 중 ${c.selected}건만 실행돼요`,
+        `요청이 이 화면을 가리켰지만 일부만 골라졌어요. 이대로 실행하면 ` +
+        `이 화면의 통과율은 <b>화면 전체의 상태를 뜻하지 않아요.</b> ` +
+        `표의 화면 줄 체크 상자로 전부 켤 수 있어요.`));
     }
   }
 
   const off = p.cases.filter((c) => !c.selected).length;
   if (off) {
-    out.push(alertBox("info", `이번 실행에서 ${off}건을 제외합니다`,
-      "<b>통과한 것이 아니라 확인하지 않는 것</b>입니다. 빠지면 안 되는 것이 있으면 " +
+    out.push(alertBox("info", `이번 실행에서 ${off}건을 제외해요`,
+      "<b>통과한 것이 아니라 확인하지 않는 것</b>이에요. 빠지면 안 되는 것이 있으면 " +
       "표에서 도로 켜 주세요."));
   }
 
@@ -935,7 +992,7 @@ function showPlan() {
               <button type="button" data-mode="items" aria-pressed="${state.mode === "items"}">항목 ${p.cases.length}</button>
               <button type="button" data-mode="spec" aria-pressed="${state.mode === "spec"}">기획서에서 읽은 내용</button>
             </div>
-            <span class="sub">${p.request ? `요청 — ${esc(p.request)}` : "요청이 없어 전체 항목을 골랐습니다"}</span>
+            <span class="sub">${p.request ? `요청 — ${esc(p.request)}` : "요청이 없어 전체 항목을 골랐어요"}</span>
           </div>
           <div class="notes" id="planNotes"></div>
           <div id="itemsPane" ${state.mode === "spec" ? "hidden" : ""}>
@@ -1051,7 +1108,7 @@ function renderTable() {
   const shown = visibleCases();
   const body = $("caseBody");
   if (!shown.length) {
-    body.innerHTML = `<tr class="empty-row"><td colspan="4">조건에 맞는 항목이 없습니다.</td></tr>`;
+    body.innerHTML = `<tr class="empty-row"><td colspan="4">조건에 맞는 항목이 없어요.</td></tr>`;
     renderInsp(null);
     syncChecks();
     return;
@@ -1170,7 +1227,7 @@ function wireTable() {
 function renderInsp(c) {
   const box = $("insp");
   if (!box) return;
-  if (!c) { box.innerHTML = `<p class="empty">표에서 항목을 고르면 기획서 원문과 실행 단계가 여기에 보입니다.</p>`; return; }
+  if (!c) { box.innerHTML = `<p class="empty">표에서 항목을 고르면 기획서 원문과 실행 단계가 여기에 보여요.</p>`; return; }
   const src = (c.sources || []).map(readSource);
   const id = `src-${c.case_id}`;
   const flow = c.flow_id && ((state.plan.doc && state.plan.doc.flows) || []).find((f) => f.flow_id === c.flow_id);
@@ -1277,8 +1334,8 @@ function renderCount() {
   run.disabled = n === 0 || state.dirty;
   run.textContent = n ? `${n}개 실행` : "이대로 실행";
   $("runHint").textContent = n === 0
-    ? "0건은 실행할 수 없습니다 — 통과율 100% 리포트가 됩니다"
-    : state.dirty ? "기획서 내용을 고쳤습니다 — 먼저 [고친 내용으로 항목 다시 만들기]" : "";
+    ? "0건은 실행할 수 없어요 — 통과율 100% 리포트가 돼요"
+    : state.dirty ? "기획서 내용을 고쳤어요 — 먼저 [고친 내용으로 항목 다시 만들기]" : "";
 }
 
 // ── 기획서에서 읽은 내용 — 사람이 보고 고친다 (prova/spec_edits.py) ─────────
@@ -1319,7 +1376,7 @@ function renderSpec() {
   const edits = p.spec_edits || [];
   const head = `<div class="spec-head"><b>기획서에서 읽은 내용</b>
     <span class="hint">${edits.length
-      ? `사람이 고친 값 ${edits.length}건으로 만든 항목입니다`
+      ? `사람이 고친 값 ${edits.length}건으로 만든 항목이에요`
       : "잘못 읽은 칸이 있으면 기획서 문구 그대로 고친 뒤, 아래 '고친 내용으로 항목 다시 만들기' 를 누르세요"}</span></div>`;
   const screens = d.screens.map((sc, si) => {
     const meta = SCREEN_FIELDS.map(([k, name]) =>
@@ -1346,7 +1403,7 @@ function renderSpec() {
   $("specPanel").innerHTML = head + list + screens + `
     <div class="runbar"><button class="btn" id="replanBtn" type="button" disabled>
       고친 내용으로 항목 다시 만들기</button>
-      <span class="hint" id="specHint">칸을 고치면 누를 수 있습니다</span></div>`;
+      <span class="hint" id="specHint">칸을 고치면 누를 수 있어요</span></div>`;
 
   $("specPanel").querySelectorAll("[data-spec]").forEach((el) => {
     el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
@@ -1383,7 +1440,7 @@ function specTarget(path) {
 function markDirty() {
   state.dirty = true;
   $("replanBtn").disabled = false;
-  $("specHint").textContent = "고친 내용은 이 버튼을 눌러야 항목에 반영됩니다";
+  $("specHint").textContent = "고친 내용은 이 버튼을 눌러야 항목에 반영돼요";
   renderCount();
 }
 
@@ -1414,9 +1471,10 @@ async function replan() {
     resetPlanView();
     state.busy = false;
     showPlan();
+    notifyDone(`항목 ${state.plan.cases.length}개 뽑음`);
   } catch (err) {
     state.busy = false;
-    showError("항목을 다시 만들지 못했습니다", err.message);
+    showError("항목을 다시 만들지 못했어요", err.message);
   } finally {
     state.busy = false;
     renderChrome();
@@ -1440,7 +1498,7 @@ function flowMap(flow) {
       const via = (flow.via || [])[i - 1] || "";
       parts.push(via
         ? `<li class="fm-edge" data-via="click"><span>'${esc(via)}' 누름</span></li>`
-        : `<li class="fm-edge" data-via="url" title="주소로 바로 들어갑니다 — 화면을 잇는 버튼·링크는 확인하지 않습니다"><span>주소로 이동</span></li>`);
+        : `<li class="fm-edge" data-via="url" title="주소로 바로 들어가요 — 화면을 잇는 버튼·링크는 확인하지 않아요"><span>주소로 이동</span></li>`);
     }
     parts.push(`<li class="fm-node"><b>${esc(screenName(sid))}</b>` +
       (path(sid) ? `<code>${esc(path(sid))}</code>` : "") + `</li>`);
@@ -1476,12 +1534,12 @@ async function startRun() {
         const done = Number($("pBar") && $("pBar").value) || 0;
         const ok = await confirmDialog({
           title: "실행을 멈출까요?",
-          body: `${done ? `지금까지 확인한 ${done}건을 포함해 ` : ""}이번 실행의 결과는 저장하지 않습니다. ` +
-            "지금 확인 중인 항목이 끝나면 멈춥니다.",
+          body: `${done ? `지금까지 확인한 ${done}건을 포함해 ` : ""}이번 실행의 결과는 저장하지 않아요. ` +
+            "지금 확인 중인 항목이 끝나면 멈춰요.",
           keep: "계속 실행", go: "멈추기",
         });
         if (!ok || !stop.isConnected) return;  // 묻는 사이 실행이 끝났으면 할 일이 없다
-        busyButton(stop, "지금 항목이 끝나면 멈춥니다");
+        busyButton(stop, "지금 항목이 끝나면 멈춰요");
         try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
       };
     }
@@ -1491,14 +1549,16 @@ async function startRun() {
     state.resKind = ""; state.resSel = "";
     showResult(out);
     loadRuns();
+    const d = (out.summary && (out.summary.defects ?? out.summary.fail)) || 0;
+    notifyDone(d ? `✕ ${d}건 다름 · 결과 나옴` : "✓ 결과 나옴");
   } catch (err) {
     state.busy = false;
     if (err.status === 409) {
       // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
       // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
-      showError("실행을 시작하지 않았습니다", err.message);
+      showError("실행을 시작하지 않았어요", err.message);
     } else if (err.message.startsWith("실행을 멈췄습니다")) {
-      showError("실행을 멈췄습니다", "같은 항목으로 다시 돌리려면 위의 '2 항목 검토' 를 누르세요.");
+      showError("실행을 멈췄어요", "같은 항목으로 다시 돌리려면 위의 '2 항목 검토' 를 눌러 주세요.");
     } else {
       showError("실행 실패", err.message);
     }
@@ -1594,33 +1654,33 @@ function showResult(out) {
 
   const notes = [];
   if (off > 0) {
-    notes.push(alertBox("info", "이 통과율은 전체 상태가 아닙니다",
-      `생성된 ${planned}건 중 ${s.total}건만 실행했습니다. 나머지 ${off}건은 ` +
-      `<b>통과한 것이 아니라 확인하지 않은 것</b>입니다.`));
+    notes.push(alertBox("info", "이 통과율은 전체 상태가 아니에요",
+      `생성된 ${planned}건 중 ${s.total}건만 실행했어요. 나머지 ${off}건은 ` +
+      `<b>통과한 것이 아니라 확인하지 않은 것</b>이에요.`));
   }
   if (s.vlm) {
-    notes.push(alertBox("info", "화면 이미지로 찾기를 켜고 실행했습니다",
-      `라벨로 못 찾은 요소를 화면 이미지로 찾았습니다 (${esc(s.vlm)}) — ` +
-      `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시됩니다.`));
+    notes.push(alertBox("info", "화면 이미지로 찾기를 켜고 실행했어요",
+      `라벨로 못 찾은 요소를 화면 이미지로 찾았어요 (${esc(s.vlm)}) — ` +
+      `보정한 케이스 ${s.healed || 0}건. 보정한 케이스는 리포트에 따로 표시돼요.`));
   }
   if (s.not_found_without_vlm) {
     // 끈 실행은 필요한 상황이 와도 스스로 켜지지 않는다 — 다시 돌려 볼 만하다는 것을 알린다.
     notes.push(alertBox("info", `요소를 찾지 못한 케이스 ${s.not_found_without_vlm}건`,
-      `화면 이미지로 찾기를 켜지 않은 실행입니다. 스크린샷에 그 요소가 보이는데 못 찾았다면 ` +
+      `화면 이미지로 찾기를 켜지 않은 실행이에요. 스크린샷에 그 요소가 보이는데 못 찾았다면 ` +
       `<b>실행 옵션의 '화면 이미지로 찾기' 를 켜서 다시 돌려 보세요</b> (모델 서버 필요). ` +
-      `스크린샷에도 없다면 구현이 빠뜨린 것일 수 있고, 켜도 달라지지 않습니다.`));
+      `스크린샷에도 없다면 구현이 빠뜨린 것일 수 있고, 켜도 달라지지 않아요.`));
   }
   if (s.dry_run) {
     // 확인 불가도 실패 칸에 센다(확인하지 못한 것을 통과로 세지 않는다). 그 실패의 성질을 바로 말한다.
     const d = s.dry_run;
-    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했습니다",
-      `막은 케이스 ${d.cases_blocked || 0}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 셉니다 — ` +
-      `<b>구현 결함이 아닙니다.</b> 막지 않은 ${s.total - (d.cases_blocked || 0)}건 중 통과 ${s.pass}. ` +
+    notes.push(alertBox("warn", "쓰기 요청을 막고 실행했어요",
+      `막은 케이스 ${d.cases_blocked || 0}건은 서버 응답을 못 봐 '확인 불가' 로 실패에 넣어요 — ` +
+      `<b>구현 결함이 아니에요.</b> 막지 않은 ${s.total - (d.cases_blocked || 0)}건 중 통과 ${s.pass}. ` +
       `${esc(d.limits || "")}`));
   }
   if (s.llm_backend === "mock") {
-    notes.push(alertBox("warn", "연습용으로 실행한 결과입니다",
-      "기획서를 실제 모델로 읽지 않았습니다. 실제 검증 결과로 쓰지 마세요."));
+    notes.push(alertBox("warn", "연습용으로 실행한 결과예요",
+      "기획서를 실제 모델로 읽지 않았어요. 실제 검증 결과로 쓰지 마세요."));
   }
 
   // 조건 줄 — PM 이 읽을 것만: 어느 화면 · 몇 번째 실행 · 직전과 달라진 것.
@@ -1669,13 +1729,18 @@ function showResult(out) {
   $("stage").innerHTML = `
     <div class="scroll result-scroll" id="resScroll">
       <h2 class="verdict-line">${defects
-        ? `${s.total}건 중 <mark class="fail">${defects}건이 기획서와 다릅니다.</mark>`
+        ? `${s.total}건 중 <mark class="fail">${defects}건이 기획서와 달라요.</mark>`
         : infra
-        ? `${s.total}건 중 <mark class="infra">${infra}건을 실행 문제로 확인하지 못했습니다.</mark>`
+        ? `${s.total}건 중 <mark class="infra">${infra}건을 실행 문제로 확인하지 못했어요.</mark>`
         : unv
-        ? `${s.total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없습니다.</mark>`
-        : `<mark class="pass">${s.total}건 모두 통과했습니다.</mark>`}</h2>
+        ? `${s.total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없어요.</mark>`
+        : `<mark class="pass">${s.total}건 모두 통과했어요.</mark>`}</h2>
       ${cond ? `<p class="cond">${esc(cond)}</p>` : ""}
+      <div class="next" id="nextActs">
+        ${state.plan && s.fail ? `<button class="btn primary" id="retryBtn" type="button" disabled>${ICON.again}통과 못 한 ${s.fail}건만 다시 실행</button>` : ""}
+        <button class="btn" id="copyBtn" type="button">${ICON.copy}개발팀에 보낼 요약 복사</button>
+        ${state.plan && s.fail ? `<span class="hint">고친 뒤 이것만 다시 돌려 보면 돼요.</span>` : ""}
+      </div>
       <div class="notes">${notes.join("")}</div>
       <div class="tiles">
         <div class="tile rate"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b>
@@ -1689,6 +1754,11 @@ function showResult(out) {
     </div>`;
   $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
   linkDonut($("stage").querySelector(".tiles"));
+  $("copyBtn").addEventListener("click", async () => {
+    const ok = await copyText(summaryText(out));
+    toast(ok ? "요약을 복사했어요 — 메신저나 이슈에 붙여 넣으면 돼요" : "복사하지 못했어요 — 보고서 열기에서 직접 골라 주세요");
+  });
+  if ($("retryBtn")) $("retryBtn").addEventListener("click", retryFailed);
   $("detail").addEventListener("click", onCite);
   $("sideFoot").textContent = out.target || runId;
   $("sideFoot").title = `실행 기록 ${runId}`;
@@ -1703,7 +1773,7 @@ async function loadReport(out, base) {
   } catch (e) {
     // 예전 실행이라 report.json 이 없으면 리포트 파일을 그대로 띄운다.
     if (state.result !== out) return;
-    $("flist").innerHTML = `<p class="empty">항목별 결과 파일을 읽지 못해 리포트 파일을 아래에 띄웁니다.</p>`;
+    $("flist").innerHTML = `<p class="empty">항목별 결과 파일을 읽지 못해 리포트 파일을 아래에 띄워요.</p>`;
     $("detail").remove();
     $("resScroll").insertAdjacentHTML("beforeend",
       `<div class="reportbox"><iframe src="${esc(out.report_url)}" title="검증 리포트"></iframe></div>`);
@@ -1717,9 +1787,55 @@ async function loadReport(out, base) {
   }
   const counts = { defect: 0, infra: 0, unv: 0, pass: 0 };
   rep.cases.forEach((c) => { counts[kindOf(c)] += 1; });
+  const retry = $("retryBtn");
+  if (retry) retry.disabled = !rep.cases.some((c) => c.verdict !== "PASS" && planCase(c.case_id));
   if (!state.resKind) state.resKind = ["defect", "infra", "unv", "pass"].find((k) => counts[k]) || "pass";
   renderSideResult(rep, counts, (out.summary && out.summary.history) || {});
   renderFlist();
+}
+
+/** 통과 못 한 항목만 골라 같은 조건으로 다시 — 고친 뒤 확인할 때 17건을 다 기다리지 않는다. */
+function retryFailed() {
+  if (!state.plan || !state.report) return;
+  const failed = new Set(state.report.cases.filter((c) => c.verdict !== "PASS").map((c) => c.case_id));
+  state.plan.cases.forEach((c) => { c.selected = failed.has(c.case_id); });
+  startRun();
+}
+
+/**
+ * 개발팀에 붙여 넣을 글 — 메신저·이슈에 그대로 들어가게 꾸밈 없는 글자만.
+ * 기획서와 다른 것을 먼저, 실행 문제·확인 불가는 따로 센다(결함으로 섞지 않는다).
+ */
+function summaryText(out) {
+  const s = out.summary || {};
+  const rep = state.report;
+  const defects = s.defects ?? s.fail;
+  const names = Object.values(s.screen_names || {});
+  const when = runWhen(out.created_at || (rep && rep.created_at));
+  const round = s.history && s.history.round;
+  const lines = [
+    `[Prova] ${[names.length ? `${names.join(" · ")} 화면` : prettySpec(out.spec), round && `${round}차`, when].filter(Boolean).join(" · ")}`,
+    `대상 ${out.target || ""} · 기획서 ${out.doc || prettySpec(out.spec)}`,
+    defects ? `${s.total}건 중 ${defects}건이 기획서와 달라요 (통과 ${s.pass})` : `${s.total}건 중 기획서와 다른 것은 없어요 (통과 ${s.pass})`,
+  ];
+  const rest = s.fail - defects;
+  if (rest > 0) lines.push(`실행 문제·확인 불가 ${rest}건은 결함이 아니라 확인하지 못한 것이에요.`);
+  if (s.llm_backend === "mock") lines.push("※ 연습용 실행 결과예요. 실제 검증 결과로 쓰지 마세요.");
+  if (rep) {
+    const bad = rep.cases.filter((c) => kindOf(c) === "defect");
+    bad.forEach((c, i) => {
+      const ev = c.evidence || {};
+      const src = (c.spec_sources || []).map((x) => x.page && `${x.page}쪽`).filter(Boolean)[0];
+      lines.push("", `${i + 1}. ${c.title}`);
+      if (ev.expected) lines.push(`   기대: ${String(ev.expected).replace(/\s+/g, " ").trim()}`);
+      const actual = c.plain || ev.actual;
+      if (actual) lines.push(`   실제: ${String(actual).replace(/\s+/g, " ").trim()}`);
+      if (ev.url) lines.push(`   화면: ${ev.url}`);
+      if (src) lines.push(`   근거: 기획서 ${src}`);
+    });
+  }
+  lines.push("", `보고서 ${new URL(out.report_url, location.href).href}`);
+  return lines.join("\n");
 }
 
 /** 사이드바 — 판정별 묶음. 고르면 가운데 목록이 그 묶음만 보인다. */
@@ -1771,7 +1887,7 @@ function renderFlist() {
   const names = (state.result.summary && state.result.summary.screen_names) || {};
   const label = { regressed: "새로 실패", fixed: "해결" }[state.resKind] || KIND[state.resKind].label;
   if (!list.length) {
-    $("flist").innerHTML = `<div class="h">${esc(label)} · 0</div><p class="empty">이 묶음에 든 항목이 없습니다.</p>`;
+    $("flist").innerHTML = `<div class="h">${esc(label)} · 0</div><p class="empty">이 묶음에 든 항목이 없어요.</p>`;
     $("detail").innerHTML = "";
     return;
   }
@@ -1825,13 +1941,13 @@ function stepWords(st, html = true) {
 // 실제로 일어난 일 — 판정 사유의 첫 문장, 관찰한 것이 다르면 그것도.
 function actualLines(c) {
   const ev = c.evidence || {};
-  if (c.verdict === "PASS") return [ev.actual || "기대한 대로 동작했습니다."];
+  if (c.verdict === "PASS") return [ev.actual || "기대한 대로 동작했어요."];
   const detail = (c.failure_detail || "").replace(/^기획서에 적힌 /, "");
   const head = detail.replace(/\s*\(([^()]*)\)\s*$/, "").trim();
   const lines = [];
   if (head) lines.push(head);
   if (ev.actual && !head.includes(ev.actual)) lines.push(ev.actual);
-  return lines.length ? lines : ["사유가 기록되지 않았습니다."];
+  return lines.length ? lines : ["사유가 기록되지 않았어요."];
 }
 
 /** 오른쪽 상세 — 기대·실제, 기획서 원문, 마지막 화면과 실행한 단계. 리포트 파일을 열지 않아도 원인을 본다. */
@@ -1863,7 +1979,7 @@ function renderDetail(c) {
       ${ev.screenshot ? `<figure><figcaption>${shotStep ? `${shotStep.seq}단계 ${esc(stepWords(shotStep, false))} 뒤 화면` : "마지막 화면"}</figcaption>
         <a href="${esc(base + ev.screenshot)}" target="_blank" rel="noopener" title="크게 보기">
           <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"></a></figure>`
-        : `<figure><p class="noshot">이 항목은 화면을 찍지 않았습니다.</p></figure>`}
+        : `<figure><p class="noshot">이 항목은 화면을 찍지 않았어요.</p></figure>`}
       <div class="keysteps"><b>실행한 단계 ${steps.length}</b>
         <ol class="steps">${steps.map((st) => `<li class="${st.status !== "ok" ? "bad" : st.phase && st.phase !== "test" ? "prep" : ""}">` +
           `${stepWords(st)}${st.status !== "ok" && st.error_detail ? ` — ${esc(st.error_detail)}` : ""}</li>`).join("")}</ol>
@@ -1890,12 +2006,13 @@ $("planBtn").addEventListener("click", async () => {
     resetPlanView();
     state.busy = false;
     showPlan();
+    notifyDone(`항목 ${state.plan.cases.length}개 뽑음`);
   } catch (err) {
     state.busy = false;
     if (err.status === 409) {
-      showError("이미 실행 중입니다", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
+      showError("이미 실행 중이에요", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
     } else {
-      showError("계획을 만들지 못했습니다", err.message);
+      showError("확인할 항목을 만들지 못했어요", err.message);
     }
   } finally {
     state.busy = false;
@@ -1922,7 +2039,7 @@ async function loadRuns() {
   try {
     state.runs = (await api("/api/runs?limit=60")).runs;
   } catch (e) {
-    $("runs").innerHTML = `<p class="empty">기록을 불러오지 못했습니다.</p>`;
+    $("runs").innerHTML = `<p class="empty">기록을 불러오지 못했어요. 서버가 켜져 있는지 확인해 주세요.</p>`;
     return;
   }
   // 방금 새 이름으로 돌렸으면 그 이름도 이제 고를 수 있는 프로젝트다.
@@ -1944,8 +2061,10 @@ function renderRunsFoot() {
 function renderRuns() {
   const runs = state.runs;
   renderRunsFoot();
+  renderDocMeta();
+  syncTry();
   if (!runs.length) {
-    $("runs").innerHTML = `<p class="empty">아직 실행한 기록이 없습니다.</p>`;
+    $("runs").innerHTML = `<p class="empty">아직 확인한 기록이 없어요.<br>첫 확인이 끝나면 여기에 쌓여요.</p>`;
     return;
   }
   const current = $("project").value.trim();
@@ -1960,15 +2079,71 @@ function renderRuns() {
     const list = groups.get(key);
     const open = state.runsOpen[key];
     const shown = open ? list : list.slice(0, RUNS_SHOWN);
-    return `<h4>${esc(key || "프로젝트 없음")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
+    return `<h4>${esc(key || "프로젝트 미지정")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
       shown.map((r) => `<li><button class="sitem tall" type="button" data-run="${esc(r.run_id)}"
-          title="${esc([`${r.target} · ${r.pass}/${r.total} 통과`, runWhere(r)].filter(Boolean).join("\n"))}">${vmark(runKind(r), { dot: true })}
-        <span class="two"><b>${esc((r.spec || r.run_id).replace(/\.pdf$/i, ""))}${r.round ? ` · ${r.round}차` : ""}</b>
-        <span>${esc([runWhen(r.created_at), `${r.pass}/${r.total} 통과`].filter(Boolean).join(" · "))}</span></span></button></li>`).join("") +
+          title="${esc([`${r.target} · ${r.pass}/${r.total} 통과`, runWhere(r)].filter(Boolean).join("\n"))}">
+        <span class="two"><b>${esc(runTitle(r))}</b>
+        <span>${esc([r.round && `${r.round}차`, runAgo(r.created_at)].filter(Boolean).join(" · "))}</span></span>${runPill(r)}</button></li>`).join("") +
       (list.length > RUNS_SHOWN ? `<li><button class="sitem more" type="button" data-more="${esc(key)}">${open
         ? "접기" : `이전 기록 ${list.length - RUNS_SHOWN}개 더 보기`}</button></li>` : "") + `</ul>`;
   }).join("");
 }
+
+// 방금 끝난 기록은 '12분 전' 처럼 — 한 시간이 넘으면 '오늘 17:57' (GitHub Actions 실행 목록처럼).
+function runAgo(iso) {
+  const t = iso ? Date.parse(iso) : NaN;
+  if (isNaN(t)) return "";
+  const min = Math.floor((Date.now() - t) / 60000);
+  return min < 1 ? "방금" : min < 60 ? `${min}분 전` : runWhen(iso);
+}
+
+// 기록 이름 — 파일 이름(signup_spec) 대신 사람이 부르는 화면 이름(회원가입). 화면이 없으면 파일 이름을 다듬어 쓴다.
+const prettySpec = (p) => String(p || "").split(/[\\/]/).pop()
+  .replace(/\.(pdf|json)$/i, "").replace(/[_-]spec$/i, "").replace(/[_-]+/g, " ").trim();
+
+function runTitle(r) {
+  const names = Object.values((r.summary && r.summary.screen_names) || {});
+  if (names.length) return names.length <= 2 ? names.join(" · ") : `${names[0]} 외 ${names.length - 1}곳`;
+  return prettySpec(r.spec) || r.run_id;
+}
+
+// 판정 알약 — 색만으로 말하지 않는다(디자인 기준 2번). 글자가 먼저, 색은 덧붙임.
+function runPill(r) {
+  const s = r.summary || {};
+  const defects = s.defects ?? r.fail;
+  const unv = s.unverifiable || 0;
+  const infra = r.fail - defects - unv;
+  const [k, say] = defects ? ["fail", `${defects}건 다름`] : infra ? ["infra", `실행 문제 ${infra}`]
+    : unv ? ["unv", `확인 불가 ${unv}`] : ["ok", "모두 통과"];
+  return `<span class="rpill ${k}">${say}</span>`;
+}
+
+/** 고른 기획서를 지난번에 언제 확인했고 결과가 어땠는지 — 기획서 이름 아래 한 줄. */
+function renderDocMeta() {
+  const el = $("docMeta");
+  if (!el) return;
+  const spec = ($("pdf").value || "").split(/[\\/]/).pop();
+  if (!spec) { el.textContent = ""; return; }
+  const last = (state.runs || []).find((r) => (r.spec || "").split(/[\\/]/).pop() === spec);
+  el.innerHTML = last
+    ? `지난 확인 · ${esc([last.round && `${last.round}차`, runAgo(last.created_at)].filter(Boolean).join(" · "))} ${runPill(last)}`
+    : "아직 확인한 적 없는 기획서예요";
+}
+
+// 처음 온 사람에게만 — 예시 기획서와 결함을 심은 예시 사이트로 한 번에 끝까지 가 보게 한다.
+const TRY_SPEC = "fixtures/specs/signup_spec.pdf";
+function syncTry() {
+  const has = [...$("pdf").options].some((o) => o.value === TRY_SPEC);
+  $("tryRow").hidden = !has || (state.runs || []).length > 0;
+}
+
+$("tryBtn").addEventListener("click", () => {
+  $("pdf").value = TRY_SPEC;
+  $("url").value = "http://localhost:8100/bad";
+  if ([...$("backend").options].some((o) => o.value === "mock")) $("backend").value = "mock";
+  saveSettings(); syncVariant(); renderChrome(); renderDocMeta();
+  $("planBtn").click();
+});
 
 /**
  * 통과 못 한 케이스가 어느 화면에서 났는지 — 많은 순으로, 흐름 케이스는 '흐름' 하나로.
@@ -2088,7 +2263,7 @@ function projectNameProblem(name) {
   if (!name) return "프로젝트 이름을 적어 주세요.";
   const forbidden = /[\/\\:*?"<>|\x00-\x1f]/;
   if (name.length > 60 || name.startsWith(".") || name.endsWith(".") || forbidden.test(name)) {
-    return "이 이름은 쓸 수 없습니다 — 60자 이하로, / \\ : * ? \" < > | 없이, " +
+    return "이 이름은 쓸 수 없어요 — 60자 이하로, / \\ : * ? \" < > | 없이, " +
            "점으로 시작하거나 끝나지 않게 적어 주세요.";
   }
   return "";
@@ -2123,9 +2298,30 @@ $("projectNew").addEventListener("input", () => projectError(""));
 $("planBtn").addEventListener("click", (e) => {
   if ($("projectNewRow").hidden || !$("projectNew").value.trim()) return;
   e.stopImmediatePropagation();
-  projectError("적어 둔 프로젝트 이름이 아직 추가되지 않았습니다 — [추가] 를 누르거나 이름을 지워 주세요.");
+  projectError("적어 둔 프로젝트 이름이 아직 추가되지 않았어요 — [추가] 를 누르거나 이름을 지워 주세요.");
   $("projectNew").focus();
 }, true);
+
+// 사이트 주소가 비었거나 http(s):// 로 시작하지 않으면 칸 바로 아래에 알리고 멈춘다
+// (PageSpeed Insights 처럼 — 기획서를 다 읽은 뒤에야 주소 때문에 실패하지 않게).
+function urlProblem(url) {
+  if (!url) return "검사할 사이트 주소를 넣어 주세요.";
+  if (!/^https?:\/\/[^\s/]+/i.test(url)) return `'${url}' 는 열 수 없는 주소예요. http:// 나 https:// 로 시작하는 전체 주소를 넣어 주세요.`;
+  return "";
+}
+$("planBtn").addEventListener("click", (e) => {
+  const why = urlProblem($("url").value.trim());
+  const err = $("urlErr");
+  err.textContent = why; err.hidden = !why;
+  $("url").setAttribute("aria-invalid", String(Boolean(why)));
+  if (!why) return;
+  e.stopImmediatePropagation();
+  $("url").focus();
+}, true);
+$("url").addEventListener("input", () => {
+  if ($("urlErr").hidden) return;
+  $("urlErr").hidden = true; $("url").setAttribute("aria-invalid", "false");
+});
 
 // 화면별 주소에 틀린 줄이 있으면 멈춘다 — 그 줄을 빼고 돌리면 적은 화면이 0건이 된다.
 // 접힌 '실행 옵션' 안에 있으므로 펼쳐서 보여 준다.
@@ -2202,8 +2398,8 @@ function showAttach(stateName, file, { pct = 0, why = "", retry = false, picked 
   const media = stateName === "uploading" ? vmark("run", { say: false })
     : stateName === "done" ? vmark("done", { say: false }) : ICON.warn;
   const say = stateName === "uploading" ? `올리는 중 · <span class="pct">${Math.round(pct * 100)}%</span>`
-    : stateName === "done" ? [`올렸습니다`, sizeText(file.size), picked].filter(Boolean).join(" · ")
-    : `<span class="sr">오류: </span>올리지 못했습니다 — ${why}`;
+    : stateName === "done" ? [`올렸어요`, sizeText(file.size), picked].filter(Boolean).join(" · ")
+    : `<span class="sr">오류: </span>올리지 못했어요 — ${why}`;
   const acts = stateName === "uploading"
     ? `<button type="button" class="att-x" id="attStop" aria-label="올리기 멈추기" title="올리기 멈추기">${ATT_X}</button>`
     : stateName === "error" && retry ? `<button type="button" class="btn sm" id="attRetry">다시 시도</button>` : "";
@@ -2239,8 +2435,8 @@ function postWithProgress(path, body, onProgress) {
       else reject(new ApiError(detailText(out.detail) || `${xhr.status} ${xhr.statusText}`, xhr.status));
     });
     xhr.addEventListener("error", () =>
-      reject(new ApiError("서버에 연결하지 못했습니다. prova serve 가 살아 있는지 확인하세요.", 0)));
-    xhr.addEventListener("abort", () => reject(new ApiError("멈췄습니다", -1)));
+      reject(new ApiError("서버에 연결하지 못했어요. prova serve 가 켜져 있는지 확인해 주세요.", 0)));
+    xhr.addEventListener("abort", () => reject(new ApiError("멈췄어요", -1)));
     xhr.send(body);
   });
 }
@@ -2271,7 +2467,7 @@ async function uploadFile(file) {
       await refreshSpecs(out.path);
     }
     $("formNote").innerHTML = "";
-    showAttach("done", file, { picked: isJson ? "실행 옵션의 Figma 자료로 골랐습니다" : "기획서로 골랐습니다" });
+    showAttach("done", file, { picked: isJson ? "실행 옵션의 Figma 자료로 골랐어요" : "기획서로 골랐어요" });
     saveSettings();
     syncVariant();
     renderChrome();
@@ -2311,7 +2507,7 @@ async function uploadFile(file) {
     if (!file) return;
     if (!/\.(pdf|json)$/i.test(file.name)) {
       upload.file = null;
-      showAttach("error", file, { why: "PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다." });
+      showAttach("error", file, { why: "PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있어요." });
       return;
     }
     await uploadFile(file);
@@ -2365,7 +2561,7 @@ $("screenUrls").addEventListener("input", () => {
 });
 
 ["pdf", "url", "backend", "figma"].forEach((id) =>
-  $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); }));
+  $(id).addEventListener("change", () => { saveSettings(); syncVariant(); renderChrome(); renderDocMeta(); }));
 
 $("url").addEventListener("input", () => { syncVariant(); renderChrome(); });
 
@@ -2408,12 +2604,12 @@ async function boot() {
     if (saved.backend && saved.backend !== st.backend && st.backend !== "mock") {
       $("backend").value = saved.backend;
       $("backend").closest(".ctl").insertAdjacentHTML("beforeend",
-        `<div class="hint">지난번 선택입니다 — 서버 기본값은 ${esc(st.backend)}</div>`);
+        `<div class="hint">지난번 선택이에요 — 서버 기본값은 ${esc(st.backend)}</div>`);
     }
   } catch (err) {
     // 여기서 조용히 실패하면 화면이 죽은 채로 남는다.
     showBlank();
-    $("formNote").innerHTML = alertBox("fail", "서버에 연결하지 못했습니다", esc(err.message));
+    $("formNote").innerHTML = alertBox("fail", "서버에 연결하지 못했어요", esc(err.message));
     return;
   }
   syncVariant();

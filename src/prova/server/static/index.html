@@ -30,7 +30,10 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
 
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
   <aside class="side" aria-label="목록">
-    <div class="brand"><b>Prova</b></div>
+    <!-- 로고 — v5 '겹침 p' (기획서 고리 ∩ 화면 고리, 겹친 곳이 맞춘 곳). 색은 강조 토큰. -->
+    <div class="brand"><svg class="mark" viewBox="-15 -8 162 162" aria-hidden="true">
+        <path class="lens" d="M66,15.36 A40,40 0 0 1 66,84.64 A40,40 0 0 1 66,15.36 Z"/>
+        <circle cx="46" cy="50" r="40"/><circle cx="86" cy="50" r="40"/><path d="M6,50 V140"/></svg><b>Prova</b></div>
 
     <!-- 1 기획서 — 새 확인과 실행 기록 -->
     <nav class="side-pane" data-pane="form" aria-label="실행 기록">
@@ -87,20 +90,28 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
 
     <div class="content">
 
-      <!-- ── 1 기획서 ── 시스템 설정처럼 묶음 상자 안에 한 줄씩. 버튼은 아래 한 곳. -->
+      <!-- ── 1 기획서 ── 시작 화면. 할 일은 둘(기획서·주소)이고 버튼은 그 바로 아래 하나.
+           가끔 쓰는 설정(프로젝트·요청·실행 옵션)은 '더 설정하기' 에 접어 두되 지금 값은 접힌 채로 보인다. -->
       <section class="pane-form" id="paneForm">
         <div class="scroll">
           <div class="form-col">
-            <h2 class="lt">기획서대로 만들어졌는지 확인합니다</h2>
-            <p class="lede">기획서와 사이트 주소만 있으면 됩니다. 테스트 코드는 쓰지 않습니다.</p>
+            <h2 class="hero-t">기획서대로 만들어졌는지<br>직접 눌러 보고 알려 드려요</h2>
+            <p class="lede">기획서 PDF와 사이트 주소만 있으면 돼요. 테스트 코드는 쓰지 않아요.</p>
 
             <div id="formNote"></div>
 
-            <div class="gbox" id="dropZone">
-              <div class="row top">
-                <label class="lbl" for="pdf">기획서</label>
-                <div class="ctl">
-                  <span class="pop wide"><select id="pdf"></select></span>
+            <div class="start" id="dropZone">
+              <div class="srow">
+                <span class="sno" aria-hidden="true">1</span>
+                <div class="sbody">
+                  <label class="slbl" for="pdf">기획서</label>
+                  <div class="doc">
+                    <span class="fthumb" aria-hidden="true"><i></i><i></i><i></i><i></i><b>PDF</b></span>
+                    <div class="doc-body">
+                      <span class="pop wide"><select id="pdf"></select></span>
+                      <small class="hint" id="docMeta"></small>
+                    </div>
+                  </div>
                   <!-- 끌어 놓는 자리 (21st.dev File Upload) — 파일을 끌고 오면 문서 카드 셋이 벌어진다. 상자 전체가 받는다(app.js dropToUpload). -->
                   <div class="drop" id="dropArea">
                     <span class="fan" aria-hidden="true">
@@ -109,54 +120,69 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
                       <span class="fcard c"><i></i><i></i><i></i><b>PDF</b></span>
                     </span>
                     <span class="drop-say">
-                      <b class="idle">새 기획서는 여기로 끌어 놓거나 <button type="button" class="link" id="dropPick">파일에서 고르기</button></b>
-                      <b class="over" aria-hidden="true">놓으면 올라갑니다</b>
+                      <b class="idle">새 기획서를 여기로 끌어다 놓거나</b>
+                      <b class="over" aria-hidden="true">놓으면 올라가요</b>
                       <small>기획서 PDF · Figma 응답 JSON</small>
                     </span>
+                    <button type="button" class="btn sm" id="dropPick">파일 고르기</button>
                   </div>
                   <!-- 올린 파일 한 줄 (21st.dev Attachment States) — 올리는 중 · 올림 · 못 올림 -->
                   <div class="attach" id="attach"></div>
                 </div>
               </div>
-              <div class="row">
-                <label class="lbl" for="url">검사할 사이트 주소</label>
-                <div class="ctl">
-                  <input type="url" id="url" class="field" value="http://localhost:8100/bad"
-                         placeholder="http://localhost:8100/good" spellcheck="false">
-                  <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
-                  <div class="seg" id="variantRow" role="group" aria-label="예시 사이트">
-                    <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
-                    <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
+              <div class="srow">
+                <span class="sno" aria-hidden="true">2</span>
+                <div class="sbody">
+                  <label class="slbl" for="url">검사할 사이트 주소</label>
+                  <div class="ctl">
+                    <span class="urlf"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.7 3.8 2.7 6.2S9.8 12.5 8 14.2M8 1.8C6.2 3.5 5.3 5.6 5.3 8s.9 4.5 2.7 6.2"/></svg>
+                      <input type="url" id="url" class="field big" value="http://localhost:8100/bad"
+                             placeholder="예) http://localhost:3000" spellcheck="false" autocomplete="url"></span>
+                    <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
+                    <div class="seg" id="variantRow" role="group" aria-label="예시 사이트">
+                      <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
+                      <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
+                    </div>
                   </div>
+                  <div class="hint err" id="urlErr" role="alert" hidden></div>
                 </div>
               </div>
-              <div class="row">
-                <label class="lbl" for="projectPick">프로젝트<small>선택</small></label>
-                <div class="ctl">
-                  <span class="pop wide"><select id="projectPick"></select></span>
-                  <span class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</span>
-                  <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
-                  <input type="hidden" id="project" value="">
-                  <div class="newproj" id="projectNewRow" hidden>
-                    <input type="text" id="projectNew" class="field" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
-                           aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off" maxlength="60">
-                    <button class="btn sm" id="projectAdd" type="button">추가</button>
-                  </div>
-                  <div class="hint err" id="projectErr" role="alert" hidden></div>
-                </div>
-              </div>
-              <div class="row top">
-                <label class="lbl" for="request">무엇을 확인할까요<small>선택</small></label>
-                <div class="ctl">
-                  <textarea id="request" class="field area" rows="2"
-                            placeholder="예) 회원가입이 잘 되는지 확인해줘 — 비워 두면 전체 항목을 실행합니다"></textarea>
-                </div>
+              <div class="sfoot">
+                <span class="hint">바로 실행하지 않아요. 뽑은 항목을 먼저 보여 드려요.</span>
+                <button class="btn primary lg" id="planBtn" type="button">확인할 항목 뽑기<kbd class="kbd" aria-hidden="true">⌘↵</kbd></button>
               </div>
             </div>
 
+            <!-- 처음 쓰는 사람 — 예시 기획서와 예시 사이트로 한 번에 (예시가 있을 때만, app.js syncTry) -->
+            <p class="try" id="tryRow" hidden>처음이신가요?
+              <button type="button" class="link" id="tryBtn">예시 기획서로 먼저 해 보기</button>
+              <span class="hint">회원가입 화면 기획서와 결함을 일부러 심은 예시 사이트로 1분 안에 끝나요.</span></p>
+
             <details class="opts" id="opts">
-              <summary><span class="chev" aria-hidden="true"></span>실행 옵션<span class="now" id="optsNow"></span></summary>
+              <summary><span class="chev" aria-hidden="true"></span>더 설정하기<span class="now" id="optsNow"></span></summary>
               <div class="gbox">
+                <div class="row">
+                  <label class="lbl" for="projectPick">프로젝트<small>선택</small></label>
+                  <div class="ctl">
+                    <span class="pop wide"><select id="projectPick"></select></span>
+                    <span class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어져요.</span>
+                    <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
+                    <input type="hidden" id="project" value="">
+                    <div class="newproj" id="projectNewRow" hidden>
+                      <input type="text" id="projectNew" class="field" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
+                             aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off" maxlength="60">
+                      <button class="btn sm" id="projectAdd" type="button">추가</button>
+                    </div>
+                    <div class="hint err" id="projectErr" role="alert" hidden></div>
+                  </div>
+                </div>
+                <div class="row top">
+                  <label class="lbl" for="request">무엇을 확인할까요<small>선택</small></label>
+                  <div class="ctl">
+                    <textarea id="request" class="field area" rows="2"
+                              placeholder="예) 회원가입이 잘 되는지 확인해 줘 — 비워 두면 전체 항목을 실행해요"></textarea>
+                  </div>
+                </div>
                 <div class="row">
                   <label class="lbl" for="backend">기획서 읽는 방식</label>
                   <div class="ctl"><span class="pop wide"><select id="backend">
@@ -177,28 +203,22 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
                     <textarea id="screenUrls" class="field area" rows="3" spellcheck="false"
                               placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
                     <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
-                    <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않습니다
-                      (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적습니다.</div>
+                    <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않아요
+                      (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적어 주세요.</div>
                   </div>
                 </div>
                 <div class="row top">
                   <label class="check" for="vlm"><input type="checkbox" id="vlm">
-                    <span>화면 이미지로 찾기<small>요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
-                      좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</small></span></label>
+                    <span>화면 이미지로 찾기<small>요소를 찾지 못한 항목이 나왔을 때 켜요 · 모델 서버 필요.
+                      좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둬요.</small></span></label>
                 </div>
                 <div class="row top">
                   <label class="check" for="dryRun"><input type="checkbox" id="dryRun">
-                    <span>쓰기 요청 막기<small>실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
-                      막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</small></span></label>
+                    <span>쓰기 요청 막기<small>실제 접수·가입이 일어나면 안 되는 사이트에서 켜요 · 저장·제출 요청을
+                      막고 로그인만 통과시켜요. 막은 항목은 결과를 못 봐 '확인 불가' 가 돼요.</small></span></label>
                 </div>
               </div>
             </details>
-          </div>
-        </div>
-        <div class="footbar">
-          <div class="form-col row-line">
-            <span class="hint">바로 실행되지 않습니다. 뽑은 항목을 먼저 보여드립니다.</span>
-            <button class="btn primary lg" id="planBtn" type="button">확인할 항목 뽑기</button>
           </div>
         </div>
       </section>
