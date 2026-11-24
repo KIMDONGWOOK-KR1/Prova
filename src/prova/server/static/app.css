@@ -409,7 +409,9 @@ body[data-view="form"] .stage:empty { display: none; }
 body[data-view="form"] .pane-form { display: flex; }
 body:not([data-view="form"]) .pane-form { display: none; }
 
-.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-2) var(--sp-10) var(--sp-8); }
+/* 일하는 화면(검토·실행·결과): 내용은 위쪽 막대 제목과 같은 왼쪽 끝, 오른쪽 할 일과 같은 오른쪽 끝(둘 다 24px),
+   막대 아래 첫 줄까지 20px — 세 단계 모두 같다(hh 11-25 '다른 화면도 위치 조정') */
+.scroll { flex: 1; min-height: 0; overflow-y: auto; padding: var(--sp-5) var(--sp-6) var(--sp-8); }
 
 /* 제목 — Title 1 24/30 굵게, 아래 보조 문장 14/22 */
 .lt { font-size: var(--tx-xl); line-height: var(--lh-xl); font-weight: 700; letter-spacing: -0.015em; }
@@ -831,7 +833,7 @@ input[type="checkbox"]:focus-visible { box-shadow: var(--focus-ring); }
 .planview.spec-mode { grid-template-columns: minmax(0, 1fr); }
 .planview.spec-mode .insp { display: none; }
 .plan-main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-.plan-main .scroll { padding: 0 var(--sp-6) var(--sp-6); }
+.plan-main .scroll { padding: var(--sp-5) var(--sp-6) var(--sp-6); }
 .plan-head { display: flex; align-items: center; gap: var(--sp-3); padding: 2px 0 var(--sp-3); }
 .plan-head .sub { color: var(--fg-muted); font-size: var(--tx-sm); line-height: var(--lh-para); min-width: 0; }
 .plan-main .notes:not(:empty) { margin: 0 0 var(--sp-2); }
@@ -879,7 +881,8 @@ input[type="checkbox"]:focus-visible { box-shadow: var(--focus-ring); }
 /* 인스펙터 — 고른 항목의 기획서 원문과 실행 단계 */
 .insp {
   border-left: 0.5px solid var(--sep); min-height: 0; overflow-y: auto;
-  padding: var(--sp-5) var(--sp-5) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-5);
+  /* 첫 줄('고른 항목')이 왼쪽 첫 줄(항목 n · 기획서에서 읽은 내용)과 같은 높이, 나눔선 양쪽 여백 24px 로 같게 */
+  padding: var(--sp-5) var(--sp-6) var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-5);
 }
 .insp h5, .detail h5 { font-size: var(--tx-xs); line-height: var(--lh-xs); font-weight: 600; color: var(--fg-muted); margin-bottom: var(--sp-2); }
 .insp .big { font-size: var(--tx-lg); line-height: var(--lh-para); font-weight: 600; }
@@ -1057,7 +1060,7 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 
 /* ── 4 결과 — 결론 한 줄, 숫자 칸, 목록·상세 나란히 ─────────────────────────── */
 
-.result-scroll { padding: var(--sp-2) var(--sp-8) var(--sp-8); }
+.result-scroll { padding: var(--sp-5) var(--sp-6) var(--sp-8); }
 .verdict-line { font-size: var(--tx-xl); line-height: var(--lh-xl); font-weight: 700; letter-spacing: -0.015em; }
 .verdict-line mark { background: none; padding: 0; }
 .verdict-line mark.fail { color: var(--fail-fg); }
