@@ -209,8 +209,9 @@ function idleButton(btn) {
 
 /**
  * 미끄러지는 선택 판 — 단계 표시와 예시 사이트 고르기의 흰 판 하나가 새 자리로 옮겨 간다.
- * Apple HIG Motion: 자주 누르는 컨트롤의 움직임은 짧고 정확하게. 두 끝이 같은 용수철(임계 감쇠 —
- * 넘치지 않는다)로 함께 가서 판은 0.25초 안에 미끄러져 멎기만 한다.
+ * 두 끝이 서로 다른 빠르기의 용수철(임계 감쇠 — 넘치지 않는다)로 따라가서, 움직이는 동안만 판이 살짝
+ * 늘어났다가 0.25초 안에 제 폭으로 멎는다. 새로 누르면 지금 자리와 속도에서 이어 간다.
+ * 임계 감쇠의 해를 그대로 써서 프레임 간격이 들쭉날쭉해도 같은 모양으로 움직인다.
  * host 에 --thumb-l(왼쪽 끝) · --thumb-w(폭) 를 적는다. 그리는 쪽(CSS 의 ::before)이 읽는다.
  */
 function stretchThumb(host) {
@@ -224,10 +225,14 @@ function stretchThumb(host) {
     let still = true;
     s.hwNow += (s.hw - s.hwNow) * Math.min(1, dt * 12);
     if (Math.abs(s.hw - s.hwNow) > 0.3) still = false;
-    [s.a, s.b].forEach((B) => {
-      B.v += (260 * (s.x - B.x) - 32 * B.v) * dt;
-      B.x += B.v * dt;
-      if (Math.abs(s.x - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
+    [s.a, s.b].forEach((edge) => {
+      const w = edge === s.a ? 30 : 23;          // 앞 끝이 조금 빨라서 그 차이만큼 늘어난다
+      const off = edge.x - s.x;
+      const slope = edge.v + w * off;
+      const decay = Math.exp(-w * dt);
+      edge.x = s.x + (off + slope * dt) * decay;
+      edge.v = (edge.v - w * slope * dt) * decay;
+      if (Math.abs(s.x - edge.x) > 0.3 || Math.abs(edge.v) > 3) still = false;
     });
     return still;
   };
@@ -415,6 +420,10 @@ function renderChrome() {
   syncStepper();
   if (!state.busy) document.title = pageTitle();
   const f = form();
+  // 올리는 중이거나 고른 기획서가 없으면 다음 단계로 못 간다 — 반쯤 올라간 파일로 돌지 않게.
+  const uploading = $("uploadBtn").getAttribute("aria-busy") === "true";
+  $("planBtn").disabled = state.busy || uploading || !f.pdf;
+  if ($("tryBtn")) $("tryBtn").disabled = state.busy || uploading;
   // 실행 옵션은 접혀 있다 — 지금 값은 접힌 채로도 보여야 모르고 켠 채 돌리지 않는다.
   const nUrls = Object.keys(f.screen_urls).length;
   $("optsNow").textContent = [BACKEND_NAME[f.backend] || f.backend, f.figma && "Figma 함께",
@@ -1453,6 +1462,8 @@ function draftDoc() {
 }
 
 function resetPlanView() {
+  // 새로 만든 계획에서 예전 실행의 결과나 '통과 못 한 것만 다시 실행' 이 열리지 않게 비운다.
+  state.result = null; state.report = null; state.resKind = ""; state.resSel = "";
   state.filter = ""; state.onlyOff = false; state.rule = ""; state.group = ""; state.sel = ""; state.mode = "items";
 }
 
@@ -1741,7 +1752,7 @@ function showResult(out) {
       <p class="cond" id="resCond"${cond ? "" : " hidden"}>${esc(cond)}</p>
       <div class="next" id="nextActs">
         ${state.plan && s.fail ? `<button class="btn primary" id="retryBtn" type="button" disabled>${ICON.again}통과 못 한 ${s.fail}건만 다시 실행</button>` : ""}
-        <button class="btn" id="copyBtn" type="button">${ICON.copy}개발팀에 보낼 요약 복사</button>
+        <button class="btn" id="copyBtn" type="button" disabled>${ICON.copy}개발팀에 보낼 요약 복사</button>
         ${state.plan && s.fail ? `<span class="hint">고친 뒤 이것만 다시 돌려 보면 돼요.</span>` : ""}
       </div>
       <div class="notes">${notes.join("")}</div>
@@ -1779,7 +1790,9 @@ async function loadReport(out, base) {
     rep = await api(`${base}report.json`);
   } catch (e) {
     // 예전 실행이라 report.json 이 없으면 리포트 파일을 그대로 띄운다.
-    if (state.result !== out) return;
+    if (state.result !== out || document.body.dataset.view !== "result") return;
+    $("copyBtn").disabled = false;
+    $("copyBtn").innerHTML = ICON.copy + "실행 요약 복사";
     $("flist").innerHTML = `<p class="empty">항목별 결과 파일을 읽지 못해 리포트 파일을 아래에 띄워요.</p>`;
     $("detail").remove();
     $("resScroll").insertAdjacentHTML("beforeend",
@@ -1788,6 +1801,7 @@ async function loadReport(out, base) {
   }
   if (state.result !== out || document.body.dataset.view !== "result") return;   // 그사이 다른 화면으로 갔다
   state.report = rep;
+  $("copyBtn").disabled = false;
   if (!out.created_at && rep.created_at) {
     out.created_at = rep.created_at;
     $("barSub").textContent = [out.doc, runWhen(rep.created_at)].filter(Boolean).join(" · ");
@@ -2177,8 +2191,10 @@ async function renderRecap(last) {
         <li><b>실행</b><span>사이트를 직접 눌러 보며 하나씩 확인해요.</span></li>
         <li><b>결과</b><span>기획서와 다른 곳을 기획서 근거와 화면으로 보여 줘요.</span></li>
       </ol>`;
+    delete el.dataset.run;
     return;
   }
+  if (el.dataset.run === last.run_id) return;
   const s = last.summary || {};
   const defects = s.defects ?? last.fail;
   const unv = s.unverifiable || 0;
@@ -2195,7 +2211,7 @@ async function renderRecap(last) {
     <p class="rc-when hint">${esc([last.round && `${last.round}차`, runAgo(last.created_at), host].filter(Boolean).join(" · "))}</p>
     <h3 class="rc-v">${verdict}</h3>
     <ul class="rc-list" id="recapList">${last.fail ? `<li class="hint">항목을 불러오는 중…</li>` : ""}</ul>
-    <button class="btn" type="button" id="recapOpen">결과 자세히 보기</button>`;
+    <button class="btn go" type="button" id="recapOpen">결과 자세히 보기<span class="arr" aria-hidden="true">→</span></button>`;
   $("recapOpen").addEventListener("click", () => openRun(last));
   if (!last.fail) { $("recapList").remove(); return; }
   let cases = recapCases.get(last.run_id);
@@ -2206,7 +2222,7 @@ async function renderRecap(last) {
   }
   const list = $("recapList");
   if (!list || el.dataset.run !== last.run_id) return;   // 그사이 다른 기획서를 골랐다
-  if (!cases) { list.remove(); return; }
+  if (!cases) { list.innerHTML = `<li class="hint">항목별 결과를 불러오지 못했어요.</li>`; return; }
   const order = { defect: 0, infra: 1, unv: 2 };
   const bad = cases.filter((c) => kindOf(c) !== "pass").sort((a, b) => order[kindOf(a)] - order[kindOf(b)]);
   const SHOW = 5;
@@ -2396,8 +2412,10 @@ $("planBtn").addEventListener("click", (e) => {
 // (PageSpeed Insights 처럼 — 기획서를 다 읽은 뒤에야 주소 때문에 실패하지 않게).
 function urlProblem(url) {
   if (!url) return "검사할 사이트 주소를 넣어 주세요.";
-  if (!/^https?:\/\/[^\s/]+/i.test(url)) return `'${url}' 는 열 수 없는 주소예요. http:// 나 https:// 로 시작하는 전체 주소를 넣어 주세요.`;
-  return "";
+  if (/^https?:\/\//i.test(url) && !/\s/.test(url)) {
+    try { if (new URL(url).hostname) return ""; } catch { /* 아래 문구로 알린다 */ }
+  }
+  return `'${url}' 는 열 수 없는 주소예요. http:// 나 https:// 로 시작하는 전체 주소를 넣어 주세요.`;
 }
 $("planBtn").addEventListener("click", (e) => {
   const why = urlProblem($("url").value.trim());
@@ -2454,6 +2472,7 @@ $("project").addEventListener("change", () => {
   saveSettings();
   syncVariant();
   renderChrome();
+  renderDocMeta();
 });
 
 // ── 기획서 올리기 ──────────────────────────────────────────────────────────
@@ -2536,6 +2555,7 @@ async function uploadFile(file) {
   if (btn.getAttribute("aria-busy") === "true") return;
   upload.file = file;
   busyButton(btn, "올리는 중");
+  renderChrome();
   showAttach("uploading", file);
   try {
     const fd = new FormData();
@@ -2561,6 +2581,7 @@ async function uploadFile(file) {
     saveSettings();
     syncVariant();
     renderChrome();
+    renderDocMeta();
   } catch (err) {
     // 멈춘 것은 사람이 한 일이니 줄을 거둔다. 실패는 조용히 사라지면 올라간 줄 안다 — 남긴다.
     if (err.status === -1) showAttach(null);
@@ -2568,6 +2589,7 @@ async function uploadFile(file) {
   } finally {
     upload.xhr = null;
     idleButton(btn); syncUploadLabel();
+    renderChrome();
   }
 }
 
@@ -2593,6 +2615,7 @@ async function uploadFile(file) {
     if (!hasFiles(e)) return;
     e.preventDefault();
     leave();
+    if (upload.xhr) return;
     const file = e.dataTransfer.files[0];
     if (!file) return;
     if (!/\.(pdf|json)$/i.test(file.name)) {
@@ -2655,9 +2678,11 @@ $("screenUrls").addEventListener("input", () => {
 
 $("url").addEventListener("input", () => { syncVariant(); renderChrome(); });
 
-// Ctrl/Cmd + Enter 로 다음 단계
+// Ctrl/Cmd + Enter 로 다음 단계. 단추 위 표시는 쓰는 컴퓨터에 맞춘다(맥 ⌘↵, 그 밖 Ctrl ↵).
+const platform = navigator.userAgentData?.platform || navigator.platform || "";
+$("planBtn").querySelector("kbd").textContent = /mac|iphone|ipad/i.test(platform) ? "⌘↵" : "Ctrl ↵";
 document.addEventListener("keydown", (e) => {
-  if (!(e.key === "Enter" && (e.ctrlKey || e.metaKey))) return;
+  if (document.querySelector("dialog[open]") || !(e.key === "Enter" && (e.ctrlKey || e.metaKey))) return;
   const view = document.body.dataset.view;
   const run = $("runBtn");
   if (view === "plan" && run && !run.disabled) { run.click(); return; }

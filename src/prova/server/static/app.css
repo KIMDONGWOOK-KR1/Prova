@@ -943,6 +943,42 @@ dialog.confirm p { margin: 6px 4px var(--sp-4); font-size: var(--tx-sm); line-he
 dialog.confirm .col { display: flex; flex-direction: column; gap: 8px; }
 dialog.confirm .btn { width: 100%; }
 
+/* ── 누르고 고를 때의 움직임 (11-25, hh 가 지피티와 만든 수정본에서 색은 빼고 움직임만 옮김) ──────
+   색은 그대로 테마 토큰이다. 움직임은 모두 0.25초 안, 눌림은 3% 안팎으로 작게(Apple HIG Motion). */
+
+/* 사이드바에서 고른 묶음 — 채움 배경과 함께 왼쪽 짧은 막대가 가운데에서 위아래로 자란다 */
+.sitem { position: relative; }
+.sitem[data-f]::before, .sitem[data-kind]::before {
+  content: ""; position: absolute; left: 3px; top: 25%; width: 3px; height: 50%;
+  border-radius: var(--r-full); background: var(--accent-solid); transform: scaleY(0);
+}
+.sitem[aria-pressed="true"]::before { transform: scaleY(1); }
+
+/* 실행 중인 줄 — 옅은 강조 바탕, 제목 밑에 선이 왼쪽에서 그어진다 */
+.run-table .case.now > td { background: var(--accent-bg); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .sitem { transition: background-color var(--dur-1) var(--ease-out); }
+  .sitem::before { transition: transform var(--dur-1) var(--ease-out); }
+
+  /* 눌림 — 단추는 살짝 작아졌다가 놓으면 돌아온다 */
+  .btn { transition: transform var(--dur-1) var(--ease-out); }
+  .btn:not(:disabled):active { transform: scale(0.98); }
+  .seg > button, .path button[data-step], .glass > :is(a, button) { transition: transform var(--dur-1) var(--ease-out); }
+  .seg > button:active, .path button[data-step]:not(:disabled):active, .glass > :is(a, button):active { transform: scale(0.965); }
+
+  /* 다른 화면으로 가는 단추 — 화살표가 가는 쪽으로 3px */
+  .btn.go .arr { display: inline-block; transition: transform var(--dur-2) var(--ease-out); }
+  .btn.go:hover .arr { transform: translateX(3px); }
+
+  .run-table .case.now td:nth-child(2) { position: relative; }
+  .run-table .case.now td:nth-child(2)::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 2px; transform-origin: left;
+    background: var(--accent-blue); animation: case-now var(--dur-3) var(--ease-out) both;
+  }
+  @keyframes case-now { from { transform: scaleX(0); } }
+}
+
 /* ── 움직임 줄이기 — 바뀐 모습만 바로 ─────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
