@@ -229,7 +229,7 @@ body[data-view="result"] .side-pane[data-pane="result"] { display: block; }
 /* 판정 알약 — 실행 기록 줄 오른쪽, 기획서 아래 '지난 확인' 줄. 글자가 판정을 말하고 색은 덧붙임(기준 2번). */
 .rpill {
   flex: none; display: inline-flex; align-items: center; height: 20px; padding: 0 7px; margin-top: 1px;
-  border-radius: var(--r-full); font-size: var(--tx-2xs); line-height: 1; font-weight: 600; white-space: nowrap;
+  border-radius: var(--r-full); font-size: var(--tx-xs); line-height: 1; font-weight: 600; white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 .rpill.fail { background: var(--fail-bg); color: var(--fail-fg); }
@@ -361,7 +361,7 @@ body[data-view="form"] .bar-actions .glass[data-for="form"] { display: inline-fl
 .path button[data-step]:not(:disabled):active { background: var(--fill-hover); }
 .path .no {
   display: inline-grid; place-items: center; width: 18px; height: 18px; border-radius: 50%;
-  font-size: var(--tx-2xs); line-height: 1; font-weight: 600;
+  font-size: var(--tx-xs); line-height: 1; font-weight: 600;
   background: var(--fill-selected); color: var(--fg-default);
 }
 .path li[data-state="done"] .no { background: var(--accent-solid); color: var(--fg-onaccent);   /* 흰 체크는 accent-blue 위에서 3.0:1 — solid 로 */ }
@@ -549,7 +549,7 @@ body:not([data-view="form"]) .pane-form { display: none; }
 .rc-ring.infra { --rc: var(--note-fg); }
 .rc-ring.unv { --rc: var(--unv-fg); }
 .rc-ring .ring b { font-size: var(--tx-lg); line-height: 1.1; font-weight: 700; }
-.rc-ring .ring small { font-size: var(--tx-2xs); line-height: 1.2; color: var(--fg-muted); }
+.rc-ring .ring small { font-size: var(--tx-xs); line-height: 1.2; color: var(--fg-muted); }
 .rc-ring .lb { margin-top: var(--sp-2); font-size: var(--tx-sm); line-height: var(--lh-sm); font-weight: 600; white-space: nowrap; }
 .rc-ring .pc { font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); }
 @keyframes ring-fill { from { stroke-dasharray: 0 var(--c); } }
@@ -910,21 +910,21 @@ input[type="checkbox"]:focus-visible { box-shadow: var(--focus-ring); }
 .cite {
   display: inline-flex; align-items: center; height: 18px; margin: 0 2px; padding: 0 6px;
   border: 0; border-radius: var(--r-full); background: var(--fill-hover); color: var(--fg-muted);
-  font-size: var(--tx-2xs); font-weight: 600; vertical-align: 1px; cursor: default;
+  font-size: var(--tx-xs); font-weight: 600; vertical-align: 1px; cursor: default;
 }
 .cite:hover { color: var(--fg-default); }
 .cite.on { background: var(--accent-solid); color: var(--fg-onaccent); }
 
 /* 세로 줄 단계 (app.js stepLine · resultSteps) — 20px 번호 동그라미를 2px 선으로 잇는다 */
-ol.tl { list-style: none; font-size: var(--tx-sm); line-height: 20px; }
+ol.tl { list-style: none; font-size: var(--tx-md); line-height: 20px; }  /* 본문 14 — 줄 높이는 동그라미(20)와 같게 */
 ol.tl li { position: relative; display: grid; grid-template-columns: 20px minmax(0, 1fr); column-gap: var(--sp-2);
   padding-bottom: 10px; overflow-wrap: anywhere; }
 ol.tl li:last-child { padding-bottom: 0; }
 ol.tl li::before { content: ""; position: absolute; left: 9px; top: 22px; bottom: 2px; width: 2px; border-radius: 1px; background: var(--sep); }
 ol.tl li:last-child::before { display: none; }
 ol.tl .node { width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; background: var(--fill-selected);
-  font-size: var(--tx-2xs); line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-default); }
-ol.tl .pre { font-size: var(--tx-2xs); color: var(--fg-muted); }
+  font-size: var(--tx-xs); line-height: 1; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--fg-default); }
+ol.tl .pre { font-size: var(--tx-xs); color: var(--fg-muted); }
 ol.tl li.prep .node { background: none; box-shadow: inset 0 0 0 1.5px var(--fill-selected); }
 ol.tl li.done .node { background: var(--accent-solid); color: var(--fg-onaccent); }
 ol.tl li.stop .node { background: none; }
@@ -933,7 +933,7 @@ ol.tl .stop-lb { display: block; margin-top: 2px; font-size: var(--tx-xs); line-
 ol.tl li.defect .stop-lb { color: var(--fail-fg); }
 ol.tl li.infra .stop-lb { color: var(--note-fg); }
 ol.tl li.unv .stop-lb { color: var(--unv-fg); }
-ol.tl code { font-size: var(--tx-xs); line-height: var(--lh-sm); background: var(--fill-hover); border-radius: var(--r-sm); padding: 0 4px; }
+ol.tl code { font-size: var(--tx-sm); line-height: var(--lh-sm); font-family: var(--font-mono); background: var(--fill-hover); border-radius: var(--r-sm); padding: 0 4px; }
 /* 긴 단계는 앞쪽 통과한 단계를 한 줄로 접는다 (app.js stepPlan). 접힌 줄 아래 선은 점선 — 숨은 단계가 있다는 표시.
    펼치면 회차마다 작은 'N회째' 머리가 붙는다. */
 ol.tl li.grp { display: block; }
@@ -943,18 +943,18 @@ ol.tl li.grp > details > summary { list-style: none; display: grid; grid-templat
   cursor: default; border-radius: var(--r-sm); width: fit-content; padding-right: 6px; }
 ol.tl li.grp > details > summary::-webkit-details-marker { display: none; }
 ol.tl li.grp > details > summary .node { background: var(--accent-solid); color: var(--fg-onaccent); }
-ol.tl li.grp > details > summary .tx { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tx-sm); font-weight: 500; color: var(--fg-default); }
+ol.tl li.grp > details > summary .tx { display: inline-flex; align-items: center; gap: 6px; font-size: var(--tx-md); font-weight: 500; color: var(--fg-default); }
 ol.tl li.grp > details > summary:hover .tx { color: var(--accent-fg); }
 ol.tl li.grp > details > summary:focus-visible { outline: none; box-shadow: var(--focus-ring); }
 ol.tl li.grp > details > ol.tl { margin-top: 10px; }
 ol.tl li.grp > details > ol.tl > li:last-child { padding-bottom: 0; }
-ol.tl li.rnd { padding-bottom: 2px; font-size: var(--tx-2xs); line-height: 16px; color: var(--fg-muted); }
+ol.tl li.rnd { padding-bottom: 2px; font-size: var(--tx-xs); line-height: 16px; color: var(--fg-muted); }
 ol.tl li.rnd::before { top: 0; bottom: 0; }
 ol.tl li:first-child.rnd::before { display: none; }
 /* '크게 보기' 는 화면 칸 안에만 — 브라우저 말풍선(title)은 옆 칸을 덮어서 쓰지 않는다 */
 .shot figure a { position: relative; }
 .zoom-hint { position: absolute; left: 50%; bottom: 8px; transform: translate(-50%, 2px); padding: 2px 8px; border-radius: var(--r-sm);
-  background: var(--fg-default); color: var(--bg-raised); font-size: var(--tx-2xs); line-height: 18px; white-space: nowrap;
+  background: var(--fg-default); color: var(--bg-raised); font-size: var(--tx-xs); line-height: 18px; white-space: nowrap;
   opacity: 0; pointer-events: none; transition: opacity var(--dur-1) var(--ease-out), transform var(--dur-1) var(--ease-out); }
 .shot figure a:hover .zoom-hint, .shot figure a:focus-visible .zoom-hint { opacity: 1; transform: translate(-50%, 0); }
 /* 다른 항목을 고르면 줄이 40ms 씩 늦게 올라온다 — 다 합쳐 300ms 안 */
@@ -964,7 +964,7 @@ ol.steps { list-style: none; counter-reset: s; font-size: var(--tx-sm); line-hei
 ol.steps li { display: flex; gap: var(--sp-2); padding: 7px 0; border-top: 0.5px solid var(--sep); counter-increment: s; overflow-wrap: anywhere; }
 ol.steps li:first-child { border-top: 0; }
 ol.steps li::before { content: counter(s); width: 18px; flex: none; color: var(--fg-muted); font-variant-numeric: tabular-nums; text-align: right; }
-ol.steps li.prep::before { content: "준비"; width: auto; font-size: var(--tx-2xs); }
+ol.steps li.prep::before { content: "준비"; width: auto; font-size: var(--tx-xs); }
 ol.steps li.bad { color: var(--fail-fg); }
 ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); background: var(--fill-hover); border-radius: var(--r-sm); padding: 0 4px; }
 .idline { font-size: var(--tx-xs); color: var(--fg-muted); font-family: var(--font-mono); overflow-wrap: anywhere; }
@@ -1128,7 +1128,7 @@ button.tile { font: inherit; color: inherit; text-align: left; border: 0; cursor
   transition: background-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
 /* 올렸을 때는 바탕 톤만 — 떠오름·그림자 없음(HIG). 직전 대비 줄은 작은 회색 글자(app.js tileDeltas) */
 button.tile:hover:not(:disabled) { background: var(--fill-hover); }
-.tile > .delta { display: block; margin-top: 2px; font-size: var(--tx-2xs); line-height: var(--lh-xs); color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tile > .delta { display: block; margin-top: 2px; font-size: var(--tx-xs); line-height: var(--lh-xs); color: var(--fg-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 button.tile[aria-pressed="true"] { background: var(--fill-selected); box-shadow: inset 0 0 0 1px var(--border-strong); }
 button.tile:disabled { cursor: default; }
 button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offset: 2px; }
