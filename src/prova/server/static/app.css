@@ -1501,3 +1501,8 @@ details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabula
 }
 .log.cut-top { --ft: 24px; }
 .log.cut-bottom { --fb: 24px; }
+
+/* 상태 꼬리표 기호 — 색 점 대신 상태마다 다른 모양(21st.dev Status Badge 에서). 색은 꼬리표 글자색을 따른다. */
+.chip .cm { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor;
+            stroke-width: 1.4; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-width: 640px) { .topbar .chips .chip .cm { display: inline-block; margin-right: 5px; vertical-align: -1px; } }

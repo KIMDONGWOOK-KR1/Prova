@@ -27,6 +27,25 @@ const ICON = {
 // 종류는 아이콘 모양과 색으로만 보이므로 앞에 낱말을 숨겨 붙인다(HIG: 색·모양만으로 전하지 않는다).
 // 닫기(×)는 넣지 않는다 — 디자인 기준 1번 '알림 상자는 숨기거나 접지 않는다'.
 const ALERT_SAY = { fail: ["alert", "오류"], warn: ["status", "주의"], info: ["status", "참고"] };
+/**
+ * 상태 꼬리표 앞 기호 — 21st.dev Status Badge 의 '상태마다 다른 모양' 에서.
+ * 색 점은 색으로만 달랐다. 모양이 같은 뜻을 말해야 색을 못 가려도 읽힌다(HIG).
+ * 통과 ✓ · 기획서와 다름 ✕ · 실행 문제 ! · 확인 불가 ? · 실행 중은 점선 원(돌지 않는다 — 도는 건 제목 옆 하나).
+ * 원본의 일곱 색과 쓰지 않는 상태(Pending·Expired 등)는 들이지 않는다. 색은 판정 토큰 그대로.
+ */
+const CHIP_MARK = {
+  ok: `<path d="M3.9 6.2l1.5 1.5 2.8-3"/>`,
+  fail: `<path d="M4.4 4.4l3.2 3.2M7.6 4.4L4.4 7.6"/>`,
+  infra: `<path d="M6 3.5v3M6 8.4v.1"/>`,
+  unv: `<path d="M4.7 4.8a1.4 1.4 0 1 1 2 1.3c-.5.2-.7.5-.7.9v.2M6 8.6v.1"/>`,
+};
+function chipMark(kind) {
+  const ring = kind === "busy"
+    ? `<circle cx="6" cy="6" r="4.9" stroke-dasharray="2.2 1.65"/>`
+    : `<circle cx="6" cy="6" r="4.9"/>${CHIP_MARK[kind] || ""}`;
+  return `<svg class="cm" viewBox="0 0 12 12" aria-hidden="true">${ring}</svg>`;
+}
+
 function alertBox(kind, title, why) {
   const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
   return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
@@ -384,7 +403,7 @@ function renderChrome() {
     `<b>${esc(spec)}</b><span class="sep">→</span><span>${esc(f.url || "대상 없음")}</span>`;
 
   $("chips").innerHTML =
-    `<span class="chip ${state.busy ? "busy" : "ok"}"><i class="dot"></i>` +
+    `<span class="chip ${state.busy ? "busy" : "ok"}">${chipMark(state.busy ? "busy" : "ok")}` +
     `${state.busy ? "실행 중" : "준비됨"}</span>` +
     `<span class="chip">${esc(BACKEND_NAME[f.backend] || f.backend)}</span>` +
     (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
@@ -490,7 +509,7 @@ let elapsedTimer = null;
 
 function showProgress(title, lines) {
   setStep(title === "실행 중" ? 3 : 2);
-  $("stageChips").innerHTML = `<span class="chip busy"><i class="dot"></i>실행 중</span>`;
+  $("stageChips").innerHTML = `<span class="chip busy">${chipMark("busy")}실행 중</span>`;
   $("stage").innerHTML = `
     <div class="head"><h1>${esc(title)}</h1><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="elapsed" id="pElapsed">0초</span></div>
@@ -1326,8 +1345,9 @@ function showResult(out) {
   const defects = s.defects ?? s.fail;
   const unv = s.unverifiable || 0;
   const infra = s.fail - defects - unv;
+  const verdict = defects ? "fail" : infra ? "infra" : unv ? "unv" : "ok";
   $("stageChips").innerHTML =
-    `<span class="chip ${defects ? "fail" : infra ? "infra" : unv ? "unv" : "ok"}"><i class="dot"></i>` +
+    `<span class="chip ${verdict}">${chipMark(verdict)}` +
     `${defects ? `기획서와 다름 ${defects}건` : infra ? `실행 문제 ${infra}건` : unv ? `확인 불가 ${unv}건` : "전부 통과"}</span>`;
 
   const notes = [];
