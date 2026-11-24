@@ -25,6 +25,7 @@ _PREPARE_JS = """async () => {
   await Promise.all(imgs.map(i => i.complete ? null : new Promise(r => {
     i.addEventListener('load', r); i.addEventListener('error', r);
   })));
+  await document.fonts.ready;  // 리포트 글꼴(fonts/PretendardVariable.woff2)이 다 읽힌 뒤 찍는다
 }"""
 
 # 화면용 꾸밈(넘기는 줄, 버튼)은 종이에 찍지 않는다. 장이 바뀌면 쪽을 넘긴다.
@@ -63,7 +64,7 @@ def _footer(title: str) -> str:
 
     return (
         f"<div style=\"width:100%;padding:0 10mm;display:flex;justify-content:space-between;"
-        f"font-family:-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;font-size:8px;"
+        f"font-family:'Pretendard Variable',Pretendard,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;font-size:8px;"
         f"color:{light_value('--fg-muted')}\"><span>{escape(title)}</span>"
         "<span><span class='pageNumber'></span> / <span class='totalPages'></span></span></div>")
 

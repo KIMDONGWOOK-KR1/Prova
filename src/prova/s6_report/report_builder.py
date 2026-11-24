@@ -27,6 +27,7 @@ import html
 import json
 import math
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -226,11 +227,16 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 # 색·간격·서체는 theme.TOKENS_CSS 가 유일한 출처다. 여기서 색을 새로 만들면
 # 웹 UI 안에 iframe 으로 떴을 때 같은 화면에 파란색이 두 가지가 된다.
 _CSS = TOKENS_CSS + """
+/* 리포트 글꼴 — 리포트 폴더의 fonts/ 에 함께 둔 Pretendard 가변 글꼴(save_html 이 복사한다). 받는 사람 PC 에
+   깔려 있으면 그것을 먼저 쓴다. 인터넷에서 내려받지 않는다 — 스크린샷처럼 폴더째 따라간다(디자인 기준 4번). */
+@font-face { font-family:"Pretendard Variable"; font-style:normal; font-weight:45 920; font-display:swap;
+             src:local("Pretendard Variable"), url("fonts/PretendardVariable.woff2") format("woff2-variations"),
+                 url("fonts/PretendardVariable.woff2") format("woff2"); }
 /* 검수 문서처럼 읽히게 한다 — 상자 대신 가는 선, 색은 판정에만 쓴다.
    기획자가 개발사에 그대로 보내는 문서라서 화면보다 종이에 가깝게 잡았다. */
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text);
-       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal);
+       font-family:var(--font-doc); font-size:var(--tx-base); line-height:var(--lh-normal);
        -webkit-font-smoothing:antialiased; }
 a { color:inherit; text-underline-offset:2px; }
 /* 폭과 바깥 여백은 웹 UI 의 무대(.app)와 같다 — 파일로 열어도 같은 자리에 선다. */
@@ -2311,9 +2317,25 @@ def fill_pending_from_plan(report: TestReport, run_dir: Path) -> None:
                             "value": x.get("value"), "phase": phase} for phase, x in rest]
 
 
+#: 리포트와 함께 두는 글꼴 — Pretendard 가변 글꼴과 그 라이선스(SIL OFL 1.1, 함께 보내야 한다).
+FONT_DIR = Path(__file__).parent / "fonts"
+FONT_FILES = ("PretendardVariable.woff2", "Pretendard-OFL.txt")
+
+
+def copy_fonts(out_dir: Path) -> None:
+    """리포트 폴더의 fonts/ 에 글꼴을 둔다. 이미 같은 크기의 파일이 있으면 두고 간다."""
+    dest = out_dir / "fonts"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in FONT_FILES:
+        src, dst = FONT_DIR / name, dest / name
+        if src.exists() and not (dst.exists() and dst.stat().st_size == src.stat().st_size):
+            shutil.copyfile(src, dst)
+
+
 def save_html(report: TestReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     fill_pending_from_plan(report, out_dir)
+    copy_fonts(out_dir)
     path = out_dir / "report.html"
     path.write_text(render_html(report, build_spec_figures(report, out_dir)), encoding="utf-8")
     return path

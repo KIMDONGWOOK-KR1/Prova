@@ -125,6 +125,12 @@ _TOKENS_TEMPLATE = """
                "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
                "D2Coding", monospace;
+  /* 리포트(보고서 창·PDF) 글꼴 — Pretendard 를 리포트 폴더에 함께 둔다(fonts/, SIL OFL 1.1 이라 함께 보내도 된다).
+     받는 사람이 윈도여도, 서버가 찍은 PDF 여도 같은 글꼴로 보인다. Apple SF·New York 은 라이선스가 Apple 기기
+     화면 시안용이라 파일에 넣어 보낼 수 없다 — 맥에서는 Pretendard 가 없을 때만 시스템 글꼴(SF)로 넘어간다.
+     (2026-11-25 hh) 웹 UI 는 시스템 글꼴 그대로(11-24 hh). */
+  --font-doc: "Pretendard Variable", "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+              "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
 
   /* 4px 기준 간격 — 매직넘버를 쓰지 않기 위한 눈금 */
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
