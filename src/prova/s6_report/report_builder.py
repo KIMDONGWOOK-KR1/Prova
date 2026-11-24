@@ -526,6 +526,47 @@ details.pairfold h2 { display:none; }
 .shots img { height:150px; border:1px solid var(--line); border-radius:var(--r-sm);
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+/* 단계 되짚기 — 21st.dev Agent Trace 에서. 단계 한 줄, 시간 축 막대, 끄는 재생선. 색은 토큰만.
+   이름 칸 · 막대 칸 · 시간 칸. 재생선과 끄는 면은 막대 칸에만 겹친다. */
+.trace { --tr-hit:var(--fail); --gut:9.5rem; --msw:3.4rem; --gap:8px; }
+.trace.infra { --tr-hit:var(--note-fg); }
+.trace.unv { --tr-hit:var(--muted); }
+.tr-body { position:relative; margin-top:12px; }
+.tr-rows { list-style:none; margin:0; padding:0; }
+.tr-rows > li { display:grid; grid-template-columns:var(--gut) minmax(0,1fr) var(--msw); gap:var(--gap);
+                align-items:center; height:26px; font-size:12px; }
+.tr-name { font:inherit; color:var(--text); background:none; border:0; margin:0; padding:2px 6px 2px 2px;
+           text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+           border-radius:var(--r-sm); transition:background-color .15s ease-out, color .15s ease-out; }
+.tr-name .n { display:inline-block; min-width:2.6em; color:var(--muted); font-variant-numeric:tabular-nums; }
+button.tr-name:hover, .tr-rows > li[data-on] .tr-name { background:var(--bg-inset); }
+.tr-rows > li[data-on] .tr-name { font-weight:600; }
+button.tr-name:focus-visible, .tr-scrub:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+.tr-track { position:relative; height:100%; }
+.tr-bar { position:absolute; top:50%; height:8px; margin-top:-4px; min-width:3px; border-radius:4px;
+          background:var(--bg-inset); overflow:hidden; }
+.tr-bar > i { position:absolute; inset:0; transform-origin:left center; transform:scaleX(var(--p,1));
+              background:var(--muted); }
+.tr-rows > li.setup .tr-bar > i { background:var(--border-strong); }
+.tr-rows > li[data-fin='error'] .tr-bar > i, .tr-rows > li[data-state='error'] .tr-bar > i { background:var(--tr-hit); }
+.tr-ms { text-align:right; font-family:var(--font-mono); font-size:11px; color:var(--muted);
+         font-variant-numeric:tabular-nums; transition:opacity .15s ease-out; }
+.tr-rows > li[data-state='error'] .tr-ms { color:var(--tr-hit); font-weight:600; }
+.tr-rows > li[data-state='queued'] .tr-name, .tr-rows > li[data-state='skip'] .tr-name { color:var(--muted); }
+.tr-rows > li[data-state='queued'] .tr-ms { opacity:0; }
+.tr-rows > li[data-state='skip'] .tr-name { cursor:default; }
+.tr-head, .tr-scrub { position:absolute; top:0; bottom:0; left:calc(var(--gut) + var(--gap));
+                      right:calc(var(--msw) + var(--gap)); }
+.tr-head { pointer-events:none; }
+.tr-head > i { position:absolute; top:-6px; bottom:0; left:calc(var(--t,1) * 100%); width:1px; background:var(--text); }
+.tr-head > i::before { content:""; position:absolute; top:0; left:-3px; width:7px; height:7px;
+                       background:var(--text); transform:rotate(45deg); }
+.tr-scrub { cursor:ew-resize; touch-action:none; border-radius:var(--r-sm); }
+.tr-foot { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:11px;
+           color:var(--muted); margin:2px calc(var(--msw) + var(--gap)) 0 calc(var(--gut) + var(--gap)); }
+.tr-rows > li.broke .tr-name { color:var(--tr-hit); font-weight:600; }
+@media (max-width:640px) { .trace { --gut:7.5rem; } }
+@media print { .tr-head, .tr-scrub { display:none; } }
 /* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
 .heal, .gap, .warn { border-radius:var(--r-xl); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3);
                      font-size:14px; line-height:1.6; }
@@ -630,6 +671,70 @@ _THEME_JS = (
     'if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}'
     'catch(e){}'
 )
+
+# 실패 카드의 단계 되짚기(_trace_html). 시각 하나(t)에서 모든 줄의 찬 정도·상태·캡처를 정한다 —
+# 줄마다 따로 상태를 들고 있지 않다. 처음과 인쇄 때는 끝(t = 합계)이다.
+_TRACE_JS = r"""
+(function () {
+  document.querySelectorAll('.trace').forEach(function (tr) {
+    var total = +tr.dataset.total || 1;
+    var rows = Array.prototype.slice.call(tr.querySelectorAll('.tr-rows > li[data-start]'));
+    var img = tr.querySelector('.shots img'), link = tr.querySelector('.shots a');
+    var cap = tr.querySelector('.shots .cap'), scrub = tr.querySelector('.tr-scrub');
+    if (!rows.length || !img || !scrub) return;
+    var endCap = cap.textContent, endShot = img.getAttribute('src'), on = null;
+    rows.forEach(function (r) { r.dataset.fin = r.dataset.state; });
+    function seek(v) {
+      var t = Math.max(0, Math.min(total, v)), at = 0;
+      tr.style.setProperty('--t', (t / total).toFixed(4));
+      rows.forEach(function (r, i) {
+        var s = +r.dataset.start, e = +r.dataset.end, d = e - s;
+        var p = d > 0 ? Math.max(0, Math.min(1, (t - s) / d)) : (t >= s ? 1 : 0);
+        r.style.setProperty('--p', p.toFixed(3));
+        r.dataset.state = (t < s || (p === 0 && d > 0)) ? 'queued' : p < 1 ? 'running' : r.dataset.fin;
+        if (t > s || (t === s && d === 0)) at = i;
+      });
+      var end = t >= total, k = at;
+      while (k > 0 && !rows[k].dataset.shot) k--;
+      var shot = end ? endShot : rows[k].dataset.shot, text = end ? endCap : rows[at].dataset.cap + ' 화면';
+      if (img.getAttribute('src') !== shot) { img.setAttribute('src', shot); link.setAttribute('href', shot); }
+      if (cap.textContent !== text) cap.textContent = text;
+      if (on) on.removeAttribute('data-on');
+      on = end ? null : rows[at]; if (on) on.setAttribute('data-on', '');
+      scrub.setAttribute('aria-valuenow', String(Math.round(t)));
+      scrub.setAttribute('aria-valuetext', end ? '끝, 판정한 화면' : text);
+      tr.t = t;
+    }
+    function fromX(x) {
+      var b = scrub.getBoundingClientRect();
+      if (b.width > 0) seek((x - b.left) / b.width * total);
+    }
+    scrub.addEventListener('pointerdown', function (e) { scrub.setPointerCapture(e.pointerId); fromX(e.clientX); });
+    scrub.addEventListener('pointermove', function (e) { if (scrub.hasPointerCapture(e.pointerId)) fromX(e.clientX); });
+    scrub.addEventListener('pointerup', function (e) {
+      if (scrub.hasPointerCapture(e.pointerId)) scrub.releasePointerCapture(e.pointerId);
+    });
+    // 화살표는 단계 경계로 옮긴다 — 시간 몇 퍼센트씩보다 '다음 단계' 가 쓸모 있다.
+    var ends = rows.map(function (r) { return +r.dataset.end; });
+    scrub.addEventListener('keydown', function (e) {
+      var t = tr.t == null ? total : tr.t, n = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') n = ends.filter(function (x) { return x > t; })[0];
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') n = ends.filter(function (x) { return x < t; }).pop();
+      else if (e.key === 'Home') n = ends[0];
+      else if (e.key === 'End') n = total;
+      else return;
+      e.preventDefault();
+      if (n != null) seek(n);
+    });
+    rows.forEach(function (r) {
+      var b = r.querySelector('.tr-name');
+      if (b) b.addEventListener('click', function () { seek(+r.dataset.end); });
+    });
+    window.addEventListener('beforeprint', function () { seek(total); });
+  });
+})();
+"""
+
 
 _LIGHTBOX_JS = r"""
 (function () {
@@ -803,6 +908,72 @@ def _shots_html(verdict: Verdict, last: bool = False) -> str:
         for seq, path, phase in shots
     )
     return f"<div class='shots'>{items}</div>"
+
+
+def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
+    """실패 카드의 '판정한 화면' 자리 — 단계마다 걸린 시간을 한 축에 놓고, 끌면 그 단계 뒤 화면이 뜬다.
+
+    21st.dev Agent Trace 에서 가져온 것: 단계 하나가 한 줄, 시작·끝을 시간 축에 놓은 막대, 축을
+    끌면(재생 막대) 그 시각까지 끝난 만큼만 막대가 차고 그 단계 뒤 캡처로 바뀐다. 이름을 누르면
+    그 단계로 간다. 화살표 키는 단계 경계로 옮긴다. 버린 것: 자동 재생·반복, 토큰 수, 아이콘,
+    그림자 카드.
+
+    처음 모습은 끝난 실행이다 — 판정한 화면과 꽉 찬 막대. 스크립트가 없거나 인쇄할 때도 그 모습이다.
+    멈춘 뒤 하지 못한 단계는 막대 없이 '못 함' 으로 남긴다. 캡처가 두 장 미만이면 그릴 것이 없으니
+    예전처럼 판정한 화면 한 장만 둔다.
+    """
+    steps = verdict.step_results
+    shots = [r for r in steps if r.screenshot]
+    if len(steps) < 2 or len(shots) < 2:
+        return _shots_html(verdict, last=True)
+    total = max(1, sum(max(r.elapsed_ms, 0) for r in steps))
+    last = shots[-1]
+    # 재현 절차(_repro_html)가 '기획서를 어긴 단계' 로 진하게 두는 단계와 같은 줄을 짚는다.
+    broke = verdict.target_label if kind == "defect" and verdict.violates else None
+    names = names or {}
+
+    def what(action: str, target: str) -> str:
+        # 흐름 케이스의 화면 경계('signup 성공')는 기획서의 화면 이름으로 — 지도와 같은 말.
+        m = _FLOW_MARK.match(target or "")
+        if m and m.group(1) in names:
+            target = f"{names[m.group(1)]} {m.group(2)}"
+        return f"{target or ''} {ACTION_LABELS.get(action, action or '')}".strip()
+
+    rows, t = [], 0
+    for i, r in enumerate(steps):
+        dur = max(r.elapsed_ms, 0)
+        state = "error" if r.status == "error" else "done"
+        pre = "준비 " if r.phase == "setup" else ""
+        name = what(r.action, r.target)
+        hit = bool(broke) and r.phase != "setup" and r.target == broke and r.action != "click"
+        cls = " ".join(c for c in ("setup" if r.phase == "setup" else "", "broke" if hit else "") if c)
+        rows.append(
+            f"<li data-state='{state}' data-start='{t}' data-end='{t + dur}'"
+            f"{f' data-shot={chr(39)}{_esc(r.screenshot)}{chr(39)}' if r.screenshot else ''}"
+            f" data-cap='{_esc(pre)}{r.seq}단계 뒤' class='{cls}' style='--p:1'>"
+            f"<button type='button' class='tr-name'><span class='n'>{_esc(pre)}{r.seq}</span>{_esc(name)}</button>"
+            f"<span class='tr-track'><span class='tr-bar' style='left:{t / total * 100:.3f}%;"
+            f"width:{dur / total * 100:.3f}%'><i></i></span></span>"
+            f"<span class='tr-ms'>{dur}ms</span></li>")
+        t += dur
+    for k, p in enumerate(verdict.pending_steps or []):
+        pre = "준비 " if p.get("phase") == "setup" else ""
+        name = what(p.get("action") or "", p.get("target") or "")
+        rows.append(f"<li data-state='skip'><span class='tr-name'><span class='n'>·</span>{_esc(name)}</span>"
+                    f"<span class='tr-track'></span><span class='tr-ms'>못 함</span></li>")
+    cap = f"판정한 화면: {'준비 ' if last.phase == 'setup' else ''}{last.seq}단계 뒤, 누르면 크게 보기"
+    return (
+        f"<div class='trace {kind}' data-total='{total}' style='--t:1'>"
+        f"<div class='shots last'><a href='{_esc(last.screenshot)}' target='_blank'>"
+        f"<img src='{_esc(last.screenshot)}' alt='판정한 화면'>"
+        f"<div class='cap' aria-live='polite'>{_esc(cap)}</div></a></div>"
+        f"<div class='tr-body'><ol class='tr-rows' aria-label='단계별 걸린 시간'>{''.join(rows)}</ol>"
+        f"<div class='tr-head' aria-hidden='true'><i></i></div>"
+        f"<div class='tr-scrub' role='slider' tabindex='0' aria-label='단계 되짚기 — 끌거나 화살표 키로'"
+        f" aria-valuemin='0' aria-valuemax='{total}' aria-valuenow='{total}'"
+        f" aria-valuetext='끝, 판정한 화면'></div></div>"
+        f"<div class='tr-foot'><span>0</span><span>합계 {total}ms</span></div></div>"
+    )
 
 
 def is_weak_pass(verdict: Verdict) -> bool:
@@ -1300,7 +1471,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         copy = (f"<button class='copy' type='button' data-copy='{_esc(text)}'>"
                 "재현 절차 복사</button>")
 
-    shot = _shots_html(verdict, last=True) if failed else ""
+    shot = _trace_html(verdict, kind, names) if failed else ""
     no_tag = f"<span class='no {kind}'>{no}</span>" if failed and no else ""
     repro = _repro_html(verdict, verdict.target_label if kind == "defect" and verdict.violates else None)
 
@@ -2050,7 +2221,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {weak_note}
 {sel_html}
 {_brief_html(report, names, checked, fails, numbers, gaps, backend, pairs_html)}
-</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_TRACE_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
 """
 
 
