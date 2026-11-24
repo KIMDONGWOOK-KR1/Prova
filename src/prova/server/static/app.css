@@ -1470,7 +1470,9 @@ input[type=text], input[type=url], input[type=search], select, textarea {
    21st.dev Response Stream 에서 '도착한 묶음을 그대로 붙인다' 만. 새 묶음만 0.18초 옅게 들어온다.
    위로 올려 읽는 중이면 끌어내리지 않고 '새 줄 n개 — 맨 아래로' 를 띄운다. 타자기·낱말 페이드는 버렸다. */
 details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
-.logbox { position: relative; }
+.logbox { position: relative; background: var(--bg-inset); border: 1px solid var(--border-subtle); border-radius: var(--r-lg); }
+/* 상자(바탕·테두리)는 .logbox 가 갖고, 흐림은 글만 받는다 — 상자 가장자리까지 흐려지지 않게. */
+.logbox .log { background: none; border: 0; border-radius: var(--r-lg); }
 .log-jump { position: absolute; right: var(--sp-3); bottom: var(--sp-3); padding: 4px var(--sp-3); font-size: var(--tx-sm); }
 .log-jump[hidden] { display: none; }  /* .btn 의 inline-flex 가 hidden 을 이긴다 */
 @media (prefers-reduced-motion: no-preference) {
@@ -1489,3 +1491,13 @@ details.raw > summary .n { color: var(--fg-subtle); font-variant-numeric: tabula
 }
 .pstep.done:not(:last-child)::before { background: var(--border-strong); }
 .pstep.todo .body { color: var(--fg-muted); }
+
+/* 진행 로그 가장자리 — 가려진 줄이 있는 쪽만 24px 흐린다(21st.dev AI Thinking 에서 이것만).
+   글이 저절로 굴러가는 연출·깜빡이는 글자는 쓰지 않는다. mask 의 black 은 색이 아니라 '보임' 이다. */
+.log.cut-top, .log.cut-bottom {
+  --ft: 0px; --fb: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, black var(--ft), black calc(100% - var(--fb)), transparent);
+  mask-image: linear-gradient(to bottom, transparent, black var(--ft), black calc(100% - var(--fb)), transparent);
+}
+.log.cut-top { --ft: 24px; }
+.log.cut-bottom { --fb: 24px; }

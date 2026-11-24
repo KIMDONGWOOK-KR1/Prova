@@ -515,15 +515,25 @@ function showProgress(title, lines) {
  * 맨 아래를 보고 있으면 따라 내려가고, 위로 올려 읽는 중이면 끌어내리지 않는다. 그동안 온 줄 수를
  * '새 줄 n개 — 맨 아래로' 로 알려 준다. 접혀 있어도 머리줄의 줄 수가 늘어 일이 도는 것이 보인다. */
 const atLogEnd = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 24;
+// 가려진 줄이 있는 쪽 가장자리만 흐린다 — 21st.dev AI Thinking 의 위아래 흐림에서. 다 보이면 걸지 않는다.
+function logEdges(log) {
+  log.classList.toggle("cut-top", log.scrollTop > 2);
+  log.classList.toggle("cut-bottom", log.scrollHeight - log.scrollTop - log.clientHeight > 2);
+}
 
 function followLog() {
   const log = $("pLog"), jump = $("pLogJump"), raw = $("pRaw");
   if (!log || !jump) return;
   // 바로 맨 아래로 간다. 부드럽게 굴리면 그사이 온 줄을 놓치고, 기다리게 할 이유도 없다(HIG Motion).
-  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; };
+  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; logEdges(log); };
   jump.addEventListener("click", toEnd);
-  log.addEventListener("scroll", () => { if (atLogEnd(log)) { jump.hidden = true; log.dataset.unseen = 0; } });
-  raw.addEventListener("toggle", () => { if (raw.open) { log.scrollTop = log.scrollHeight; jump.hidden = true; } });
+  log.addEventListener("scroll", () => {
+    logEdges(log);
+    if (atLogEnd(log)) { jump.hidden = true; log.dataset.unseen = 0; }
+  }, { passive: true });
+  raw.addEventListener("toggle", () => {
+    if (raw.open) { log.scrollTop = log.scrollHeight; jump.hidden = true; logEdges(log); }
+  });
 }
 
 function appendLog(log, lines) {
@@ -536,7 +546,8 @@ function appendLog(log, lines) {
   const n = (Number(log.dataset.n) || 0) + lines.length;
   log.dataset.n = n;
   $("pLogN").textContent = ` · ${n}줄`;
-  if (follow) { log.scrollTop = log.scrollHeight; return; }
+  if (follow) { log.scrollTop = log.scrollHeight; logEdges(log); return; }
+  logEdges(log);
   const unseen = (Number(log.dataset.unseen) || 0) + lines.length;
   log.dataset.unseen = unseen;
   const jump = $("pLogJump");
