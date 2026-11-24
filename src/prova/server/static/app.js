@@ -126,6 +126,89 @@ function rollIn(el) {
   });
 }
 
+/**
+ * 늘어났다 줄어드는 선택 판 (21st.dev 'Liquid Navbar — Waterline' 의 CSS 대체 경로).
+ *
+ * 판의 앞쪽은 빠른 용수철로 새 자리에 먼저 닿고, 뒤쪽은 70ms 늦게 느린 용수철로
+ * 따라온다. 그래서 판이 잠깐 늘어났다가 제 크기로 줄어든다. 빨리 움직이는 동안은
+ * 조금 납작해지고, 끝에 닿으면 살짝 눌린다. 움직임이 멎으면 매 프레임 계산도 멈춘다.
+ * 원본의 물 셰이더(WebGL)·물방울 갈라짐·물결·소리·아이콘 장면·유리 굴절은 쓰지 않는다.
+ *
+ * host 에 --thumb-l(왼쪽 끝) · --thumb-w(폭) · --thumb-sy(세로 배율) 를 적는다.
+ * 그리는 쪽(CSS 의 ::before)이 이 세 값을 읽는다.
+ */
+function stretchThumb(host) {
+  const s = { a: { x: 0, v: 0 }, b: { x: 0, v: 0 }, sy: { s: 1, v: 0 }, lead: 0, lagFrom: 0,
+              x: 0, hw: 0, r: 0, hwNow: 0, lo: 0, hi: 0, raf: 0, last: 0, ready: false };
+  const paint = () => {
+    const sep = Math.abs(s.a.x - s.b.x);
+    const thin = Math.min(sep / (2 * s.hwNow || 1), 1);
+    const q = Math.max(0, s.hwNow - s.r), r = s.r * (1 - 0.3 * thin);   // 늘어날수록 조금 가늘어진다
+    host.style.setProperty("--thumb-l", `${Math.min(s.a.x, s.b.x) - q - r}px`);
+    host.style.setProperty("--thumb-w", `${sep + 2 * (q + r)}px`);
+    host.style.setProperty("--thumb-sy", s.sy.s.toFixed(4));
+  };
+  const step = (dt, now) => {
+    let still = true;
+    s.hwNow += (s.hw - s.hwNow) * Math.min(1, dt * 12);
+    [s.a, s.b].forEach((B, i) => {
+      const lead = i === s.lead;
+      const k = lead ? 210 : 72, c = lead ? 25 : 13;
+      const f = !lead && now < s.lagFrom ? 0.08 : 1;
+      B.v += (k * (s.x - B.x) - c * B.v) * dt * f;
+      B.x += B.v * dt;
+      if (B.x < s.lo || B.x > s.hi) {                // 끝에 닿으면 살짝 눌리고 되튄다
+        s.sy.v -= Math.min(Math.abs(B.v), 900) * 0.0016;
+        B.x = Math.max(s.lo, Math.min(s.hi, B.x));
+        B.v *= -0.25;
+      }
+      if (Math.abs(s.x - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
+    });
+    const L = s.lead === 0 ? s.a : s.b;
+    // 원본은 20% 까지 눌리고 오래 출렁인다(감쇠 9). 검수 도구라 12% · 감쇠 18 로 줄였다.
+    const syT = 1 - 0.12 * Math.min(Math.abs(L.v) / 1500, 1);
+    s.sy.v += (280 * (syT - s.sy.s) - 18 * s.sy.v) * dt;
+    s.sy.s += s.sy.v * dt;
+    if (Math.abs(s.sy.s - 1) > 0.002 || Math.abs(s.sy.v) > 0.02) still = false;
+    return still;
+  };
+  const snap = () => {
+    s.a.x = s.b.x = s.x; s.a.v = s.b.v = 0; s.sy.s = 1; s.sy.v = 0; s.hwNow = s.hw;
+    cancelAnimationFrame(s.raf); s.raf = 0;
+    paint();
+  };
+  const loop = () => {
+    if (s.raf) return;
+    s.last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min((now - s.last) / 1000, 1 / 30);
+      s.last = now;
+      const still = step(dt, now);
+      if (still) { s.raf = 0; snap(); return; }
+      paint();
+      s.raf = requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  };
+  return {
+    /** el 아래로 판을 옮긴다. 처음 자리·창 크기 바뀜·동작 줄이기 설정에서는 바로 옮긴다. */
+    to(el, { instant = false, lo, hi } = {}) {
+      if (!el || !el.offsetWidth) { s.ready = false; return; }   // 숨어 있으면 다음에 처음처럼
+      const x = el.offsetLeft + el.offsetWidth / 2;
+      s.hw = el.offsetWidth / 2;
+      s.r = el.offsetHeight / 2;
+      s.lo = lo ?? -Infinity; s.hi = hi ?? Infinity;
+      const moved = Math.abs(x - s.x) > 0.5;
+      s.x = x;
+      if (!s.ready || instant || reduceMotion()) { s.ready = true; snap(); return; }
+      if (!moved) { paint(); return; }
+      s.lead = Math.abs(x - s.a.x) <= Math.abs(x - s.b.x) ? 0 : 1;   // 가까운 쪽이 앞장선다
+      s.lagFrom = performance.now() + 70;
+      loop();
+    },
+  };
+}
+
 // ── 서버 통신 ──────────────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -303,11 +386,14 @@ function placeThumb() {
   const st = $("stepper");
   const no = st.querySelector("[aria-current] .no");
   if (!no) return;
-  st.style.setProperty("--thumb-x", `${no.offsetLeft}px`);
   st.style.setProperty("--thumb-y", `${no.offsetTop}px`);
-  if (!st.dataset.ready) requestAnimationFrame(() => { st.dataset.ready = "1"; });
+  stepThumb.to(no, { instant: placeThumb.resizing });
+  st.dataset.ready = "1";
 }
-window.addEventListener("resize", placeThumb);
+const stepThumb = stretchThumb($("stepper"));
+window.addEventListener("resize", () => {
+  placeThumb.resizing = true; placeThumb(); placeSegThumb(true); placeThumb.resizing = false;
+});
 
 $("stepper").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-step]");
@@ -1470,10 +1556,31 @@ function syncVariant() {
   $("segGood").setAttribute("aria-pressed", String(m ? m[1] === "good" : false));
   $("segBad").setAttribute("aria-pressed", String(m ? m[1] === "bad" : false));
   $("variantRow").hidden = !($("pdf").value || "").startsWith("fixtures/");
+  placeSegThumb();
+}
+
+// 예시 사이트 고르기의 흰 판도 단계 표시와 같은 방식으로 늘어났다 줄어든다.
+const segThumb = stretchThumb(document.querySelector("#variantRow .seg"));
+function placeSegThumb(instant = false) {
+  const seg = document.querySelector("#variantRow .seg");
+  const on = seg.querySelector('button[aria-pressed="true"]');
+  const [first, last] = [seg.firstElementChild, seg.lastElementChild];
+  if (!on || !first.offsetWidth) { segThumb.to(null); return; }
+  segThumb.to(on, { instant, lo: first.offsetLeft + first.offsetWidth / 2,
+                    hi: last.offsetLeft + last.offsetWidth / 2 });
+  seg.dataset.thumb = "1";
 }
 
 $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
+// 원본 내비처럼 ← → 로도 고른다. 고른 쪽으로 초점도 옮긴다.
+document.querySelector("#variantRow .seg").addEventListener("keydown", (e) => {
+  if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+  e.preventDefault();
+  const which = e.key === "ArrowRight" ? "bad" : "good";
+  setVariant(which);
+  $(which === "bad" ? "segBad" : "segGood").focus();
+});
 
 ["vlm", "dryRun"].forEach((id) => $(id).addEventListener("change", renderChrome));
 $("screenUrls").addEventListener("input", () => {

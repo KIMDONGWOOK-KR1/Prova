@@ -1192,6 +1192,18 @@ input[type=text], input[type=url], input[type=search], select, textarea {
 /* '준비됨' 은 판정이 아니다 — 통과 초록 대신 회색. 점만 남겨 상태를 알린다. */
 .side-action .chip.ok { color: var(--fg-muted); background: var(--bg-inset); }
 
+/* ── 늘어났다 줄어드는 선택 판 (21st.dev 'Liquid Navbar — Waterline' 에서 움직임만) ──
+   위치·폭·세로 배율은 app.js 의 stretchThumb 이 용수철로 계산해 --thumb-* 로 넘긴다.
+   그래서 여기서는 transition 을 끈다. 색·모서리는 원래 토큰 그대로 — 물빛·유리·그림자는 없다. */
+.stepper::before { width: var(--thumb-w, 22px);
+  transform: translate(var(--thumb-l, 0px), var(--thumb-y, 0px)) scaleY(var(--thumb-sy, 1)); }
+.stepper[data-ready]::before { transition: none; }
+.seg[data-thumb]::before,
+.seg[data-thumb]:has(> button:last-child[aria-pressed="true"])::before {
+  left: 0; width: var(--thumb-w); transform: translateX(var(--thumb-l)) scaleY(var(--thumb-sy, 1)); transition: none; }
+/* 주소가 예시(good/bad)가 아니면 어느 쪽도 고른 것이 아니다 — 판을 숨긴다 */
+.seg:not(:has(> button[aria-pressed="true"]))::before { opacity: 0; }
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }
