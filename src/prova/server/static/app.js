@@ -567,7 +567,8 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
   // 이름은 그때그때 — 접기 단추는 펼침·접힘에서 말이 다르다. 접기 단추 이름표는 펼친 상태에서도 뜬다.
   const KEY = mac ? "⌘\\" : "Ctrl \\";
   const TIPS = [[tog, () => [root.classList.contains("side-rail") ? "사이드바 표시" : "사이드바 숨기기", KEY]],
-                [$("railNew"), () => ["새 확인", ""]]];
+                [$("railNew"), () => ["새 확인", ""]],
+                [$("themeBtn"), () => [$("themeBtn").getAttribute("aria-checked") === "true" ? "어둡게 끄기" : "어둡게 켜기", ""]]];
   let tipT = 0;
   const showTip = (el, label, key) => {
     if (!root.classList.contains("side-rail") && el !== tog) return;
@@ -3181,6 +3182,124 @@ document.addEventListener("keydown", (e) => {
   if (view === "plan" && run && !run.disabled) { run.click(); return; }
   if (view === "form" && !$("planBtn").disabled) $("planBtn").click();
 });
+
+// ── 밝게 / 어둡게 — 사이드바 아래 스위치 (보고서의 _THEME_BTN_JS 를 그대로 옮겼다) ─────────────────
+// 저장한 값이 없으면 OS 설정을 따르고, OS 를 바꾸면 따라간다. 한 번 바꾸면 'prova-theme' 에 남아
+// 웹 UI 와 보고서가 같은 모드로 열린다.
+(function () {
+  var btn = document.getElementById('themeBtn'), root = document.documentElement;
+  if (!btn) return;
+  var knob = btn.querySelector('.tg-knob'), fill = btn.querySelector('.tg-fill');
+  var sun = btn.querySelector('.tg-ico.sun'), moon = btn.querySelector('.tg-ico.moon');
+  var ks = btn.querySelector('.k-sun'), km = btn.querySelector('.k-moon');
+  var still = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var os = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  var W = 46, PAD = 2, KW = 24, GROW = 6, TRAVEL = W - 2 * PAD - KW;
+  function dark() {
+    var set = root.getAttribute('data-theme');
+    if (set === 'light' || set === 'dark') return set === 'dark';
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }
+  function setDark(on) {
+    root.setAttribute('data-theme', on ? 'dark' : 'light');
+    try { localStorage.setItem('prova-theme', on ? 'dark' : 'light'); } catch (e) {}
+    btn.setAttribute('aria-checked', String(on));
+  }
+  // 손잡이의 두 끝(L·R)이 따로 따라간다. 가는 쪽 끝이 빨라서 움직이는 동안만 늘어난다(임계 감쇠 — 넘치지 않는다).
+  // p 는 놓일 자리(0 밝게 · 1 어둡게), q 는 그림이 따라가는 값(해·달이 돌며 바뀐다).
+  var s = { L: { x: 0, v: 0 }, R: { x: 0, v: 0 }, p: 0, q: 0, press: false, drag: null, moved: false, raf: 0, last: 0 };
+  function goal() {
+    var l = PAD + s.p * TRAVEL, r = l + KW;
+    if (s.press) { if (s.p < 0.5) r += GROW; else l -= GROW; }   // 누르면 가운데 쪽으로 길어진다
+    return [l, r];
+  }
+  function paint() {
+    var l = s.L.x, r = Math.max(s.R.x, l + 12), q = s.q;
+    knob.style.width = (r - l) + 'px';
+    knob.style.transform = 'translateX(' + l + 'px)';
+    fill.style.width = (r + PAD) + 'px';
+    fill.style.opacity = Math.min(1, q * 1.4);
+    // 손잡이가 늘어나 덮기 시작하면 바탕의 해·달은 잘린 채 보이지 않게 먼저 사라진다
+    sun.style.opacity = q * Math.max(0, Math.min(1, (l - 16) / 4));
+    moon.style.opacity = (1 - q) * Math.max(0, Math.min(1, (30 - r) / 4));
+    ks.style.opacity = 1 - q; km.style.opacity = q;
+    ks.style.transform = 'rotate(' + (q * 90) + 'deg) scale(' + (1 - q * 0.5) + ')';
+    km.style.transform = 'rotate(' + ((q - 1) * 90) + 'deg) scale(' + (0.5 + q * 0.5) + ')';
+  }
+  function step(dt) {
+    var g = goal(), calm = true;
+    [[s.L, g[0], false], [s.R, g[1], true]].forEach(function (e) {
+      var b = e[0], x = e[1], lead = e[2] === (x > b.x), w = lead ? 34 : 22;
+      var off = b.x - x, slope = b.v + w * off, d = Math.exp(-w * dt);
+      b.x = x + (off + slope * dt) * d; b.v = (b.v - w * slope * dt) * d;
+      if (Math.abs(b.x - x) > 0.2 || Math.abs(b.v) > 2) calm = false;
+    });
+    s.q += (s.p - s.q) * Math.min(1, dt * 16);
+    if (Math.abs(s.p - s.q) > 0.003) calm = false; else s.q = s.p;
+    return calm;
+  }
+  function go() {
+    if (still && still.matches) {
+      var g = goal(); s.L.x = g[0]; s.R.x = g[1]; s.L.v = s.R.v = 0; s.q = s.p; paint(); return;
+    }
+    if (s.raf) return;
+    s.last = performance.now();
+    var tick = function (now) {
+      var dt = Math.min((now - s.last) / 1000, 1 / 30); s.last = now;
+      var calm = step(dt); paint();
+      s.raf = calm && !s.drag ? 0 : requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  }
+  function settle() { s.p = dark() ? 1 : 0; go(); }
+  btn.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    s.drag = { id: e.pointerId, x0: e.clientX, p0: s.p }; s.moved = false; s.press = true;
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    go();
+  });
+  btn.addEventListener('pointermove', function (e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    var dx = e.clientX - s.drag.x0;
+    if (!s.moved && Math.abs(dx) > 3) s.moved = true;
+    if (!s.moved) return;
+    s.p = Math.max(0, Math.min(1, s.drag.p0 + dx / TRAVEL));
+    // 반을 훌쩍 넘기면 그 자리에서 넘어간다 — 되돌아 끌면 다시 넘어온다(0.68 · 0.32 로 사이를 둔다)
+    if (!dark() && s.p > 0.68) setDark(true); else if (dark() && s.p < 0.32) setDark(false);
+    go();
+  });
+  function end(e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    s.drag = null; s.press = false; settle();
+  }
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
+  btn.addEventListener('click', function () {      // 누름 · 스페이스 · 엔터
+    if (s.moved) { s.moved = false; return; }
+    setDark(!dark()); settle();
+  });
+  btn.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault(); setDark(e.key === 'ArrowRight'); settle();
+  });
+  btn._settle = function () { btn.setAttribute('aria-checked', String(dark())); settle(); };
+  s.p = s.q = dark() ? 1 : 0;
+  var g0 = goal(); s.L.x = g0[0]; s.R.x = g0[1];
+  btn.setAttribute('aria-checked', String(dark()));
+  paint();
+})();;
+(function () {
+  var os = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  if (!os || !os.addEventListener) return;
+  os.addEventListener('change', function () {
+    var stored = null;
+    try { stored = localStorage.getItem('prova-theme'); } catch (e) {}
+    if (stored === 'light' || stored === 'dark') return;
+    // 저장한 값이 없으면 OS 를 따라 손잡이·상태를 다시 맞춘다
+    var btn = document.getElementById('themeBtn');
+    if (btn && btn._settle) btn._settle();
+  });
+})();
 
 // ── 시작 ───────────────────────────────────────────────────────────────────
 

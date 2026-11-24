@@ -16,10 +16,10 @@
   오른쪽이 내용. 사이드바는 지금 단계의 목록을 보여 준다 — 1 실행 기록, 2 규칙 종류,
   3 진행 단계, 4 판정별 묶음.
 -->
-<!-- 화면 모드는 OS 설정을 따른다(Apple HIG Dark Mode: 앱 안에 밝게/어둡게 설정을 따로 두지 않는다).
-     예전 버전에서 저장해 둔 선택은 지운다 — 남아 있으면 OS 를 바꿔도 이 화면만 따라오지 않는다. -->
+<!-- 화면 모드 — 처음엔 OS 설정을 따른다. 사이드바 아래 '어둡게' 스위치를 한 번 바꾸면 그 값을 보고서와 같은
+     저장 키(prova-theme)에 남겨, 웹 UI 와 모든 보고서가 같은 모드로 열린다(hh 11-25). 그리기 전에 붙여 깜빡임이 없다. -->
 <script>
-try { localStorage.removeItem("prova-theme"); } catch (e) {}
+try { var t = localStorage.getItem("prova-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
 // 사이드바를 접어 둔 채 닫았으면 그대로 연다 — 그리기 전에 붙여서 펼쳤다 접히는 깜빡임이 없다
 try { if (localStorage.getItem("prova-side") === "rail") document.documentElement.classList.add("side-rail"); } catch (e) {}
 </script>
@@ -78,7 +78,11 @@ try { if (localStorage.getItem("prova-side") === "rail") document.documentElemen
     <nav class="side-pane" data-pane="result" id="sideResult" aria-label="결과 거르기"></nav>
 
     </div>
-    <div class="side-foot" id="sideFoot"></div>
+    <!-- 아래 줄 — 왼쪽 기록 수·주소, 오른쪽 '어둡게' 스위치(보고서와 같은 스위치). 접힌 줄에서는 해·달 단추 하나 -->
+    <div class="side-bottom">
+      <div class="side-foot" id="sideFoot"></div>
+      <button class="theme" id="themeBtn" type="button" role="switch" aria-checked="false" aria-label="어둡게"><span class="tg" aria-hidden="true"><i class="tg-fill"></i><i class="tg-ico sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="tg-ico moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i><i class="tg-knob"><i class="k-sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="k-moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i></i></span><span class="tg-lb">어둡게</span><span class="tg-mini" aria-hidden="true"><i class="m-sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="m-moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i></span></button>
+    </div>
     <!-- 접힌 줄의 단추 이름표 (app.js railTip) -->
     <div class="rail-tip" id="railTip" role="tooltip" hidden></div>
   </aside>
