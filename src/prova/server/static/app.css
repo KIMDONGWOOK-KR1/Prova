@@ -86,7 +86,7 @@ body { zoom: var(--z); }
   overflow: hidden;
 }
 
-.side-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 16px 10px 10px 20px; }
+.side-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 24px 10px 10px 20px; }
 /* 로고 — 펼치면 글자 로고(22px, x-height 약 17px, 첫 화면 링크). 접히면 심볼이 되는데, 심볼은 접기·펴기 단추 안에
    있다(아래 .side-toggle). 글자 로고의 왼쪽 끝 = '새 확인' 아이콘, x-height 가운데 = 위쪽 막대 가운데. */
 .brand { position: relative; display: block; flex: none; width: 79px; height: 22px; margin-top: 3px;
@@ -128,7 +128,7 @@ a.brand:hover .wm { opacity: 0.8; }
 .side-panes { flex: 1; min-height: 0; display: flex; flex-direction: column; position: relative; overflow: hidden;
   transition: opacity 120ms ease; }
 /* 접힌 줄 — 로고(첫 화면으로)와 펴기 단추만. 목록은 흐려지며 숨는다 */
-:root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 16px 0 10px; }
+:root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 21px 0 10px; }   /* 심볼 가운데 = 위쪽 막대 가운데(44px) */
 :root.side-rail .brand { width: 28px; height: 28px; margin-top: 0; }
 :root.side-rail .brand .wm { opacity: 0; visibility: hidden; }
 :root.side-rail .brand .sym { opacity: 1; visibility: visible; transition: opacity var(--dur-1) var(--ease-out); }
@@ -318,11 +318,13 @@ button.theme[aria-checked="true"] .tg-mini .m-moon { display: block; }
 
 /* 도구 막대 — 왼쪽 제목, 가운데 단계, 오른쪽 할 일 (키트 Toolbar) */
 .bar {
-  flex: none; height: 72px; /* 창 위 끝에 붙어 보이지 않게 — 가운데가 왼쪽 로고 줄(36px)과 맞는다 */
+  /* 창 위 끝에 붙어 보이지 않게 — 사이드바 카드와 같은 8px 를 위에 두고(hh 11-25 두 번째), 가운데(44px)가
+     왼쪽 로고 줄과 맞는다. 오른쪽 여백은 아래 내용과 같은 24px — 오른쪽 할 일의 끝 = 내용의 끝 */
+  flex: none; height: 72px; margin-top: var(--sp-2);
   /* 단계는 가운데. 오른쪽 할 일이 반보다 넓으면(결과 화면) 제목 칸이 줄어든다 — 겹치지 않는다 */
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(max-content, 1fr);
   align-items: center; gap: var(--sp-4);
-  padding: 0 var(--sp-4) 0 var(--sp-6);
+  padding: 0 var(--sp-6);
 }
 .ttl { min-width: 0; }
 .ttl h1 { font-size: var(--tx-base); line-height: var(--lh-title); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
