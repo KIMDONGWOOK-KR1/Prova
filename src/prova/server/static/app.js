@@ -560,7 +560,7 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
 
   // 접힌 줄의 이름표 — 마우스는 0.5초 머문 뒤, 키보드 초점은 바로. 이름 + 단축키(있으면)
   const tip = $("railTip");
-  const TIPS = [[$("homeLink"), "첫 화면으로", ""], [tog, "사이드바 펴기", mac ? "⌘\\" : "Ctrl \\"]];
+  const TIPS = [[$("homeLink"), "Prova 첫 화면", ""], [tog, "사이드바 펴기", mac ? "⌘\\" : "Ctrl \\"]];
   let tipT = 0;
   const showTip = (el, label, key) => {
     if (!root.classList.contains("side-rail")) return;

@@ -87,16 +87,16 @@ body { zoom: var(--z); }
 }
 
 .side-head { flex: none; display: flex; align-items: center; gap: 4px; padding: 16px 10px 10px 20px; }
-.brand {
-  display: flex; align-items: center; gap: 8px; min-width: 0;
-  font-size: var(--tx-lg); line-height: var(--lh-title); font-weight: 700; letter-spacing: -0.02em;
-}
-/* 로고 — 고리 둘은 강조색 선, 겹친 곳(맞춘 곳)만 옅게 채운다 */
-a.brand { color: inherit; text-decoration: none; border-radius: var(--r-md); outline-offset: -4px; }
-a.brand:hover .mark { opacity: 0.8; }
-.brand .mark { width: 22px; height: 22px; flex: none; overflow: visible; }
-.brand .mark circle, .brand .mark path:not(.lens) { fill: none; stroke: var(--accent-solid); stroke-width: 13; stroke-linecap: round; }
-.brand .mark .lens { fill: var(--accent-blue); opacity: 0.35; }
+/* 로고 — 펼치면 글자 로고(22px, x-height 약 17px), 접으면 심볼(28px). 같은 자리에 겹쳐 두고 흐려지며 바꾼다.
+   글자 로고의 왼쪽 끝 = '새 확인' 아이콘, x-height 가운데 = 위쪽 막대 가운데(36px). 걷거나 커지지 않는다. */
+.brand { position: relative; display: block; flex: none; width: 79px; height: 22px; margin-top: 3px;
+  border-radius: var(--r-md); outline-offset: 3px; }
+.brand svg { position: absolute; left: 0; top: 0; display: block; transition: opacity var(--dur-1) var(--ease-out); }
+.brand .wm { width: 79px; height: 22px; fill: var(--accent-blue); }
+.brand .sym { width: 28px; height: 28px; opacity: 0; }
+.brand .sym .body { fill: var(--accent-blue); }
+.brand .sym .eyes { fill: var(--fg-onaccent); }
+a.brand:hover svg { opacity: 0.8; }
 
 .side-toggle {
   margin: -4px 0 -4px auto; flex: none; width: 28px; height: 28px; display: grid; place-items: center;
@@ -110,7 +110,10 @@ a.brand:hover .mark { opacity: 0.8; }
   transition: opacity 120ms ease; }
 /* 접힌 줄 — 로고(첫 화면으로)와 펴기 단추만. 목록은 흐려지며 숨는다 */
 :root.side-rail .side-head { flex-direction: column; gap: 8px; padding: 16px 0 10px; }
-:root.side-rail .side-head .brand b { display: none; }
+:root.side-rail .brand { width: 28px; height: 28px; margin-top: 0; }
+:root.side-rail .brand .wm { opacity: 0; }
+:root.side-rail .brand .sym { opacity: 1; }
+:root.side-rail a.brand:hover .sym { opacity: 0.8; }
 :root.side-rail .side-toggle { margin: 0; }
 :root.side-rail .side-toggle .chev { transform: scaleX(-1); }
 :root.side-rail .side-panes, :root.side-rail .side-foot { opacity: 0; visibility: hidden; pointer-events: none; }
