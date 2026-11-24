@@ -11,6 +11,10 @@
 
   tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
   두 벌로 갈라진다.
+
+  화면 틀은 macOS 앱이다(2026-11-24, Apple macOS 27 UI Kit): 왼쪽에 띄운 사이드바, 위에 도구 막대,
+  오른쪽이 내용. 사이드바는 지금 단계의 목록을 보여 준다 — 1 실행 기록, 2 규칙 종류,
+  3 진행 단계, 4 판정별 묶음.
 -->
 <!-- 화면 모드는 OS 설정을 따른다(Apple HIG Dark Mode: 앱 안에 밝게/어둡게 설정을 따로 두지 않는다).
      예전 버전에서 저장해 둔 선택은 지운다 — 남아 있으면 OS 를 바꿔도 이 화면만 따라오지 않는다. -->
@@ -20,152 +24,172 @@ try { localStorage.removeItem("prova-theme"); } catch (e) {}
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body data-step="1" data-view="form">
 
-<!-- 상단 한 줄 — 이름, 지금 다루는 기획서와 주소, 그리고 네 단계 중 어디인지. -->
-<header class="topbar">
-  <b class="name">Prova</b>
-  <div class="crumbs" id="crumbs"></div>
-  <div class="topright">
-    <div class="chips" id="stageChips"></div>
-  </div>
-  <!-- 번호 원 + 잇는 선. 지금 단계의 검은 원은 하나뿐이고 단계가 바뀌면 그 원이 옆으로
-       미끄러진다(app.js placeThumb) — 한 칸이 꺼지고 다른 칸이 켜지는 깜빡임 대신. -->
-  <ol class="stepper" id="stepper" aria-label="진행 단계">
-    <li><button type="button" data-step="1"><i class="no">1</i><span class="lb">기획서</span></button></li>
-    <li><button type="button" data-step="2"><i class="no">2</i><span class="lb">항목 검토</span></button></li>
-    <li><span data-step="3"><i class="no">3</i><span class="lb">실행</span></span></li>
-    <li><span data-step="4"><i class="no">4</i><span class="lb">결과</span></span></li>
-  </ol>
-</header>
-
-<!-- 단계가 바뀌면 화면 읽기 프로그램에 알린다 (app.js stepChanged) -->
-<p class="sr" id="stepSay" aria-live="polite"></p>
-
-<!-- tabindex=-1: 누른 단추가 다음 단계 화면에 없으면 초점을 여기로 옮긴다 -->
-<div class="app" tabindex="-1">
+<div class="win">
 
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
-  <aside class="side">
+  <aside class="side" aria-label="목록">
+    <div class="brand"><b>Prova</b></div>
 
-    <div class="side-scroll">
+    <!-- 1 기획서 — 새 확인과 실행 기록 -->
+    <nav class="side-pane" data-pane="form" aria-label="실행 기록">
+      <ul class="slist">
+        <li><button class="sitem" id="newBtn" type="button" aria-current="true">
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>새 확인</button></li>
+      </ul>
+      <div id="runs"></div>
+    </nav>
 
-      <!-- 꼭 정해야 하는 것만 위에 둔다 — 기획서와 주소, 그리고 [계획 만들기].
-           가끔 쓰는 설정은 아래 '실행 옵션' 에 접혀 있다. -->
-      <section class="panel">
-        <h1>기획서대로 만들어졌는지 확인합니다</h1>
-        <p class="lede">기획서와 사이트 주소만 있으면 됩니다. 테스트 코드는 쓰지 않습니다.</p>
+    <!-- 2 항목 검토 — 규칙 종류·화면으로 거르기 (app.js renderSidePlan) -->
+    <nav class="side-pane" data-pane="plan" id="sidePlan" aria-label="항목 거르기"></nav>
 
-        <div class="field">
-          <label for="pdf">기획서</label>
-          <select id="pdf"></select>
-          <button class="btn ghost quiet" id="uploadBtn" type="button">PDF/JSON 올리기…</button>
-          <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
-        </div>
-
-        <div class="field">
-          <label for="url">검사할 사이트 주소</label>
-          <input type="url" id="url" value="http://localhost:8100/bad"
-                 placeholder="http://localhost:8100/good" spellcheck="false">
-          <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
-          <div class="variant" id="variantRow">
-            <span class="hint">예시 사이트 넣기</span>
-            <div class="seg" role="group" aria-label="예시 사이트">
-              <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
-              <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="projectPick">프로젝트 (선택)</label>
-          <select id="projectPick"></select>
-          <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
-          <input type="hidden" id="project" value="">
-          <div class="newproj" id="projectNewRow" hidden>
-            <input type="text" id="projectNew" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
-                   aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off"
-                   maxlength="60">
-            <button class="btn ghost" id="projectAdd" type="button">추가</button>
-          </div>
-          <div class="hint err" id="projectErr" role="alert" hidden></div>
-          <div class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</div>
-        </div>
-
-        <div class="field">
-          <label for="request">무엇을 확인할까요 (선택)</label>
-          <textarea id="request" placeholder="예) 회원가입이 잘 되는지 확인해줘&#10;비워 두면 전체 케이스를 실행합니다"></textarea>
-        </div>
-        <div class="go">
-          <button class="btn primary" id="planBtn" type="button">확인할 항목 뽑기</button>
-          <span class="hint">바로 실행되지 않습니다. 뽑은 항목을 먼저 보여드립니다.</span>
-        </div>
-      </section>
-
-      <details class="panel opts" id="opts">
-        <summary><span>실행 옵션</span><span class="now" id="optsNow"></span></summary>
-
-        <div class="field">
-          <label for="backend">기획서 읽는 방식</label>
-          <select id="backend">
-            <option value="mock">연습용 — 저장된 정답 사용 (예시 기획서 전용)</option>
-            <option value="vllm">실제 모델로 읽기 — 모델 서버 필요</option>
-            <option value="replay">저장된 모델 응답으로 읽기 — 서버 없이</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="figma">Figma 자료 함께 읽기 (선택)</label>
-          <select id="figma">
-            <option value="">없음 — 기획서만</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="screenUrls">화면별 주소 (기획서에 경로가 없을 때)</label>
-          <textarea id="screenUrls" rows="3" spellcheck="false"
-                    placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
-          <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
-          <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않습니다
-            (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적습니다.</div>
-        </div>
-
-        <div class="field">
-          <label class="check" for="vlm">
-            <input type="checkbox" id="vlm"> 화면 이미지로 찾기
-          </label>
-          <div class="hint">요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
-            좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
-        </div>
-
-        <div class="field">
-          <label class="check" for="dryRun">
-            <input type="checkbox" id="dryRun"> 쓰기 요청 막기
-          </label>
-          <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
-            막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>
-        </div>
-      </details>
-
-      <section class="panel">
-        <h2>실행 기록</h2>
-        <div class="runs" id="runs"></div>
-      </section>
-
+    <!-- 3 실행 · 기획서 읽는 중 — 단계 (app.js pushProgress) -->
+    <div class="side-pane" data-pane="busy">
+      <h4>단계</h4>
+      <div class="psteps" id="pSteps"></div>
     </div>
 
-    <!-- 계획 버튼은 입력 칸 바로 아래(.go)에 하나만 둔다. 예전 왼쪽 막대 시절의 두 번째
-         '계획 만들기' 버튼은 같은 id 라 눌러도 아무 일이 없었다 — 상태 꼬리표만 남긴다. -->
-    <div class="side-action">
-      <div class="chips" id="chips"></div>
-    </div>
+    <!-- 4 결과 — 판정별로 거르기 (app.js renderSideResult) -->
+    <nav class="side-pane" data-pane="result" id="sideResult" aria-label="결과 거르기"></nav>
+
+    <div class="side-foot" id="sideFoot"></div>
   </aside>
 
-  <!-- ═══ 메인 ═══════════════════════════════════════════════════════ -->
-  <main class="main">
+  <!-- ═══ 내용 ═══════════════════════════════════════════════════════ -->
+  <!-- tabindex=-1: 누른 단추가 다음 단계 화면에 없으면 초점을 여기로 옮긴다 -->
+  <main class="main" tabindex="-1">
 
-    <div class="stage" id="stage"></div>
+    <header class="bar">
+      <div class="ttl"><h1 id="barTitle">새 확인</h1><small id="barSub"></small></div>
+      <!-- 네 단계 = 경로 세그먼트. 지금 단계의 흰 판은 하나뿐이고 단계가 바뀌면 그 판이 옆으로
+           미끄러진다(app.js placeThumb). 가 본 단계만 누를 수 있다. -->
+      <ol class="path" id="stepper" aria-label="진행 단계">
+        <li><button type="button" data-step="1"><b class="no">1</b><span class="lb">기획서</span></button></li>
+        <li><button type="button" data-step="2"><b class="no">2</b><span class="lb">항목 검토</span></button></li>
+        <li><span data-step="3"><b class="no">3</b><span class="lb">실행</span></span></li>
+        <li><button type="button" data-step="4"><b class="no">4</b><span class="lb">결과</span></button></li>
+      </ol>
+      <div class="bar-actions">
+        <!-- 1단계에서만 보인다. 파일 창을 연다 — HIG: 끝에 말줄임 -->
+        <div class="glass" data-for="form">
+          <button id="uploadBtn" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M3 10v2.5h10V10"/></svg>
+            <span>기획서 올리기…</span></button>
+        </div>
+        <div class="acts" id="barActions"></div>
+      </div>
+      <input type="file" id="upload" accept="application/pdf,application/json" class="sr" tabindex="-1">
+    </header>
 
+    <!-- 단계가 바뀌면 화면 읽기 프로그램에 알린다 (app.js stepChanged) -->
+    <p class="sr" id="stepSay" aria-live="polite"></p>
+
+    <div class="content">
+
+      <!-- ── 1 기획서 ── 시스템 설정처럼 묶음 상자 안에 한 줄씩. 버튼은 아래 한 곳. -->
+      <section class="pane-form" id="paneForm">
+        <div class="scroll">
+          <div class="form-col">
+            <h2 class="lt">기획서대로 만들어졌는지 확인합니다</h2>
+            <p class="lede">기획서와 사이트 주소만 있으면 됩니다. 테스트 코드는 쓰지 않습니다.</p>
+
+            <div id="formNote"></div>
+
+            <div class="gbox" id="dropZone">
+              <div class="row">
+                <label class="lbl" for="pdf">기획서<small>PDF 를 끌어 놓아도 됩니다</small></label>
+                <div class="ctl"><span class="pop wide"><select id="pdf"></select></span></div>
+              </div>
+              <div class="row">
+                <label class="lbl" for="url">검사할 사이트 주소</label>
+                <div class="ctl">
+                  <input type="url" id="url" class="field" value="http://localhost:8100/bad"
+                         placeholder="http://localhost:8100/good" spellcheck="false">
+                  <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
+                  <div class="seg" id="variantRow" role="group" aria-label="예시 사이트">
+                    <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
+                    <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
+                  </div>
+                </div>
+              </div>
+              <div class="row">
+                <label class="lbl" for="projectPick">프로젝트<small>선택</small></label>
+                <div class="ctl">
+                  <span class="pop wide"><select id="projectPick"></select></span>
+                  <span class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</span>
+                  <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
+                  <input type="hidden" id="project" value="">
+                  <div class="newproj" id="projectNewRow" hidden>
+                    <input type="text" id="projectNew" class="field" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
+                           aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off" maxlength="60">
+                    <button class="btn sm" id="projectAdd" type="button">추가</button>
+                  </div>
+                  <div class="hint err" id="projectErr" role="alert" hidden></div>
+                </div>
+              </div>
+              <div class="row top">
+                <label class="lbl" for="request">무엇을 확인할까요<small>선택</small></label>
+                <div class="ctl">
+                  <textarea id="request" class="field area" rows="2"
+                            placeholder="예) 회원가입이 잘 되는지 확인해줘 — 비워 두면 전체 항목을 실행합니다"></textarea>
+                </div>
+              </div>
+            </div>
+
+            <details class="opts" id="opts">
+              <summary><span class="chev" aria-hidden="true"></span>실행 옵션<span class="now" id="optsNow"></span></summary>
+              <div class="gbox">
+                <div class="row">
+                  <label class="lbl" for="backend">기획서 읽는 방식</label>
+                  <div class="ctl"><span class="pop wide"><select id="backend">
+                    <option value="mock">연습용 — 저장된 정답 사용 (예시 기획서 전용)</option>
+                    <option value="vllm">실제 모델로 읽기 — 모델 서버 필요</option>
+                    <option value="replay">저장된 모델 응답으로 읽기 — 서버 없이</option>
+                  </select></span></div>
+                </div>
+                <div class="row">
+                  <label class="lbl" for="figma">Figma 자료 함께 읽기<small>선택</small></label>
+                  <div class="ctl"><span class="pop wide"><select id="figma">
+                    <option value="">없음 — 기획서만</option>
+                  </select></span></div>
+                </div>
+                <div class="row top">
+                  <label class="lbl" for="screenUrls">화면별 주소<small>기획서에 경로가 없을 때</small></label>
+                  <div class="ctl">
+                    <textarea id="screenUrls" class="field area" rows="3" spellcheck="false"
+                              placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
+                    <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
+                    <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않습니다
+                      (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적습니다.</div>
+                  </div>
+                </div>
+                <div class="row top">
+                  <label class="check" for="vlm"><input type="checkbox" id="vlm">
+                    <span>화면 이미지로 찾기<small>요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
+                      좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</small></span></label>
+                </div>
+                <div class="row top">
+                  <label class="check" for="dryRun"><input type="checkbox" id="dryRun">
+                    <span>쓰기 요청 막기<small>실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
+                      막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</small></span></label>
+                </div>
+              </div>
+            </details>
+          </div>
+        </div>
+        <div class="footbar">
+          <div class="form-col row-line">
+            <span class="hint">바로 실행되지 않습니다. 뽑은 항목을 먼저 보여드립니다.</span>
+            <button class="btn primary lg" id="planBtn" type="button">확인할 항목 뽑기</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 2·3·4 ── 단계마다 app.js 가 그린다 -->
+      <div class="stage" id="stage"></div>
+
+    </div>
   </main>
 </div>
 

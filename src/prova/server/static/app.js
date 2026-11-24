@@ -4,7 +4,12 @@
  * 프레임워크의 값보다 빌드 단계와 CDN 의존이 더 비싸다 — 리포트가 폐쇄망에서
  * 열려야 한다는 원칙과 같은 이유다.
  *
- * 화면은 한 번에 한 단계만 보여준다: 빈 상태 → 계획 확인 → 실행 중 → 결과.
+ * 틀은 macOS 앱이다(2026-11-24, Apple macOS 27 UI Kit). 한 번에 한 단계만 보여 준다:
+ *   1 기획서   — 사이드바: 실행 기록      · 내용: 설정식 묶음 상자
+ *   2 항목 검토 — 사이드바: 규칙 종류·화면  · 내용: 항목 표 + 오른쪽 원문·절차
+ *   3 실행     — 사이드바: 진행 단계      · 내용: 진행 막대 + 항목별 상태
+ *   4 결과     — 사이드바: 판정별 묶음    · 내용: 숫자 칸 + 실패 목록·상세(report.json)
+ * body[data-view] 가 어느 사이드바·내용을 보일지 정한다(form · plan · busy · result).
  */
 "use strict";
 
@@ -19,7 +24,11 @@ const ICON = {
   info: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.4"/><path d="M8 7.2v4M8 4.9v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   warn: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.2l6 10.6H2L8 2.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M8 6.4v3M8 11.2v.1" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
   fail: `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.4"/><path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`,
-  search: `<svg width="13" height="13" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.5"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  search: `<svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><circle cx="6" cy="6" r="4.2" stroke="currentColor" stroke-width="1.5"/><path d="M9.2 9.2l3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>`,
+  caution: `<svg width="28" height="28" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.2 2.6 19.6h18.8L12 3.2z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9.4v4.8M12 16.6v.2" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/></svg>`,
+  download: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v8M5 7.5l3 3 3-3M3 13h10"/></svg>`,
+  open: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M9.5 2.5h4v4M13.5 2.5 8 8M11.5 9.5v4h-9v-9h4"/></svg>`,
+  again: `<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M13 8a5 5 0 1 1-1.6-3.7M13 2.8v2.6h-2.6"/></svg>`,
 };
 
 // 알림 상자의 종류를 읽어 주는 프로그램에도 알린다 — 21st.dev Notifications 의 role 에서.
@@ -27,29 +36,39 @@ const ICON = {
 // 종류는 아이콘 모양과 색으로만 보이므로 앞에 낱말을 숨겨 붙인다(HIG: 색·모양만으로 전하지 않는다).
 // 닫기(×)는 넣지 않는다 — 디자인 기준 1번 '알림 상자는 숨기거나 접지 않는다'.
 const ALERT_SAY = { fail: ["alert", "오류"], warn: ["status", "주의"], info: ["status", "참고"] };
-/**
- * 상태 꼬리표 앞 기호 — 21st.dev Status Badge 의 '상태마다 다른 모양' 에서.
- * 색 점은 색으로만 달랐다. 모양이 같은 뜻을 말해야 색을 못 가려도 읽힌다(HIG).
- * 통과 ✓ · 기획서와 다름 ✕ · 실행 문제 ! · 확인 불가 ? · 실행 중은 점선 원(돌지 않는다 — 도는 건 제목 옆 하나).
- * 원본의 일곱 색과 쓰지 않는 상태(Pending·Expired 등)는 들이지 않는다. 색은 판정 토큰 그대로.
- */
-const CHIP_MARK = {
-  ok: `<path d="M3.9 6.2l1.5 1.5 2.8-3"/>`,
-  fail: `<path d="M4.4 4.4l3.2 3.2M7.6 4.4L4.4 7.6"/>`,
-  infra: `<path d="M6 3.5v3M6 8.4v.1"/>`,
-  unv: `<path d="M4.7 4.8a1.4 1.4 0 1 1 2 1.3c-.5.2-.7.5-.7.9v.2M6 8.6v.1"/>`,
-};
-function chipMark(kind) {
-  const ring = kind === "busy"
-    ? `<circle cx="6" cy="6" r="4.9" stroke-dasharray="2.2 1.65"/>`
-    : `<circle cx="6" cy="6" r="4.9"/>${CHIP_MARK[kind] || ""}`;
-  return `<svg class="cm" viewBox="0 0 12 12" aria-hidden="true">${ring}</svg>`;
+
+function alertBox(kind, title, why) {
+  const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
+  return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
+    `<b><span class="sr">${say}: </span>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
 }
 
 /**
- * 되돌릴 수 없는 일 앞에서 한 번 묻는 창 — 21st.dev Dialog 의 구조(제목·설명·버튼 줄)만, 브라우저 <dialog> 로.
- * 초점 가두기·Esc·뒤 화면 막기는 브라우저가 한다. HIG: 진행이 사라지는 취소는 확인을 받는다.
- * 처음 초점은 안전한 쪽(keep). Esc·바깥 누르기도 keep. 닫기(×)는 keep 과 같은 일이라 두지 않는다.
+ * 판정 표시 — 채운 원 안의 모양이 뜻을 진다(21st.dev Status Badge 의 '상태마다 다른 모양' 에서).
+ * 통과 ✓ · 기획서와 다름 ✕ · 실행 문제 ! · 확인 불가 ? — 색을 못 가려도 읽힌다(HIG).
+ * 진행 표시는 판정이 아니다: 할 차례는 빈 원, 도는 중은 파란 호, 끝난 단계는 파란 체크. 초록은 판정에만.
+ */
+const VM_PATH = {
+  ok: `<path d="M5.1 8.3l1.9 1.9 3.9-4.2"/>`,
+  done: `<path d="M5.1 8.3l1.9 1.9 3.9-4.2"/>`,
+  fail: `<path d="M5.6 5.6l4.8 4.8M10.4 5.6l-4.8 4.8"/>`,
+  infra: `<path d="M8 4.5v4.3M8 11.3v.1"/>`,
+  unv: `<path d="M6.2 6.3a1.8 1.8 0 1 1 2.6 1.6c-.5.3-.8.6-.8 1.1v.2M8 11.4v.1"/>`,
+};
+const VM_SAY = { ok: "통과", fail: "기획서와 다름", infra: "실행 문제", unv: "확인 불가",
+                 wait: "할 차례", run: "확인 중", done: "끝남" };
+function vmark(kind, { dot = false, say = true } = {}) {
+  const ring = kind === "wait" || kind === "run";
+  return `<svg class="vm ${kind}${dot ? " dot" : ""}" viewBox="0 0 16 16" aria-hidden="true">` +
+    `<circle class="f" cx="8" cy="8" r="${ring ? 6.6 : 7.6}"/>` +
+    (kind === "run" ? `<circle class="arc" cx="8" cy="8" r="6.6"/>` : "") + (VM_PATH[kind] || "") +
+    `</svg>` + (say ? `<span class="sr">${VM_SAY[kind] || ""} </span>` : "");
+}
+
+/**
+ * 되돌릴 수 없는 일 앞에서 한 번 묻는 창 — 브라우저 <dialog> 로, 키트의 경고창 규격대로
+ * (폭 260, 가운데 정렬, 버튼은 세로로 쌓은 28px 알약). 초점 가두기·Esc·뒤 화면 막기는 브라우저가 한다.
+ * 처음 초점은 안전한 쪽(keep, 파란 기본 버튼). Esc·바깥 누르기도 keep.
  * '멈추기' 를 빨갛게 칠하지 않는다 — 빨강은 '기획서와 다름' 에만 쓴다(디자인 기준 2번). 말이 뜻을 진다.
  */
 function confirmDialog({ title, body, keep, go }) {
@@ -58,9 +77,9 @@ function confirmDialog({ title, body, keep, go }) {
     d.className = "confirm";
     d.setAttribute("aria-labelledby", "cfTitle");
     d.setAttribute("aria-describedby", "cfBody");
-    d.innerHTML = `<h2 id="cfTitle">${esc(title)}</h2><p id="cfBody">${esc(body)}</p>` +
-      `<div class="row"><button class="btn ghost" type="button" value="go">${esc(go)}</button>` +
-      `<button class="btn primary" type="button" value="keep" autofocus>${esc(keep)}</button></div>`;
+    d.innerHTML = `<div class="ai">${ICON.caution}</div><h2 id="cfTitle">${esc(title)}</h2><p id="cfBody">${esc(body)}</p>` +
+      `<div class="col"><button class="btn primary" type="button" value="keep" autofocus>${esc(keep)}</button>` +
+      `<button class="btn" type="button" value="go">${esc(go)}</button></div>`;
     document.body.appendChild(d);
     const done = (ok) => { if (d.open) d.close(); d.remove(); resolve(ok); };
     d.addEventListener("click", (e) => {
@@ -74,78 +93,11 @@ function confirmDialog({ title, body, keep, go }) {
   });
 }
 
-function alertBox(kind, title, why) {
-  const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
-  return `<div class="alert ${kind}" role="${role}">${ICON[kind] || ICON.info}<div>` +
-    `<b><span class="sr">${say}: </span>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
-}
-
 // ── 움직임 ─────────────────────────────────────────────────────────────────
-// 상태가 바뀔 때만 움직인다 — 단계 이동, 항목 완료, 숫자 바뀜, 호버 위치. 들어올 때
-// 장식으로 흔들지 않는다. 화면 설정이 '동작 줄이기' 면 바뀐 모습만 바로 보인다.
-// 동작은 21st.dev 컴포넌트에서 옮겼고(이름은 각 함수 위), 겉모양은 tokens.css 를 따른다.
+// 상태가 바뀔 때만 움직인다 — 단계 이동, 항목 완료, 숫자 바뀜. 들어올 때 장식으로 흔들지 않는다.
+// 화면 설정이 '동작 줄이기' 면 바뀐 모습만 바로 보인다.
 const reduceMotion = () =>
   !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
-
-/**
- * 목록 위를 미끄러지는 호버 배경 한 장 (21st.dev 'Fluid Hover Highlight').
- *
- * 줄마다 배경이 켜졌다 꺼지는 대신 한 장이 올린 줄로 옮겨 선다 — Apple HIG 에 맞춰(2026-11-24)
- * 줄 사이를 날아가지는 않고 바로 선다. 펼쳐서 키가 바뀌면 따라 늘어난다. 나가면 사라진다.
- * 상자를 innerHTML 로 다시 그려도 다음 호버 때 배경을 새로 만든다. 터치에서는 쓰지 않는다.
- */
-function fluidHover(box, selector) {
-  if (!box) return;
-  box.classList.add("has-hl");
-  if (box.dataset.hl) return;            // 이벤트는 상자마다 한 번만 건다
-  box.dataset.hl = "1";
-  let row = null, rowH = 0;
-  // 펼친 줄은 키가 바뀐다 — 펼침이 260ms 동안 자라므로 매 프레임 따라간다(처음 관찰은 건너뛴다).
-  const ro = window.ResizeObserver ? new ResizeObserver(([en]) => {
-    const h = en.target.getBoundingClientRect().height;
-    if (en.target === row && Math.abs(h - rowH) > 0.5) { rowH = h; place(true); }
-  }) : null;
-  const layer = () => {
-    let hl = box.querySelector(":scope > .hl");
-    if (!hl) {
-      hl = document.createElement("div");
-      hl.className = "hl";
-      hl.setAttribute("aria-hidden", "true");
-      box.prepend(hl);
-    }
-    return hl;
-  };
-  const hide = () => {
-    row = null;
-    if (ro) ro.disconnect();
-    const hl = box.querySelector(":scope > .hl");
-    if (hl) hl.classList.remove("on");
-  };
-  const place = (snap) => {
-    if (!row || !row.isConnected) { hide(); return; }
-    const hl = layer();
-    const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
-    if (snap) hl.style.transition = "none";
-    hl.style.transform = `translate(${r.left - b.left}px, ${r.top - b.top}px)`;
-    hl.style.width = `${r.width}px`;
-    hl.style.height = `${r.height}px`;
-    if (snap) { hl.getBoundingClientRect(); hl.style.transition = ""; }
-    hl.classList.add("on");
-  };
-  box.addEventListener("pointerover", (e) => {
-    if (e.pointerType === "touch") return;
-    const r = e.target.closest(selector);
-    if (!r || !box.contains(r) || r === row) return;
-    row = r;
-    rowH = r.getBoundingClientRect().height;
-    if (ro) { ro.disconnect(); ro.observe(r); }
-    // Apple HIG Motion: 목록 위를 훑는 일은 아주 잦다 — 배경이 줄 사이를 날아가지 않고 그 줄에 바로 선다.
-    place(true);
-  });
-  box.addEventListener("pointerleave", hide);
-  // ResizeObserver 가 없는 브라우저 — 펼친 직후 한 번만 맞춘다. toggle 은 올라오지 않아 잡는 단계에서 받는다.
-  if (!ro) box.addEventListener("toggle", () => place(false), true);
-}
 
 /**
  * 바뀐 숫자만 아래에서 위로 밀어 바꾼다 (21st.dev 'Agent Todo List' 의 개수 표시).
@@ -188,11 +140,8 @@ function rollIn(el) {
 
 /**
  * 누른 뒤 바로 끝나지 않는 버튼 — 버튼 안에서 '하는 중' 으로 바뀐다.
- *
- * 21st.dev 'Animated Generate Button' 에서 '누르면 그 버튼이 진행 중 이름으로 바뀐다' 만 가져왔다.
- * Apple HIG Buttons 도 같은 말을 한다 — 바로 끝나지 않는 동작은 버튼 안에 진행 표시를 띄운다.
+ * Apple HIG Buttons: 바로 끝나지 않는 동작은 버튼 안에 진행 표시를 띄운다.
  * 버튼은 줄어들지 않는다(옆 버튼이 밀려 움직이지 않게). 눌린 동안은 다시 누를 수 없다.
- * 원본의 반짝이 기호·글자별 반짝임·빛 번짐·확대·흐림·그림자 여러 겹은 버렸다.
  */
 function busyButton(btn, label) {
   if (!btn || btn.getAttribute("aria-busy") === "true") return;
@@ -213,42 +162,31 @@ function idleButton(btn) {
 }
 
 /**
- * 늘어났다 줄어드는 선택 판 (21st.dev 'Liquid Navbar — Waterline' 의 CSS 대체 경로).
- *
- * 판의 앞쪽은 빠른 용수철로 새 자리에 먼저 닿고, 뒤쪽은 70ms 늦게 느린 용수철로
- * 따라온다. 그래서 판이 잠깐 늘어났다가 제 크기로 줄어든다. 빨리 움직이는 동안은
- * 조금 납작해지고, 끝에 닿으면 살짝 눌린다. 움직임이 멎으면 매 프레임 계산도 멈춘다.
- * 원본의 물 셰이더(WebGL)·물방울 갈라짐·물결·소리·아이콘 장면·유리 굴절은 쓰지 않는다.
- *
- * host 에 --thumb-l(왼쪽 끝) · --thumb-w(폭) · --thumb-sy(세로 배율) 를 적는다.
- * 그리는 쪽(CSS 의 ::before)이 이 세 값을 읽는다.
+ * 미끄러지는 선택 판 — 단계 표시와 예시 사이트 고르기의 흰 판 하나가 새 자리로 옮겨 간다.
+ * Apple HIG Motion: 자주 누르는 컨트롤의 움직임은 짧고 정확하게. 두 끝이 같은 용수철(임계 감쇠 —
+ * 넘치지 않는다)로 함께 가서 판은 0.25초 안에 미끄러져 멎기만 한다.
+ * host 에 --thumb-l(왼쪽 끝) · --thumb-w(폭) 를 적는다. 그리는 쪽(CSS 의 ::before)이 읽는다.
  */
 function stretchThumb(host) {
-  const s = { a: { x: 0, v: 0 }, b: { x: 0, v: 0 }, sy: { s: 1, v: 0 }, lead: 0, lagFrom: 0,
-              x: 0, hw: 0, r: 0, hwNow: 0, lo: 0, hi: 0, raf: 0, last: 0, ready: false };
+  const s = { a: { x: 0, v: 0 }, b: { x: 0, v: 0 }, x: 0, hw: 0, hwNow: 0, raf: 0, last: 0, ready: false };
   const paint = () => {
     const sep = Math.abs(s.a.x - s.b.x);
-    const thin = Math.min(sep / (2 * s.hwNow || 1), 1);
-    const q = Math.max(0, s.hwNow - s.r), r = s.r * (1 - 0.3 * thin);   // 늘어날수록 조금 가늘어진다
-    host.style.setProperty("--thumb-l", `${Math.min(s.a.x, s.b.x) - q - r}px`);
-    host.style.setProperty("--thumb-w", `${sep + 2 * (q + r)}px`);
-    host.style.setProperty("--thumb-sy", s.sy.s.toFixed(4));
+    host.style.setProperty("--thumb-l", `${Math.min(s.a.x, s.b.x) - s.hwNow}px`);
+    host.style.setProperty("--thumb-w", `${sep + 2 * s.hwNow}px`);
   };
-  const step = (dt, now) => {
+  const step = (dt) => {
     let still = true;
     s.hwNow += (s.hw - s.hwNow) * Math.min(1, dt * 12);
-    // Apple HIG Motion(2026-11-24): 자주 누르는 컨트롤의 움직임은 짧고 정확하게. 앞·뒤 끝의 시간차로
-    // 늘어나던 것, 빨리 갈 때 납작해지던 것, 끝에서 되튀던 것을 뺐다. 두 끝이 같은 용수철(임계 감쇠 —
-    // 넘치지 않는다)로 함께 가서 판은 0.25초 안에 미끄러져 멎기만 한다.
+    if (Math.abs(s.hw - s.hwNow) > 0.3) still = false;
     [s.a, s.b].forEach((B) => {
       B.v += (260 * (s.x - B.x) - 32 * B.v) * dt;
-      B.x = Math.max(s.lo, Math.min(s.hi, B.x + B.v * dt));
+      B.x += B.v * dt;
       if (Math.abs(s.x - B.x) > 0.3 || Math.abs(B.v) > 3) still = false;
     });
     return still;
   };
   const snap = () => {
-    s.a.x = s.b.x = s.x; s.a.v = s.b.v = 0; s.sy.s = 1; s.sy.v = 0; s.hwNow = s.hw;
+    s.a.x = s.b.x = s.x; s.a.v = s.b.v = 0; s.hwNow = s.hw;
     cancelAnimationFrame(s.raf); s.raf = 0;
     paint();
   };
@@ -258,8 +196,7 @@ function stretchThumb(host) {
     const tick = (now) => {
       const dt = Math.min((now - s.last) / 1000, 1 / 30);
       s.last = now;
-      const still = step(dt, now);
-      if (still) { s.raf = 0; snap(); return; }
+      if (step(dt)) { s.raf = 0; snap(); return; }
       paint();
       s.raf = requestAnimationFrame(tick);
     };
@@ -267,18 +204,14 @@ function stretchThumb(host) {
   };
   return {
     /** el 아래로 판을 옮긴다. 처음 자리·창 크기 바뀜·동작 줄이기 설정에서는 바로 옮긴다. */
-    to(el, { instant = false, lo, hi } = {}) {
+    to(el, { instant = false } = {}) {
       if (!el || !el.offsetWidth) { s.ready = false; return; }   // 숨어 있으면 다음에 처음처럼
       const x = el.offsetLeft + el.offsetWidth / 2;
       s.hw = el.offsetWidth / 2;
-      s.r = el.offsetHeight / 2;
-      s.lo = lo ?? -Infinity; s.hi = hi ?? Infinity;
       const moved = Math.abs(x - s.x) > 0.5;
       s.x = x;
       if (!s.ready || instant || reduceMotion()) { s.ready = true; snap(); return; }
-      if (!moved) { paint(); return; }
-      s.lead = Math.abs(x - s.a.x) <= Math.abs(x - s.b.x) ? 0 : 1;   // 가까운 쪽이 앞장선다
-      s.lagFrom = performance.now() + 70;
+      if (!moved) { s.hwNow = s.hw; paint(); return; }
       loop();
     },
   };
@@ -350,14 +283,22 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const state = {
   plan: null,        // 계획 확인 중인 목록
-  result: null,      // 마지막 실행 결과
-  filter: "",        // 케이스 검색어
-  onlyOff: false,    // 제외된 것만 보기
+  result: null,      // 마지막으로 본 실행 결과 ({run_id, summary, report_url})
+  report: null,      // 그 결과의 report.json
+  filter: "",        // 항목 검색어
+  onlyOff: false,    // 꺼 둔 것만 보기
+  rule: "",          // 사이드바에서 고른 규칙 종류 ("" = 전체)
+  group: "",         // 사이드바에서 고른 화면·흐름 ("" = 전체)
+  sel: "",           // 항목 표에서 고른 줄 (case_id)
+  mode: "items",     // 항목 검토 화면: items(항목 표) · spec(기획서에서 읽은 내용)
+  resKind: "",       // 결과 화면: 사이드바에서 고른 판정 묶음
+  resSel: "",        // 결과 화면: 목록에서 고른 항목 (case_id)
   serverBackend: "mock",
   busy: false,
   specGroups: [],    // 기획서 묶음 — 프로젝트 폴더들, 프로젝트 없이 올린 것, 예시
   projects: [],      // 고를 수 있는 프로젝트 이름
-  runs: [],          // 실행 기록 (프로젝트를 바꾸면 다시 그리기만 한다)
+  runs: [],          // 실행 기록
+  runsOpen: {},      // 실행 기록 묶음마다 '이전 기록 더 보기' 를 눌렀는지
 };
 
 const LS = "prova.settings.v1";
@@ -412,7 +353,9 @@ function renderScreenUrlsErr() {
   box.textContent = bad.length ? `'화면 이름=/경로' 모양이 아닌 줄: ${bad.join(", ")}` : "";
 }
 
-// ── 상단 · 칩 ──────────────────────────────────────────────────────────────
+const specName = () => (form().pdf || "").split(/[\\/]/).pop() || "기획서 없음";
+
+// ── 창 틀 — 도구 막대 · 단계 · 사이드바 ─────────────────────────────────────
 
 // 화면에 보이는 이름. 값(mock·vllm·replay)은 서버와 주고받는 이름이라 그대로 둔다.
 const BACKEND_NAME = { mock: "연습용", vllm: "실제 모델", replay: "저장된 응답" };
@@ -426,130 +369,159 @@ function renderChrome() {
   syncStepper();
   if (!state.busy) document.title = pageTitle();
   const f = form();
-  const spec = (f.pdf || "").split("/").pop() || "기획서 없음";
-  $("crumbs").innerHTML =
-    `<b>${esc(spec)}</b><span class="sep">→</span><span>${esc(f.url || "대상 없음")}</span>`;
-
-  $("chips").innerHTML =
-    `<span class="chip ${state.busy ? "busy" : "ok"}">${chipMark(state.busy ? "busy" : "ok")}` +
-    `${state.busy ? "실행 중" : "준비됨"}</span>` +
-    `<span class="chip">${esc(BACKEND_NAME[f.backend] || f.backend)}</span>` +
-    (f.figma ? `<span class="chip">병합 — 디자인 대조</span>` : "");
-
   // 실행 옵션은 접혀 있다 — 지금 값은 접힌 채로도 보여야 모르고 켠 채 돌리지 않는다.
   const nUrls = Object.keys(f.screen_urls).length;
   $("optsNow").textContent = [BACKEND_NAME[f.backend] || f.backend, f.figma && "Figma 함께",
     nUrls && `화면 주소 ${nUrls}개`,
     $("vlm").checked && "이미지로 찾기 켬", $("dryRun").checked && "쓰기 막기 켬",
   ].filter(Boolean).join(" · ");
+  if (document.body.dataset.view === "form") renderRunsFoot();
 }
 
-// ── 무대 (한 번에 한 상태만) ────────────────────────────────────────────────
+function setBar(title, sub) {
+  $("barTitle").textContent = title;
+  $("barSub").textContent = sub || "";
+}
 
-// 지금 몇 단계인지. 1단계에서만 입력 양식이 보이고, 나머지는 무대가 화면을 다 쓴다.
-function setStep(n) {
+/**
+ * 어느 화면을 보일지 — view 는 사이드바·내용의 종류, step 은 위쪽 경로에서 몇 단계인지.
+ * 도구 막대의 오른쪽 할 일과 사이드바 아래 줄은 화면마다 새로 채운다.
+ */
+function setView(view, step) {
   const prev = Number(document.body.dataset.step) || 0;
-  document.body.dataset.step = n;
+  const prevView = document.body.dataset.view;
+  document.body.dataset.view = view;
+  document.body.dataset.step = step;
   for (const el of $("stepper").querySelectorAll("[data-step]")) {
     const s = Number(el.dataset.step);
-    if (s === n) el.setAttribute("aria-current", "step");
+    if (s === step) el.setAttribute("aria-current", "step");
     else el.removeAttribute("aria-current");
-    // 지난 단계는 체크, 지금 단계는 검은 원, 남은 단계는 빈 원. 잇는 선은 지난 구간만 채운다.
-    el.parentElement.dataset.state = s < n ? "done" : s === n ? "now" : "next";
+    // 지난 단계는 파란 체크, 지금 단계는 흰 판 위의 파란 번호, 남은 단계는 회색 번호.
+    el.parentElement.dataset.state = s < step ? "done" : s === step ? "now" : "next";
+    el.querySelector(".no").textContent = s < step ? "✓" : String(s);
   }
+  $("barActions").innerHTML = "";
+  $("sideFoot").textContent = "";
+  $("sideFoot").removeAttribute("title");
   syncStepper();
   placeThumb();
+  if (view === "form") placeSegThumb(true);
   if (!state.busy) document.title = pageTitle();
-  if (prev && prev !== n) stepChanged(prev, n);
+  if (prev && (prev !== step || prevView !== view)) stepChanged(prev, step);
 }
 
 /**
  * 갈 수 있는 단계만 누를 수 있다 (21st.dev 'Wizard Steps' 의 '가 본 곳까지만').
- * 계획이 없을 때의 '항목 검토', 실행 중의 번호는 눌러도 아무 일이 없었는데 단추처럼 보였다.
+ * 3 실행은 실행 중에만 보이는 단계라 단추가 아니다.
  */
 function syncStepper() {
   for (const b of $("stepper").querySelectorAll("button[data-step]")) {
-    b.disabled = state.busy || (b.dataset.step === "2" && !state.plan);
+    const n = b.dataset.step;
+    b.disabled = state.busy || (n === "2" && !state.plan) || (n === "4" && !state.result);
   }
 }
 
 /**
  * 단계가 바뀔 때 — 'Wizard Steps' 에서 세 가지만 가져왔다.
- * 1) 앞 단계로 가면 새 화면이 오른쪽에서, 뒤로 가면 왼쪽에서 16px 들어온다. 어느 쪽으로
+ * 1) 앞 단계로 가면 새 화면이 오른쪽에서, 뒤로 가면 왼쪽에서 12px 들어온다. 어느 쪽으로
  *    움직였는지가 보인다. 나가는 화면은 기다리지 않는다(화면을 늦게 바꾸지 않는다).
  * 2) 화면 읽기 프로그램에 '4단계 중 2단계, 항목 검토' 를 알린다.
  * 3) 누른 단추가 새 화면에 없으면 초점을 새 화면으로 옮긴다 — 문서 맨 앞으로 튀지 않게.
  */
 function stepChanged(prev, n) {
-  const app = document.querySelector(".app");
-  const all = $("stepper").querySelectorAll("[data-step]");
-  // body 에도 data-step 이 있어서 "> .lb" 로 단추 바로 아래만 본다
+  const main = document.querySelector(".main");
+  const content = document.querySelector(".content");
   const lb = $("stepper").querySelector(`[data-step="${n}"] > .lb`);
-  $("stepSay").textContent = `${all.length}단계 중 ${n}단계, ${lb ? lb.textContent : ""}`;
-  if (!reduceMotion() && app.animate) {
+  $("stepSay").textContent = `4단계 중 ${n}단계, ${lb ? lb.textContent : ""}`;
+  if (!reduceMotion() && content.animate && n !== prev) {
     const d = n > prev ? 1 : -1;
-    app.animate([{ opacity: 0, transform: `translateX(${d * 16}px)` }, { opacity: 1, transform: "none" }],
-                { duration: 260, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
+    content.animate([{ opacity: 0, transform: `translateX(${d * 12}px)` }, { opacity: 1, transform: "none" }],
+                    { duration: 250, easing: "cubic-bezier(0.23, 1, 0.32, 1)" });
   }
   requestAnimationFrame(() => {
     const a = document.activeElement;
     if (a && a !== document.body && a.isConnected && a.getClientRects().length) return;
-    app.focus({ preventScroll: true });
+    main.focus({ preventScroll: true });
   });
 }
 
-/**
- * 지금 단계의 검은 원은 하나뿐이고, 단계가 바뀌면 그 원이 옆 번호로 미끄러진다
- * (21st.dev 'Steps' 의 sliding thumb). 처음 자리를 잡을 때는 움직이지 않는다.
- */
+// 지금 단계의 흰 판은 하나뿐이고, 단계가 바뀌면 그 판이 옆 단계로 미끄러진다. 처음 자리는 움직이지 않는다.
+const stepThumb = stretchThumb($("stepper"));
 function placeThumb() {
-  // 위 막대가 두 줄이라 키가 화면 폭마다 다르다 — 계획 화면의 고정 막대가 그 아래에 붙게 알린다.
-  document.documentElement.style.setProperty("--topbar-h", `${document.querySelector(".topbar").offsetHeight}px`);
   const st = $("stepper");
-  const no = st.querySelector("[aria-current] .no");
-  if (!no) return;
-  st.style.setProperty("--thumb-y", `${no.offsetTop}px`);
-  stepThumb.to(no, { instant: placeThumb.resizing });
+  const now = st.querySelector("[data-step][aria-current]");
+  if (!now) return;
+  stepThumb.to(now, { instant: placeThumb.resizing });
   st.dataset.ready = "1";
 }
-const stepThumb = stretchThumb($("stepper"));
 window.addEventListener("resize", () => {
   placeThumb.resizing = true; placeThumb(); placeSegThumb(true); placeThumb.resizing = false;
 });
 
 $("stepper").addEventListener("click", (e) => {
   const btn = e.target.closest("button[data-step]");
-  const n = btn && btn.dataset.step;
-  if (state.busy || !btn) return;
+  if (state.busy || !btn || btn.disabled) return;
+  const n = btn.dataset.step;
   if (n === "1") showBlank();
   if (n === "2" && state.plan) showPlan();
+  if (n === "4" && state.result) showResult(state.result);
 });
 
+$("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
+
 function showBlank() {
-  setStep(1);
-  $("stageChips").innerHTML = "";
-  // 진행 순서 안내는 두지 않는다 — 위쪽 단계 표시(1 기획서 · 2 항목 검토 …)와 같은 말이다.
+  setView("form", 1);
+  setBar("새 확인");
   $("stage").innerHTML = "";
+  renderRunsFoot();
 }
+
+function showError(title, message) {
+  showBlank();
+  $("formNote").innerHTML = alertBox("fail", esc(title), esc(message));
+}
+
+// ── 진행 (기획서 읽는 중 · 실행 중) ──────────────────────────────────────────
 
 // 경과 시간. 몇 분 걸리는 실행에서 멈춘 것과 도는 것을 구별하게 한다.
 let elapsedTimer = null;
+// 실행 중 항목별 상태 — 직전 집계와 비교해 방금 끝난 항목의 판정을 안다(서버를 바꾸지 않는다).
+let prog = null;
+
+const ruleOf = (c) => c.rule_label || c.violates || (c.flow_id ? "화면 흐름" : "정상 동작");
 
 function showProgress(title, lines) {
-  setStep(title === "실행 중" ? 3 : 2);
-  $("stageChips").innerHTML = `<span class="chip busy">${chipMark("busy")}실행 중</span>`;
+  const run = title === "실행 중";
+  setView("busy", run ? 3 : 2);
+  const f = form();
+  setBar(run ? "실행 중" : title, run ? `${specName()} → ${f.url}` : specName());
+  $("sideFoot").textContent = `${BACKEND_NAME[f.backend] || f.backend} · ${f.url}`;
+  $("pSteps").innerHTML = planSteps(title);
+
+  // 실행할 항목을 처음부터 깔아 둔다 — 몇 개 중 어디쯤이고 무엇이 남았는지가 처음부터 보인다.
+  const cases = run && state.plan ? state.plan.cases.filter((c) => c.selected) : [];
+  prog = { k: 0, n: cases.length, t0: 0, last: null, row: null };
+  if (run) $("barActions").innerHTML = `<button class="btn" id="pStop" type="button" hidden>중지</button>`;
+
   $("stage").innerHTML = `
-    <div class="head"><h1>${esc(title)}</h1><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
-      <span class="elapsed" id="pElapsed">0초</span></div>
-    <div class="pnow" id="pNow" aria-live="polite"></div>
-    <progress id="pBar" class="sr" hidden></progress>
-    <div class="pbar" id="pTrack" hidden aria-hidden="true"><i id="pFill"></i></div>
-    <div class="ptally" id="pTally" hidden></div>
-    ${title === "실행 중" ? `<button class="btn ghost" id="pStop" type="button" hidden>멈추기</button>` : ""}
-    <div class="steps" id="pSteps">${planSteps(title)}</div>
-    <details class="raw" id="pRaw"><summary>진행 로그 전체<span class="n" id="pLogN"></span></summary>
-      <div class="logbox"><pre class="log" id="pLog" role="log" aria-live="polite"></pre>
-        <button class="btn ghost log-jump" id="pLogJump" type="button" hidden></button></div></details>`;
+    <div class="scroll" id="pScroll">
+      <div class="run-head">
+        <h2 class="lt nums" id="pHead">${run ? `0 / ${cases.length || "—"}` : esc(title)}</h2>
+        <span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="hint nums" id="pElapsed">0초 지남</span>
+      </div>
+      <div class="pnow" id="pNow" aria-live="polite"></div>
+      <div class="pnotes" id="pNotes"></div>
+      <progress id="pBar" class="sr" max="${cases.length || 1}" value="0" ${run ? "" : "hidden"}></progress>
+      <div class="pbar" id="pTrack" ${run ? "" : "hidden"} aria-hidden="true"><i id="pFill"></i></div>
+      <div class="ptally" id="pTally" hidden></div>
+      ${run ? `<table class="tbl run-table">
+        <colgroup><col style="width:34px"><col><col style="width:140px"><col style="width:72px"></colgroup>
+        <tbody id="pCases">${cases.map((c, i) => runRow(c, i)).join("")}</tbody></table>` : ""}
+      <details class="disc" id="pRaw"><summary><span class="chev" aria-hidden="true"></span>진행 로그 전체<span class="n" id="pLogN"></span></summary>
+        <div class="logbox"><pre class="log" id="pLog" role="log" aria-live="polite"></pre>
+          <button class="btn sm log-jump" id="pLogJump" type="button" hidden></button></div></details>
+    </div>`;
   followLog();
   pushProgress(lines || []);
   clearInterval(elapsedTimer);
@@ -557,36 +529,31 @@ function showProgress(title, lines) {
   elapsedTimer = setInterval(() => {
     const el = $("pElapsed");
     if (!el) { clearInterval(elapsedTimer); return; }  // 화면이 결과로 바뀌면 멈춘다
-    el.textContent = `${Math.round((Date.now() - t0) / 1000)}초`;
+    el.textContent = `${Math.round((Date.now() - t0) / 1000)}초 지남`;
   }, 1000);
 }
 
+function runRow(c, i, k) {
+  return `<tr class="case wait${i % 2 ? " alt" : ""}" data-k="${k || i + 1}" data-title="${esc(c.title)}">` +
+    `<td>${vmark("wait")}</td><td>${esc(c.title)}</td>` +
+    `<td class="muted">${c.case_id ? esc(ruleOf(c)) : ""}</td><td class="muted nums t"></td></tr>`;
+}
+
 /* ── 진행 로그 — 흘러 들어오는 글 ─────────────────────────────────────────
- * 21st.dev 'Response Stream' 에서 '도착하는 대로 덧붙인다(AsyncIterable)' 와 '멈춤·이어 보기' 만.
- * 서버가 보내온 줄 묶음을 받은 그대로 붙이고, 새 묶음만 잠깐 옅게 들어온다. 이미 다 온 글을
- * 한 글자·한 낱말씩 흘려 보이는 타자기·페이드 연출은 쓰지 않는다 — 읽기만 늦어진다.
+ * 21st.dev 'Response Stream' 에서 '도착하는 대로 덧붙인다' 와 '멈춤·이어 보기' 만.
  * 맨 아래를 보고 있으면 따라 내려가고, 위로 올려 읽는 중이면 끌어내리지 않는다. 그동안 온 줄 수를
  * '새 줄 n개 — 맨 아래로' 로 알려 준다. 접혀 있어도 머리줄의 줄 수가 늘어 일이 도는 것이 보인다. */
 const atLogEnd = (log) => log.scrollHeight - log.scrollTop - log.clientHeight < 24;
-// 가려진 줄이 있는 쪽 가장자리만 흐린다 — 21st.dev AI Thinking 의 위아래 흐림에서. 다 보이면 걸지 않는다.
-function logEdges(log) {
-  log.classList.toggle("cut-top", log.scrollTop > 2);
-  log.classList.toggle("cut-bottom", log.scrollHeight - log.scrollTop - log.clientHeight > 2);
-}
 
 function followLog() {
   const log = $("pLog"), jump = $("pLogJump"), raw = $("pRaw");
   if (!log || !jump) return;
-  // 바로 맨 아래로 간다. 부드럽게 굴리면 그사이 온 줄을 놓치고, 기다리게 할 이유도 없다(HIG Motion).
-  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; logEdges(log); };
+  const toEnd = () => { log.scrollTop = log.scrollHeight; jump.hidden = true; log.dataset.unseen = 0; };
   jump.addEventListener("click", toEnd);
   log.addEventListener("scroll", () => {
-    logEdges(log);
     if (atLogEnd(log)) { jump.hidden = true; log.dataset.unseen = 0; }
   }, { passive: true });
-  raw.addEventListener("toggle", () => {
-    if (raw.open) { log.scrollTop = log.scrollHeight; jump.hidden = true; logEdges(log); }
-  });
+  raw.addEventListener("toggle", () => { if (raw.open) toEnd(); });
 }
 
 function appendLog(log, lines) {
@@ -599,8 +566,7 @@ function appendLog(log, lines) {
   const n = (Number(log.dataset.n) || 0) + lines.length;
   log.dataset.n = n;
   $("pLogN").textContent = ` · ${n}줄`;
-  if (follow) { log.scrollTop = log.scrollHeight; logEdges(log); return; }
-  logEdges(log);
+  if (follow) { log.scrollTop = log.scrollHeight; return; }
   const unseen = (Number(log.dataset.unseen) || 0) + lines.length;
   log.dataset.unseen = unseen;
   const jump = $("pLogJump");
@@ -608,12 +574,51 @@ function appendLog(log, lines) {
   jump.hidden = false;
 }
 
+const TALLY_KEYS = ["ok", "fail", "infra", "unv"];
+
+/** 방금 끝난 항목 줄에 판정을 적는다 — 직전 집계에서 어느 수가 늘었는지로 안다. */
+function settleRow(t) {
+  const row = prog.row;
+  if (!row || !prog.last) return;
+  const i = t.findIndex((v, j) => v > prog.last[j]);
+  const kind = TALLY_KEYS[i] || "unv";
+  row.classList.remove("now", "wait");
+  row.classList.add("done");
+  row.cells[0].innerHTML = vmark(kind);
+  const sec = (Date.now() - prog.t0) / 1000;
+  row.querySelector(".t").textContent = `${sec.toFixed(sec < 10 ? 1 : 0)}초`;
+  prog.row = null;
+}
+
+/** 'k번째 항목' 줄을 찾는다 — 제목이 같은 남은 줄, 없으면 k번째 줄, 그것도 없으면 새로 만든다. */
+function runRowFor(k, title) {
+  const body = $("pCases");
+  if (!body) return null;
+  const rows = [...body.querySelectorAll("tr.wait")];
+  let row = rows.find((r) => r.dataset.title === title) || body.querySelector(`tr.wait[data-k="${k}"]`);
+  if (!row) {
+    body.insertAdjacentHTML("beforeend", runRow({ title }, body.rows.length, k));
+    row = body.lastElementChild;
+  }
+  return row;
+}
+
+/** 지금 도는 줄이 화면 아래로 벗어났으면 따라간다 — 사람이 위로 올려 읽는 중이면 두고 본다. */
+function keepInView(row, prevRow) {
+  const box = $("pScroll");
+  if (!box || !row) return;
+  const b = box.getBoundingClientRect();
+  const seen = (el) => { const r = el.getBoundingClientRect(); return r.top >= b.top && r.bottom <= b.bottom; };
+  if (prevRow && !seen(prevRow)) return;
+  if (!seen(row)) row.scrollIntoView({ block: "nearest" });
+}
+
 /**
  * 진행 메시지를 단계로 접어서 보여준다.
  *
  * 파이프라인은 "S1 설계 문서 추출" 같은 머리줄과 그 아래 들여쓴 상세를 보낸다.
- * 날것으로 쏟으면 사람이 어디쯤인지 모른다 — 머리줄을 단계로, 들여쓴 줄을 그
- * 단계의 상세로 읽는다. 원문은 접힌 로그에 그대로 남긴다.
+ * 머리줄은 사이드바의 단계로, 들여쓴 줄은 그 단계의 상세로 읽는다. 원문은 접힌 로그에 그대로 남긴다.
+ * 실행 중에는 '케이스 k/N' 줄과 '집계' 줄로 항목 표의 줄마다 상태를 채운다.
  */
 function pushProgress(messages) {
   const log = $("pLog"), steps = $("pSteps");
@@ -621,40 +626,65 @@ function pushProgress(messages) {
   appendLog(log, messages);
 
   for (const raw0 of messages) {
-    // 지금까지의 판정 수 (nodes.run_cases 의 '집계' 줄). 단계 목록에 쌓지 않는다.
+    // 지금까지의 판정 수 (nodes.run_cases 의 '집계' 줄). 항목이 하나 끝날 때마다 온다.
     const t = /집계 통과 (\d+) · 기획서와 다름 (\d+) · 실행 문제 (\d+)(?: · 확인 불가 (\d+))?/.exec(raw0);
     if (t) {
+      const nums = [t[1], t[2], t[3], t[4] || "0"].map(Number);
+      if (prog) {
+        settleRow(nums);
+        prog.last = nums;
+        if (prog.k) {
+          const done = nums.reduce((a, b) => a + b, 0);
+          const bar = $("pBar");
+          bar.value = done;
+          $("pHead").textContent = `${done} / ${bar.max}`;
+          $("pFill").style.width = `${(done / (bar.max || 1)) * 100}%`;
+          bar.setAttribute("aria-valuetext", `${bar.max}건 중 ${done}건 끝남`);
+          document.title = `${done}/${bar.max} 실행 중 — Prova`;
+          const active = steps.querySelector(".pstep.active .t");
+          if (active) active.textContent = `${done}/${bar.max}`;
+        }
+      }
       const el = $("pTally");
       el.hidden = false;
       // 칸은 한 번 만들고 숫자만 바꾼다 — 바뀐 숫자만 밀어 올린다.
       if (!el.firstChild) {
-        el.innerHTML = `<span class="ok">통과 <b data-k="ok"></b></span>` +
-          `<span class="fail">기획서와 다름 <b data-k="fail"></b></span>` +
-          `<span class="infra">실행 문제 <b data-k="infra"></b></span>` +
-          `<span class="unv" hidden>확인 불가 <b data-k="unv"></b></span>`;
+        el.innerHTML = `<span>${vmark("ok", { dot: true, say: false })}통과 <b data-k="ok"></b></span>` +
+          `<span>${vmark("fail", { dot: true, say: false })}기획서와 다름 <b data-k="fail"></b></span>` +
+          `<span>${vmark("infra", { dot: true, say: false })}실행 문제 <b data-k="infra"></b></span>` +
+          `<span hidden>${vmark("unv", { dot: true, say: false })}확인 불가 <b data-k="unv"></b></span>`;
       }
       const k = (key) => el.querySelector(`[data-k="${key}"]`);
-      swapNumber(k("ok"), t[1]);
-      swapNumber(k("fail"), t[2]);
-      swapNumber(k("infra"), t[3]);
-      k("unv").parentElement.hidden = !(t[4] && t[4] !== "0");
-      swapNumber(k("unv"), t[4] || "0");
+      swapNumber(k("ok"), nums[0]);
+      swapNumber(k("fail"), nums[1]);
+      swapNumber(k("infra"), nums[2]);
+      k("unv").parentElement.hidden = !nums[3];
+      swapNumber(k("unv"), nums[3]);
       continue;
     }
     const raw = plainProgress(raw0);
-    // 케이스 줄은 단계 목록에 쌓지 않고 '몇 건 중 몇 번째' 로 보인다. 원문은 로그에 남는다.
+    // 케이스 줄은 단계 목록에 쌓지 않고 표의 그 줄을 '확인 중' 으로 바꾼다. 원문은 로그에 남는다.
     const m = /케이스 (\d+)\/(\d+) · (.+)/.exec(raw);
     if (m) {
-      $("pNow").textContent = `${m[2]}건 중 ${m[1]}번째 — ${m[3]}`;
+      const k = Number(m[1]), n = Number(m[2]);
+      $("pNow").textContent = `${n}건 중 ${k}번째 — ${m[3]}`;
       const bar = $("pBar");
-      bar.hidden = false; bar.max = Number(m[2]); bar.value = Number(m[1]) - 1;
-      bar.setAttribute("aria-valuetext", `${bar.max}건 중 ${bar.value}건 끝남`);
-      // 보이는 막대는 따로 그린다 — <progress> 는 값이 바뀔 때 부드럽게 차오르지 않는다.
+      bar.hidden = false; bar.max = n; bar.value = k - 1;
       $("pTrack").hidden = false;
-      $("pFill").style.width = `${(bar.value / bar.max) * 100}%`;
-      meterStep(steps.querySelector(".pstep.active"), bar.value / bar.max);
-      // 다른 탭에 가 있어도 탭 이름에서 어디쯤인지 보이게 한다. 끝나면 renderChrome 이 되돌린다.
-      document.title = `${bar.value}/${bar.max} 실행 중 — Prova`;
+      $("pHead").textContent = `${k - 1} / ${n}`;
+      if (prog) {
+        const prevRow = prog.row;
+        prog.k = k; prog.n = n; prog.t0 = Date.now();
+        const row = runRowFor(k, m[3].trim());
+        if (row) {
+          row.classList.remove("wait");
+          row.classList.add("now");
+          row.cells[0].innerHTML = vmark("run");
+          row.querySelector(".t").textContent = "진행 중";
+          prog.row = row;
+          keepInView(row, prevRow || row.previousElementSibling);
+        }
+      }
       continue;
     }
     const isDetail = /^\s{2,}/.test(raw) || raw.trimStart().startsWith("!");
@@ -665,7 +695,7 @@ function pushProgress(messages) {
       if (last) {
         const d = document.createElement("div");
         d.className = "detail";
-        // '!' 로 시작하는 줄은 주의 — 기호는 CSS 가 그리고, 읽어 주는 프로그램에는 '주의' 라고 알린다.
+        // '!' 로 시작하는 줄은 주의 — 읽어 주는 프로그램에는 '주의' 라고 알린다.
         if (/^!/.test(text)) {
           d.classList.add("warn");
           d.innerHTML = `<span class="sr">주의: </span>`;
@@ -674,39 +704,45 @@ function pushProgress(messages) {
           d.textContent = text;
         }
         last.querySelector(".body").appendChild(d);
+        // 항목을 돌기 전에는 가장 최근 상세가 지금 하는 일이다.
+        if (!prog || !prog.k) $("pNow").textContent = text.replace(/^!\s*/, "");
         continue;
       }
     }
-    const prev = currentStep(steps);
-    if (prev) doneStep(prev);
     const label = text.replace(/^S\d(~S\d)?\s+/, "");
     const key = (PLAN_STEPS.find(([, name]) => label.startsWith(name)) || [])[0];
+    // 단계 이름이 아닌 맨 앞 줄(예: '연습용으로 실행합니다 — …')은 단계가 아니라 알림이다.
+    // 체크 표시를 달아 단계 목록에 넣으면 '한 일' 처럼 읽힌다 — 내용 위에 알림으로 둔다.
+    if (!key && !/^S\d/.test(text)) {
+      const [head, ...rest] = text.split(" — ");
+      $("pNotes").insertAdjacentHTML("beforeend", alertBox("info", esc(head), esc(rest.join(" — "))));
+      continue;
+    }
+    const prev = currentStep(steps);
+    if (prev) doneStep(prev);
     let el = key && steps.querySelector(`.pstep.todo[data-key="${key}"]`);
     if (el) {
       // 건너뛴 앞 단계(이미 만든 계획으로 바로 실행 등)는 지운다 — 남겨 두면 안 한 일이 '할 일'로 보인다.
       while (el.previousElementSibling && el.previousElementSibling.classList.contains("todo")) {
         el.previousElementSibling.remove();
       }
-      el.classList.remove("todo");
     } else {
       el = document.createElement("div");
       steps.insertBefore(el, steps.querySelector(".pstep.todo"));
     }
     el.className = "pstep active";
     el.dataset.t0 = Date.now();
-    // 지금 단계는 모양(도는 호·바탕)만이 아니라 글자로도 말한다 — HIG '색·모양만으로 전하지 않는다'.
-    // 21st.dev AI Thought Chain 의 'In progress' 꼬리표에서. 끝나면 같은 자리가 걸린 시간이 된다.
-    el.innerHTML = `<span class="mark">${STEP_MARK}</span>` +
+    // 지금 단계는 모양(도는 호)만이 아니라 글자로도 말한다 — HIG '색·모양만으로 전하지 않는다'.
+    el.innerHTML = `<span class="mark">${vmark("run")}</span>` +
       `<div class="body">${esc(label)}</div><span class="t">진행 중</span>`;
+    if (!prog || !prog.k) $("pNow").textContent = label;
   }
 }
 
 /**
  * 앞으로 할 단계를 처음부터 깐다 — 21st.dev 'AI Planning' 에서 '계획 전체를 먼저 보이고
- * 하나씩 채운다' 만 가져왔다. 몇 단계 중 어디쯤이고 무엇이 남았는지가 처음부터 보인다.
- * 남은 단계는 빈 원과 흐린 글자, 시작되면 도는 호, 끝나면 체크와 걸린 시간.
- * 상태별 색·아이콘, 단계마다 접는 칸, 위에서 미끄러져 들어오는 등장은 쓰지 않는다
- * (색은 판정에만, HIG Motion). 이름은 PROGRESS_WORDS 가 바꾼 말과 같아야 켜진다.
+ * 하나씩 채운다' 만 가져왔다. 남은 단계는 빈 원과 흐린 글자, 시작되면 도는 호, 끝나면 파란 체크와 걸린 시간.
+ * 이름은 PROGRESS_WORDS 가 바꾼 말과 같아야 켜진다.
  */
 const PLAN_STEPS = [
   ["read", "기획서 읽기"],
@@ -717,7 +753,7 @@ const PLAN_STEPS = [
 function planSteps(title) {
   const keys = title === "실행 중" ? ["read", "cases", "browse", "report"] : ["read", "cases"];
   return PLAN_STEPS.filter(([k]) => keys.includes(k)).map(([k, name]) =>
-    `<div class="pstep todo" data-key="${k}"><span class="mark">${STEP_MARK}</span>` +
+    `<div class="pstep todo" data-key="${k}"><span class="mark">${vmark("wait", { say: false })}</span>` +
     `<div class="body"><span class="sr">할 차례: </span>${esc(name)}</div><span class="t"></span></div>`).join("");
 }
 // 지금 단계 = 남은 단계(todo)를 뺀 마지막 줄.
@@ -746,33 +782,12 @@ function plainProgress(line) {
   return line;
 }
 
-/**
- * 단계 표시 — 도는 호, 끝나면 체크가 그려진다 (21st.dev 'Agent Todo List' 의 상태 표시).
- * 색은 쓰지 않는다. 끝난 단계는 '통과' 가 아니라 지나간 것이다 — 초록은 판정에만.
- */
-const STEP_MARK = `<svg class="st" viewBox="0 0 20 20" aria-hidden="true">` +
-  `<circle class="trk" cx="10" cy="10" r="7"/>` +
-  `<circle class="arc" cx="10" cy="10" r="7" pathLength="100"/>` +
-  `<path class="ok" d="M6.7 10.3l2.3 2.3 4.4-4.6" pathLength="1"/></svg>`;
-
-/**
- * 셀 수 있는 단계(케이스를 하나씩 도는 단계)는 도는 호 대신 끝난 만큼 찬 원을 그린다.
- * 21st.dev Circle Progress 에서 '값만큼 차오르는 원'만 가져왔다 — 채운 비율에 따라 색이
- * 바뀌는 부분과 그라데이션은 버렸다. 진행은 좋고 나쁨이 아니고, 색은 판정에만 쓴다.
- * 첫 케이스가 끝나기 전에는 도는 호를 그대로 둔다 — 멈춘 것처럼 보이지 않게.
- * 끝나면(doneStep) 원이 마저 차고 체크가 그려진다.
- */
-function meterStep(el, ratio) {
-  if (!el || !(ratio > 0)) return;
-  el.classList.add("metered");
-  el.style.setProperty("--left", (100 - Math.min(Math.max(ratio, 0), 1) * 100).toFixed(2));
-}
-
-// 끝난 단계에 걸린 시간을 오른쪽에 적는다 — 1초 넘게 걸린 단계만.
+// 끝난 단계는 파란 체크와 걸린 시간 — 1초 넘게 걸린 단계만. 초록(통과)으로 칠하지 않는다.
 function doneStep(el) {
   if (!el.classList.contains("active")) return;
   el.classList.remove("active");
   el.classList.add("done");
+  el.querySelector(".mark").innerHTML = vmark("done");
   const sec = Math.round((Date.now() - Number(el.dataset.t0 || Date.now())) / 1000);
   const t = el.querySelector(".t");
   if (t) t.textContent = sec >= 1 ? `${sec}초` : "";
@@ -783,25 +798,24 @@ function finishProgress() {
   if (last) doneStep(last);
 }
 
-function showError(title, message) {
-  setStep(1);
-  $("stageChips").innerHTML = "";
-  $("stage").innerHTML = alertBox("fail", esc(title), esc(message));
-}
-
-// ── 계획 확인 ──────────────────────────────────────────────────────────────
+// ── 2 항목 검토 ────────────────────────────────────────────────────────────
 
 function screenName(id) {
   return (state.plan.screens && state.plan.screens[id]) || id || "기타";
 }
 
+const groupOf = (c) => (c.flow_id ? `flow:${c.flow_id}` : c.screen_id);
+const groupName = (key) => key.startsWith("flow:") ? `흐름 ${key.slice(5)}` : screenName(key);
+
 function visibleCases() {
   const q = state.filter.trim().toLowerCase();
   return state.plan.cases.filter((c) => {
     if (state.onlyOff && c.selected) return false;
+    if (state.rule && ruleOf(c) !== state.rule) return false;
+    if (state.group && groupOf(c) !== state.group) return false;
     if (!q) return true;
-    return (c.case_id + " " + c.title + " " + (c.violates || "") + " " +
-            screenName(c.screen_id)).toLowerCase().includes(q);
+    return (c.case_id + " " + c.title + " " + (c.violates || "") + " " + (c.target_label || "") + " " +
+            ruleOf(c) + " " + screenName(c.screen_id)).toLowerCase().includes(q);
   });
 }
 
@@ -862,6 +876,11 @@ function planNotes() {
     }
   }
 
+  if ((p.spec_edits || []).length) {
+    out.push(alertBox("info", `사람이 고친 값 ${p.spec_edits.length}건으로 만든 항목입니다`,
+      "고친 칸은 위의 '기획서에서 읽은 내용' 에서 볼 수 있고, 리포트에도 '사람이 고친 것' 으로 남습니다."));
+  }
+
   // 요청이 화면을 이름으로 지목했는데 일부만 골라진 경우. "몇 건 제외" 만
   // 보면 그 화면을 확인했다고 읽힌다 — 실측에서 "회원가입이 잘 되는지" 에
   // 17건 중 6건만 골라지는 것이 프롬프트로는 안 고쳐졌고, 이 경고가 그 남은
@@ -872,7 +891,7 @@ function planNotes() {
         `'${esc(c.name)}' 화면은 ${c.total}건 중 ${c.selected}건만 실행됩니다`,
         `요청이 이 화면을 가리켰지만 일부만 골라졌습니다. 이대로 실행하면 ` +
         `이 화면의 통과율은 <b>화면 전체의 상태를 뜻하지 않습니다.</b> ` +
-        `화면 그룹의 [모두 켜기]로 전부 확인할 수 있습니다.`));
+        `표의 화면 줄 체크 상자로 전부 켤 수 있습니다.`));
     }
   }
 
@@ -880,7 +899,7 @@ function planNotes() {
   if (off) {
     out.push(alertBox("info", `이번 실행에서 ${off}건을 제외합니다`,
       "<b>통과한 것이 아니라 확인하지 않는 것</b>입니다. 빠지면 안 되는 것이 있으면 " +
-      "아래에서 도로 켜 주세요."));
+      "표에서 도로 켜 주세요."));
   }
 
   if ((p.coverage_gaps || []).length) {
@@ -892,47 +911,51 @@ function planNotes() {
 }
 
 function showPlan() {
-  setStep(2);
+  setView("plan", 2);
   const p = state.plan;
-  $("stageChips").innerHTML =
-    `<span class="chip">생성 ${p.total_generated}건</span>`;
+  setBar("항목 검토", `${specName()} · ${p.total_generated}개 뽑음`);
+  // 검색은 도구 막대 오른쪽 — macOS 앱의 자리(키트 Search Field)
+  $("barActions").innerHTML = `<label class="search">${ICON.search}<span class="sr">항목 검색</span>` +
+    `<input type="search" id="q" placeholder="검색" spellcheck="false" value="${esc(state.filter)}"></label>`;
 
   $("stage").innerHTML = `
-    <div class="head">
-      <h1>계획 확인</h1>
-      <div class="sub">${p.request
-        ? `요청 — ${esc(p.request)}`
-        : "요청이 없어 전체 케이스를 골랐습니다"}</div>
-    </div>
-    <div id="planNotes"></div>
-    <details class="spec" id="specPanel"></details>
-    <div class="toolbar">
-      <div class="count" id="count"></div>
-      <button class="btn ghost quiet" id="allBtn" type="button">모두 켜기</button>
-      <button class="btn ghost quiet" id="offBtn" type="button" aria-pressed="false">꺼 둔 것만 보기</button>
-      <label class="search">
-        ${ICON.search}
-        <span class="sr">케이스 검색</span>
-        <input type="text" id="q" placeholder="케이스 검색" spellcheck="false">
-      </label>
-      <button class="btn ghost" id="backBtn" type="button">요청 고치기</button>
-      <button class="btn primary" id="runBtn" type="button">이대로 실행</button>
-      <span class="hint" id="runHint"></span>
-    </div>
-    <div id="groups"></div>`;
+    <div class="planview${state.mode === "spec" ? " spec-mode" : ""}" id="planView">
+      <div class="plan-main">
+        <div class="scroll" id="planScroll">
+          <div class="plan-head">
+            <div class="seg" id="planSeg" role="group" aria-label="보기">
+              <button type="button" data-mode="items" aria-pressed="${state.mode === "items"}">항목 ${p.cases.length}</button>
+              <button type="button" data-mode="spec" aria-pressed="${state.mode === "spec"}">기획서에서 읽은 내용</button>
+            </div>
+            <span class="sub">${p.request ? `요청 — ${esc(p.request)}` : "요청이 없어 전체 항목을 골랐습니다"}</span>
+          </div>
+          <div class="notes" id="planNotes"></div>
+          <div id="itemsPane" ${state.mode === "spec" ? "hidden" : ""}>
+            <table class="tbl" id="caseTable">
+              <colgroup><col style="width:34px"><col><col style="width:120px"><col style="width:136px"></colgroup>
+              <thead><tr><th><input type="checkbox" id="allVis" aria-label="보이는 항목 모두 실행"></th>
+                <th>항목</th><th>칸</th><th>규칙</th></tr></thead>
+              <tbody id="caseBody"></tbody>
+            </table>
+          </div>
+          <section class="spec" id="specPanel" ${state.mode === "spec" ? "" : "hidden"}></section>
+        </div>
+        <div class="footbar">
+          <span class="nums" id="count"></span>
+          <button class="btn quiet sm" id="allBtn" type="button" hidden>모두 켜기</button>
+          <span class="hint" id="runHint"></span>
+          <span class="sp"></span>
+          <button class="btn" id="backBtn" type="button">요청 고치기</button>
+          <button class="btn primary" id="runBtn" type="button">이대로 실행</button>
+        </div>
+      </div>
+      <aside class="insp" id="insp" aria-label="고른 항목"></aside>
+    </div>`;
 
-  $("q").addEventListener("input", (e) => {
-    state.filter = e.target.value;
-    renderGroups();
-  });
+  $("q").addEventListener("input", (e) => { state.filter = e.target.value; renderTable(); });
   $("allBtn").addEventListener("click", () => {
     p.cases.forEach((c) => { c.selected = true; });
-    renderPlanBody();
-  });
-  $("offBtn").addEventListener("click", (e) => {
-    state.onlyOff = !state.onlyOff;
-    e.currentTarget.setAttribute("aria-pressed", String(state.onlyOff));
-    renderGroups();
+    syncChecks();
   });
   $("backBtn").addEventListener("click", () => {
     state.plan = null;
@@ -941,12 +964,313 @@ function showPlan() {
     $("request").focus();
   });
   $("runBtn").addEventListener("click", startRun);
-  $("groups").addEventListener("click", onCite);
+  $("planSeg").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-mode]");
+    if (b) setPlanMode(b.dataset.mode);
+  });
+  wireTable();
+  $("insp").addEventListener("click", onCite);
 
   state.draft = JSON.parse(JSON.stringify(p.doc || { screens: [] }));
   state.dirty = false;
   renderSpec();
   renderPlanBody();
+}
+
+function setPlanMode(mode) {
+  state.mode = mode;
+  $("planSeg").querySelectorAll("button").forEach((b) =>
+    b.setAttribute("aria-pressed", String(b.dataset.mode === mode)));
+  $("itemsPane").hidden = mode !== "items";
+  $("specPanel").hidden = mode !== "spec";
+  $("planView").classList.toggle("spec-mode", mode === "spec");
+}
+
+function renderPlanBody() {
+  $("planNotes").innerHTML = planNotes();
+  renderSidePlan();
+  renderTable();
+  renderCount();
+}
+
+/**
+ * 사이드바 — 규칙 종류로 거른다(메일 앱의 편지함처럼). 화면이 여럿이면 화면으로도.
+ * 수는 그 묶음의 항목 수다. '꺼 둔 항목만' 은 이번에 실행하지 않을 것만 본다.
+ */
+function renderSidePlan() {
+  const p = state.plan;
+  const count = (fn) => p.cases.filter(fn).length;
+  const rules = [...new Set(p.cases.map(ruleOf))];
+  const groups = [...new Set(p.cases.map(groupOf))];
+  const off = count((c) => !c.selected);
+  const item = (f, label, n, on) =>
+    `<li><button class="sitem" type="button" data-f="${esc(f)}" aria-pressed="${on}">${label}<span class="ct">${n}</span></button></li>`;
+  const single = groups.length === 1;
+  const nScreens = groups.filter((g) => !g.startsWith("flow:")).length;
+  const nFlows = groups.length - nScreens;
+  $("sidePlan").innerHTML =
+    `<h4>${single ? esc(groupName(groups[0])) : "규칙 종류"}</h4><ul class="slist">` +
+    item("rule:", "전체", p.cases.length, !state.rule) +
+    rules.map((r) => item(`rule:${r}`, esc(r), count((c) => ruleOf(c) === r), state.rule === r)).join("") +
+    `</ul>` +
+    (single ? "" : `<h4>화면</h4><ul class="slist">` + item("group:", "모든 화면", p.cases.length, !state.group) +
+      groups.map((g) => item(`group:${g}`, esc(groupName(g)), count((c) => groupOf(c) === g), state.group === g)).join("") +
+      `</ul>`) +
+    `<h4>보기</h4><ul class="slist">` + item("off", "꺼 둔 항목만", off, state.onlyOff) + `</ul>` +
+    `<h4>기획서</h4><p class="empty">${esc(specName())}<br>화면 ${nScreens}개${nFlows ? ` · 흐름 ${nFlows}개` : ""}</p>`;
+  $("sideFoot").textContent = `${BACKEND_NAME[form().backend] || ""} · ${form().url}`;
+}
+
+$("sidePlan").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-f]");
+  if (!b || !state.plan) return;
+  const f = b.dataset.f;
+  if (f === "off") state.onlyOff = !state.onlyOff;
+  else if (f.startsWith("rule:")) state.rule = f.slice(5);
+  else if (f.startsWith("group:")) state.group = f.slice(6);
+  if (state.mode !== "items") setPlanMode("items");
+  renderSidePlan();
+  renderTable();
+  const again = [...$("sidePlan").querySelectorAll("[data-f]")].find((x) => x.dataset.f === f);
+  if (again) again.focus();
+});
+
+/**
+ * 항목 표 — 화면(또는 흐름)마다 머리 줄, 그 아래 항목 줄. 줄을 누르면 오른쪽에 원문과 절차가 뜬다.
+ * 체크 상자는 '이번 실행에 넣기' 만 바꾼다 — 읽으려고 누른 것이 항목을 끄면 안 된다.
+ */
+function renderTable() {
+  const shown = visibleCases();
+  const body = $("caseBody");
+  if (!shown.length) {
+    body.innerHTML = `<tr class="empty-row"><td colspan="4">조건에 맞는 항목이 없습니다.</td></tr>`;
+    renderInsp(null);
+    syncChecks();
+    return;
+  }
+  if (!shown.some((c) => c.case_id === state.sel)) state.sel = shown[0].case_id;
+
+  const order = [];
+  const by = new Map();
+  for (const c of shown) {
+    const k = groupOf(c);
+    if (!by.has(k)) { by.set(k, []); order.push(k); }
+    by.get(k).push(c);
+  }
+  body.innerHTML = order.map((k) => {
+    const list = by.get(k);
+    const title = k.startsWith("flow:") ? `흐름 <code>${esc(k.slice(5))}</code>` : esc(screenName(k));
+    return `<tr class="grp" data-group="${esc(k)}"><td><input type="checkbox" data-group="${esc(k)}"
+        aria-label="${esc(groupName(k))} 항목 모두 실행"></td><td colspan="3">${title}<span class="n"></span></td></tr>` +
+      list.map((c, i) => `<tr class="case${i % 2 ? " alt" : ""}${c.selected ? "" : " off"}" data-id="${esc(c.case_id)}"
+          aria-selected="${c.case_id === state.sel}">
+        <td><input type="checkbox" ${c.selected ? "checked" : ""} aria-label="${esc(c.title)} 실행"></td>
+        <td><button class="pick" type="button" tabindex="${c.case_id === state.sel ? 0 : -1}">${esc(c.title)}</button></td>
+        <td class="muted">${esc(c.target_label || "화면 전체")}</td>
+        <td><span class="tag" title="${esc(c.violates || "")}">${esc(ruleOf(c))}</span></td></tr>`).join("");
+  }).join("");
+  syncChecks();
+  renderInsp(state.plan.cases.find((c) => c.case_id === state.sel));
+}
+
+// 체크 상태를 표·머리 줄·사이드바·안내·개수에 맞춘다. 줄을 다시 그리지 않아 초점이 그대로다.
+function syncChecks() {
+  const p = state.plan;
+  const byId = new Map(p.cases.map((c) => [c.case_id, c]));
+  $("caseBody").querySelectorAll("tr.case").forEach((row) => {
+    const c = byId.get(row.dataset.id);
+    row.classList.toggle("off", !c.selected);
+    row.querySelector("input").checked = c.selected;
+  });
+  const setBox = (box, list) => {
+    const on = list.filter((c) => c.selected).length;
+    box.checked = on === list.length && on > 0;
+    box.indeterminate = on > 0 && on < list.length;
+    return on;
+  };
+  $("caseBody").querySelectorAll("tr.grp").forEach((row) => {
+    const list = p.cases.filter((c) => groupOf(c) === row.dataset.group);
+    const on = setBox(row.querySelector("input"), list);
+    row.querySelector(".n").textContent = `${on}/${list.length}`;
+  });
+  setBox($("allVis"), visibleCases());
+  $("planNotes").innerHTML = planNotes();
+  renderSidePlan();
+  renderCount();
+}
+
+function selectCase(id, focus) {
+  state.sel = id;
+  $("caseBody").querySelectorAll("tr.case").forEach((r) => {
+    const on = r.dataset.id === id;
+    r.setAttribute("aria-selected", String(on));
+    r.querySelector(".pick").tabIndex = on ? 0 : -1;
+    if (on && focus) { r.querySelector(".pick").focus(); r.scrollIntoView({ block: "nearest" }); }
+  });
+  renderInsp(state.plan.cases.find((c) => c.case_id === id));
+}
+
+function wireTable() {
+  const body = $("caseBody");
+  body.addEventListener("change", (e) => {
+    const box = e.target;
+    if (box.dataset.group !== undefined) {
+      const list = state.plan.cases.filter((c) => groupOf(c) === box.dataset.group);
+      const turnOn = list.some((c) => !c.selected);
+      list.forEach((c) => { c.selected = turnOn; });
+    } else {
+      const row = box.closest("tr.case");
+      if (!row) return;
+      state.plan.cases.find((x) => x.case_id === row.dataset.id).selected = box.checked;
+    }
+    // 안내와 개수가 사람의 조작을 따라와야 한다. 가장 중요한 안내가
+    // 따라오지 않으면 확인 단계가 형식만 남는다.
+    syncChecks();
+  });
+  body.addEventListener("click", (e) => {
+    const row = e.target.closest("tr.case");
+    if (!row || e.target.closest("input")) return;
+    selectCase(row.dataset.id, false);
+  });
+  // ↑↓ 로 줄을 옮기고, 스페이스로 실행에 넣고 뺀다 (표의 기본 동작)
+  body.addEventListener("keydown", (e) => {
+    const row = e.target.closest("tr.case");
+    if (!row || !e.target.classList.contains("pick")) return;
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const rows = [...body.querySelectorAll("tr.case")];
+      const next = rows[rows.indexOf(row) + (e.key === "ArrowDown" ? 1 : -1)];
+      if (next) selectCase(next.dataset.id, true);
+    } else if (e.key === " ") {
+      e.preventDefault();
+      const c = state.plan.cases.find((x) => x.case_id === row.dataset.id);
+      c.selected = !c.selected;
+      syncChecks();
+    }
+  });
+  $("allVis").addEventListener("change", (e) => {
+    const list = visibleCases();
+    const turnOn = list.some((c) => !c.selected);
+    list.forEach((c) => { c.selected = turnOn; });
+    syncChecks();
+  });
+}
+
+/**
+ * 오른쪽 칸 — 고른 항목의 기대, 기획서 원문, 실행 단계. 제목만 보고 승인하지 않게 한다 (prova/wording.py).
+ */
+function renderInsp(c) {
+  const box = $("insp");
+  if (!box) return;
+  if (!c) { box.innerHTML = `<p class="empty">표에서 항목을 고르면 기획서 원문과 실행 단계가 여기에 보입니다.</p>`; return; }
+  const src = (c.sources || []).map(readSource);
+  const id = `src-${c.case_id}`;
+  const flow = c.flow_id && ((state.plan.doc && state.plan.doc.flows) || []).find((f) => f.flow_id === c.flow_id);
+  const steps = (c.steps || []);
+  box.innerHTML = `
+    <div><h5>고른 항목</h5><p class="big">${esc(c.title)}</p>
+      <p class="hint meta">${esc([groupName(groupOf(c)), c.target_label, ruleOf(c)].filter(Boolean).join(" · "))}</p></div>
+    ${flow && flow.screen_ids.length > 1 ? `<div><h5>화면 흐름</h5>${flowMap(flow)}</div>` : ""}
+    ${c.expected ? `<div><h5>기대</h5><p class="expect">${citedExpect(c.expected, src, id)}</p></div>` : ""}
+    ${src.length ? `<div id="${esc(id)}"><h5>기획서 근거 ${src.length}곳</h5>${src.map((s, i) =>
+      `<div class="quote" data-i="${i}"><cite>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</cite>${markQuote(s.quote, c.expected)}</div>`).join("")}</div>` : ""}
+    ${steps.length ? `<div><h5>실행 단계 ${steps.length}</h5><ol class="steps">${steps.map(stepLine).join("")}</ol></div>` : ""}
+    <div><h5>케이스 번호</h5><p class="idline">${esc(c.case_id)}</p></div>`;
+}
+
+// '1. '이메일' 칸에 'a@b' 입력' → 넣는 값·주소·고르는 값만 코드 글꼴로. 준비 단계는 번호 대신 '준비'.
+function stepLine(s) {
+  const prep = /^준비 /.test(s);
+  let t = esc(s.replace(/^(준비 )?\d+\. /, ""));
+  t = t.replace(/칸에 &#39;(.+?)&#39; 입력/, "칸에 <code>$1</code> 입력")
+       .replace(/^&#39;(.+?)&#39; 주소로 이동/, "<code>$1</code> 주소로 이동")
+       .replace(/에서 &#39;(.+?)&#39; 선택/, "에서 <code>$1</code> 선택");
+  return `<li${prep ? ` class="prep"` : ""}>${t}</li>`;
+}
+
+// 기획서 원문에서 기대 문장이 따옴표로 옮긴 값만 진하게. 표 행의 칸 구분(|)은 가운뎃점으로.
+function markQuote(quote, expected) {
+  quote = String(quote || "");
+  const vals = [...String(expected || "").matchAll(/'([^']{2,})'/g)].map((m) => m[1])
+    .filter((v) => quote.includes(v));
+  let html = "", i = 0;
+  while (i < quote.length) {
+    const hit = vals.map((v) => [quote.indexOf(v, i), v]).filter(([at]) => at >= 0)
+      .sort((a, b) => a[0] - b[0] || b[1].length - a[1].length)[0];
+    if (!hit) { html += esc(quote.slice(i)); break; }
+    html += esc(quote.slice(i, hit[0])) + `<mark>${esc(hit[1])}</mark>`;
+    i = hit[0] + hit[1].length;
+  }
+  return html.replace(/ \| /g, " · ");
+}
+
+/* ── 기획서 근거를 그 말이 나온 자리에 ─────────────────────────────────────
+ * 21st.dev Streaming Text 에서 '문장 안의 출처 칩' 만 가져왔다.
+ * 기대 문장의 따옴표 값('가입이 완료되었습니다')이 기획서 원문에 있으면 그 값이 든 마디 끝에
+ * '2쪽' 칩을 붙인다. 못 찾은 근거는 문장 끝에 붙는다. 칩을 누르면 아래 원문 상자 중 그 칩의 것에 테두리가 선다. */
+function readSource(text) {
+  const m = /^(\d+)쪽 (표|본문): ([\s\S]*)$/.exec(text);
+  return m ? { page: +m[1], kind: m[2], quote: m[3] } : { page: 0, kind: "", quote: text };
+}
+
+function citedExpect(expected, src, id) {
+  if (!src.length) return esc(expected);
+  const quoted = [...expected.matchAll(/'([^']{2,})'/g)];
+  const at = new Map();   // 칩을 끼울 자리 → 근거 번호들
+  src.forEach((s, i) => {
+    const hit = quoted.filter((m) => s.quote.includes(m[1]))
+      .sort((a, b) => b[1].length - a[1].length)[0];
+    let pos = expected.length;
+    if (hit) {
+      const from = hit.index + hit[0].length;
+      const stop = expected.slice(from).search(/ 또는 | 그리고 |, |\)/);
+      if (stop >= 0) pos = from + stop;
+    }
+    at.set(pos, [...(at.get(pos) || []), i]);
+  });
+  let html = "", last = 0;
+  for (const pos of [...at.keys()].sort((a, b) => a - b)) {
+    const idx = at.get(pos);
+    const pages = [...new Set(idx.map((i) => src[i].page).filter(Boolean))];
+    const label = pages.length ? `${pages.join("·")}쪽` : "기획서";
+    html += esc(expected.slice(last, pos)) +
+      `<button type="button" class="cite" data-src="${idx.join(" ")}" aria-controls="${esc(id)}"
+         aria-pressed="false" title="기획서 원문 짚기">${label}<span class="sr"> 기획서 원문 짚기</span></button>`;
+    last = pos;
+  }
+  return html + esc(expected.slice(last));
+}
+
+// 칩은 제 원문 상자에 테두리를 세운다. 같은 칩을 다시 누르면 내린다.
+function onCite(e) {
+  const btn = e.target.closest(".cite");
+  if (!btn) return;
+  const box = btn.closest(".insp, .detail");
+  const on = !btn.classList.contains("on");
+  box.querySelectorAll(".cite").forEach((c) => { c.classList.remove("on"); c.setAttribute("aria-pressed", "false"); });
+  const pick = new Set(on ? btn.dataset.src.split(" ") : []);
+  box.querySelectorAll(".quote").forEach((q) => q.classList.toggle("on", pick.has(q.dataset.i)));
+  btn.classList.toggle("on", on);
+  btn.setAttribute("aria-pressed", String(on));
+  const first = box.querySelector(".quote.on");
+  if (first) first.scrollIntoView({ block: "nearest" });
+}
+
+function picked() {
+  return state.plan.cases.filter((c) => c.selected).map((c) => c.case_id);
+}
+
+function renderCount() {
+  const n = picked().length, all = state.plan.cases.length;
+  $("count").innerHTML = `${all}개 중 <b>${n}</b>개 실행${all - n ? ` <span class="hint">· ${all - n}건 제외</span>` : ""}`;
+  $("allBtn").hidden = n === all;
+  // 0건 실행은 "전체 0건, 통과율 100%" 리포트가 된다. 누를 수 없게 막는다.
+  const run = $("runBtn");
+  run.disabled = n === 0 || state.dirty;
+  run.textContent = n ? `${n}개 실행` : "이대로 실행";
+  $("runHint").textContent = n === 0
+    ? "0건은 실행할 수 없습니다 — 통과율 100% 리포트가 됩니다"
+    : state.dirty ? "기획서 내용을 고쳤습니다 — 먼저 [고친 내용으로 항목 다시 만들기]" : "";
 }
 
 // ── 기획서에서 읽은 내용 — 사람이 보고 고친다 (prova/spec_edits.py) ─────────
@@ -985,10 +1309,10 @@ function renderSpec() {
   const p = state.plan;
   const d = state.draft;
   const edits = p.spec_edits || [];
-  const head = `<summary><b>기획서에서 읽은 내용</b>
+  const head = `<div class="spec-head"><b>기획서에서 읽은 내용</b>
     <span class="hint">${edits.length
-      ? `사람이 고친 값 ${edits.length}건으로 만든 케이스입니다`
-      : "잘못 읽은 칸이 있으면 기획서 문구 그대로 고친 뒤, 아래 '고친 내용으로 항목 다시 만들기' 를 누르세요"}</span></summary>`;
+      ? `사람이 고친 값 ${edits.length}건으로 만든 항목입니다`
+      : "잘못 읽은 칸이 있으면 기획서 문구 그대로 고친 뒤, 아래 '고친 내용으로 항목 다시 만들기' 를 누르세요"}</span></div>`;
   const screens = d.screens.map((sc, si) => {
     const meta = SCREEN_FIELDS.map(([k, name]) =>
       `<label class="spec-meta"><span>${name}</span>${specInput(`s${si}`, k, sc[k])}</label>`).join("");
@@ -1001,8 +1325,8 @@ function renderSpec() {
         <td><label class="check"><input type="checkbox" data-remove="s${si}.e${ei}"
             ${e._removed ? "checked" : ""}> 검사 안 함</label></td></tr>`;
     }).join("");
-    return `<section class="group spec-screen">
-      <header><h3>${esc(sc.screen_name)}</h3></header>
+    return `<section class="spec-screen">
+      <h3>${esc(sc.screen_name)}</h3>
       <div class="spec-metas">${meta}</div>
       <div class="spec-scroll"><table class="spec-table">
         <thead><tr><th>종류</th>${EL_FIELDS.map(([, n]) => `<th>${n}</th>`).join("")}<th></th></tr></thead>
@@ -1012,10 +1336,9 @@ function renderSpec() {
   const list = edits.length
     ? `<ul class="spec-edits">${edits.map((m) => `<li>${esc(m)}</li>`).join("")}</ul>` : "";
   $("specPanel").innerHTML = head + list + screens + `
-    <div class="runbar"><button class="btn ghost" id="replanBtn" type="button" disabled>
+    <div class="runbar"><button class="btn" id="replanBtn" type="button" disabled>
       고친 내용으로 항목 다시 만들기</button>
       <span class="hint" id="specHint">칸을 고치면 누를 수 있습니다</span></div>`;
-  if (edits.length) $("specPanel").open = true;
 
   $("specPanel").querySelectorAll("[data-spec]").forEach((el) => {
     el.addEventListener(el.type === "checkbox" ? "change" : "input", () => {
@@ -1048,7 +1371,7 @@ function specTarget(path) {
   return e ? screen.elements[Number(e.slice(1))] : screen;
 }
 
-// 고친 뒤 다시 만들지 않고 실행하면 화면의 케이스와 문서가 어긋난다 — 실행을 막는다.
+// 고친 뒤 다시 만들지 않고 실행하면 화면의 항목과 문서가 어긋난다 — 실행을 막는다.
 function markDirty() {
   state.dirty = true;
   $("replanBtn").disabled = false;
@@ -1064,9 +1387,13 @@ function draftDoc() {
   return d;
 }
 
+function resetPlanView() {
+  state.filter = ""; state.onlyOff = false; state.rule = ""; state.group = ""; state.sel = ""; state.mode = "items";
+}
+
 async function replan() {
   const doc = draftDoc();
-  showProgress("고친 내용으로 케이스를 다시 만드는 중", []);
+  showProgress("고친 내용으로 항목을 다시 만드는 중", []);
   state.busy = true;
   renderChrome();
   try {
@@ -1076,10 +1403,12 @@ async function replan() {
       body: JSON.stringify({ ...form(), doc }),
     });
     state.plan = await follow(job_id, pushProgress);
-    state.filter = ""; state.onlyOff = false;
+    resetPlanView();
+    state.busy = false;
     showPlan();
   } catch (err) {
-    showError("케이스를 다시 만들지 못했습니다", err.message);
+    state.busy = false;
+    showError("항목을 다시 만들지 못했습니다", err.message);
   } finally {
     state.busy = false;
     renderChrome();
@@ -1111,208 +1440,7 @@ function flowMap(flow) {
   return `<ol class="flowmap" aria-label="화면 흐름">${parts.join("")}</ol>`;
 }
 
-function renderPlanBody() {
-  $("planNotes").innerHTML = planNotes();
-  renderGroups();
-  renderCount();
-}
-
-function renderGroups() {
-  const shown = visibleCases();
-  if (!shown.length) {
-    $("groups").innerHTML =
-      `<div class="empty-line">조건에 맞는 케이스가 없습니다.</div>`;
-    return;
-  }
-
-  // 화면별로 묶는다. multi_spec 은 케이스가 39개라 한 덩어리면 벽이 된다.
-  const order = [];
-  const byScreen = new Map();
-  for (const c of shown) {
-    const key = c.flow_id ? `flow:${c.flow_id}` : c.screen_id;
-    if (!byScreen.has(key)) { byScreen.set(key, []); order.push(key); }
-    byScreen.get(key).push(c);
-  }
-
-  $("groups").innerHTML = order.map((key) => {
-    const list = byScreen.get(key);
-    const title = key.startsWith("flow:")
-      ? `흐름 <code class="fid">${esc(key.slice(5))}</code>` : esc(screenName(key));
-    const flow = key.startsWith("flow:") &&
-      ((state.plan.doc && state.plan.doc.flows) || []).find((f) => f.flow_id === key.slice(5));
-    const on = list.filter((c) => c.selected).length;
-    return `<section class="group">
-      <header>
-        <h3>${title}</h3>
-        <span class="n">${on}/${list.length}</span>
-        <button class="btn ghost quiet" data-group="${esc(key)}" type="button">
-          ${on === list.length ? "모두 끄기" : "모두 켜기"}</button>
-      </header>
-      ${flow && flow.screen_ids.length > 1 ? flowMap(flow) : ""}
-      ${byTarget(list)}
-    </section>`;
-  }).join("");
-
-  $("groups").querySelectorAll("[data-group]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const list = byScreen.get(btn.dataset.group);
-      const turnOn = list.some((c) => !c.selected);
-      list.forEach((c) => { c.selected = turnOn; });
-      renderPlanBody();
-    });
-  });
-
-  fluidHover($("groups"), ".case");
-  const bar = document.querySelector(".toolbar");
-  if (bar) document.documentElement.style.setProperty("--toolbar-h", `${bar.offsetHeight}px`);
-
-  $("groups").querySelectorAll(".case").forEach((row) => {
-    row.querySelector("input").addEventListener("change", (e) => {
-      const box = e.target;
-      const c = state.plan.cases.find((x) => x.case_id === row.dataset.id);
-      c.selected = box.checked;
-      row.classList.toggle("off", !c.selected);
-      // 안내와 개수가 사람의 조작을 따라와야 한다. 가장 중요한 안내가
-      // 따라오지 않으면 확인 단계가 형식만 남는다.
-      $("planNotes").innerHTML = planNotes();
-      renderCount();
-      row.closest(".group").querySelector(".n").textContent = groupCount(row);
-    });
-  });
-}
-
-// 화면 안에서 기획서 항목(이메일·비밀번호…)별로 한 번 더 묶는다 — 기획서 표와 나란히 대조하기 쉽다.
-function byTarget(list) {
-  const by = new Map();
-  for (const c of list) {
-    const k = c.target_label || "";
-    if (!by.has(k)) by.set(k, []);
-    by.get(k).push(c);
-  }
-  if (by.size < 2) return list.map((c) => caseRow(c)).join("");
-  return [...by].map(([k, cs]) =>
-    `<div class="subhead">${esc(k || "화면 전체")}<span>${cs.length}</span></div>` +
-    cs.map((c) => caseRow(c, true)).join("")).join("");
-}
-
-function groupCount(row) {
-  const rows = [...row.closest(".group").querySelectorAll(".case")];
-  const on = rows.filter((r) => r.querySelector("input").checked).length;
-  return `${on}/${rows.length}`;
-}
-
-// 사람이 읽는 제목을 먼저, 내부 id 는 작게 뒤로. 스크린 리더도 제목을 읽는다.
-// grouped: 항목 머리줄 아래에 놓인 줄 — 꼬리표에 항목 이름을 되풀이하지 않는다.
-// 제목을 누르면 절차·기대가 펼쳐진다 — 줄마다 '절차·기대 보기' 를 되풀이하지 않는다.
-// 선택은 체크박스로만 바꾼다. 읽으려고 누른 것이 케이스를 끄면 안 된다.
-function caseRow(c, grouped) {
-  const tags =
-    (c.violates ? `<span class="tag rule" title="${esc(c.violates)}">${
-      esc([grouped ? "" : c.target_label, c.rule_label || c.violates].filter(Boolean).join(" · "))}</span>` : "") +
-    (c.flow_id ? `<span class="tag flow">흐름</span>` : "");
-  const head = `<span class="desc">${esc(c.title)}</span>${tags}`;
-  return `<div class="case ${c.selected ? "" : "off"}" data-id="${esc(c.case_id)}">
-    <input type="checkbox" ${c.selected ? "checked" : ""}
-           aria-label="${esc(c.title)} 실행">
-    ${caseHow(c, head) || `<div class="line">${head}</div>`}
-  </div>`;
-}
-
-// 무슨 값을 넣고 무엇을 기대하는지. 제목만 보고 승인하지 않게 한다 (prova/wording.py).
-function caseHow(c, head) {
-  if (!(c.steps || []).length && !c.expected) return "";
-  const src = (c.sources || []).map(readSource);
-  const id = `src-${c.case_id}`;
-  return `<details class="how">
-    <summary class="line">${head}</summary>
-    <ol>${(c.steps || []).map((s) => `<li>${esc(s.replace(/^(준비 )?\d+\. /, "$1"))}</li>`).join("")}</ol>
-    ${c.expected ? `<div class="expect"><b>기대</b> <span>${citedExpect(c.expected, src, id)}</span></div>` : ""}
-    ${src.length ? `<div class="srcs" id="${esc(id)}">
-      <button type="button" class="srcs-btn" aria-expanded="false" aria-controls="${esc(id)}-list">
-        <b>기획서 근거</b> ${src.length}곳</button>
-      <div class="srcs-list" id="${esc(id)}-list"><div>${src.map((s, i) =>
-        `<p data-i="${i}"><b>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</b> ${esc(s.quote)}</p>`).join("")}</div></div>
-    </div>` : ""}
-    <div class="expect src"><b>케이스 번호</b> ${esc(c.case_id)}</div>
-  </details>`;
-}
-
-/* ── 기획서 근거를 그 말이 나온 자리에 ─────────────────────────────────────
- * 21st.dev Streaming Text 에서 '문장 안의 출처 칩' 과 '출처 목록이 펼쳐진다' 만 가져왔다.
- * 기대 문장의 따옴표 값('가입이 완료되었습니다')이 기획서 원문에 있으면 그 값이 든 마디 끝에
- * '2쪽' 칩을 붙인다. 못 찾은 근거는 문장 끝에 붙는다. 칩을 누르면 아래 근거 목록이 펼쳐지고
- * 그 칩의 원문만 진해진다. 낱말이 하나씩 흐려졌다 나타나는 효과는 버렸다 — Prova 의 문장은 이미
- * 다 만들어진 것이라 흘려 보여 주면 읽기만 늦어진다. 아바타·후속 질문·좋아요 버튼도 버렸다. */
-function readSource(text) {
-  const m = /^(\d+)쪽 (표|본문): ([\s\S]*)$/.exec(text);
-  return m ? { page: +m[1], kind: m[2], quote: m[3] } : { page: 0, kind: "", quote: text };
-}
-
-function citedExpect(expected, src, id) {
-  if (!src.length) return esc(expected);
-  const quoted = [...expected.matchAll(/'([^']{2,})'/g)];
-  const at = new Map();   // 칩을 끼울 자리 → 근거 번호들
-  src.forEach((s, i) => {
-    const hit = quoted.filter((m) => s.quote.includes(m[1]))
-      .sort((a, b) => b[1].length - a[1].length)[0];
-    let pos = expected.length;
-    if (hit) {
-      const from = hit.index + hit[0].length;
-      const stop = expected.slice(from).search(/ 또는 | 그리고 |, |\)/);
-      if (stop >= 0) pos = from + stop;
-    }
-    at.set(pos, [...(at.get(pos) || []), i]);
-  });
-  let html = "", last = 0;
-  for (const pos of [...at.keys()].sort((a, b) => a - b)) {
-    const idx = at.get(pos);
-    const pages = [...new Set(idx.map((i) => src[i].page).filter(Boolean))];
-    const label = pages.length ? `${pages.join("·")}쪽` : "기획서";
-    html += esc(expected.slice(last, pos)) +
-      `<button type="button" class="cite" data-src="${idx.join(" ")}" aria-controls="${esc(id)}-list"
-         aria-expanded="false" title="기획서 원문 보기">${label}<span class="sr"> 기획서 원문 보기</span></button>`;
-    last = pos;
-  }
-  return html + esc(expected.slice(last));
-}
-
-// 칩은 목록을 펼치고 제 원문만 진하게 한다. 같은 칩을 다시 누르면 접는다. 목록 머리줄은 그냥 펼치고 접는다.
-function onCite(e) {
-  const btn = e.target.closest(".cite, .srcs-btn");
-  if (!btn) return;
-  const how = btn.closest(".how"), box = how && how.querySelector(".srcs");
-  if (!box) return;
-  const chip = btn.classList.contains("cite");
-  const same = chip && btn.classList.contains("on");
-  const open = chip ? !same || !box.classList.contains("open") : !box.classList.contains("open");
-  const on = new Set(chip && open ? btn.dataset.src.split(" ") : []);
-  box.classList.toggle("open", open);
-  box.classList.toggle("picked", on.size > 0);
-  box.querySelectorAll(".srcs-list p").forEach((p) => p.classList.toggle("on", on.has(p.dataset.i)));
-  how.querySelectorAll(".cite").forEach((c) => {
-    c.classList.toggle("on", open && c === btn);
-    c.setAttribute("aria-expanded", String(open));
-  });
-  box.querySelector(".srcs-btn").setAttribute("aria-expanded", String(open));
-}
-
-function picked() {
-  return state.plan.cases.filter((c) => c.selected).map((c) => c.case_id);
-}
-
-function renderCount() {
-  const n = picked().length, all = state.plan.cases.length;
-  $("count").innerHTML =
-    `<b>${n}</b>건 실행 <span class="off">· ${all - n}건 제외</span>`;
-  // 0건 실행은 "전체 0건, 통과율 100%" 리포트가 된다. 누를 수 없게 막는다.
-  const run = $("runBtn");
-  run.disabled = n === 0 || state.dirty;
-  $("runHint").textContent = n === 0
-    ? "0건은 실행할 수 없습니다 — 통과율 100% 리포트가 됩니다"
-    : state.dirty ? "기획서 내용을 고쳤습니다 — 먼저 [다시 만들기]" : "";
-}
-
-// ── 실행 ───────────────────────────────────────────────────────────────────
+// ── 3 실행 ─────────────────────────────────────────────────────────────────
 
 async function startRun() {
   const ids = picked();
@@ -1351,10 +1479,12 @@ async function startRun() {
     }
     const out = await follow(job_id, pushProgress);
     finishProgress();
-    state.result = out;
+    state.busy = false;
+    state.resKind = ""; state.resSel = "";
     showResult(out);
     loadRuns();
   } catch (err) {
+    state.busy = false;
     if (err.status === 409) {
       // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
       // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
@@ -1370,8 +1500,42 @@ async function startRun() {
   }
 }
 
+// ── 4 결과 ─────────────────────────────────────────────────────────────────
+//
+// 결과는 리포트 파일(report.html)을 틀에 띄우지 않고 같은 실행의 report.json 으로 직접 그린다
+// (2026-11-24 hh). 리포트 파일은 그대로 남고 도구 막대의 '보고서 열기' 로 연다.
+
+// 실패 원인 이름 — 리포트(report_builder.CATEGORY_LABELS)와 같은 말
+const CATEGORY_NAME = {
+  element_not_found: "화면에서 못 찾음", input_error: "입력 불가", assertion_mismatch: "기획서와 다름",
+  timeout: "시간 초과", page_error: "페이지 오류", unknown: "원인 미분류", unverifiable: "확인 불가",
+  precondition_failed: "전제 미충족",
+};
+const KIND = {
+  defect: { label: "기획서와 다름", mark: "fail" },
+  infra: { label: "실행 문제", mark: "infra" },
+  unv: { label: "확인 불가", mark: "unv" },
+  pass: { label: "통과", mark: "ok" },
+};
+// 실패의 세 갈래 — report_builder.fail_kind 와 같다.
+const kindOf = (c) => c.verdict === "PASS" ? "pass"
+  : c.failure_category === "assertion_mismatch" ? "defect"
+  : c.failure_category === "unverifiable" ? "unv" : "infra";
+
+function runWhen(iso) {
+  const d = iso ? new Date(iso) : null;
+  if (!d || isNaN(d)) return "";
+  const p2 = (n) => String(n).padStart(2, "0");
+  const hm = `${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  const day = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diff = Math.round((day(new Date()) - day(d)) / 86400000);
+  return diff === 0 ? `오늘 ${hm}` : diff === 1 ? `어제 ${hm}` : `${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${hm}`;
+}
+
 function showResult(out) {
-  setStep(4);
+  state.result = out;
+  state.report = null;
+  setView("result", 4);
   const s = out.summary;
   const planned = state.plan ? state.plan.cases.length : s.total;
   const off = planned - s.total;
@@ -1382,10 +1546,6 @@ function showResult(out) {
   const defects = s.defects ?? s.fail;
   const unv = s.unverifiable || 0;
   const infra = s.fail - defects - unv;
-  const verdict = defects ? "fail" : infra ? "infra" : unv ? "unv" : "ok";
-  $("stageChips").innerHTML =
-    `<span class="chip ${verdict}">${chipMark(verdict)}` +
-    `${defects ? `기획서와 다름 ${defects}건` : infra ? `실행 문제 ${infra}건` : unv ? `확인 불가 ${unv}건` : "전부 통과"}</span>`;
 
   const notes = [];
   if (off > 0) {
@@ -1438,144 +1598,240 @@ function showResult(out) {
   const base = out.report_url.replace(/report\.html$/, "");
   // 리포트를 PDF 로도 받는다 — 받을 때 서버가 만든다(/api/report/<id>/pdf).
   const runId = base.replace(/\/$/, "").split("/").pop();
-  const api = `/api/report/${encodeURIComponent(runId)}`;
+  const apiBase = `/api/report/${encodeURIComponent(runId)}`;
 
+  // 도구 막대 제목 = 문서 이름과 때 (회차는 아래 조건 줄이 말한다 — 두 번 쓰지 않는다)
+  if (!out.spec && state.plan) { out.spec = form().pdf; out.target = form().url; }
+  out.doc = (out.spec || "").split(/[\\/]/).pop();
+  setBar("결과", [out.doc, runWhen(out.created_at)].filter(Boolean).join(" · ") || runId);
+  // 할 일은 도구 막대 오른쪽 한 곳 — 받기 둘, 열기, 다시 실행 (키트 Toolbar Button)
+  $("barActions").innerHTML = `<div class="glass">
+      <a href="${esc(base)}report.xlsx" download>${ICON.download}엑셀 받기</a>
+      <a href="${esc(apiBase)}/pdf" download>PDF 받기</a><i aria-hidden="true"></i>
+      <a href="${esc(out.report_url)}" target="_blank" rel="noopener">${ICON.open}보고서 열기</a>
+      ${state.plan ? `<button id="againBtn" type="button">${ICON.again}다시 실행</button>` : ""}
+    </div>`;
+  const again = $("againBtn");
+  // 같은 항목·같은 옵션으로 한 번 더 — 고친 뒤 확인할 때 1·2단계를 다시 밟지 않는다.
+  if (again) again.addEventListener("click", startRun);
+
+  const n = { pass: s.pass, defect: defects, infra, unv };
+  const total = s.total || 1;
+  const tile = (k, label, mark) =>
+    `<div class="tile${n[k] ? "" : " zero"}"><small>${vmark(mark, { dot: true, say: false })}${label}</small>` +
+    `<b><span class="rn">${n[k]}</span></b></div>`;
+  const parts = ["pass", "defect", "infra", "unv"].filter((k) => n[k]);
   $("stage").innerHTML = `
-    <div class="head result-head">
-      <div>
-      <h1>${defects
+    <div class="scroll result-scroll" id="resScroll">
+      <h2 class="verdict-line">${defects
         ? `${s.total}건 중 <mark class="fail">${defects}건이 기획서와 다릅니다.</mark>`
         : infra
         ? `${s.total}건 중 <mark class="infra">${infra}건을 실행 문제로 확인하지 못했습니다.</mark>`
         : unv
         ? `${s.total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없습니다.</mark>`
-        : `<mark class="pass">${s.total}건 모두 통과했습니다.</mark>`}</h1>
-      ${cond ? `<div class="cond">${esc(cond)}</div>` : ""}
+        : `<mark class="pass">${s.total}건 모두 통과했습니다.</mark>`}</h2>
+      ${cond ? `<p class="cond">${esc(cond)}</p>` : ""}
+      <div class="notes">${notes.join("")}</div>
+      <div class="tiles">
+        <div class="tile"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b>
+          <div class="ratio" role="img" aria-label="${esc(parts.map((k) =>
+            `${KIND[k].label} ${n[k]}건`).join(", "))}">${
+            parts.map((k) => `<i class="${k}" style="flex:${n[k] / total}"></i>`).join("")}</div></div>
+        ${tile("pass", "통과", "ok")}${tile("defect", "기획서와 다름", "fail")}${tile("infra", "실행 문제", "infra")}${tile("unv", "확인 불가", "unv")}
       </div>
-      <div class="actions">
-        <a class="btn primary" href="${esc(base)}report.xlsx" download>엑셀 받기</a>
-        <a class="btn ghost" href="${esc(api)}/pdf" download>PDF 받기</a>
-        <a class="btn ghost" href="${esc(out.report_url)}" target="_blank" rel="noopener">리포트 파일 열기</a>
-        ${state.plan ? `<button class="btn ghost" id="againBtn" type="button">다시 실행</button>` : ""}
+      <div class="split">
+        <div class="flist" id="flist"><p class="empty">항목별 결과를 불러오는 중…</p></div>
+        <div class="detail" id="detail" aria-live="polite"></div>
       </div>
-    </div>
-    ${notes.join("")}
-    <div class="result-chart">
-      ${donutBlock({ defect: defects, infra, unv, pass: s.pass })}
-      <dl class="sumstrip">
-        <div class="f${defects ? " hot" : ""}" data-k="defect"><dt>기획서와 다름</dt><dd>${defects}</dd></div>
-        <div class="x${infra ? " hot" : ""}" data-k="infra"><dt>실행 문제</dt><dd>${infra}</dd></div>
-        ${unv ? `<div class="u" data-k="unv"><dt>확인 불가</dt><dd>${unv}</dd></div>` : ""}
-        <div class="p" data-k="pass"><dt>통과</dt><dd>${s.pass}</dd></div>
-        <div class="r" data-k="pass"><dt>통과율</dt><dd>${s.pass_rate}%</dd></div>
-      </dl>
-    </div>
-    <div class="reportbox">
-      <iframe id="reportFrame" src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
-              allow="clipboard-write"></iframe>
     </div>`;
-  // 같은 항목·같은 옵션으로 한 번 더 — 고친 뒤 확인할 때 1·2단계를 다시 밟지 않는다.
-  const again = $("againBtn");
-  if (again) again.addEventListener("click", startRun);
-  $("stage").querySelectorAll(".sumstrip dd").forEach(rollIn);
-  linkDonut($("stage").querySelector(".result-chart"));
-  fitFrame($("stage").querySelector("iframe"));
+  $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
+  $("detail").addEventListener("click", onCite);
+  $("sideFoot").textContent = out.target || runId;
+  $("sideFoot").title = `실행 기록 ${runId}`;
+  renderSideResult(null, n, h);
+  loadReport(out, base);
 }
 
-// ── 원형차트(도넛) ────────────────────────────────────────────────────────
-// 리포트 파일의 도넛(report_builder._donut_svg)과 같은 그림이다 — 결함 → 실행 문제 →
-// 확인 불가 → 통과, 12시에서 시계 방향. 이름표는 옆의 숫자 칸(sumstrip)이 맡는다 —
-// 색만으로 말하지 않는다. 알림 상자 아래에 둔다 — 알림이 숫자보다 눈에 덜 띄면 안 된다(요구서 4절 1번).
-//
-// 21st.dev Donut Chart 에서 가져온 것: 12시부터 한 번에 그려지는 것, 조각이나 숫자 칸에
-// 올리면 서로 짚고 가운데 글자가 그 조각의 수·비율로 바뀌는 것. 버린 것: 빛 번짐·커짐,
-// 조각마다 따로 늦게 나타나기, 이름표가 하나씩 미끄러져 들어오기, 그림자 카드.
-const DONUT_LABELS = { defect: "기획서와 다름", infra: "실행 문제", unv: "확인 불가", pass: "통과" };
-let donutSeq = 0;
+async function loadReport(out, base) {
+  let rep;
+  try {
+    rep = await api(`${base}report.json`);
+  } catch (e) {
+    // 예전 실행이라 report.json 이 없으면 리포트 파일을 그대로 띄운다.
+    if (state.result !== out) return;
+    $("flist").innerHTML = `<p class="empty">항목별 결과 파일을 읽지 못해 리포트 파일을 아래에 띄웁니다.</p>`;
+    $("detail").remove();
+    $("resScroll").insertAdjacentHTML("beforeend",
+      `<div class="reportbox"><iframe src="${esc(out.report_url)}" title="검증 리포트"></iframe></div>`);
+    return;
+  }
+  if (state.result !== out || document.body.dataset.view !== "result") return;   // 그사이 다른 화면으로 갔다
+  state.report = rep;
+  if (!out.created_at && rep.created_at) {
+    out.created_at = rep.created_at;
+    $("barSub").textContent = [out.doc, runWhen(rep.created_at)].filter(Boolean).join(" · ");
+  }
+  const counts = { defect: 0, infra: 0, unv: 0, pass: 0 };
+  rep.cases.forEach((c) => { counts[kindOf(c)] += 1; });
+  if (!state.resKind) state.resKind = ["defect", "infra", "unv", "pass"].find((k) => counts[k]) || "pass";
+  renderSideResult(rep, counts, (out.summary && out.summary.history) || {});
+  renderFlist();
+}
 
-function donutBlock(n) {
-  const keys = Object.keys(DONUT_LABELS).filter((k) => n[k] > 0);
-  const total = keys.reduce((a, k) => a + n[k], 0);
-  if (!total) return "";
-  const size = 132, c = size / 2, w = 16, r = c - w / 2 - 1, len = 2 * Math.PI * r;
-  const gap = keys.length > 1 ? 2 : 0;
-  const pct = (k) => `${Math.round((n[k] / total) * 100)}%`;
-  const id = `donutSweep${++donutSeq}`;
-  let off = 0;
-  const arcs = keys.map((k) => {
-    const arc = (n[k] / total) * len, drawn = Math.max(arc - gap, 0.5);
-    const el = `<circle class="seg ${k}" data-k="${k}" data-n="${n[k]}" data-pct="${pct(k)}" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"
-      stroke-dasharray="${drawn.toFixed(2)} ${(len - drawn).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}">
-      <title>${DONUT_LABELS[k]} ${n[k]}건 (${pct(k)})</title></circle>`;
-    off += arc;
-    return el;
-  }).join("");
-  const aria = keys.map((k) => `${DONUT_LABELS[k]} ${n[k]}건`).join(", ");
-  return `
-    <div class="donut" data-total="${total}">
-      <svg viewBox="0 0 ${size} ${size}" width="${size}" height="${size}" role="img" aria-label="전체 ${total}건 — ${aria}">
-        <mask id="${id}" class="sweep-mask"><circle class="sweep" cx="${c}" cy="${c}" r="${r}" fill="none"
-          stroke-width="${w + 4}" pathLength="100"/></mask>
-        <circle class="track" cx="${c}" cy="${c}" r="${r}" fill="none" stroke-width="${w}"/>
-        <g transform="rotate(-90 ${c} ${c})" mask="url(#${id})">${arcs}</g>
-        <text x="${c}" y="${c + 4}" class="big">${total}</text>
-        <text x="${c}" y="${c + 22}" class="small">케이스</text>
-      </svg>
+/** 사이드바 — 판정별 묶음. 고르면 가운데 목록이 그 묶음만 보인다. */
+function renderSideResult(rep, n, h) {
+  const item = (k, label, mark, count) =>
+    `<li><button class="sitem" type="button" data-kind="${k}" aria-pressed="${state.resKind === k}" ${rep ? "" : "disabled"}>` +
+    `${mark ? vmark(mark, { dot: true, say: false }) : ""}${label}<span class="ct">${count}</span></button></li>`;
+  $("sideResult").innerHTML = `<h4>결과 보기</h4><ul class="slist">` +
+    item("defect", "기획서와 다름", "fail", n.defect) + item("infra", "실행 문제", "infra", n.infra) +
+    item("unv", "확인 불가", "unv", n.unv) + item("pass", "통과", "ok", n.pass) + `</ul>` +
+    (h.previous_run ? `<h4>지난 회차와 비교</h4><ul class="slist">` +
+      item("regressed", "새로 실패", "", (h.regressed || []).length) +
+      item("fixed", "해결", "", (h.fixed || []).length) + `</ul>` : "");
+}
+
+$("sideResult").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-kind]");
+  if (!b || !state.report) return;
+  state.resKind = b.dataset.kind;
+  state.resSel = "";
+  $("sideResult").querySelectorAll("[data-kind]").forEach((x) =>
+    x.setAttribute("aria-pressed", String(x === b)));
+  renderFlist();
+});
+
+function resCases() {
+  const rep = state.report;
+  const h = (state.result.summary && state.result.summary.history) || {};
+  if (state.resKind === "regressed" || state.resKind === "fixed") {
+    const want = new Set(h[state.resKind] || []);
+    return rep.cases.filter((c) => want.has(c.title) || want.has(c.plain));
+  }
+  return rep.cases.filter((c) => kindOf(c) === state.resKind);
+}
+
+const planCase = (id) => state.plan && state.plan.cases.find((c) => c.case_id === id);
+
+function resMeta(c) {
+  const k = kindOf(c);
+  const pc = planCase(c.case_id);
+  return [c.target_label, pc && pc.rule_label,
+    k === "infra" ? CATEGORY_NAME[c.failure_category] || "실행 문제" : "",
+    c.elapsed_ms != null ? `${(c.elapsed_ms / 1000).toFixed(2)}초` : ""].filter(Boolean).join(" · ");
+}
+
+/** 가운데 목록 — 고른 묶음의 항목. 화면이 여럿이면 화면마다 머리 줄. */
+function renderFlist() {
+  const list = resCases();
+  const names = (state.result.summary && state.result.summary.screen_names) || {};
+  const label = { regressed: "새로 실패", fixed: "해결" }[state.resKind] || KIND[state.resKind].label;
+  if (!list.length) {
+    $("flist").innerHTML = `<div class="h">${esc(label)} · 0</div><p class="empty">이 묶음에 든 항목이 없습니다.</p>`;
+    $("detail").innerHTML = "";
+    return;
+  }
+  if (!list.some((c) => c.case_id === state.resSel)) state.resSel = list[0].case_id;
+  const groups = new Map();
+  list.forEach((c) => {
+    const g = c.flow_id ? `흐름 ${c.flow_id}` : names[c.screen_id] || c.screen_id || "";
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(c);
+  });
+  const one = groups.size === 1;
+  $("flist").innerHTML = [...groups].map(([g, cs]) =>
+    `<div class="h">${esc(one ? label : g)} · ${cs.length}</div>` + cs.map((c) =>
+      `<button class="it" type="button" data-id="${esc(c.case_id)}" aria-current="${c.case_id === state.resSel}">` +
+      `${vmark(KIND[kindOf(c)].mark)}<span><p>${esc(c.plain || c.title)}</p><span class="hint">${esc(resMeta(c))}</span></span></button>`
+    ).join("")).join("");
+  renderDetail(list.find((c) => c.case_id === state.resSel));
+}
+
+$("stage").addEventListener("click", (e) => {
+  const it = e.target.closest(".flist .it");
+  if (!it || !state.report) return;
+  state.resSel = it.dataset.id;
+  $("flist").querySelectorAll(".it").forEach((x) => x.setAttribute("aria-current", String(x === it)));
+  renderDetail(state.report.cases.find((c) => c.case_id === it.dataset.id));
+});
+$("stage").addEventListener("keydown", (e) => {
+  const it = e.target.closest(".flist .it");
+  if (!it || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return;
+  e.preventDefault();
+  const all = [...$("flist").querySelectorAll(".it")];
+  const next = all[all.indexOf(it) + (e.key === "ArrowDown" ? 1 : -1)];
+  if (next) { next.focus(); next.click(); }
+});
+
+// 실행한 단계를 사람 말로 — 리포트의 재현 절차와 같은 순서.
+function stepWords(st, html = true) {
+  const code = (v) => html ? `<code>${esc(v)}</code>` : `'${v}'`;
+  const t = html ? esc(st.target || "") : st.target || "";
+  switch (st.action) {
+    case "navigate": return `열기 ${code(st.target || "")}`;
+    case "fill": return `${t} ← ${code(st.value ?? "")}`;
+    case "select": return `${t}에서 ${code(st.value ?? "")} 고르기`;
+    case "check": return `${t} 체크`;
+    case "uncheck": return `${t} 체크 해제`;
+    case "click": return `'${t}' 누르기`;
+    default: return `${html ? esc(st.action) : st.action} ${t}`.trim();
+  }
+}
+
+// 실제로 일어난 일 — 판정 사유의 첫 문장, 관찰한 것이 다르면 그것도.
+function actualLines(c) {
+  const ev = c.evidence || {};
+  if (c.verdict === "PASS") return [ev.actual || "기대한 대로 동작했습니다."];
+  const detail = (c.failure_detail || "").replace(/^기획서에 적힌 /, "");
+  const head = detail.replace(/\s*\(([^()]*)\)\s*$/, "").trim();
+  const lines = [];
+  if (head) lines.push(head);
+  if (ev.actual && !head.includes(ev.actual)) lines.push(ev.actual);
+  return lines.length ? lines : ["사유가 기록되지 않았습니다."];
+}
+
+/** 오른쪽 상세 — 기대·실제, 기획서 원문, 마지막 화면과 실행한 단계. 리포트 파일을 열지 않아도 원인을 본다. */
+function renderDetail(c) {
+  const box = $("detail");
+  if (!box || !c) return;
+  const k = kindOf(c);
+  const ev = c.evidence || {};
+  const base = state.result.report_url.replace(/report\.html$/, "");
+  const steps = c.step_results || [];
+  const shotStep = steps.find((st) => st.screenshot === ev.screenshot);
+  const lines = actualLines(c);
+  const where = (() => { try { return ev.url ? new URL(ev.url).pathname : ""; } catch (e) { return ""; } })();
+  const src = (c.spec_sources || []).map((s) => ({ page: s.page, kind: s.table ? "표" : "본문", quote: s.quote }));
+  const names = (state.result.summary && state.result.summary.screen_names) || {};
+  const head = { pass: "실제 — 통과", defect: "실제 — 기획서와 다름", unv: "실제 — 확인 불가",
+                 infra: `실제 — 실행 문제 · ${CATEGORY_NAME[c.failure_category] || "원인 미분류"}` }[k];
+  box.innerHTML = `
+    <div><h3>${esc(c.plain || c.title)}</h3>
+      <p class="hint meta">${esc([c.flow_id ? `흐름 ${c.flow_id}` : names[c.screen_id], resMeta(c)].filter(Boolean).join(" · "))}</p></div>
+    <div class="ev">
+      <div class="exp"><h6>기대</h6>${esc(ev.expected || "—")}</div>
+      <div class="act ${k}"><h6>${head}</h6>${esc(lines[0])}${lines.slice(1).map((l) => `<div class="more">${esc(l)}</div>`).join("")}
+        ${where ? `<div class="more">끝난 주소 <code class="code">${esc(where)}</code></div>` : ""}</div>
+    </div>
+    ${src.length ? `<div><h5>기획서 근거</h5>${src.map((s, i) =>
+      `<div class="quote" data-i="${i}"><cite>${s.page ? `${s.page}쪽 ${s.kind}` : "기획서"}</cite>${markQuote(s.quote, ev.expected)}</div>`).join("")}</div>` : ""}
+    <div class="shot">
+      ${ev.screenshot ? `<figure><figcaption>${shotStep ? `${shotStep.seq}단계 ${esc(stepWords(shotStep, false))} 뒤 화면` : "마지막 화면"}</figcaption>
+        <a href="${esc(base + ev.screenshot)}" target="_blank" rel="noopener" title="크게 보기">
+          <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"></a></figure>`
+        : `<figure><p class="noshot">이 항목은 화면을 찍지 않았습니다.</p></figure>`}
+      <div class="keysteps"><b>실행한 단계 ${steps.length}</b>
+        <ol class="steps">${steps.map((st) => `<li class="${st.status !== "ok" ? "bad" : st.phase && st.phase !== "test" ? "prep" : ""}">` +
+          `${stepWords(st)}${st.status !== "ok" && st.error_detail ? ` — ${esc(st.error_detail)}` : ""}</li>`).join("")}</ol>
+        <p class="idline" style="margin-top:8px">${esc(c.case_id)}</p></div>
     </div>`;
-}
-
-/**
- * 조각 ↔ 숫자 칸을 잇는다. 어느 쪽에 올려도 그 조각과 칸만 진하고, 가운데가 '16 / 41%' 로
- * 바뀐다. 0건인 칸은 조각이 없으니 잇지 않는다. 글자는 모두 화면에 이미 있으니 마우스용 덧붙임이다.
- */
-function linkDonut(root) {
-  const donut = root && root.querySelector(".donut");
-  if (!donut) return;
-  const big = donut.querySelector(".big"), small = donut.querySelector(".small");
-  const has = new Set([...donut.querySelectorAll(".seg")].map((e) => e.dataset.k));
-  let on = "";
-  const show = (k) => {
-    k = has.has(k) ? k : "";
-    if (k === on) return;
-    on = k;
-    if (k) root.dataset.on = k; else delete root.dataset.on;
-    const seg = k && donut.querySelector(`.seg[data-k="${k}"]`);
-    big.textContent = seg ? seg.dataset.n : donut.dataset.total;
-    // 이름은 옆에서 진해진 숫자 칸이 말한다 — 가운데는 수와 비율만(구멍에 들어가는 길이).
-    small.textContent = seg ? seg.dataset.pct : "케이스";
-    if (!reduceMotion() && big.animate) {
-      for (const t of [big, small]) t.animate([{ opacity: 0.25 }, { opacity: 1 }], { duration: 160, easing: "ease-out" });
-    }
-  };
-  root.addEventListener("pointerover", (e) => {
-    const hit = e.target.closest(".seg, .sumstrip > div");
-    show(hit ? hit.dataset.k : "");
-  });
-  root.addEventListener("pointerleave", () => show(""));
-}
-
-// 화면 모드는 OS 설정만 따른다 — Apple HIG Dark Mode: 앱 안에 밝게/어둡게 설정을 따로 두면
-// 사람이 두 곳을 맞춰야 하고, OS 를 바꿨는데 이 화면만 안 바뀌면 고장 난 줄 안다.
-// 리포트(iframe)도 같은 OS 설정을 따르므로 따로 맞출 것이 없다.
-
-/**
- * 리포트 틀의 높이를 내용에 맞춘다 — 틀 안에 스크롤이 또 생기면 페이지 스크롤과 겹쳐
- * 어디를 굴려야 할지 헷갈린다. 펼침·접기로 높이가 바뀌어도 따라간다 (같은 출처라 읽을 수 있다).
- */
-function fitFrame(frame) {
-  frame.addEventListener("load", () => {
-    const doc = frame.contentDocument;
-    if (!doc) return;
-    const fit = () => { frame.style.height = doc.documentElement.scrollHeight + "px"; };
-    new ResizeObserver(fit).observe(doc.body);
-    fit();
-  });
 }
 
 // ── 계획 만들기 ────────────────────────────────────────────────────────────
 
 $("planBtn").addEventListener("click", async () => {
   saveSettings();
+  $("formNote").innerHTML = "";
   showProgress("기획서를 읽는 중", []);
   state.busy = true;
   renderChrome();
@@ -1587,9 +1843,11 @@ $("planBtn").addEventListener("click", async () => {
       body: JSON.stringify(form()),
     });
     state.plan = await follow(job_id, pushProgress);
-    state.filter = ""; state.onlyOff = false;
+    resetPlanView();
+    state.busy = false;
     showPlan();
   } catch (err) {
+    state.busy = false;
     if (err.status === 409) {
       showError("이미 실행 중입니다", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
     } else {
@@ -1602,77 +1860,25 @@ $("planBtn").addEventListener("click", async () => {
   }
 });
 
-// ── 실행 기록 ──────────────────────────────────────────────────────────────
+// ── 실행 기록 (1단계 사이드바) ─────────────────────────────────────────────
 
-/**
- * 기록 한 줄의 이름.
- *
- * 기획서 이름만 쓰면 같은 기획서를 반복해서 돌린 목록이 전부 똑같아 보인다 —
- * 실제로 그랬다. 사람이 구분하는 기준은 '어느 화면을 어느 구현으로' 이므로
- * 기획서와 변형(good/bad)을 함께 쓴다.
- */
-function runLabel(r) {
-  return r.spec || r.run_id;
-}
-
-/** 어디를 검사했는지 — 주소에서 http:// 를 뺀 것. 같은 기획서를 다른 구현에 돌린 것을 가른다. */
-function runTarget(r) {
-  return (r.target || "").replace(/^https?:\/\//, "");
-}
-
-/** 언제 돌렸는지. 같은 대상을 여러 번 돌리면 이것만이 구분점이 된다. */
-function runWhen(r) {
-  const t = r.created_at || "";
-  const m = /(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(t);
-  return m ? `${m[2]}-${m[3]} ${m[4]}:${m[5]}` : r.run_id;
-}
-
-// 묶음마다 처음에 보이는 기록 수. 나머지는 '더 보기' 안에 둔다 — 목록 칸을 잘라 스크롤시키면
-// 마지막 줄이 반쯤 가려진다.
+// 묶음마다 처음에 보이는 기록 수. 나머지는 '이전 기록 더 보기' 를 눌러야 보인다.
 const RUNS_SHOWN = 5;
 
-/** 결과 한마디 — 결과 화면과 같은 말(기획서와 다름 · 실행 문제)을 쓴다. */
-function runScore(r) {
+function runKind(r) {
   const defects = (r.summary && r.summary.defects) ?? r.fail;
   const unv = (r.summary && r.summary.unverifiable) || 0;
   const infra = r.fail - defects - unv;
-  if (defects) return `<span class="score fail">기획서와 다름 ${defects}</span>`;
-  if (infra) return `<span class="score infra">실행 문제 ${infra}</span>`;
-  if (unv) return `<span class="score unv">확인 불가 ${unv}</span>`;
-  return `<span class="score pass">전부 통과</span>`;
-}
-
-/**
- * 통과 못 한 케이스가 어느 화면에서 났는지 — 많은 순으로. 흐름 케이스는 '흐름' 하나로 묶는다.
- *
- * 21st.dev Animated Card Diagram 에서 '요약이 비켜나고 그 요약을 이루는 것들이 들어온다'
- * 만 가져왔다. 줄에 올리거나 키보드로 오면 둘째 줄(대상·차수·때)이 위로 빠지고 이 줄이
- * 들어온다 — 오른쪽 '기획서와 다름 16' 과 나란히 읽힌다. 빛 번짐·격자·확대·유리 칩은 버렸다.
- * 화면 읽기 프로그램에는 늘 읽힌다.
- */
-function runWhere(r) {
-  const s = r.summary || {};
-  const names = s.screen_names || {};
-  const parts = Object.entries(s.by_screen || {})
-    .filter(([, v]) => v && v.fail).map(([k, v]) => [names[k] || k, v.fail]);
-  const flows = Object.values(s.by_flow || {}).reduce((n, v) => n + ((v && v.fail) || 0), 0);
-  if (flows) parts.push(["흐름", flows]);
-  if (!parts.length) return "";
-  parts.sort((a, b) => b[1] - a[1]);
-  return `<span class="where"><span class="sr">통과 못 한 곳: </span>` +
-    parts.map(([n, c]) => `${esc(n)} <b>${c}</b>`).join(`<i aria-hidden="true"> · </i>`) + `</span>`;
+  return defects ? "fail" : infra ? "infra" : unv ? "unv" : "ok";
 }
 
 async function loadRuns() {
-  // 비어 있는 것과 아직 안 온 것을 구분해 준다. 빈 칸만 보이면 사람은
-  // 기록이 없는 줄 안다.
-  if (!$("runs").children.length) {
-    $("runs").innerHTML = `<div class="empty-line">불러오는 중…</div>`;
-  }
+  // 비어 있는 것과 아직 안 온 것을 구분해 준다. 빈 칸만 보이면 사람은 기록이 없는 줄 안다.
+  if (!$("runs").children.length) $("runs").innerHTML = `<p class="empty">불러오는 중…</p>`;
   try {
     state.runs = (await api("/api/runs?limit=60")).runs;
   } catch (e) {
-    $("runs").innerHTML = `<div class="empty-line">기록을 불러오지 못했습니다.</div>`;
+    $("runs").innerHTML = `<p class="empty">기록을 불러오지 못했습니다.</p>`;
     return;
   }
   // 방금 새 이름으로 돌렸으면 그 이름도 이제 고를 수 있는 프로젝트다.
@@ -1681,18 +1887,21 @@ async function loadRuns() {
   renderRuns();
 }
 
+function renderRunsFoot() {
+  if (document.body.dataset.view === "form") {
+    $("sideFoot").textContent = state.runs.length ? `기록 ${state.runs.length}건` : "";
+  }
+}
+
 /**
- * 실행 기록을 프로젝트별로 묶어 그린다.
- *
- * 최신순 한 줄 목록에서는 'A사 납품을 몇 차까지 돌렸나' 를 보려면 줄을 하나씩 읽어야 했다.
- * 프로젝트마다 접는 묶음으로 두고, 지금 고른 프로젝트만 펼친다. 프로젝트를 비워 두었으면
- * '프로젝트 없음' 을, 고른 프로젝트에 아직 실행이 없으면 가장 최근 묶음을 펼친다.
- * 묶음 안은 최신순이고 줄마다 기획서와 차수를 적는다 — 차수는 기획서별로 센다.
+ * 실행 기록을 프로젝트별로 묶어 그린다 — 지금 고른 프로젝트가 맨 위.
+ * 줄마다 기획서와 차수, 언제·몇 건 통과. 판정은 앞의 모양(✓ ✕ ! ?)과 숨은 낱말로도 말한다.
  */
 function renderRuns() {
   const runs = state.runs;
+  renderRunsFoot();
   if (!runs.length) {
-    $("runs").innerHTML = `<div class="empty-line">아직 실행한 기록이 없습니다.</div>`;
+    $("runs").innerHTML = `<p class="empty">아직 실행한 기록이 없습니다.</p>`;
     return;
   }
   const current = $("project").value.trim();
@@ -1702,38 +1911,39 @@ function renderRuns() {
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
   });
-  // 지금 고른 프로젝트를 맨 위로, 나머지는 최근에 돌린 순서 그대로.
   const order = [...groups.keys()].sort((a, b) => (b === current) - (a === current));
-  const open = groups.has(current) ? current : order[0];
-  const shown = $("runs").querySelector(".run[aria-current='true']");
-  const shownId = shown ? shown.dataset.run : "";
-
-  $("runs").innerHTML = order.map((key) => `
-    <details class="run-group" ${key === open ? "open" : ""}>
-      <summary><b>${esc(key || "프로젝트 없음")}</b><span>${groups.get(key).length}회</span></summary>
-      ${groups.get(key).map((r, i) => (i === RUNS_SHOWN ? `<details class="run-more"><summary>이전 기록 ${groups.get(key).length - RUNS_SHOWN}개 더 보기</summary>` : "") + `
-      <button class="run ${r.fail ? "has-fail" : ""} ${runWhere(r) ? "has-where" : ""}" type="button"
-              data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)} · ${r.pass}/${r.total} 통과"
-              aria-current="${r.run_id === shownId}">
-        <i class="led"></i>
-        <span class="who"><b>${esc(runLabel(r))}</b><span class="line2"><span class="meta">${esc(
-          [runTarget(r), r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span>${runWhere(r)}</span></span>
-        ${runScore(r)}
-      </button>`).join("")}${groups.get(key).length > RUNS_SHOWN ? "</details>" : ""}
-    </details>`).join("");
-  fluidHover($("runs"), ".run, .run-group > summary, .run-more > summary");
-
-  $("runs").querySelectorAll("[data-run]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      $("runs").querySelectorAll(".run").forEach((b) =>
-        b.setAttribute("aria-current", String(b === btn)));
-      const r = runs.find((x) => x.run_id === btn.dataset.run);
-      state.plan = null;
-      showResult({ run_id: r.run_id, summary: r.summary,
-                   report_url: `/runs/${r.run_id}/report.html` });
-    });
-  });
+  $("runs").innerHTML = order.map((key) => {
+    const list = groups.get(key);
+    const open = state.runsOpen[key];
+    const shown = open ? list : list.slice(0, RUNS_SHOWN);
+    return `<h4>${esc(key || "프로젝트 없음")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
+      shown.map((r) => `<li><button class="sitem tall" type="button" data-run="${esc(r.run_id)}"
+          title="${esc(`${r.run_id} · ${r.target} · ${r.pass}/${r.total} 통과`)}">${vmark(runKind(r), { dot: true })}
+        <span class="two"><b>${esc((r.spec || r.run_id).replace(/\.pdf$/i, ""))}${r.round ? ` · ${r.round}차` : ""}</b>
+        <span>${esc([runWhen(r.created_at), `${r.pass}/${r.total} 통과`].filter(Boolean).join(" · "))}</span></span></button></li>`).join("") +
+      (list.length > RUNS_SHOWN ? `<li><button class="sitem more" type="button" data-more="${esc(key)}">${open
+        ? "접기" : `이전 기록 ${list.length - RUNS_SHOWN}개 더 보기`}</button></li>` : "") + `</ul>`;
+  }).join("");
 }
+
+$("runs").addEventListener("click", (e) => {
+  const more = e.target.closest("[data-more]");
+  if (more) {
+    const key = more.dataset.more;
+    state.runsOpen[key] = !state.runsOpen[key];
+    renderRuns();
+    const again = [...$("runs").querySelectorAll("[data-more]")].find((x) => x.dataset.more === key);
+    if (again) again.focus();
+    return;
+  }
+  const btn = e.target.closest("[data-run]");
+  if (!btn || state.busy) return;
+  const r = state.runs.find((x) => x.run_id === btn.dataset.run);
+  state.plan = null;
+  state.resKind = ""; state.resSel = "";
+  showResult({ run_id: r.run_id, summary: r.summary, created_at: r.created_at,
+               spec: r.spec, target: r.target, report_url: `/runs/${r.run_id}/report.html` });
+});
 
 // ── 기획서 묶음 · 프로젝트 ─────────────────────────────────────────────────
 
@@ -1785,7 +1995,7 @@ function renderProjects(names) {
   const making = pick.value === NEW_PROJECT;
   pick.innerHTML = `<option value="">프로젝트 없음</option>` +
     knownProjects().map((n) => `<option value="${esc(n)}">${esc(n)}</option>`).join("") +
-    `<option value="${NEW_PROJECT}">＋ 새 프로젝트 만들기…</option>`;
+    `<option value="${NEW_PROJECT}">새 프로젝트 만들기…</option>`;
   pick.value = making ? NEW_PROJECT : $("project").value.trim();
   $("projectNewRow").hidden = !making;
 }
@@ -1867,9 +2077,12 @@ $("planBtn").addEventListener("click", (e) => {
 }, true);
 
 function syncUploadLabel() {
+  const btn = $("uploadBtn");
+  const label = btn.querySelector("span");
+  if (!label || btn.getAttribute("aria-busy") === "true") return;
   const current = $("project").value.trim();
-  $("uploadBtn").textContent = current
-    ? `'${current}' 에 기획서 올리기…` : "PDF/JSON 올리기…";   // 파일 창을 연다 — HIG: 끝에 말줄임
+  // 파일 창을 연다 — HIG: 끝에 말줄임
+  label.textContent = current ? `'${current}' 에 기획서 올리기…` : "기획서 올리기…";
 }
 
 async function refreshSpecs(select) {
@@ -1879,7 +2092,7 @@ async function refreshSpecs(select) {
   renderSpecs(select);
 }
 
-// 글자를 칠 때마다: 올릴 자리와 묶음 순서, 펼칠 실행 기록을 맞춘다.
+// 글자를 칠 때마다: 올릴 자리와 묶음 순서, 실행 기록의 묶음 순서를 맞춘다.
 $("project").addEventListener("input", () => {
   syncUploadLabel();
   renderSpecs();
@@ -1892,10 +2105,11 @@ $("project").addEventListener("change", () => {
   const own = state.specGroups.find((g) => current !== "" && g.project === current);
   if (own && !own.specs.includes($("pdf").value)) $("pdf").value = own.specs[0];
   saveSettings();
+  syncVariant();
   renderChrome();
 });
 
-// ── 사이드바 조작 ──────────────────────────────────────────────────────────
+// ── 기획서 올리기 ──────────────────────────────────────────────────────────
 
 $("uploadBtn").addEventListener("click", () => $("upload").click());
 
@@ -1909,11 +2123,11 @@ async function uploadFile(file) {
   const btn = $("uploadBtn");
   busyButton(btn, "올리는 중");
   try {
-    const form = new FormData();
-    form.append("file", file);
+    const fd = new FormData();
+    fd.append("file", file);
     // 기획서는 지금 적힌 프로젝트의 폴더로 들어간다 (서버가 이름을 확인한다).
-    form.append("project", $("project").value.trim());
-    const out = await api("/api/upload", { method: "POST", body: form });
+    fd.append("project", $("project").value.trim());
+    const out = await api("/api/upload", { method: "POST", body: fd });
     // JSON 은 Figma 응답, PDF 는 기획서 — 올라간 쪽 셀렉트에 넣고 선택한다.
     if (out.path.toLowerCase().endsWith(".json")) {
       const target = $("figma");
@@ -1926,33 +2140,32 @@ async function uploadFile(file) {
     } else {
       await refreshSpecs(out.path);
     }
+    $("formNote").innerHTML = "";
     saveSettings();
+    syncVariant();
     renderChrome();
   } catch (err) {
     // 조용히 사라지면 사용자는 올라간 줄 안다.
-    $("stage").insertAdjacentHTML("afterbegin",
-      alertBox("fail", "업로드 실패", esc(err.message)));
+    $("formNote").innerHTML = alertBox("fail", "업로드 실패", esc(err.message));
   } finally {
     idleButton(btn); syncUploadLabel();
   }
 }
 
 /**
- * 기획서 칸에 파일을 끌어 놓아도 올라간다 — 21st.dev 'AI Chat with File Attachments' 에서
- * 처음 디벨롭 때 카드 모양만 옮기고 빠뜨렸던 '끌어 놓기'. 놓을 수 있는 동안 칸에 점선 테두리와
- * '여기에 놓으면 올라갑니다' 가 선다. PDF·JSON 이 아니면 올리지 않고 알린다.
- * 칸 밖에 놓쳐도 브라우저가 파일을 열어 화면을 떠나지 않게 막는다.
+ * 기획서 상자에 파일을 끌어 놓아도 올라간다 — 21st.dev 'AI Chat with File Attachments' 의 '끌어 놓기'.
+ * 놓을 수 있는 동안 상자에 파란 테두리가 선다. PDF·JSON 이 아니면 올리지 않고 알린다.
+ * 상자 밖에 놓쳐도 브라우저가 파일을 열어 화면을 떠나지 않게 막는다.
  */
 (function dropToUpload() {
-  const zone = $("uploadBtn").closest(".panel");
-  if (!zone) return;
+  const zone = $("dropZone");
   const hasFiles = (e) => [...(e.dataTransfer && e.dataTransfer.types || [])].includes("Files");
   let depth = 0;
-  const leave = () => { depth = 0; zone.classList.remove("dropping"); syncUploadLabel(); };
+  const leave = () => { depth = 0; zone.classList.remove("dropping"); };
   zone.addEventListener("dragenter", (e) => {
     if (!hasFiles(e) || $("uploadBtn").getAttribute("aria-busy") === "true") return;
     e.preventDefault();
-    if (depth++ === 0) { zone.classList.add("dropping"); $("uploadBtn").textContent = "여기에 놓으면 올라갑니다"; }
+    if (depth++ === 0) zone.classList.add("dropping");
   });
   zone.addEventListener("dragover", (e) => { if (hasFiles(e)) { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; } });
   zone.addEventListener("dragleave", () => { if (--depth <= 0) leave(); });
@@ -1963,8 +2176,8 @@ async function uploadFile(file) {
     const file = e.dataTransfer.files[0];
     if (!file) return;
     if (!/\.(pdf|json)$/i.test(file.name)) {
-      $("stage").insertAdjacentHTML("afterbegin", alertBox("fail", "올리지 않았습니다",
-        `${esc(file.name)} — PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.`));
+      $("formNote").innerHTML = alertBox("fail", "올리지 않았습니다",
+        `${esc(file.name)} — PDF(기획서) 또는 JSON(Figma 응답)만 올릴 수 있습니다.`);
       return;
     }
     await uploadFile(file);
@@ -1972,6 +2185,8 @@ async function uploadFile(file) {
   window.addEventListener("dragover", (e) => { if (hasFiles(e)) e.preventDefault(); });
   window.addEventListener("drop", (e) => { if (hasFiles(e)) e.preventDefault(); });
 })();
+
+// ── 예시 사이트 고르기 ─────────────────────────────────────────────────────
 
 function setVariant(which) {
   const url = $("url").value.trim();
@@ -1989,22 +2204,20 @@ function syncVariant() {
   placeSegThumb();
 }
 
-// 예시 사이트 고르기의 흰 판도 단계 표시와 같은 방식으로 늘어났다 줄어든다.
-const segThumb = stretchThumb(document.querySelector("#variantRow .seg"));
+// 예시 사이트 고르기의 흰 판도 단계 표시와 같은 방식으로 미끄러진다.
+const segThumb = stretchThumb($("variantRow"));
 function placeSegThumb(instant = false) {
-  const seg = document.querySelector("#variantRow .seg");
+  const seg = $("variantRow");
   const on = seg.querySelector('button[aria-pressed="true"]');
-  const [first, last] = [seg.firstElementChild, seg.lastElementChild];
-  if (!on || !first.offsetWidth) { segThumb.to(null); return; }
-  segThumb.to(on, { instant, lo: first.offsetLeft + first.offsetWidth / 2,
-                    hi: last.offsetLeft + last.offsetWidth / 2 });
+  if (!on || !on.offsetWidth) { segThumb.to(null); delete seg.dataset.thumb; return; }
+  segThumb.to(on, { instant });
   seg.dataset.thumb = "1";
 }
 
 $("segGood").addEventListener("click", () => setVariant("good"));
 $("segBad").addEventListener("click", () => setVariant("bad"));
-// 원본 내비처럼 ← → 로도 고른다. 고른 쪽으로 초점도 옮긴다.
-document.querySelector("#variantRow .seg").addEventListener("keydown", (e) => {
+// ← → 로도 고른다. 고른 쪽으로 초점도 옮긴다.
+$("variantRow").addEventListener("keydown", (e) => {
   if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
   e.preventDefault();
   const which = e.key === "ArrowRight" ? "bad" : "good";
@@ -2025,9 +2238,10 @@ $("url").addEventListener("input", () => { syncVariant(); renderChrome(); });
 // Ctrl/Cmd + Enter 로 다음 단계
 document.addEventListener("keydown", (e) => {
   if (!(e.key === "Enter" && (e.ctrlKey || e.metaKey))) return;
+  const view = document.body.dataset.view;
   const run = $("runBtn");
-  if (run && !run.disabled) { run.click(); return; }
-  if (!$("planBtn").disabled) $("planBtn").click();
+  if (view === "plan" && run && !run.disabled) { run.click(); return; }
+  if (view === "form" && !$("planBtn").disabled) $("planBtn").click();
 });
 
 // ── 시작 ───────────────────────────────────────────────────────────────────
@@ -2059,14 +2273,13 @@ async function boot() {
     // 고른 '실제 모델' 이 남아 있으면 모델 서버 없이 띄운 데모가 바로 실패한다.
     if (saved.backend && saved.backend !== st.backend && st.backend !== "mock") {
       $("backend").value = saved.backend;
-      $("backend").insertAdjacentHTML("afterend",
+      $("backend").closest(".ctl").insertAdjacentHTML("beforeend",
         `<div class="hint">지난번 선택입니다 — 서버 기본값은 ${esc(st.backend)}</div>`);
     }
   } catch (err) {
     // 여기서 조용히 실패하면 화면이 죽은 채로 남는다.
-    document.body.insertAdjacentHTML("afterbegin",
-      `<div style="padding:16px">${alertBox("fail", "서버에 연결하지 못했습니다",
-        esc(err.message))}</div>`);
+    showBlank();
+    $("formNote").innerHTML = alertBox("fail", "서버에 연결하지 못했습니다", esc(err.message));
     return;
   }
   syncVariant();
