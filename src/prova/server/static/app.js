@@ -1527,6 +1527,27 @@ function runScore(r) {
   return `<span class="score pass">전부 통과</span>`;
 }
 
+/**
+ * 통과 못 한 케이스가 어느 화면에서 났는지 — 많은 순으로. 흐름 케이스는 '흐름' 하나로 묶는다.
+ *
+ * 21st.dev Animated Card Diagram 에서 '요약이 비켜나고 그 요약을 이루는 것들이 들어온다'
+ * 만 가져왔다. 줄에 올리거나 키보드로 오면 둘째 줄(대상·차수·때)이 위로 빠지고 이 줄이
+ * 들어온다 — 오른쪽 '기획서와 다름 16' 과 나란히 읽힌다. 빛 번짐·격자·확대·유리 칩은 버렸다.
+ * 화면 읽기 프로그램에는 늘 읽힌다.
+ */
+function runWhere(r) {
+  const s = r.summary || {};
+  const names = s.screen_names || {};
+  const parts = Object.entries(s.by_screen || {})
+    .filter(([, v]) => v && v.fail).map(([k, v]) => [names[k] || k, v.fail]);
+  const flows = Object.values(s.by_flow || {}).reduce((n, v) => n + ((v && v.fail) || 0), 0);
+  if (flows) parts.push(["흐름", flows]);
+  if (!parts.length) return "";
+  parts.sort((a, b) => b[1] - a[1]);
+  return `<span class="where"><span class="sr">통과 못 한 곳: </span>` +
+    parts.map(([n, c]) => `${esc(n)} <b>${c}</b>`).join(`<i aria-hidden="true"> · </i>`) + `</span>`;
+}
+
 async function loadRuns() {
   // 비어 있는 것과 아직 안 온 것을 구분해 준다. 빈 칸만 보이면 사람은
   // 기록이 없는 줄 안다.
@@ -1576,12 +1597,12 @@ function renderRuns() {
     <details class="run-group" ${key === open ? "open" : ""}>
       <summary><b>${esc(key || "프로젝트 없음")}</b><span>${groups.get(key).length}회</span></summary>
       ${groups.get(key).map((r, i) => (i === RUNS_SHOWN ? `<details class="run-more"><summary>이전 기록 ${groups.get(key).length - RUNS_SHOWN}개 더 보기</summary>` : "") + `
-      <button class="run ${r.fail ? "has-fail" : ""}" type="button"
+      <button class="run ${r.fail ? "has-fail" : ""} ${runWhere(r) ? "has-where" : ""}" type="button"
               data-run="${esc(r.run_id)}" title="${esc(r.run_id)} · ${esc(r.target)} · ${r.pass}/${r.total} 통과"
               aria-current="${r.run_id === shownId}">
         <i class="led"></i>
-        <span class="who"><b>${esc(runLabel(r))}</b><span>${esc(
-          [runTarget(r), r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span></span>
+        <span class="who"><b>${esc(runLabel(r))}</b><span class="line2"><span class="meta">${esc(
+          [runTarget(r), r.round ? `${r.round}차` : "", runWhen(r)].filter(Boolean).join(" · "))}</span>${runWhere(r)}</span></span>
         ${runScore(r)}
       </button>`).join("")}${groups.get(key).length > RUNS_SHOWN ? "</details>" : ""}
     </details>`).join("");

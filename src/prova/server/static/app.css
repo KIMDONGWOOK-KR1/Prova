@@ -1343,6 +1343,28 @@ label.check input[role="switch"][data-interacted]:checked::before { animation-na
   .case .how::details-content, .run-group > summary::before, .opts > summary::before { transition: none; }
 }
 
+/* ── 실행 기록: 줄에 올리면 어느 화면에서 났는지 ─────────────────────────
+   21st.dev Animated Card Diagram 에서 '요약이 비켜나고 구성이 들어온다' 만. 둘째 줄(대상·차수·때)이
+   위로 빠지고 화면별 수가 아래에서 들어온다. 지나가는 마우스에는 바뀌지 않게 잠깐 머문 뒤에.
+   터치 화면에는 올림이 없으니 바꾸지 않는다 — 누르면 결과가 열린다. */
+.run .who > .line2 { display: grid; overflow: hidden; }
+.run .who > .line2 > span { grid-area: 1 / 1;
+  transition: transform var(--dur-3) var(--ease-out), opacity var(--dur-2) var(--ease-out); }
+.run .who > .line2 > .where { color: var(--fg-muted); transform: translateY(100%); opacity: 0; }
+.run .who .where b { display: inline; font-size: inherit; font-weight: 650; color: var(--fg-default); }
+.run .where i { font-style: normal; color: var(--fg-subtle); }
+@media (hover: hover) {
+  .run.has-where:hover .line2 > .meta { transform: translateY(-100%); opacity: 0; transition-delay: 120ms; }
+  .run.has-where:hover .line2 > .where { transform: none; opacity: 1; transition-delay: 120ms; }
+}
+.run.has-where:focus-visible .line2 > .meta { transform: translateY(-100%); opacity: 0; }
+.run.has-where:focus-visible .line2 > .where { transform: none; opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .run .who > .line2 > span { transition: none !important; }
+  .run .who > .line2 > .where { transform: none; }
+  .run .who > .line2 > .meta { transform: none !important; }
+}
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }
