@@ -1855,7 +1855,6 @@ function runWhen(iso) {
  * 통과율 칸의 글자가 그 판정의 이름·건수·비율로 바뀐다. 화면 읽기에는 통과율이 늘 그대로 있다.
  */
 const DONUT_ORDER = ["defect", "infra", "unv", "pass"];
-const donutDrawn = new Set();
 function donut(n, total, say, { draw = true } = {}) {
   if (!total) return "";
   const keys = DONUT_ORDER.filter((k) => n[k]);
@@ -1875,25 +1874,66 @@ function donut(n, total, say, { draw = true } = {}) {
     `<g transform="rotate(-90 ${c} ${c})">${arcs}</g></svg>`;
 }
 
-// 숫자 칸 = 범례. 올리거나 초점을 주면 그 조각만 진하고, 통과율 칸 글자가 그 판정으로 바뀐다(눈으로만 — 화면 읽기에는
-// 칸마다 제 글자가 있고 통과율은 숨은 글자로 늘 남는다). 벗어나면 통과율로 돌아간다.
+// 숫자 칸 = 범례, 고리도 범례 — 칸에 올리거나 초점을 주거나, 고리의 조각에 올리면 같은 상태가 된다:
+// 그 조각만 굵고 진하고(나머지 35%), 그 칸이 올린 톤, 통과율 칸 글자가 그 판정으로 바뀐다(옛 글자는 위로 빠지고
+// 새 글자가 4px 아래에서 들어온다 — 21st.dev DonutChart 의 가운데 글자 바뀜). 벗어나면 같은 식으로 통과율로.
+// 바뀌는 글자는 눈으로만 — 화면 읽기에는 칸마다 제 글자가 있고 통과율은 숨은 글자로 늘 남는다.
 function linkDonut(tiles, n, total, rate) {
   if (!tiles || !tiles.querySelector(".donut")) return;
   const rd = tiles.querySelector(".tile.rate .rd");
-  // 돌아갈 때는 굴림 없이 숫자만(처음 들어올 때 이미 굴렸다)
   const base = `<small>통과율</small><b>${esc(String(rate))}<span class="u">%</span></b>`;
-  const on = (k) => {
-    if (k && n[k] && tiles.querySelector(`.seg[data-k="${k}"]`)) {
-      tiles.dataset.on = k;
-      // 통과율과 같은 꼴(큰 숫자 = 비율)로 — 칸 폭이 좁아도 넘치지 않는다. 이름·건수는 위 작은 줄에.
-      if (rd) rd.innerHTML = `<small>${esc(KIND[k].label)} ${n[k]}건</small><b>${Math.round((n[k] / total) * 1000) / 10}<span class="u">%</span></b>`;
-    } else off();
+  let cur = "", swapT = 0;
+  const swap = (html) => {
+    if (!rd) return;
+    clearTimeout(swapT);
+    rd.getAnimations().forEach((a) => a.cancel());
+    if (reduceMotion() || !rd.animate) { rd.innerHTML = html; return; }
+    const css = getComputedStyle(document.documentElement);
+    const d = (parseFloat(css.getPropertyValue("--dur-2")) || 180) / 2, ease = css.getPropertyValue("--ease-out").trim() || "ease-out";
+    rd.animate([{ opacity: 1, transform: "none" }, { opacity: 0, transform: "translateY(-4px)" }], { duration: d, easing: ease, fill: "forwards" });
+    swapT = setTimeout(() => {
+      rd.innerHTML = html;
+      rd.getAnimations().forEach((a) => a.cancel());
+      rd.animate([{ opacity: 0, transform: "translateY(4px)" }, { opacity: 1, transform: "none" }], { duration: d, easing: ease });
+    }, d);
   };
-  const off = () => { delete tiles.dataset.on; if (rd) rd.innerHTML = base; };
-  tiles.addEventListener("pointerover", (e) => { const t = e.target.closest(".tile[data-k], .seg"); on(t && t.dataset.k); });
+  const on = (k) => {
+    if (!(k && n[k] && tiles.querySelector(`.seg[data-k="${k}"]`))) return off();
+    if (cur === k) return;
+    cur = k;
+    tiles.dataset.on = k;
+    swap(`<small>${esc(KIND[k].label)} ${n[k]}건</small><b>${Math.round((n[k] / total) * 1000) / 10}<span class="u">%</span></b>`);
+  };
+  const off = () => {
+    if (!cur) return;
+    cur = "";
+    delete tiles.dataset.on;
+    swap(base);
+  };
+  tiles.addEventListener("pointerover", (e) => {
+    const t = e.target.closest(".tile[data-k], .seg");
+    if (t) on(t.dataset.k);
+    else if (!e.target.closest(".tile.rate")) off();
+  });
+  tiles.addEventListener("pointerout", (e) => { if (e.target.closest(".seg") && !(e.relatedTarget && e.relatedTarget.closest && e.relatedTarget.closest(".seg"))) off(); });
   tiles.addEventListener("pointerleave", off);
-  tiles.addEventListener("focusin", (e) => { const t = e.target.closest(".tile[data-k]"); on(t && t.dataset.k); });
+  tiles.addEventListener("focusin", (e) => { const t = e.target.closest(".tile[data-k]"); if (t) on(t.dataset.k); else off(); });
   tiles.addEventListener("focusout", (e) => { if (!tiles.contains(e.relatedTarget)) off(); });
+}
+
+/** 숫자를 0 에서 to 까지 세어 올린다(소수 자리는 to 를 따른다). 동작 줄이기면 바로. 틱에서는 글자만 바꾼다. */
+function countUp(el, to, ms) {
+  if (!el) return;
+  const target = Number(to), dec = (String(to).split(".")[1] || "").length;
+  if (reduceMotion() || !isFinite(target)) { el.textContent = String(to); return; }
+  const t0 = performance.now();
+  const tick = (now) => {
+    const p = Math.min(1, (now - t0) / ms), e = 1 - Math.pow(1 - p, 3);   // ease-out
+    el.textContent = p < 1 ? (target * e).toFixed(dec) : String(to);
+    if (p < 1) requestAnimationFrame(tick);
+  };
+  el.textContent = (0).toFixed(dec);
+  requestAnimationFrame(tick);
 }
 
 function showResult(out) {
@@ -2007,7 +2047,7 @@ function showResult(out) {
       <div class="tiles">
         <div class="tile rate"><span class="sr">통과율 ${s.pass_rate}%</span>
           <span class="rd" aria-hidden="true"><small>통과율</small><b><span class="rn">${s.pass_rate}</span><span class="u">%</span></b></span>
-          ${donut(n, total, parts.map((k) => `${KIND[k].label} ${n[k]}건`).join(", "), { draw: !donutDrawn.has(runId) })}</div>
+          ${donut(n, total, parts.map((k) => `${KIND[k].label} ${n[k]}건`).join(", "))}</div>
         ${tile("pass", "통과", "ok")}${tile("defect", "기획서와 다름", "fail")}${tile("infra", "실행 문제", "infra")}${tile("unv", "확인 불가", "unv")}
       </div>
       <div class="split">
@@ -2015,9 +2055,10 @@ function showResult(out) {
         <div class="detail" id="detail" aria-live="polite"></div>
       </div>
     </div>`;
-  $("stage").querySelectorAll(".tile .rn").forEach(rollIn);
+  $("stage").querySelectorAll("button.tile .rn").forEach(rollIn);
+  // 통과율은 도넛이 다 그려지는 동안(400ms + 조각마다 60ms) 0 에서 세어 올라간다
+  countUp($("stage").querySelector(".tile.rate .rn"), s.pass_rate, 400 + 60 * Math.max(parts.length - 1, 0));
   linkDonut($("stage").querySelector(".tiles"), n, total, s.pass_rate);
-  donutDrawn.add(runId);   // 같은 결과로 다시 오면(단계 길·거르기) 다시 그리지 않는다
   tileDeltas(out, n);
   $("stage").querySelector(".tiles").addEventListener("click", (e) => {
     const b = e.target.closest("button.tile[data-k]");

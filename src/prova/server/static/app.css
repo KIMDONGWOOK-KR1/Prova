@@ -1042,9 +1042,10 @@ button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offse
 .tile.rate > .rd > b { display: block; margin-top: 6px; font-size: var(--tx-2xl); line-height: 36px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .tile.rate > .rd > b .u { font-size: var(--tx-md); font-weight: 500; color: var(--fg-muted); margin-left: 3px; letter-spacing: 0; }
 .tile.rate .donut { grid-column: 2; grid-row: 1; }
-.donut { display: block; overflow: visible; }
+.donut { display: block; overflow: visible; pointer-events: none; }
 .donut .track { stroke: var(--fill-track); }
-.donut .seg { transition: opacity var(--dur-2) var(--ease-out); }
+/* 조각 위에 올리면 — 선 위에서만 잡힌다. 굵기·진하기만 바뀐다(--dur-1) */
+.donut .seg { pointer-events: stroke; cursor: default; transition: opacity var(--dur-1) var(--ease-out), stroke-width var(--dur-1) var(--ease-out); }
 .donut .seg.pass { stroke: var(--chart-pass); }
 .donut .seg.defect { stroke: var(--chart-defect); }
 .donut .seg.infra { stroke: var(--chart-infra); }
@@ -1055,6 +1056,11 @@ button.tile:focus-visible { outline: 2px solid var(--accent-blue); outline-offse
 }
 @keyframes seg-draw { from { stroke-dasharray: 0 var(--len); } }
 .tiles[data-on] .donut .seg { opacity: 0.35; }
+.tiles[data-on="pass"] .seg.pass, .tiles[data-on="defect"] .seg.defect,
+.tiles[data-on="infra"] .seg.infra, .tiles[data-on="unv"] .seg.unv { stroke-width: 13; }
+/* 고리에 올려도 짝인 숫자 칸이 올린 톤 — 양쪽이 같은 상태 */
+.tiles[data-on="pass"] button.tile[data-k="pass"], .tiles[data-on="defect"] button.tile[data-k="defect"],
+.tiles[data-on="infra"] button.tile[data-k="infra"], .tiles[data-on="unv"] button.tile[data-k="unv"] { background: var(--fill-hover); }
 .tiles[data-on="pass"] .seg.pass, .tiles[data-on="defect"] .seg.defect,
 .tiles[data-on="infra"] .seg.infra, .tiles[data-on="unv"] .seg.unv { opacity: 1; }
 
