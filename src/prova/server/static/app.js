@@ -619,9 +619,12 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     // 다른 단계의 목록으로 넘어갔거나 처음이면 미끄러지지 않고 그 자리에 놓는다
     const snap = instant || pane !== lastPane || !shown;
     pill.classList.toggle("snap", snap);
-    pill.style.width = `${a.width}px`;
-    pill.style.height = `${a.height}px`;
-    pill.style.transform = `translate(${a.left - b.left}px, ${a.top - b.top}px)`;
+    // 화면 비율(body zoom --z, 1760px 이상 1.1 · 2080px 이상 1.2)이 걸리면 getBoundingClientRect 는 확대된 값이고
+    // style 의 px 는 확대 전 값이다 — 그대로 넣으면 판이 z 배로 커지고 아래 줄일수록 더 밀렸다(hh 11-25 05:21). z 로 나눈다.
+    const z = panes.currentCSSZoom || parseFloat(getComputedStyle(document.body).zoom) || 1;
+    pill.style.width = `${a.width / z}px`;
+    pill.style.height = `${a.height / z}px`;
+    pill.style.transform = `translate(${(a.left - b.left) / z}px, ${(a.top - b.top) / z}px)`;
     pill.style.opacity = a.bottom < b.top || a.top > b.bottom ? "0" : "1";
     it.classList.add("pilled");
     side.classList.add("has-pill");
@@ -635,6 +638,8 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
   addEventListener("resize", later);
   // 사이드바 폭이 바뀌면(접기·펴기, 창 크기) 판도 줄 크기에 맞춰 바로 다시 놓는다 — 미끄러지지 않고
   if (window.ResizeObserver) new ResizeObserver(() => place(true)).observe(panes);
+  // 글꼴이 늦게 오면 줄 높이가 바뀐다(윈도의 Pretendard) — 다 온 뒤 한 번 더 놓는다
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => place(true));
 
   // 굴리는 동안만 스크롤 막대. 굴리면 판도 줄을 따라간다(이때는 미끄러지지 않는다).
   const timers = new WeakMap();
