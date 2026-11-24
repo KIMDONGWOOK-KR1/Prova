@@ -57,9 +57,18 @@ code, pre { font-family: var(--font-mono); }
 .win {
   display: grid;
   grid-template-columns: 240px minmax(0, 1fr);
-  height: 100vh;
+  height: calc(100vh / var(--z));
   min-width: 960px;
 }
+
+/* 넓은 화면 — 2560 같은 넓은 모니터에서는 글자·칸이 작게 보이고 가운데만 쓴다. 창 폭에 따라 화면 전체를
+   한 비율로 키운다(글자·칸·여백·아이콘이 같이 커져 모양이 그대로다). 비율을 바꾼 화면 안에서는 100vh 도
+   그만큼 커지므로 높이·폭에 vh·vw 를 쓰는 곳은 --z 로 나눈다. */
+:root { --z: 1; }
+@media (min-width: 1760px) { :root { --z: 1.1; } }
+@media (min-width: 2080px) { :root { --z: 1.2; } }
+@media (min-width: 2400px) { :root { --z: 1.3; } }
+body { zoom: var(--z); }
 
 /* ── 사이드바 — 창 안에 띄운 패널 (키트 Sidebar, floating) ─────────────────── */
 
@@ -162,7 +171,7 @@ body[data-view="result"] .side-pane[data-pane="result"] { display: block; }
 
 /* ── 내용 쪽 ─────────────────────────────────────────────────────────────── */
 
-.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100vh; outline: none; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: calc(100vh / var(--z)); outline: none; }
 
 /* 도구 막대 — 왼쪽 제목, 가운데 단계, 오른쪽 할 일 (키트 Toolbar) */
 .bar {
@@ -262,6 +271,7 @@ body:not([data-view="form"]) .pane-form { display: none; }
    레퍼런스: WeTransfer Sign · Fireflies 의 '올리기가 주인공인 첫 화면' 과 '예시 문서로 해 보기'. ── */
 
 .form-col { max-width: 720px; margin: 0 auto; }
+.recap { display: none; }
 .pane-form .scroll { padding-top: var(--sp-10); padding-bottom: var(--sp-12); }
 
 .hero-t { font-size: var(--tx-2xl); line-height: 38px; font-weight: 700; letter-spacing: -0.025em; }
@@ -325,6 +335,42 @@ body:not([data-view="form"]) .pane-form { display: none; }
 .try .hint { flex-basis: 100%; }
 
 .opts { margin-top: var(--sp-6); }
+
+/* 넓은 화면의 첫 화면 — 왼쪽은 그대로, 오른쪽에 고른 기획서의 지난 확인(무엇이 달랐는지).
+   레퍼런스: Vercel 새 프로젝트(왼쪽 가져오기 · 오른쪽 목록), Semrush 사이트 점검의 지난 점검 요약. */
+@media (min-width: 1600px) {
+  .form-col {
+    max-width: 1140px; display: grid; align-content: start;
+    grid-template-columns: minmax(0, 720px) minmax(300px, 1fr); column-gap: var(--sp-10);
+  }
+  .form-col > * { grid-column: 1; }
+  .recap {
+    display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
+    grid-column: 2; grid-row: 4 / span 3; align-self: start;
+    margin-top: var(--sp-8); padding: var(--sp-5) var(--sp-6) var(--sp-6);
+    border-radius: var(--r-window); background: var(--fill-group);
+  }
+}
+.rc-k { font-size: var(--tx-xs); line-height: var(--lh-xs); font-weight: 600; color: var(--fg-muted); }
+.rc-v { font-size: var(--tx-lg); line-height: 26px; font-weight: 700; letter-spacing: -0.01em; margin-top: var(--sp-1); }
+.rc-v mark { background: none; padding: 0; }
+.rc-v mark.fail { color: var(--fail-fg); }
+.rc-v mark.infra { color: var(--note-fg); }
+.rc-v mark.unv { color: var(--unv-fg); }
+.rc-v mark.pass { color: var(--pass-fg); }
+.rc-list { list-style: none; width: 100%; margin: var(--sp-2) 0 var(--sp-3); }
+.rc-list li { display: flex; gap: var(--sp-2); padding: 7px 0; font-size: var(--tx-md); line-height: var(--lh-row); }
+.rc-list li + li { border-top: 0.5px solid var(--sep); }
+.rc-list li .vm { margin-top: 2px; }
+.rc-list li.more { display: block; }
+.rc-steps { list-style: none; counter-reset: rc; display: flex; flex-direction: column; gap: var(--sp-4); margin-top: var(--sp-2); }
+.rc-steps li { counter-increment: rc; display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: var(--sp-3); }
+.rc-steps li::before {
+  content: counter(rc); grid-row: span 2; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+  font-size: var(--tx-xs); font-weight: 700; background: var(--fill-selected); color: var(--fg-default);
+}
+.rc-steps b { font-size: var(--tx-md); line-height: var(--lh-row); font-weight: 600; margin-top: 2px; }
+.rc-steps span { font-size: var(--tx-sm); line-height: var(--lh-sm); color: var(--fg-muted); }
 
 .gbox {
   margin-top: var(--sp-5);
@@ -780,7 +826,7 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 /* 잠깐 뜨는 확인 한 줄 — 아래 가운데에서 올라왔다가 사라진다. 경고·오류는 여기 쓰지 않는다. */
 .toast {
   position: fixed; left: 50%; bottom: 28px; z-index: 50; display: flex; align-items: center; gap: 8px;
-  max-width: min(560px, calc(100vw - 48px)); padding: 10px 16px; border-radius: var(--r-full);
+  max-width: min(560px, calc(100vw / var(--z) - 48px)); padding: 10px 16px; border-radius: var(--r-full);
   background: var(--fg-default); color: var(--bg-raised); box-shadow: var(--shadow-lg);
   font-size: var(--tx-md); line-height: var(--lh-row); font-weight: 500;
   opacity: 0; transform: translate(-50%, 12px); pointer-events: none;
@@ -825,6 +871,11 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 .dg .ghost { visibility: hidden; }
 
 .split { display: grid; grid-template-columns: 320px minmax(0, 1fr); gap: var(--sp-5); margin-top: var(--sp-5); align-items: start; }
+/* 넓은 화면 — 옆 칸(항목 목록·인스펙터)도 넓혀 긴 항목 이름이 두 줄로 꺾이지 않게 */
+@media (min-width: 1600px) {
+  .split { grid-template-columns: 380px minmax(0, 1fr); }
+  .planview { grid-template-columns: minmax(0, 1fr) 420px; }
+}
 .flist { border-radius: var(--r-card); background: var(--fill-group); box-shadow: inset 0 0 0 0.5px var(--fill-hover); padding: 6px; }
 .flist .h { font-size: var(--tx-xs); line-height: var(--lh-xs); font-weight: 600; color: var(--fg-muted); padding: 10px 12px 4px; }
 .flist .h:first-child { padding-top: 8px; }
@@ -870,7 +921,7 @@ ol.steps code, .code { font-size: var(--tx-xs); line-height: var(--lh-sm); backg
 
 /* 보고서 파일을 읽지 못했을 때만 — 예전 리포트 틀 */
 .reportbox { margin-top: var(--sp-4); border-radius: var(--r-card); overflow: hidden; box-shadow: inset 0 0 0 0.5px var(--border-default); }
-.reportbox iframe { display: block; width: 100%; height: 70vh; border: 0; }
+.reportbox iframe { display: block; width: 100%; height: calc(70vh / var(--z)); border: 0; }
 
 /* ── 경고창 — 폭 280, 가운데 정렬, 버튼은 세로로 (키트 Alert) ─────────────────── */
 

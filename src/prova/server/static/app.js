@@ -2128,6 +2128,63 @@ function renderDocMeta() {
   el.innerHTML = last
     ? `지난 확인 · ${esc([last.round && `${last.round}차`, runAgo(last.created_at)].filter(Boolean).join(" · "))} ${runPill(last)}`
     : "아직 확인한 적 없는 기획서예요";
+  renderRecap(last);
+}
+
+/**
+ * 넓은 화면의 첫 화면 오른쪽 — 고른 기획서를 지난번에 확인한 결과(무엇이 달랐는지)를 미리 보여 준다.
+ * 고친 뒤 다시 확인하러 온 사람이 결과 화면까지 가지 않고도 '지난번에 뭐가 틀렸지' 를 본다.
+ * 확인한 적 없는 기획서면 네 단계가 각각 무엇을 하는지 적는다. 좁은 화면에서는 CSS 가 숨긴다.
+ */
+const recapCases = new Map();   // run_id → 항목 결과(report.json cases). 한 번 읽으면 다시 안 읽는다.
+async function renderRecap(last) {
+  const el = $("recap");
+  if (!el) return;
+  if (!last) {
+    el.dataset.k = "first";
+    el.innerHTML = `<p class="rc-k">이렇게 확인해요</p>
+      <ol class="rc-steps">
+        <li><b>확인할 항목 뽑기</b><span>기획서를 읽고 화면마다 확인할 것을 골라요. 바로 실행하지 않아요.</span></li>
+        <li><b>항목 검토</b><span>뺄 항목은 끄고, 기획서에서 읽은 내용이 맞는지 봐요.</span></li>
+        <li><b>실행</b><span>사이트를 직접 눌러 보며 하나씩 확인해요.</span></li>
+        <li><b>결과</b><span>기획서와 다른 곳을 기획서 근거와 화면으로 보여 줘요.</span></li>
+      </ol>`;
+    return;
+  }
+  const s = last.summary || {};
+  const defects = s.defects ?? last.fail;
+  const unv = s.unverifiable || 0;
+  const infra = last.fail - defects - unv;
+  const total = s.total || last.total;
+  const verdict = defects ? `${total}건 중 <mark class="fail">${defects}건이 기획서와 달라요</mark>`
+    : infra ? `${total}건 중 <mark class="infra">${infra}건은 실행 문제로 확인하지 못했어요</mark>`
+    : unv ? `${total}건 중 <mark class="unv">${unv}건은 판정할 근거가 없어요</mark>`
+    : `<mark class="pass">${total}건 모두 통과했어요</mark>`;
+  const host = String(last.target || "").replace(/^https?:\/\//, "");
+  el.dataset.k = "last";
+  el.dataset.run = last.run_id;
+  el.innerHTML = `<p class="rc-k">이 기획서의 지난 확인</p>
+    <p class="rc-when hint">${esc([last.round && `${last.round}차`, runAgo(last.created_at), host].filter(Boolean).join(" · "))}</p>
+    <h3 class="rc-v">${verdict}</h3>
+    <ul class="rc-list" id="recapList">${last.fail ? `<li class="hint">항목을 불러오는 중…</li>` : ""}</ul>
+    <button class="btn" type="button" id="recapOpen">결과 자세히 보기</button>`;
+  $("recapOpen").addEventListener("click", () => openRun(last));
+  if (!last.fail) { $("recapList").remove(); return; }
+  let cases = recapCases.get(last.run_id);
+  if (!cases) {
+    try { cases = (await api(`/runs/${encodeURIComponent(last.run_id)}/report.json`)).cases || []; }
+    catch (e) { cases = null; }
+    if (cases) recapCases.set(last.run_id, cases);
+  }
+  const list = $("recapList");
+  if (!list || el.dataset.run !== last.run_id) return;   // 그사이 다른 기획서를 골랐다
+  if (!cases) { list.remove(); return; }
+  const order = { defect: 0, infra: 1, unv: 2 };
+  const bad = cases.filter((c) => kindOf(c) !== "pass").sort((a, b) => order[kindOf(a)] - order[kindOf(b)]);
+  const SHOW = 5;
+  list.innerHTML = bad.slice(0, SHOW).map((c) =>
+    `<li>${vmark(KIND[kindOf(c)].mark)}<span>${esc(c.plain || c.title)}</span></li>`).join("") +
+    (bad.length > SHOW ? `<li class="more hint">외 ${bad.length - SHOW}건</li>` : "");
 }
 
 // 처음 온 사람에게만 — 예시 기획서와 결함을 심은 예시 사이트로 한 번에 끝까지 가 보게 한다.
@@ -2174,12 +2231,17 @@ $("runs").addEventListener("click", (e) => {
   }
   const btn = e.target.closest("[data-run]");
   if (!btn || state.busy) return;
-  const r = state.runs.find((x) => x.run_id === btn.dataset.run);
+  openRun(state.runs.find((x) => x.run_id === btn.dataset.run));
+});
+
+/** 지난 실행 하나를 결과 화면으로 연다 — 사이드바 기록 줄과 첫 화면 '지난 확인' 이 같이 쓴다. */
+function openRun(r) {
+  if (!r || state.busy) return;
   state.plan = null;
   state.resKind = ""; state.resSel = "";
   showResult({ run_id: r.run_id, summary: r.summary, created_at: r.created_at,
                spec: r.spec, target: r.target, report_url: `/runs/${r.run_id}/report.html` });
-});
+}
 
 // ── 기획서 묶음 · 프로젝트 ─────────────────────────────────────────────────
 
