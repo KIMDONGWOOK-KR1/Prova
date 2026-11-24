@@ -66,23 +66,24 @@ _DARK = """    --bg-canvas:  #000000;
     --accent-bg:     rgba(29, 155, 240, 0.18);
     --accent-border: #1d9bf0;
 
-    --pass-fg: #32d74b;
-    --pass-bg: #183520;
-    --fail-fg: #ff6961;
-    --fail-bg: #43231f;
-    --warn-fg: #e3ad4a;
-    --warn-bg: #33280f;
+    --pass-fg: #00b87a;
+    --pass-bg: #001d14;
+    --fail-fg: #ff5d57;
+    --fail-bg: #2c0608;
+    --warn-fg: #f7b928;
+    --warn-bg: #231a06;
     --info-fg: #e7e9ea;
     --info-bg: #16181c;
-    --note-fg: #d48eff;
-    --note-bg: #33233d;
-    --unv-fg:  #98989d;
+    --note-fg: #9488fe;
+    --note-bg: #181133;
+    --unv-fg:  #8b98a5;
+    --fg-onverdict: #000000;
 
-    --chart-pass:   #32d74b;
-    --chart-weak:   #d9a441;
-    --chart-defect: #ff6961;
-    --chart-infra:  #bf8ee8;
-    --chart-unv:    #8e8e93;
+    --chart-pass:   #00b87a;
+    --chart-weak:   #f7b928;
+    --chart-defect: #f4212e;
+    --chart-infra:  #7e63fe;
+    --chart-unv:    #8b98a5;
 
     --bg-bar: rgba(0, 0, 0, 0.72);
     --shadow-control: 0 0 0 0.5px rgba(255, 255, 255, 0.10), 0 1px 2px rgba(0, 0, 0, 0.40);
@@ -212,26 +213,28 @@ _TOKENS_TEMPLATE = """
   --accent-bg:     rgba(29, 155, 240, 0.12);
   --accent-border: #1d9bf0;
 
-  /* 판정 색 — Apple 시스템 색의 '대비 높임' 값. 초록만 키트 값(#248a3d, 4.4:1)을 한 단계 더 눌렀다.
-     색은 판정에만 쓰고 늘 글자(통과·기획서와 다름…)와 함께 놓는다. */
-  --pass-fg: #1f7a36;
-  --pass-bg: #e9f5ec;
-  --fail-fg: #d70015;
-  --fail-bg: #ffebea;
-  --warn-fg: #8a5d0a;
-  --warn-bg: #fbf3e0;
+  /* 판정 색 — X(Twitter) Azure 계열에서 골라 강조 #1d9bf0 와 어울리게. 밝기는 흰 바탕과 제 옅은 바탕 위에서
+     글자 4.5:1 이상(흰 바탕 약 5.2). 판정에만 쓰고 늘 글자(통과·기획서와 다름…)와 함께 놓는다.
+     --fg-onverdict 는 판정 색 동그라미 위 그림(✓ ✕ ! −) — 밝게 흰색, 어둡게 검정(밝은 판정 색 위 흰색은 1.8–4.1:1). */
+  --pass-fg: #067c52;
+  --pass-bg: #e6f8f2;
+  --fail-fg: #d1041f;
+  --fail-bg: #feebec;
+  --warn-fg: #896402;
+  --warn-bg: #fef5e1;
   --info-fg: #0f1419;
   --info-bg: #f7f9f9;
-  --note-fg: #8944ab;
-  --note-bg: #f5eefa;
-  --unv-fg:  #6b6b70;
+  --note-fg: #6c45ef;
+  --note-bg: #f3f0ff;
+  --unv-fg:  #606d79;
+  --fg-onverdict: #ffffff;
 
-  /* 비율 막대·리포트 도넛. 면으로 칠하는 색이라 바탕과 3:1 이상(확인 불가 회색만 3.3:1). */
-  --chart-pass:   #248a3d;
-  --chart-weak:   #b07d14;
-  --chart-defect: #d70015;
-  --chart-infra:  #8944ab;
-  --chart-unv:    #8e8e93;
+  /* 차트 색 — 면으로 칠하는 곳(진행 막대·도넛). 페이지와 카드 바탕에 3:1 이상. */
+  --chart-pass:   #029f69;
+  --chart-weak:   #b58404;
+  --chart-defect: #f4212e;
+  --chart-infra:  #7856ff;
+  --chart-unv:    #7f8b98;
 
   /* 컨트롤 층(도구 막대)의 반투명 재질 — Apple HIG Materials: 재질은 내용 위에 뜬 컨트롤에만.
      '투명도 줄이기'·'대비 높이기' 에서는 불투명으로 바뀐다(아래). */

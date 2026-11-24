@@ -151,7 +151,7 @@ a.brand:hover .wm { opacity: 0.8; }
 .rfind { padding: 2px var(--sp-2) 0; }
 .rfind-open { color: var(--fg-muted); }
 .rfind-open .ic { stroke: currentColor; }
-.rfind-open .kbd { margin-left: auto; }
+.rfind-open .kbd { margin-left: auto; opacity: 1; }   /* 흐린 회색 글자 위 0.8 투명도는 3.8:1 — 투명도 없이 4.5:1 넘게 */
 .rfind-field { display: flex; align-items: center; gap: var(--sp-2); min-height: 32px; padding: 0 10px; border-radius: var(--r-sel);
   background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--control-line); }
 .rfind-field[hidden] { display: none; }
@@ -294,7 +294,10 @@ button.theme[aria-checked="true"] .tg-mini .m-moon { display: block; }
 .vm { width: 16px; height: 16px; flex: none; display: inline-block; vertical-align: -3px; }
 .vm.dot { width: 12px; height: 12px; vertical-align: -1px; }
 .vm circle.f { stroke: none; }
-.vm path { fill: none; stroke: var(--fg-onaccent); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+/* 판정 동그라미 위 그림(✓ ✕ ! ?) — --fg-onverdict(밝게 흰, 어둡게 검정: 어두운 화면의 밝은 판정 색 위에서 흰 그림은 흐리다).
+   파란 '끝남' 동그라미(.done)만 강조색 위라 흰 그림 그대로 */
+.vm path { fill: none; stroke: var(--fg-onverdict); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.vm.done path { stroke: var(--fg-onaccent); }
 .vm.ok   circle.f { fill: var(--pass-fg); }
 .vm.fail circle.f { fill: var(--fail-fg); }
 .vm.infra circle.f { fill: var(--note-fg); }
