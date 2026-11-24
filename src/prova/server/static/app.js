@@ -2431,8 +2431,8 @@ function renderDetail(c) {
           <img src="${esc(base + ev.screenshot)}" alt="${esc(c.plain || c.title)} — 마지막 화면" loading="lazy"><span class="zoom-hint" aria-hidden="true">크게 보기</span></a></figure>`
         : `<figure><p class="noshot">이 항목은 화면을 찍지 않았어요.</p></figure>`}
       <div class="keysteps"><b>${esc(stepsHead(steps))}</b>
-        <ol class="tl">${resultSteps(c, steps)}</ol>
-        <p class="idline" style="margin-top:8px">${esc(c.case_id)}</p></div>
+        <div><ol class="tl">${resultSteps(c, steps)}</ol>
+        <p class="idline">${esc(c.case_id)}</p></div></div>
     </div>`;
 }
 
