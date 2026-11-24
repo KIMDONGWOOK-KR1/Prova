@@ -629,7 +629,7 @@ function showProgress(title, lines) {
   setStep(title === "실행 중" ? 3 : 2);
   $("stageChips").innerHTML = `<span class="chip busy"><i class="dot"></i>실행 중</span>`;
   $("stage").innerHTML = `
-    <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span>
+    <div class="head"><h1>${esc(title)}</h1><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span>
       <span class="elapsed" id="pElapsed">0초</span></div>
     <div class="pnow" id="pNow" aria-live="polite"></div>
     <progress id="pBar" class="sr" hidden></progress>

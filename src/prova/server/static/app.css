@@ -574,18 +574,9 @@ label.check input[type=checkbox] { margin: 0; }
 .pstep.active .mark { color: var(--accent-fg); }
 .pstep .detail { color: var(--fg-muted); font-size: var(--tx-sm); }
 
-.spin {
-  display: inline-block; width: 11px; height: 11px;
-  border: 2px solid var(--accent-border);
-  border-top-color: var(--accent-solid);
-  border-radius: var(--r-full);
-  animation: spin 0.7s linear infinite;
-}
-
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .spin { animation: none; }
   * { transition: none !important; }
   .btn:hover, .btn:active { transform: none !important; }
 }
@@ -824,7 +815,6 @@ mark.infra { background: var(--note-bg); }
 
 .pstep.active { background: var(--bg-inset); }
 .pstep.active .mark { color: var(--fg-default); }
-.spin { border-color: var(--border-default); border-top-color: var(--fg-default); }
 progress { accent-color: var(--fg-default); }
 
 .alert { border-radius: var(--r-xl); }
@@ -836,7 +826,6 @@ progress { accent-color: var(--fg-default); }
 .reportbox > header { padding: var(--sp-2) 0; }
 .reportbox iframe { background: var(--bg-surface); }
 .search input { padding: 7px var(--sp-3) 7px var(--sp-8); }
-.head .spin { margin: 0 auto 0 var(--sp-1); }
 
 /* 상단 바 두 줄 — 윗줄 가운데에 이름, 아랫줄 가운데에 네 단계.
    기획서·주소(왼쪽)와 결과 꼬리표(오른쪽)는 윗줄 양끝에 둔다. */
@@ -1095,7 +1084,22 @@ label.check input[type=checkbox] { margin: 0; }
 .group > header { top: calc(var(--topbar-h, 119px) + var(--toolbar-h, 60px)); }
 
 /* ── 실행 중 ───────────────────────────────────────────────────────────── */
-.head .spin { width: 14px; height: 14px; border-width: 1.6px; }
+/* 기다리는 중 — 제목 뒤 말줄임 점 세 개가 차례로 튄다. 21st.dev Message Loading 에서 움직임 곡선만
+   (올라갈 때 감속 · 내려올 때 가속, 0.6초, 세 점 0.1초 간격, 한 바퀴 뒤 0.25초 쉼). 줄이기 설정이면
+   멈춘 말줄임표로 남는다. 단계 줄의 도는 원과 겹치지 않게 제목에는 원을 두지 않는다. */
+.head .dots { display: inline-flex; align-items: flex-end; gap: 4px; height: 14px;
+              margin: 0 auto 0 calc(var(--sp-2) - var(--sp-4)); color: var(--fg-muted); }
+.head .dots i { width: 5px; height: 5px; border-radius: var(--r-full); background: currentColor; }
+@media (prefers-reduced-motion: no-preference) {
+  .head .dots i { animation: dot-hop 1.05s infinite; }
+  .head .dots i:nth-child(2) { animation-delay: 0.1s; }
+  .head .dots i:nth-child(3) { animation-delay: 0.2s; }
+}
+@keyframes dot-hop {
+  0% { transform: translateY(0); animation-timing-function: cubic-bezier(0.33, 0.66, 0.66, 1); }
+  28.5% { transform: translateY(-6px); animation-timing-function: cubic-bezier(0.33, 0, 0.66, 0.33); }
+  57%, 100% { transform: translateY(0); }
+}
 .pnow { font-size: var(--tx-base); font-weight: 650; }
 .pbar { height: 4px; margin: var(--sp-2) 0 var(--sp-4); border-radius: var(--r-full);
         background: var(--bg-active); overflow: hidden; }
