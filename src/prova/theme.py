@@ -140,7 +140,7 @@ _TOKENS_TEMPLATE = """
 
   /* 움직임 — 상태가 바뀔 때만 쓴다(단계 이동·항목 완료·숫자 바뀜·호버 위치).
      들어올 때 장식으로 쓰지 않는다. 화면 설정에서 '동작 줄이기' 면 app.css 가 모두 끈다. */
-  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 700ms;
+  --dur-1: 150ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 700ms;
   --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
   --ease-roll: cubic-bezier(0.3, 0.5, 0.2, 1);
 

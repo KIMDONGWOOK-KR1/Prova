@@ -1165,6 +1165,33 @@ label.check input[type=checkbox] { margin: 0; }
 .meter { margin-bottom: 0; }
 .head h1 mark { border-radius: var(--r-lg); }
 
+/* ── 점검 후 다듬기 (AI 티 빼기) ────────────────────────────────────────── */
+
+/* 주의 알림 — 넓은 노란 바탕은 화면을 낡은 종이처럼 누렇게 만든다.
+   바탕은 흰색으로 두고, 주의는 기호 색과 테두리로만 알린다. 문구와 상자는 그대로 보인다. */
+.alert.warn { background: var(--bg-surface);
+              border-color: color-mix(in srgb, var(--warn-fg) 50%, var(--border-default)); }
+
+/* 진행 중 주의 줄 — 글자 기호(⚠) 대신 알림 상자와 같은 삼각형 선 기호 */
+:root { --warn-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M8 2.2l6 10.6H2z' stroke-width='1.4'/%3E%3Cpath d='M8 6.4v3M8 11.2v.1' stroke-width='1.6'/%3E%3C/svg%3E"); }
+.pstep .detail.warn { color: var(--fg-default); }
+.pstep .detail.warn::before { content: ""; display: inline-block; width: 12px; height: 12px;
+  margin-right: 6px; vertical-align: -1px; background: var(--warn-fg);
+  -webkit-mask: var(--warn-icon) center / contain no-repeat; mask: var(--warn-icon) center / contain no-repeat; }
+
+/* 아래 고정 막대 — 흐려지는 띠 대신 바탕색 + 선 한 줄 */
+.runbar { background: var(--bg-canvas); border-top: 1px solid var(--border-subtle); }
+
+/* 입력 칸·버튼 전환 시간도 같은 값(--dur-1)으로 */
+input[type=text], input[type=url], input[type=search], select, textarea {
+  transition: border-color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out); }
+
+/* 첫 화면 맨 아래 상태 꼬리표 — 큰 검은 버튼이 빠진 자리에 조용히 */
+.side-action { margin-top: var(--sp-2); }
+.side-action .chips { display: flex; gap: var(--sp-2); }
+/* '준비됨' 은 판정이 아니다 — 통과 초록 대신 회색. 점만 남겨 상태를 알린다. */
+.side-action .chip.ok { color: var(--fg-muted); background: var(--bg-inset); }
+
 /* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
 @media (max-width: 640px) {
   .stepper li + li::before { width: 14px; margin: 11px 2px 0; }

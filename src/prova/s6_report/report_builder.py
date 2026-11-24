@@ -476,7 +476,8 @@ details.pairfold h2 { display:none; }
 .heal { background:var(--note-bg); }
 .heal b { color:var(--note-fg); }
 .gap { background:var(--info-bg); }
-.warn { background:var(--warn-bg); }
+/* 주의 알림은 흰 바탕 + 옅은 주황 테두리 — 넓은 노란 바탕은 리포트를 누렇게 만든다. 세모는 그대로 주황. */
+.warn { background:var(--bg-surface); border:1px solid color-mix(in srgb, var(--warn-fg) 50%, var(--line)); }
 .warn b { display:block; margin-bottom:4px; }
 .heal .why, .gap .why { color:var(--muted); margin:2px 0 8px; }
 .empty { color:var(--muted); padding:12px 0; }

@@ -405,7 +405,14 @@ function pushProgress(messages) {
       if (last) {
         const d = document.createElement("div");
         d.className = "detail";
-        d.textContent = text.replace(/^!\s*/, "⚠ ");
+        // '!' 로 시작하는 줄은 주의 — 기호는 CSS 가 그리고, 읽어 주는 프로그램에는 '주의' 라고 알린다.
+        if (/^!/.test(text)) {
+          d.classList.add("warn");
+          d.innerHTML = `<span class="sr">주의: </span>`;
+          d.append(text.replace(/^!\s*/, ""));
+        } else {
+          d.textContent = text;
+        }
         last.querySelector(".body").appendChild(d);
         continue;
       }
