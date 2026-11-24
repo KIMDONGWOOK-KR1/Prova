@@ -60,7 +60,9 @@ _PRINT_JS = """(function () {
     // 종이는 늘 밝은 화면이다 — 어두운 화면으로 보던 중이어도 검은 바탕으로 찍히지 않게.
     theme = root.getAttribute('data-theme'); root.setAttribute('data-theme', 'light');
     opened = [];
+    // 통과 케이스는 한 줄씩 목록으로 둔다 — 다 펼치면 같은 단계와 캡처가 케이스마다 되풀이된다.
     document.querySelectorAll('details:not([open])').forEach(function (d) {
+      if (d.classList.contains('case') && d.closest('.passfold')) return;
       d.open = true; opened.push(d);
     });
   });
@@ -74,6 +76,17 @@ _PRINT_JS = """(function () {
 # 밝게 / 어둡게 — 파일로 연 리포트에는 웹 UI 의 버튼이 없어 PC 설정을 따라 어둡게만 나왔다(2026-11-19).
 # 웹 UI 의 버튼과 같은 말·같은 저장 키(prova-theme)를 쓴다. 웹 UI 안에서는 위쪽 막대째 숨는다.
 THEME_BUTTON = "<button class='theme' id='themeBtn' type='button'></button>"
+# 받기 단추의 그림 — 웹 UI 도구 막대의 ICON.download 와 같은 선 그림.
+_ICON_DOWNLOAD = ("<svg viewBox='0 0 16 16' aria-hidden='true'><path d='M8 2.5v8M5 7.5l3 3 3-3M3 13h10'/></svg>")
+# PDF 는 서버가 받을 때 만든다(/api/report/<실행>/pdf). 파일로 연 리포트(폴더째 받은 사람)에는 서버가 없어
+# 단추를 숨긴 채 둔다 — 서버가 준 주소(/runs/<실행>/report.html)로 열렸을 때만 보인다.
+_PDF_BTN_JS = r"""(function () {
+  var b = document.getElementById('pdfBtn');
+  var m = /\/runs\/([^/]+)\/report\.html$/.exec(location.pathname);
+  if (!b || !m || !/^https?:$/.test(location.protocol)) return;
+  b.href = '/api/report/' + m[1] + '/pdf'; b.hidden = false;
+})();"""
+
 _THEME_BTN_JS = """(function () {
   var btn = document.getElementById('themeBtn'), root = document.documentElement;
   if (!btn) return;
@@ -228,52 +241,75 @@ a { color:inherit; text-underline-offset:2px; }
 /* 리포트 파일의 머리는 웹 UI 결과 화면과 같은 부품을 같은 순서로 쓴다 — 위쪽 막대, 결론 제목,
    비율 막대, 집계 한 줄. 기획자가 화면에서 본 것과 개발사에 보낸 파일이 같은 문서로 읽힌다.
    규칙은 app.css 의 .topbar · .result-head · .btn · .meter · .tally 와 값을 맞춘다. */
-.topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--sp-4);
-          padding:var(--sp-3) var(--sp-6); border-bottom:1px solid var(--line); font-size:var(--tx-md); }
+/* 위쪽 막대 — 웹 UI 의 창 도구 막대와 같은 재질(--bg-bar)·높이. 왼쪽 이름, 가운데 기획서 → 대상, 오른쪽 때. */
+.topbar { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:var(--sp-4);
+          height:52px; padding:0 var(--sp-6); border-bottom:1px solid var(--sep); background:var(--bg-bar);
+          font-size:var(--tx-sm); line-height:var(--lh-sm); position:sticky; top:0; z-index:5;
+          -webkit-backdrop-filter:saturate(1.6) blur(20px); backdrop-filter:saturate(1.6) blur(20px); }
 .crumbs { display:flex; gap:var(--sp-2); align-items:center; min-width:0; color:var(--muted); }
 .crumbs > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .crumbs b { color:var(--text); font-weight:600; flex:none; max-width:100%; }
-.topbar .name { font-size:var(--tx-xl); font-weight:660; letter-spacing:-0.03em; }
+.topbar .name { order:-1; font-size:var(--tx-base); font-weight:700; letter-spacing:-0.01em;
+                padding-right:var(--sp-4); border-right:1px solid var(--sep); }
 .topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
-                display:flex; align-items:center; gap:var(--sp-3); }
-button.theme { font:inherit; font-size:12px; font-weight:650; padding:4px 12px; border-radius:var(--r-lg);
-               border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
-button.theme:hover { border-color:var(--text); }
+                display:flex; align-items:center; gap:var(--sp-3); white-space:nowrap; }
+/* 도구 막대 버튼 — 키트의 알약(28px). 테두리 대신 컨트롤 그림자 한 겹. */
+button.theme { font:inherit; font-size:var(--tx-sm); font-weight:500; height:var(--ctl-md); padding:0 12px;
+               border-radius:var(--r-full); border:0; background:var(--bg-raised); color:var(--text);
+               box-shadow:var(--shadow-control); cursor:pointer; }
+button.theme:hover { background:var(--bg-hover); }
 button.theme:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 .result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
-               flex-wrap:wrap; margin-bottom:var(--sp-4); }
-h1 { font-size:var(--tx-3xl); font-weight:700; letter-spacing:-0.03em; line-height:1.32; margin:0;
+               flex-wrap:wrap; margin-bottom:var(--sp-5); }
+/* 결론 한 줄 — 웹 UI 결과 화면의 .verdict-line 과 같은 크기. 판정 부분은 바탕 없이 판정 색 글자. */
+h1 { font-size:var(--tx-xl); line-height:var(--lh-xl); font-weight:700; letter-spacing:-0.015em; margin:0;
      word-break:keep-all; text-wrap:balance; }
-h1 mark { color:inherit; border-radius:var(--r-lg); padding:2px var(--sp-2);
-          -webkit-box-decoration-break:clone; box-decoration-break:clone; }
-h1 mark.fail { background:var(--fail-bg); } h1 mark.infra { background:var(--note-bg); }
-h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass-bg); }
-.result-head .cond { font-size:var(--tx-md); color:var(--muted); margin-top:var(--sp-1); }
+h1 mark { background:none; padding:0; color:inherit; }
+h1 mark.fail { color:var(--fail-fg); } h1 mark.infra { color:var(--note-fg); }
+h1 mark.unv { color:var(--unv-fg); } h1 mark.pass { color:var(--pass-fg); }
+.result-head .cond { font-size:var(--tx-md); line-height:var(--lh-para); color:var(--muted); margin-top:6px; }
 .actions { display:flex; gap:var(--sp-2); flex-wrap:wrap; }
-.btn { display:inline-flex; align-items:center; font:inherit; font-size:var(--tx-md); font-weight:650;
-       padding:8px var(--sp-4); border-radius:var(--r-lg); border:1px solid transparent;
-       text-decoration:none; white-space:nowrap; cursor:pointer; transition:background-color .12s, opacity .12s; }
-.btn.primary { background:var(--text); color:var(--bg); }
-.btn:hover { opacity:.88; }
+.btn { display:inline-flex; align-items:center; gap:6px; font:inherit; font-size:var(--tx-md); font-weight:500;
+       height:var(--ctl-lg); padding:0 14px; border-radius:var(--r-full); border:0;
+       background:var(--bg-raised); color:var(--text); box-shadow:var(--shadow-control);
+       text-decoration:none; white-space:nowrap; cursor:pointer; transition:background-color var(--dur-1) var(--ease-out); }
+.btn svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.btn:hover { background:var(--bg-hover); }
+.btn[hidden] { display:none; }
 .btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 /* 원형차트(도넛) + 이름표 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순, 12시에서 시계 방향.
    웹 UI 결과 화면(.donut)과 같은 그림이다. 숫자는 이름표와 아래 한 줄이 글자로 말한다. */
-.chart { display:flex; align-items:center; gap:var(--sp-8); flex-wrap:wrap; margin-bottom:var(--sp-5); }
-.chart svg { flex:none; display:block; }
+/* 웹 UI 결과 화면의 숫자 칸(.tiles)과 같은 모양 — 도넛 칸 하나 + 판정마다 칸 하나. 칸은 묶음 상자
+   (3% 채움, 모서리 12). 이름표가 칸이 된다: 색 점 + 이름 위, 큰 수 아래, 비율은 수 옆에 작게. */
+.chart { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-3); margin-bottom:var(--sp-5); }
+.chart svg { flex:none; display:block; width:88px; height:88px; }
+.chart > svg { box-sizing:content-box; padding:14px var(--sp-5); border-radius:var(--r-card);
+               background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
 .chart text { text-anchor:middle; fill:var(--text); font-variant-numeric:tabular-nums; }
-.chart .big { font-size:28px; font-weight:600; letter-spacing:-0.02em; }
-.chart .small { font-size:11px; fill:var(--muted); }
-.chart .track { stroke:var(--line); }
+/* 도넛은 132 칸 그림을 88px 로 줄여 놓는다 — 글자 크기는 그림 단위라 2/3 로 줄어든다(32→21px, 16→11px). */
+.chart .big { font-size:32px; font-weight:700; letter-spacing:-0.02em; }
+.chart .small { font-size:16px; fill:var(--muted); }
+.chart .track { stroke:var(--fill-track); }
 .chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
 .chart .seg.unv { stroke:var(--chart-unv); } .chart .seg.weak { stroke:var(--chart-weak); }
 .chart .seg.pass { stroke:var(--chart-pass); }
-.chart .side { flex:1; min-width:220px; }
-.legend { list-style:none; margin:0 0 var(--sp-2); padding:0; display:grid; gap:6px; max-width:320px; }
-.legend li { display:grid; grid-template-columns:10px auto 1fr auto; align-items:center; gap:var(--sp-2);
-             font-size:var(--tx-md); font-variant-numeric:tabular-nums; }
-.legend b { justify-self:end; font-weight:650; }
-.legend .ms { min-width:3.2em; text-align:right; }
-.swatch { width:10px; height:10px; border-radius:2px; }
+/* 이름표 칸들은 도넛 칸과 같은 줄, 집계 한 줄은 그 아래 전체 폭 */
+.chart .side { display:contents; }
+.chart .tally, .chart p.ms { grid-column:1 / -1; margin:0; }
+.legend li.zero b { color:var(--muted); }
+.legend { list-style:none; margin:0; padding:0; display:grid; gap:var(--sp-3);
+          grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); }
+.legend li { display:flex; flex-wrap:wrap; align-items:baseline; align-content:space-between; column-gap:6px;
+             padding:14px var(--sp-4) var(--sp-4); border-radius:var(--r-card);
+             background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover);
+             font-variant-numeric:tabular-nums; min-width:0; }
+.legend li > .swatch { align-self:center; flex:none; }
+/* 이름이 첫 줄을 다 쓴다 — 수와 비율은 둘째 줄로 내려간다 */
+.legend li > span:not(.ms) { flex:1 0 calc(100% - 14px); font-size:var(--tx-xs); line-height:var(--lh-xs);
+                             color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.legend b { margin-top:6px; font-size:var(--tx-2xl); line-height:36px; font-weight:700; letter-spacing:-0.02em; }
+.legend .ms { font-size:var(--tx-sm); color:var(--muted); }
+.swatch { width:8px; height:8px; border-radius:var(--r-full); }
 .swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
 .swatch.unv { background:var(--chart-unv); } .swatch.weak { background:var(--chart-weak); }
 .swatch.pass { background:var(--chart-pass); }
@@ -343,34 +379,37 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 @media (max-width:640px) { .frow { grid-template-columns:28px minmax(0,1fr); }
   .frow .what, .frow .rule { grid-column:2; } }
 .case { scroll-margin-top:16px; }
-button.copy { font:inherit; font-size:12px; font-weight:600; margin-left:auto; padding:5px 12px; border-radius:var(--r-lg);
-              transition:border-color .12s, background-color .12s;
-              border:1px solid var(--border-strong); background:var(--bg-surface); color:var(--text); cursor:pointer; }
-button.copy:hover { border-color:var(--muted); background:var(--bg-hover); }
-button.copy:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+button.copy { font:inherit; font-size:var(--tx-sm); font-weight:500; margin-left:auto; height:var(--ctl-md); padding:0 12px;
+              border-radius:var(--r-full); transition:background-color var(--dur-1) var(--ease-out);
+              border:0; box-shadow:var(--shadow-control); background:var(--bg-raised); color:var(--text); cursor:pointer; }
+button.copy:hover { background:var(--bg-hover); }
+button.copy:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 @media (prefers-reduced-motion: reduce) { button.copy, button.copy:hover, button.copy:active { transition:none; transform:none; } }
 /* 통과는 접어 둔다 — 확인할 것이 없는 줄이 실패와 같은 무게로 이어지지 않게. */
 details.passfold > summary { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:12px;
-                             border-bottom:1px solid var(--text); margin-top:var(--sp-8); }
+                             border-bottom:1px solid var(--sep); margin-top:var(--sp-10); }
+details.passfold > summary:hover .ms { color:var(--text); }
+details.passfold > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); border-radius:var(--r-sm); }
 details.passfold > summary::-webkit-details-marker { display:none; }
 details.passfold > summary h2 { border:none; margin:0; padding-bottom:8px; }
 details.passfold[open] .ms { visibility:hidden; }
 /* 섹션 머리 — 웹 UI 의 묶음 머리줄과 같은 크기, 아래 굵은 선. */
-h2 { font-size:var(--tx-base); font-weight:700; margin:var(--sp-8) 0 0; padding-bottom:var(--sp-2);
-     border-bottom:1px solid var(--text); }
+h2 { font-size:var(--tx-base); line-height:var(--lh-title); font-weight:700; margin:var(--sp-10) 0 0;
+     padding-bottom:var(--sp-2); border-bottom:1px solid var(--sep); }
 /* 케이스는 상자가 아니라 줄이다 — 계획 화면의 목록과 같은 모양. */
 .case { border-bottom:1px solid var(--line); }
 .case > summary { padding:12px 0; cursor:pointer; display:flex; gap:8px;
                   align-items:center; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
-.tag { font-size:11px; font-weight:650; padding:1px 7px; border-radius:var(--r-md);
-       white-space:nowrap; }
+/* 꼬리표 — 웹 UI 와 같은 알약(높이 20). 판정 꼬리표만 판정 색이고, 규칙 이름은 회색. */
+.tag { display:inline-block; height:20px; line-height:20px; padding:0 8px; border-radius:var(--r-full);
+       font-size:var(--tx-xs); font-weight:500; white-space:nowrap; vertical-align:middle; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:var(--bg-inset); color:var(--text); }
-.tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
+.tag.rule { background:var(--fill-hover); color:var(--muted); }
+.tag.cat.defect { background:var(--fail-bg); color:var(--fail-fg); font-weight:600; }
 /* 실행 문제는 보라다 — 비율 막대의 '실행 문제' 와 같은 색이어야 한다. */
-.tag.cat.infra { background:var(--note-bg); color:var(--note-fg); }
+.tag.cat.infra { background:var(--note-bg); color:var(--note-fg); font-weight:600; }
 .tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
 /* 확인 불가 — 결함(빨강)도 실행 문제(보라)도 아니다. 무채색 + 점선 테두리로 '판정 없음' 을 보인다. */
 .tag.cat.unv { background:var(--bg-inset); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
@@ -429,14 +468,14 @@ h2 { font-size:var(--tx-base); font-weight:700; margin:var(--sp-8) 0 0; padding-
 }
 /* 실패 카드 — 대제목이 맨 위, 분류·규칙 꼬리표와 케이스 제목은 그 아래 작은 한 줄. */
 /* 번호는 왼쪽 칸에 따로 선다 — 제목·꼬리표·비교 칸이 같은 세로선에서 시작한다. */
-.case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:24px 0 12px 36px; position:relative;
-                          align-items:baseline; }
-.case.failed > summary .no { position:absolute; left:0; top:27px; font-size:17px; line-height:1.4; }
+.case.failed > summary { flex-wrap:wrap; row-gap:8px; padding:var(--sp-6) 0 var(--sp-3) 36px; position:relative;
+                          align-items:center; }
+.case.failed > summary .no { position:absolute; left:0; top:var(--sp-6); font-size:var(--tx-lg); line-height:26px; }
 .case.failed > .body { padding-left:36px; }
 @media (max-width:640px) { .case.failed > .body { padding-left:0; } }
-.case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:17px; font-weight:650; line-height:1.4;
+.case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:var(--tx-lg); font-weight:700; line-height:26px;
               letter-spacing:-0.01em; }
-.case.failed .title { color:var(--muted); font-size:13px; }
+.case.failed .title { color:var(--muted); font-size:var(--tx-sm); }
 table.kv { width:100%; border-collapse:collapse; margin-bottom:12px; }
 table.kv th { text-align:left; width:110px; vertical-align:top; color:var(--muted);
               font-weight:400; padding:5px 8px 5px 0; font-size:13px; }
@@ -446,59 +485,65 @@ table.kv code { font-family:var(--font-mono); font-size:12px; }
 .steps { width:100%; }
 .screens { margin:14px 0 4px; }
 .steps th, .steps td, .screens th, .screens td {
-  border-bottom:1px solid var(--line); padding:6px 16px 6px 0; text-align:left; }
-.steps th, .screens th { font-weight:400; font-size:12px; color:var(--muted);
-                         border-bottom-color:var(--border-strong); }
+  border-bottom:1px solid var(--sep); padding:7px 16px 7px 0; text-align:left; font-variant-numeric:tabular-nums; }
+.steps th, .screens th { font-weight:600; font-size:var(--tx-xs); color:var(--muted);
+                         border-bottom-color:var(--border-default); }
 .steps td.err { color:var(--fail); }
 .steps td.val { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
 /* 요약 줄 — 분류 꼬리표가 있으면 FAIL 은 겹치는 말이다. 소요 시간은 기획자가 읽지 않는다. */
 .case summary .tag.FAIL:has(+ .tag.cat) { display:none; }
 .case > summary .ms { display:none; }
 details.raw { margin-top:12px; overflow-x:auto; }
-details.raw > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
+details.raw > summary { cursor:pointer; color:var(--muted); font-size:var(--tx-sm); padding:6px 0; width:max-content; }
 details.raw > summary:hover { color:var(--text); }
 details.raw .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
 details.raw .url code { font-family:var(--font-mono); }
-h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
+h4 { font-size:var(--tx-xs); line-height:var(--lh-xs); color:var(--muted); font-weight:600; margin:0 0 6px; }
 /* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다.
    왼쪽 칸에 기대·근거·재현 절차, 오른쪽 칸에 관찰·판정한 화면·그때의 주소가 든다. */
-.cmp { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); border-radius:var(--r-lg);
-       margin:4px 0 16px; overflow:hidden; }
-.cmp > div { padding:14px 16px; min-width:0; }
-.cmp > .got { border-left:1px solid var(--line); }
-.cmp.FAIL > .got { background:var(--fail-bg); }
+/* 두 칸은 웹 UI 결과 화면의 '기대' · '실제' 상자와 같다 — 왼쪽 묶음 상자(3% 채움), 오른쪽은 판정 색 바탕.
+   선으로 가른 한 상자가 아니라 떨어진 두 상자다. */
+.cmp { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--sp-3); margin:var(--sp-1) 0 var(--sp-4);
+       align-items:start; }
+.cmp > div { padding:14px var(--sp-4) var(--sp-4); min-width:0; border-radius:var(--r-card);
+             background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
+.cmp.FAIL > .got { background:var(--fail-bg); box-shadow:none; }
 .cmp.infra > .got { background:var(--note-bg); }
-.cmp.unv > .got { background:var(--bg-inset); }
+.cmp.unv > .got { background:var(--fill-hover); }
 .cmp p { margin:0; word-break:break-word; }
-.cmp h4 + p { font-size:var(--tx-lg); line-height:1.5; word-break:keep-all; overflow-wrap:anywhere; }
-.cmp h4 ~ h4 { margin-top:18px; }
-.cmp.defect > .got > h4:first-child { color:var(--fail); }
+.cmp h4 + p { font-size:var(--tx-base); line-height:var(--lh-para); word-break:keep-all; overflow-wrap:anywhere; }
+.cmp h4 ~ h4 { margin-top:var(--sp-5); }
+.cmp.defect > .got > h4:first-child { color:var(--fail-fg); }
 .cmp.infra > .got > h4:first-child { color:var(--note-fg); }
 /* 기획서 근거 — 기획서 표의 그 줄을 표 모양 그대로 옮긴다. 판정에 쓴 칸만 진하게. */
-table.src { width:100%; margin-top:12px; border-collapse:collapse; font-size:12px; line-height:1.45; }
-table.src caption { text-align:left; color:var(--muted); padding-bottom:4px; }
-table.src caption b { font-weight:600; margin-right:6px; }
-table.src td { border:1px solid var(--line); padding:5px 7px; vertical-align:top; color:var(--muted);
+table.src { width:100%; margin-top:var(--sp-3); border-collapse:separate; border-spacing:0;
+            font-size:var(--tx-xs); line-height:var(--lh-xs); border-radius:var(--r-sel); overflow:hidden;
+            background:var(--bg-surface); box-shadow:inset 0 0 0 1px var(--border-default); }
+table.src caption { text-align:left; color:var(--muted); padding-bottom:6px; }
+table.src caption b { font-weight:600; color:var(--text); margin-right:6px; }
+table.src td { padding:6px 8px; vertical-align:top; color:var(--muted); border-left:1px solid var(--border-default);
                word-break:keep-all; overflow-wrap:break-word; }
-table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset); }
+table.src td:first-child { border-left:0; }
+table.src td.hit { color:var(--text); font-weight:600; background:var(--fill-hover); }
 @media (max-width:640px) { table.src, table.src caption, table.src tbody, table.src tr { display:block; }
   table.src td { display:inline-block; margin:0 -1px -1px 0; } }
-.cmp .src { font-size:13px; color:var(--muted); margin-top:10px; }
+.cmp .src { font-size:var(--tx-sm); line-height:var(--lh-sm); color:var(--muted); margin-top:10px; }
 .cmp .src b { font-weight:600; margin-right:6px; }
 .cmp code { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
 @media (max-width:640px) { .cmp { grid-template-columns:1fr; }
   .cmp > .got { border-left:0; border-top:1px solid var(--line); } }
-.repro { margin:4px 0 0; padding-left:22px; font-size:var(--tx-md); color:var(--muted); }
+.repro { margin:var(--sp-1) 0 0; padding-left:22px; font-size:var(--tx-md); line-height:var(--lh-para); color:var(--muted); }
 .repro li { padding:1px 0; }
+.repro li::marker { font-variant-numeric:tabular-nums; }
 /* 여덟 단계 가운데 일곱은 케이스마다 같다 — 기획서를 어긴 단계만 진하게 둔다. */
 .repro li.broke { color:var(--text); font-weight:600; }
-.repro em.broke { font-size:11px; font-weight:650; background:var(--fail-bg); padding:1px 6px;
-                  border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
+.repro em.broke { font-size:var(--tx-2xs); font-weight:600; background:var(--fail-bg); padding:1px 7px;
+                  border-radius:var(--r-full); margin-left:4px; white-space:nowrap; }
 .repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; }
 .repro em { font-style:normal; font-size:13px; color:var(--fail); }
 /* 멈춘 단계 — 어긴 단계와 같은 무게. 꼬리표는 실행 문제의 색(보라)이다. 뒤의 단계는 실행하지 못했다. */
-.repro em.stop { font-size:11px; font-weight:650; color:var(--note-fg); background:var(--note-bg);
-                 padding:1px 6px; border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
+.repro em.stop { font-size:var(--tx-2xs); font-weight:600; color:var(--note-fg); background:var(--note-bg);
+                 padding:1px 7px; border-radius:var(--r-full); margin-left:4px; white-space:nowrap; }
 .repro li.todo { opacity:.55; }
 .repro-note { font-size:12px; color:var(--muted); margin:6px 0 0 22px; }
 /* 다시 돌릴 때의 요령처럼 판정을 바꾸지 않는 안내 — 상자 없이 작은 글씨. */
@@ -506,10 +551,10 @@ table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset
 .smallnote b { color:var(--text); font-weight:600; }
 .smallnote + .warn, .smallnote + .heal, .smallnote + .gap { margin-top:32px; }
 /* 참고 — 실패·통과 케이스 아래의 압축판. 이름 한 칸, 내용 한 칸, 상자 없음. */
-h2.brief-h { margin-top:48px; }
-ul.brief { list-style:none; margin:0; padding:0; font-size:14px; line-height:1.6; }
+h2.brief-h { margin-top:var(--sp-12); }
+ul.brief { list-style:none; margin:0; padding:0; font-size:var(--tx-md); line-height:var(--lh-para); }
 ul.brief li { display:grid; grid-template-columns:200px minmax(0,1fr); gap:4px 16px; padding:10px 0;
-              border-bottom:1px solid var(--line); word-break:keep-all; color:var(--muted); }
+              border-bottom:1px solid var(--sep); word-break:keep-all; color:var(--muted); }
 ul.brief li > b { color:var(--text); font-weight:600; }
 ul.brief .nos a { color:inherit; }
 @media (max-width:640px) { ul.brief li { grid-template-columns:1fr; } }
@@ -518,12 +563,15 @@ details.pairfold > summary { cursor:pointer; font-size:14px; color:var(--muted);
 details.pairfold > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 details.pairfold h2 { display:none; }
 .shots.last { margin-top:12px; }
-.shots.last a { display:block; width:100%; }
-.shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
-.shots.last .cap { text-align:left; font-size:12px; }
+.shots.last a { display:block; width:max-content; max-width:100%; }
+/* 판정한 화면 — 칸 폭에 맞추되 높이는 240px 까지. 넘치면 줄여 담는다(누르면 원본). 오른쪽 칸만 길어져
+   왼쪽 기획서 칸 아래가 비던 것을 줄인다. */
+.shots.last a > img { display:block; width:auto; max-width:100%; height:auto; max-height:240px;
+                      border:1px solid var(--border-default); border-radius:var(--r-sel); }
+.shots.last .cap { text-align:left; font-size:var(--tx-xs); margin-top:6px; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
 .shots a { display:block; cursor:zoom-in; text-decoration:none; }
-.shots img { height:150px; border:1px solid var(--line); border-radius:var(--r-sm);
+.shots img { height:120px; border:0; border-radius:var(--r-sel); box-shadow:inset 0 0 0 1px var(--border-default);
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
 /* 단계 되짚기 — 21st.dev Agent Trace 에서. 단계 한 줄, 시간 축 막대, 끄는 재생선. 색은 토큰만.
@@ -534,7 +582,7 @@ details.pairfold h2 { display:none; }
 .tr-body { position:relative; margin-top:12px; }
 .tr-rows { list-style:none; margin:0; padding:0; }
 .tr-rows > li { display:grid; grid-template-columns:var(--gut) minmax(0,1fr) var(--msw); gap:var(--gap);
-                align-items:center; height:26px; font-size:12px; }
+                align-items:center; height:24px; font-size:var(--tx-xs); }
 .tr-name { font:inherit; color:var(--text); background:none; border:0; margin:0; padding:2px 6px 2px 2px;
            text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
            border-radius:var(--r-sm); transition:background-color .15s ease-out, color .15s ease-out; }
@@ -568,21 +616,22 @@ button.tr-name:focus-visible, .tr-scrub:focus-visible { outline:none; box-shadow
 @media (max-width:640px) { .trace { --gut:7.5rem; } }
 @media print { .tr-head, .tr-scrub { display:none; } }
 /* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
-.heal, .gap, .warn { border-radius:var(--r-xl); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3);
-                     font-size:14px; line-height:1.6; }
-.warn b, .heal b, .gap b { font-size:var(--tx-lg); font-weight:620; }
+/* 웹 UI 의 알림 상자(.alert)와 같다 — 모서리 12, 바탕 색 한 겹, 테두리 없음. 숨기거나 접지 않는다. */
+.heal, .gap, .warn { border-radius:var(--r-card); padding:14px var(--sp-4); margin-bottom:var(--sp-3);
+                     font-size:var(--tx-md); line-height:var(--lh-para); }
+.warn b, .heal b, .gap b { font-size:var(--tx-md); font-weight:600; }
 /* 주의 알림의 세모 — 웹 UI 알림과 같은 그림. 색은 토큰으로 칠하고 그림은 가리개로만 쓴다. */
-.warn { position:relative; padding-left:46px; }
-.warn::before { content:""; position:absolute; left:16px; top:15px; width:18px; height:18px;
+.warn { position:relative; padding-left:44px; }
+.warn::before { content:""; position:absolute; left:16px; top:17px; width:16px; height:16px;
                 background:var(--warn-fg); -webkit-mask:var(--warn-icon) center / contain no-repeat;
                 mask:var(--warn-icon) center / contain no-repeat; }
 :root { --warn-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M8 2.2l6 10.6H2z' stroke-width='1.4'/%3E%3Cpath d='M8 6.4v3M8 11.2v.1' stroke-width='1.6'/%3E%3C/svg%3E"); }
 .heal { background:var(--note-bg); }
 .heal b { color:var(--note-fg); }
 .gap { background:var(--info-bg); }
-/* 주의 알림은 흰 바탕 + 옅은 주황 테두리 — 넓은 노란 바탕은 리포트를 누렇게 만든다. 세모는 그대로 주황. */
-.warn { background:var(--bg-surface); border:1px solid color-mix(in srgb, var(--warn-fg) 50%, var(--line)); }
-.warn b { display:block; margin-bottom:4px; }
+/* 주의 알림 — 웹 UI 의 .alert.warn 과 같은 옅은 주의 바탕. 세모는 주의 색. */
+.warn { background:var(--warn-bg); }
+.warn b { display:block; margin-bottom:2px; }
 .heal .why, .gap .why { color:var(--muted); margin:2px 0 8px; }
 .empty { color:var(--muted); padding:12px 0; }
 .screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
@@ -597,7 +646,13 @@ h3.grp { font-size:13px; margin:20px 0 0; color:var(--muted); font-weight:650; }
   .topbar .name { order:-1; } .topbar .when > span, .crumbs span { display:none; } .crumbs { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .btn, .btn:hover, .btn:active { transition:none; transform:none; } }
-@media print { .actions, button.copy, button.theme { display:none; } .case { break-inside:avoid; } }
+/* 인쇄 — 실패 카드는 한 쪽보다 길 때가 많아 카드째 끊지 않으면 앞 쪽이 빈다. 카드 안의 덩어리만 지킨다
+   (PDF 받기도 같은 규칙, pdf_export._PDF_CSS). */
+@media print { .actions, button.copy, button.theme { display:none; }
+  .topbar { position:static; background:none; -webkit-backdrop-filter:none; backdrop-filter:none; }
+  h2, h3.grp, .case > summary, h4 { break-after:avoid; }
+  .chart, .warn, .cmp > div > p, table.src, .repro li, .trace, .shots.last, .shots a, .steps tr,
+  .case:not([open]) { break-inside:avoid; } }
 """
 
 
@@ -1051,8 +1106,8 @@ def _donut_svg(n: dict[str, int], labels: dict[str, str], size: int = 132) -> st
         f"aria-label='전체 {total}건 — {_esc(summary)}'>"
         f"<circle class='track' cx='{c:g}' cy='{c:g}' r='{radius:.2f}' fill='none' stroke-width='{width:g}'/>"
         f"<g transform='rotate(-90 {c:g} {c:g})'>{''.join(arcs)}</g>"
-        f"<text x='{c:g}' y='{c + 4:g}' class='big'>{total}</text>"
-        f"<text x='{c:g}' y='{c + 22:g}' class='small'>케이스</text></svg>")
+        f"<text x='{c:g}' y='{c + 6:g}' class='big'>{total}</text>"
+        f"<text x='{c:g}' y='{c + 27:g}' class='small'>케이스</text></svg>")
 
 
 def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
@@ -1073,10 +1128,14 @@ def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=Non
     order = ("defect", "infra", "unv", "weak", "pass")
     n = {k: segments[k].count if k in segments else 0 for k in order}
     labels = {k: segments[k].label for k in segments}
+    # 이름표는 웹 UI 결과 화면의 숫자 칸과 같은 칸이다. 기획서와 다름·실행 문제·통과는 0 이어도 칸을 둔다
+    # — '없다' 도 읽는 사람이 찾는 답이다(아래 집계 줄과 같은 규칙). 0 인 칸은 흐린 글자.
+    names = {"defect": "기획서와 다름", "infra": "실행 문제", "unv": "확인 불가", "weak": "약한 확인", "pass": "통과"}
     legend = "".join(
-        f"<li><i class='swatch {k}'></i><span>{_esc(labels[k])}</span>"
-        f"<b>{n[k]}</b><span class='ms'>{n[k] / total:.0%}</span></li>"
-        for k in order if n[k])
+        (f"<li><i class='swatch {k}'></i><span>{_esc(labels[k])}</span>"
+         f"<b>{n[k]}</b><span class='ms'>{n[k] / total:.0%}</span></li>") if n[k] else
+        (f"<li class='zero'><i class='swatch {k}'></i><span>{names[k]}</span><b>0</b></li>")
+        for k in order if n[k] or k in ("defect", "infra", "pass"))
     # 기획서와 다름·실행 문제는 0이어도 적는다 — '없다' 도 읽는 사람이 찾는 답이다 (웹 UI 와 같다).
     parts = [f"기획서와 다름 {n['defect']}", f"실행 문제 {n['infra']}"]
     if n["unv"]:
@@ -2204,7 +2263,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 <div class="wrap">
 <div class="result-head">
 <div><h1>{_conclusion(report.cases, total)}</h1>{f"<div class='cond'>{_esc(cond)}</div>" if cond else ""}</div>
-<div class="actions"><a class="btn primary" href="report.xlsx" download>엑셀 받기</a></div>
+<div class="actions"><a class="btn" href="report.xlsx" download>{_ICON_DOWNLOAD}엑셀 받기</a><a class="btn" id="pdfBtn" hidden download>{_ICON_DOWNLOAD}PDF 받기</a></div>
 </div>
 {chart_html}
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
@@ -2221,7 +2280,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {weak_note}
 {sel_html}
 {_brief_html(report, names, checked, fails, numbers, gaps, backend, pairs_html)}
-</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_TRACE_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_TRACE_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script><script>{_PDF_BTN_JS}</script></body></html>
 """
 
 

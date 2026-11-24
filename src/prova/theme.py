@@ -30,6 +30,8 @@
 따라온다. 별칭이 있는 한 두 벌로 갈라질 수 없다.
 """
 
+import re
+
 _DARK = """    --bg-canvas:  #1e1e1e;
     --bg-surface: #1e1e1e;
     --bg-workspace: #1e1e1e;
@@ -314,3 +316,16 @@ _MORE_DARK = """    --fg-muted:   #c7c7cc;
 
 TOKENS_CSS = (_TOKENS_TEMPLATE.replace("__DARK__", _DARK)
               .replace("__MORE_LIGHT__", _MORE_LIGHT).replace("__MORE_DARK__", _MORE_DARK))
+
+
+def light_value(name: str) -> str:
+    """밝은 화면에서 토큰 하나의 값 (예: '--fail-fg' → '#d70015').
+
+    CSS 변수를 읽지 못하는 곳 — 엑셀 셀 색(xlsx_export), PDF 쪽 꼬리말(pdf_export) — 도 색을 여기서만
+    가져간다. 값을 그쪽에 다시 적으면 두 벌이 된다. 밝은 값이 다크 블록보다 먼저 적혀 있으므로 처음
+    나오는 정의가 밝은 값이다.
+    """
+    m = re.search(rf"^\s*{re.escape(name)}:\s*([^;]+);", TOKENS_CSS, re.M)
+    if not m:
+        raise KeyError(name)
+    return m.group(1).strip()
