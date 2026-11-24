@@ -27,6 +27,105 @@ function alertBox(kind, title, why) {
     `<b>${title}</b>${why ? `<div class="why">${why}</div>` : ""}</div></div>`;
 }
 
+// ── 움직임 ─────────────────────────────────────────────────────────────────
+// 상태가 바뀔 때만 움직인다 — 단계 이동, 항목 완료, 숫자 바뀜, 호버 위치. 들어올 때
+// 장식으로 흔들지 않는다. 화면 설정이 '동작 줄이기' 면 바뀐 모습만 바로 보인다.
+// 동작은 21st.dev 컴포넌트에서 옮겼고(이름은 각 함수 위), 겉모양은 tokens.css 를 따른다.
+const reduceMotion = () =>
+  !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+/**
+ * 목록 위를 미끄러지는 호버 배경 한 장 (21st.dev 'Fluid Hover Highlight').
+ *
+ * 줄마다 배경이 켜졌다 꺼지는 대신 한 장이 줄 사이를 따라간다. 목록 밖에서 처음
+ * 들어올 때는 그 자리에서 나타나고(멀리서 날아오지 않는다), 나가면 사라진다.
+ * 상자를 innerHTML 로 다시 그려도 다음 호버 때 배경을 새로 만든다. 터치에서는 쓰지 않는다.
+ */
+function fluidHover(box, selector) {
+  if (!box) return;
+  box.classList.add("has-hl");
+  if (box.dataset.hl) return;            // 이벤트는 상자마다 한 번만 건다
+  box.dataset.hl = "1";
+  let row = null;
+  const layer = () => {
+    let hl = box.querySelector(":scope > .hl");
+    if (!hl) {
+      hl = document.createElement("div");
+      hl.className = "hl";
+      hl.setAttribute("aria-hidden", "true");
+      box.prepend(hl);
+    }
+    return hl;
+  };
+  const hide = () => {
+    row = null;
+    const hl = box.querySelector(":scope > .hl");
+    if (hl) hl.classList.remove("on");
+  };
+  const place = (snap) => {
+    if (!row || !row.isConnected) { hide(); return; }
+    const hl = layer();
+    const b = box.getBoundingClientRect(), r = row.getBoundingClientRect();
+    if (snap) hl.style.transition = "none";
+    hl.style.transform = `translate(${r.left - b.left}px, ${r.top - b.top}px)`;
+    hl.style.width = `${r.width}px`;
+    hl.style.height = `${r.height}px`;
+    if (snap) { hl.getBoundingClientRect(); hl.style.transition = ""; }
+    hl.classList.add("on");
+  };
+  box.addEventListener("pointerover", (e) => {
+    if (e.pointerType === "touch") return;
+    const r = e.target.closest(selector);
+    if (!r || !box.contains(r) || r === row) return;
+    const hl = box.querySelector(":scope > .hl");
+    const fresh = !hl || !hl.classList.contains("on");
+    row = r;
+    place(fresh || reduceMotion());
+  });
+  box.addEventListener("pointerleave", hide);
+  // 펼친 줄은 키가 바뀐다 — 배경도 따라 늘어난다. toggle 은 올라오지 않아 잡는 단계에서 받는다.
+  box.addEventListener("toggle", () => place(false), true);
+}
+
+/**
+ * 바뀐 숫자만 아래에서 위로 밀어 바꾼다 (21st.dev 'Agent Todo List' 의 개수 표시).
+ * 실행 중 판정 수처럼 몇 초마다 바뀌는 숫자에 쓴다. 처음 값은 그냥 쓴다.
+ */
+function swapNumber(el, to) {
+  if (!el) return;
+  to = String(to);
+  const from = el.dataset.v;
+  if (from === to) return;
+  el.dataset.v = to;
+  if (from === undefined || reduceMotion() || !el.animate) { el.textContent = to; return; }
+  el.innerHTML = `<span class="sw"><span>${esc(from)}</span><span>${esc(to)}</span></span>`;
+  const [a, b] = el.firstChild.children;
+  const opt = { duration: 220, easing: "cubic-bezier(0.2, 0.7, 0.2, 1)" };
+  a.animate([{ transform: "translateY(0)", opacity: 1 }, { transform: "translateY(-100%)", opacity: 0 }],
+            { ...opt, fill: "forwards" });
+  b.animate([{ transform: "translateY(100%)", opacity: 0 }, { transform: "translateY(0)", opacity: 1 }], opt)
+    .finished.then(() => { if (el.dataset.v === to) el.textContent = to; }).catch(() => {});
+}
+
+/**
+ * 결과 숫자를 자리마다 0에서 굴려 세운다 (21st.dev 'Count Up Animation' 의 roll).
+ * 결과가 처음 나올 때 한 번만 돈다. 화면 읽기 프로그램은 완성된 숫자를 그대로 읽는다.
+ */
+function rollIn(el) {
+  const text = el.textContent;
+  if (reduceMotion() || !el.animate || !/\d/.test(text)) return;
+  const strip = "0123456789".split("").map((d) => `<span>${d}</span>`).join("");
+  el.innerHTML = `<span class="sr">${esc(text)}</span>` + [...text].map((ch) => /\d/.test(ch)
+    ? `<span class="dg" aria-hidden="true"><span class="strip">${strip}</span><span class="ghost">${ch}</span></span>`
+    : `<span aria-hidden="true">${esc(ch)}</span>`).join("");
+  el.querySelectorAll(".dg").forEach((d) => {
+    const n = Number(d.querySelector(".ghost").textContent);
+    d.querySelector(".strip").animate(
+      [{ transform: "translateY(0)" }, { transform: `translateY(${-n * 10}%)` }],
+      { duration: 700, easing: "cubic-bezier(0.3, 0.5, 0.2, 1)", fill: "forwards" });
+  });
+}
+
 // ── 서버 통신 ──────────────────────────────────────────────────────────────
 
 class ApiError extends Error {
@@ -185,14 +284,35 @@ function renderChrome() {
 function setStep(n) {
   document.body.dataset.step = n;
   for (const el of $("stepper").querySelectorAll("[data-step]")) {
-    if (Number(el.dataset.step) === n) el.setAttribute("aria-current", "step");
+    const s = Number(el.dataset.step);
+    if (s === n) el.setAttribute("aria-current", "step");
     else el.removeAttribute("aria-current");
+    // 지난 단계는 체크, 지금 단계는 검은 원, 남은 단계는 빈 원. 잇는 선은 지난 구간만 채운다.
+    el.parentElement.dataset.state = s < n ? "done" : s === n ? "now" : "next";
   }
+  placeThumb();
 }
 
+/**
+ * 지금 단계의 검은 원은 하나뿐이고, 단계가 바뀌면 그 원이 옆 번호로 미끄러진다
+ * (21st.dev 'Steps' 의 sliding thumb). 처음 자리를 잡을 때는 움직이지 않는다.
+ */
+function placeThumb() {
+  // 위 막대가 두 줄이라 키가 화면 폭마다 다르다 — 계획 화면의 고정 막대가 그 아래에 붙게 알린다.
+  document.documentElement.style.setProperty("--topbar-h", `${document.querySelector(".topbar").offsetHeight}px`);
+  const st = $("stepper");
+  const no = st.querySelector("[aria-current] .no");
+  if (!no) return;
+  st.style.setProperty("--thumb-x", `${no.offsetLeft}px`);
+  st.style.setProperty("--thumb-y", `${no.offsetTop}px`);
+  if (!st.dataset.ready) requestAnimationFrame(() => { st.dataset.ready = "1"; });
+}
+window.addEventListener("resize", placeThumb);
+
 $("stepper").addEventListener("click", (e) => {
-  const n = e.target.dataset && e.target.dataset.step;
-  if (state.busy || e.target.tagName !== "BUTTON") return;
+  const btn = e.target.closest("button[data-step]");
+  const n = btn && btn.dataset.step;
+  if (state.busy || !btn) return;
   if (n === "1") showBlank();
   if (n === "2" && state.plan) showPlan();
 });
@@ -214,7 +334,8 @@ function showProgress(title, lines) {
     <div class="head"><h1>${esc(title)}</h1><span class="spin" aria-hidden="true"></span>
       <span class="elapsed" id="pElapsed">0초</span></div>
     <div class="pnow" id="pNow" aria-live="polite"></div>
-    <progress id="pBar" hidden></progress>
+    <progress id="pBar" class="sr" hidden></progress>
+    <div class="pbar" id="pTrack" hidden aria-hidden="true"><i id="pFill"></i></div>
     <div class="ptally" id="pTally" hidden></div>
     ${title === "실행 중" ? `<button class="btn ghost" id="pStop" type="button" hidden>멈추기</button>` : ""}
     <div class="steps" id="pSteps"></div>
@@ -249,10 +370,19 @@ function pushProgress(messages) {
     if (t) {
       const el = $("pTally");
       el.hidden = false;
-      el.innerHTML = `<span class="ok">통과 ${t[1]}</span>` +
-        `<span class="fail">기획서와 다름 ${t[2]}</span>` +
-        `<span class="infra">실행 문제 ${t[3]}</span>` +
-        (t[4] && t[4] !== "0" ? `<span class="unv">확인 불가 ${t[4]}</span>` : "");
+      // 칸은 한 번 만들고 숫자만 바꾼다 — 바뀐 숫자만 밀어 올린다.
+      if (!el.firstChild) {
+        el.innerHTML = `<span class="ok">통과 <b data-k="ok"></b></span>` +
+          `<span class="fail">기획서와 다름 <b data-k="fail"></b></span>` +
+          `<span class="infra">실행 문제 <b data-k="infra"></b></span>` +
+          `<span class="unv" hidden>확인 불가 <b data-k="unv"></b></span>`;
+      }
+      const k = (key) => el.querySelector(`[data-k="${key}"]`);
+      swapNumber(k("ok"), t[1]);
+      swapNumber(k("fail"), t[2]);
+      swapNumber(k("infra"), t[3]);
+      k("unv").parentElement.hidden = !(t[4] && t[4] !== "0");
+      swapNumber(k("unv"), t[4] || "0");
       continue;
     }
     const raw = plainProgress(raw0);
@@ -262,6 +392,9 @@ function pushProgress(messages) {
       $("pNow").textContent = `${m[2]}건 중 ${m[1]}번째 — ${m[3]}`;
       const bar = $("pBar");
       bar.hidden = false; bar.max = Number(m[2]); bar.value = Number(m[1]) - 1;
+      // 보이는 막대는 따로 그린다 — <progress> 는 값이 바뀔 때 부드럽게 차오르지 않는다.
+      $("pTrack").hidden = false;
+      $("pFill").style.width = `${(bar.value / bar.max) * 100}%`;
       continue;
     }
     const isDetail = /^\s{2,}/.test(raw) || raw.trimStart().startsWith("!");
@@ -278,10 +411,12 @@ function pushProgress(messages) {
       }
     }
     const prev = steps.lastElementChild;
-    if (prev) { prev.classList.remove("active"); prev.classList.add("done"); }
+    if (prev) doneStep(prev);
     const el = document.createElement("div");
     el.className = "pstep active";
-    el.innerHTML = `<span class="mark">●</span><div class="body">${esc(text.replace(/^S\d(~S\d)?\s+/, ""))}</div>`;
+    el.dataset.t0 = Date.now();
+    el.innerHTML = `<span class="mark">${STEP_MARK}</span>` +
+      `<div class="body">${esc(text.replace(/^S\d(~S\d)?\s+/, ""))}</div><span class="t"></span>`;
     steps.appendChild(el);
   }
 }
@@ -306,9 +441,28 @@ function plainProgress(line) {
   return line;
 }
 
+/**
+ * 단계 표시 — 도는 호, 끝나면 체크가 그려진다 (21st.dev 'Agent Todo List' 의 상태 표시).
+ * 색은 쓰지 않는다. 끝난 단계는 '통과' 가 아니라 지나간 것이다 — 초록은 판정에만.
+ */
+const STEP_MARK = `<svg class="st" viewBox="0 0 20 20" aria-hidden="true">` +
+  `<circle class="trk" cx="10" cy="10" r="7"/>` +
+  `<circle class="arc" cx="10" cy="10" r="7" pathLength="100"/>` +
+  `<path class="ok" d="M6.7 10.3l2.3 2.3 4.4-4.6" pathLength="1"/></svg>`;
+
+// 끝난 단계에 걸린 시간을 오른쪽에 적는다 — 1초 넘게 걸린 단계만.
+function doneStep(el) {
+  if (!el.classList.contains("active")) return;
+  el.classList.remove("active");
+  el.classList.add("done");
+  const sec = Math.round((Date.now() - Number(el.dataset.t0 || Date.now())) / 1000);
+  const t = el.querySelector(".t");
+  if (t && sec >= 1) t.textContent = `${sec}초`;
+}
+
 function finishProgress() {
   const last = $("pSteps") && $("pSteps").lastElementChild;
-  if (last) { last.classList.remove("active"); last.classList.add("done"); }
+  if (last) doneStep(last);
 }
 
 function showError(title, message) {
@@ -661,6 +815,10 @@ function renderGroups() {
     });
   });
 
+  fluidHover($("groups"), ".case");
+  const bar = document.querySelector(".toolbar");
+  if (bar) document.documentElement.style.setProperty("--toolbar-h", `${bar.offsetHeight}px`);
+
   $("groups").querySelectorAll(".case").forEach((row) => {
     row.querySelector("input").addEventListener("change", (e) => {
       const box = e.target;
@@ -880,7 +1038,13 @@ function showResult(out) {
       </div>
     </div>
     <div class="meter" aria-hidden="true"><i class="f" style="flex:${defects}"></i><i class="x" style="flex:${infra}"></i><i class="u" style="flex:${unv}"></i><i style="flex:${s.pass}"></i></div>
-    <div class="tally">기획서와 다름 ${defects} · 실행 문제 ${infra}${unv ? ` · 확인 불가 ${unv}` : ""} · 통과 ${s.pass} · 통과율 ${s.pass_rate}%</div>
+    <dl class="sumstrip">
+      <div class="f${defects ? " hot" : ""}"><dt>기획서와 다름</dt><dd>${defects}</dd></div>
+      <div class="x${infra ? " hot" : ""}"><dt>실행 문제</dt><dd>${infra}</dd></div>
+      ${unv ? `<div class="u"><dt>확인 불가</dt><dd>${unv}</dd></div>` : ""}
+      <div class="p"><dt>통과</dt><dd>${s.pass}</dd></div>
+      <div class="r"><dt>통과율</dt><dd>${s.pass_rate}%</dd></div>
+    </dl>
     ${notes.join("")}
     <div class="reportbox">
       <iframe id="reportFrame" src="${esc(out.report_url)}" title="검증 리포트" scrolling="no"
@@ -889,6 +1053,7 @@ function showResult(out) {
   // 같은 항목·같은 옵션으로 한 번 더 — 고친 뒤 확인할 때 1·2단계를 다시 밟지 않는다.
   const again = $("againBtn");
   if (again) again.addEventListener("click", startRun);
+  $("stage").querySelectorAll(".sumstrip dd").forEach(rollIn);
   fitFrame($("stage").querySelector("iframe"));
 }
 
@@ -1072,6 +1237,7 @@ function renderRuns() {
         ${runScore(r)}
       </button>`).join("")}${groups.get(key).length > RUNS_SHOWN ? "</details>" : ""}
     </details>`).join("");
+  fluidHover($("runs"), ".run, .run-group > summary, .run-more > summary");
 
   $("runs").querySelectorAll("[data-run]").forEach((btn) => {
     btn.addEventListener("click", () => {

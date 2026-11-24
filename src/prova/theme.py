@@ -132,10 +132,17 @@ _TOKENS_TEMPLATE = """
   --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px; --sp-4: 16px;
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
 
-  --r-sm: 2px; --r-md: 2px; --r-lg: 3px; --r-xl: 4px; --r-full: 999px;
+  /* 모서리는 둘만 눈에 띈다 — 버튼·입력칸 6px(r-lg), 묶음 상자 8px(r-xl). 알약(r-full)은 점·꼬리표에만. */
+  --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-xl: 8px; --r-full: 999px;
 
   --tx-xs: 11px; --tx-sm: 12px; --tx-md: 13px; --tx-base: 15px;
-  --tx-lg: 16px; --tx-xl: 20px; --tx-2xl: 26px;
+  --tx-lg: 16px; --tx-xl: 20px; --tx-2xl: 26px; --tx-3xl: 28px;
+
+  /* 움직임 — 상태가 바뀔 때만 쓴다(단계 이동·항목 완료·숫자 바뀜·호버 위치).
+     들어올 때 장식으로 쓰지 않는다. 화면 설정에서 '동작 줄이기' 면 app.css 가 모두 끈다. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 260ms; --dur-4: 700ms;
+  --ease-out: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-roll: cubic-bezier(0.3, 0.5, 0.2, 1);
 
   --lh-tight: 1.35; --lh-normal: 1.55; --lh-relaxed: 1.7;
 }

@@ -937,3 +937,259 @@ mark.unv { background: var(--bg-inset); }
 .newproj input { flex: 1; min-width: 0; }
 .newproj .btn { flex: none; }
 .field .hint.err { color: var(--fail-fg); }
+
+/* ═══ 디자인 디벨롭 (2026-11-24) ═══════════════════════════════════════════
+ * 틀·문구·순서는 그대로 두고 겉모양만 다듬는다. 위 규칙을 덮어쓴다.
+ * 방향 — 차분한 검수 도구: 흰 바탕 + 중성 회색 선, 강조는 먹색 하나, 색은 판정에만.
+ * 제목은 굵게(28px/700) 위계를 세우고, 모서리는 버튼·입력 6px / 묶음 8px 두 가지.
+ * 움직임은 상태가 바뀔 때만(단계 이동·항목 완료·숫자 바뀜·호버 위치), 150~260ms.
+ * 참고: Postman 실행 결과 요약 줄, Arcade 단계 표시, Emergent 진행 목록, Claude 설정 화면.
+ * 동작 출처: 21st.dev Steps · Fluid Hover Highlight · Agent Todo List · Count Up Animation.
+ */
+
+/* ── 위 막대: 번호 원 + 잇는 선, 지금 단계의 검은 원이 미끄러진다 ─────────── */
+.topbar .stepper { position: relative; gap: 0; align-items: flex-start; padding: var(--sp-2) 0 var(--sp-3); }
+.stepper li { display: flex; align-items: flex-start; }
+.stepper li + li::before {
+  content: ""; flex: none; width: 48px; height: 1px; margin: 11px var(--sp-2) 0;
+  background-color: var(--border-default);
+  background-image: linear-gradient(var(--fg-default), var(--fg-default));
+  background-repeat: no-repeat; background-size: 0% 100%;
+  transition: background-size var(--dur-3) var(--ease-out);
+}
+.stepper li[data-state="done"]::before, .stepper li[data-state="now"]::before { background-size: 100% 100%; }
+.stepper [data-step] {
+  flex-direction: column; align-items: center; gap: 6px; padding: 0; min-width: 44px;
+  border: none; font-size: var(--tx-sm); color: var(--fg-muted);
+}
+.stepper [aria-current] { font-weight: 700; color: var(--fg-default); border: none; }
+.stepper li[data-state="done"] [data-step] { color: var(--fg-default); }
+.stepper .lb { position: relative; z-index: 1; }
+.stepper .no {
+  position: relative; z-index: 1; display: grid; place-items: center;
+  width: 22px; height: 22px; border-radius: var(--r-full);
+  border: 1px solid var(--border-strong); background: var(--bg-surface);
+  font-style: normal; font-size: var(--tx-xs); font-weight: 650; font-variant-numeric: tabular-nums;
+  color: var(--fg-muted);
+  transition: color var(--dur-2) var(--ease-out), border-color var(--dur-2) var(--ease-out),
+              background-color var(--dur-2) var(--ease-out);
+}
+.stepper li[data-state="done"] .no { font-size: 0; border-color: var(--fg-default); color: var(--fg-default); }
+.stepper li[data-state="done"] .no::after {
+  content: ""; grid-area: 1 / 1; width: 8px; height: 4px; margin-top: -2px;
+  border-left: 1.6px solid currentColor; border-bottom: 1.6px solid currentColor; transform: rotate(-45deg);
+}
+/* 지금 단계의 원은 비워 두고, 아래에 깔린 검은 원(thumb)이 번호를 받친다 */
+.stepper [aria-current] .no { background: transparent; border-color: transparent; color: var(--fg-onaccent); }
+.stepper::before {
+  content: ""; position: absolute; left: 0; top: 0; width: 22px; height: 22px;
+  border-radius: var(--r-full); background: var(--fg-default);
+  box-shadow: 0 0 0 4px var(--bg-active);
+  transform: translate(var(--thumb-x, 0px), var(--thumb-y, 0px));
+}
+.stepper:not([data-ready])::before { visibility: hidden; }
+.stepper[data-ready]::before { transition: transform var(--dur-3) var(--ease-out); }
+.stepper button[data-step]:hover { border: none; color: var(--fg-default); }
+.stepper button[data-step]:hover .no { border-color: var(--fg-default); color: var(--fg-default); }
+.stepper button[aria-current]:hover .no { color: var(--fg-onaccent); border-color: transparent; }
+.stepper button[data-step]:focus-visible { box-shadow: none; }
+.stepper button[data-step]:focus-visible .no { box-shadow: var(--focus-ring); }
+
+/* ── 제목 — 굵기로 위계를 세운다 ─────────────────────────────────────────── */
+.panel > h1, .head h1 { font-size: var(--tx-3xl); font-weight: 700; letter-spacing: -0.03em; line-height: 1.32;
+                        word-break: keep-all; }
+.lede { color: var(--fg-muted); }
+.head { margin-bottom: var(--sp-5); }
+
+/* ── 버튼 — 6px 모서리, 호버는 바탕 톤만. 뜨거나 커지지 않는다 ───────────── */
+.btn {
+  border-radius: var(--r-lg); padding: 8px var(--sp-4); font-weight: 600;
+  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out),
+              color var(--dur-1) var(--ease-out), text-decoration-color var(--dur-1) var(--ease-out);
+}
+.btn:hover:not(:disabled), .btn:active:not(:disabled) { transform: none; }
+.btn.primary { background: var(--accent-solid); color: var(--fg-onaccent); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-hover); opacity: 1; }
+.btn.ghost { border-color: var(--border-strong); color: var(--fg-default); background: var(--bg-surface); }
+.btn.ghost:hover:not(:disabled) { background: var(--bg-hover); border-color: var(--fg-muted); }
+.btn.quiet { border-color: transparent; background: none; padding: 4px var(--sp-2); font-weight: 500;
+             text-decoration: underline; text-decoration-color: var(--border-strong); text-underline-offset: 3px; }
+.btn.quiet:hover:not(:disabled) { background: none; text-decoration-color: currentColor; }
+.btn.quiet[aria-pressed="true"] { background: var(--bg-inset); font-weight: 650; text-decoration: none; }
+
+/* ── 첫 화면 — 입력은 한 상자 안의 '이름 | 칸' 줄로 ──────────────────────── */
+body[data-step="1"] .app { grid-template-columns: minmax(0, 720px); }
+.side-scroll > .panel:first-child > .field {
+  display: grid; grid-template-columns: 168px minmax(0, 1fr); column-gap: var(--sp-5); align-items: start;
+  margin: 0; padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--border-default); border-top: none; background: var(--bg-surface);
+}
+.side-scroll > .panel:first-child > .lede + .field { border-top: 1px solid var(--border-default);
+  border-radius: var(--r-xl) var(--r-xl) 0 0; }
+.side-scroll > .panel:first-child > .field:has(+ .go) { border-radius: 0 0 var(--r-xl) var(--r-xl); }
+.side-scroll > .panel:first-child > .field > label { grid-column: 1; margin: 0; padding-top: 10px; font-weight: 650; }
+.side-scroll > .panel:first-child > .field > :not(label) { grid-column: 2; }
+.side-scroll > .panel:first-child > .go { margin-top: var(--sp-5); }
+#uploadBtn { justify-self: start; margin: var(--sp-1) 0 0 calc(var(--sp-2) * -1); }
+input[type=text], input[type=url], select, textarea { border-radius: var(--r-lg); }
+.lede { margin-bottom: var(--sp-6); }
+
+/* 실행 옵션 — 같은 모양의 접힌 상자 하나 */
+.side-scroll > details.opts { border: 1px solid var(--border-default); border-radius: var(--r-xl);
+  padding: 0; margin-top: var(--sp-4); }
+.side-scroll > details.opts > summary { padding: var(--sp-4) var(--sp-5); margin: 0; border-radius: var(--r-xl); }
+.side-scroll > details.opts > summary:hover { background: var(--bg-hover); }
+.side-scroll > details.opts[open] > summary { border-radius: var(--r-xl) var(--r-xl) 0 0;
+  border-bottom: 1px solid var(--border-subtle); margin-bottom: var(--sp-4); }
+.side-scroll > details.opts > .field { padding: 0 var(--sp-5); }
+.side-scroll > details.opts > .field:last-child { padding-bottom: var(--sp-4); }
+.side-scroll > details.opts + .panel { border-top: none; padding-top: var(--sp-8); }
+.panel > h2 { border-bottom-width: 1px; }
+
+/* 예시 사이트 고르기 — 흰 판이 두 칸 사이를 미끄러진다 */
+.seg { position: relative; display: inline-grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 2px;
+       border-radius: var(--r-lg); }
+.seg::before {
+  content: ""; position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc(50% - 2px);
+  border-radius: var(--r-md); background: var(--bg-surface); box-shadow: 0 0 0 1px var(--border-default);
+  transition: transform var(--dur-2) var(--ease-out);
+}
+.seg:has(> button:last-child[aria-pressed="true"])::before { transform: translateX(100%); }
+.seg button { position: relative; z-index: 1; font-family: var(--font-sans); padding: 4px var(--sp-3);
+              background: transparent; box-shadow: none; transition: color var(--dur-1) var(--ease-out); }
+.seg button[aria-pressed="true"] { background: transparent; box-shadow: none; color: var(--fg-default); font-weight: 600; }
+.seg button:hover { color: var(--fg-default); }
+
+/* 체크 상자 — 먹색으로 차고 체크가 그려진다 */
+.case input[type=checkbox], label.check input[type=checkbox] {
+  appearance: none; -webkit-appearance: none; flex: none; display: inline-grid; place-content: center;
+  width: 16px; height: 16px; margin: 3px 0 0; cursor: pointer;
+  border: 1.5px solid var(--border-strong); border-radius: var(--r-sm); background: var(--bg-surface);
+  transition: background-color var(--dur-1) var(--ease-out), border-color var(--dur-1) var(--ease-out);
+}
+label.check input[type=checkbox] { margin: 0; }
+.case input[type=checkbox]::before, label.check input[type=checkbox]::before {
+  content: ""; width: 8px; height: 4px; margin-top: -2px;
+  border-left: 2px solid var(--fg-onaccent); border-bottom: 2px solid var(--fg-onaccent);
+  transform: rotate(-45deg) scale(0); transition: transform var(--dur-2) var(--ease-out);
+}
+.case input[type=checkbox]:hover, label.check input[type=checkbox]:hover { border-color: var(--fg-muted); }
+.case input[type=checkbox]:checked, label.check input[type=checkbox]:checked {
+  background: var(--fg-default); border-color: var(--fg-default); }
+.case input[type=checkbox]:checked::before, label.check input[type=checkbox]:checked::before {
+  transform: rotate(-45deg) scale(1); }
+
+/* ── 목록 호버 — 배경 한 장이 줄 사이를 따라간다 (app.js fluidHover) ─────── */
+.has-hl { position: relative; isolation: isolate; }
+.hl {
+  position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none;
+  background: var(--bg-hover); border-radius: var(--r-lg); opacity: 0;
+  transition: transform var(--dur-2) var(--ease-out), width var(--dur-2) var(--ease-out),
+              height var(--dur-2) var(--ease-out), opacity var(--dur-1) var(--ease-out);
+}
+.hl.on { opacity: 1; }
+.has-hl .case:hover, .has-hl .run:hover, .has-hl summary:hover { background: transparent; }
+.run, .run-group > summary, .run-more > summary { border-radius: var(--r-lg); }
+
+/* ── 항목 검토 ─────────────────────────────────────────────────────────── */
+.group > header { border-bottom: 1px solid var(--fg-default); z-index: 2; }
+.group > header h3 { font-size: var(--tx-base); font-weight: 700; }
+.subhead { padding-top: var(--sp-4); color: var(--fg-muted); }
+.case { padding: 10px var(--sp-3); }
+.tag { border-radius: var(--r-sm); }
+.tag.rule { background: var(--bg-inset); color: var(--fg-muted); font-weight: 550;
+            box-shadow: inset 0 0 0 1px var(--border-subtle); }
+.spec { border-radius: var(--r-xl); }
+/* 고정 막대는 위 막대 바로 아래에 붙는다 — 키는 app.js 가 잰다(placeThumb · renderGroups). */
+.toolbar { top: var(--topbar-h, 119px); }
+.group > header { top: calc(var(--topbar-h, 119px) + var(--toolbar-h, 60px)); }
+
+/* ── 실행 중 ───────────────────────────────────────────────────────────── */
+.head .spin { width: 14px; height: 14px; border-width: 1.6px; }
+.pnow { font-size: var(--tx-base); font-weight: 650; }
+.pbar { height: 4px; margin: var(--sp-2) 0 var(--sp-4); border-radius: var(--r-full);
+        background: var(--bg-active); overflow: hidden; }
+.pbar[hidden] { display: none; }
+.pbar > i { display: block; width: 0; height: 100%; border-radius: inherit; background: var(--fg-default);
+            transition: width var(--dur-4) var(--ease-out); }
+.ptally { gap: var(--sp-5); font-variant-numeric: tabular-nums; }
+.ptally b { font-weight: 700; }
+.ptally [hidden] { display: none; }
+.sw { display: inline-grid; overflow: hidden; vertical-align: top; }
+.sw > span { grid-area: 1 / 1; }
+
+/* 단계 목록 — 한 상자, 지금 줄은 연한 바탕 + 도는 호, 끝난 줄은 체크와 걸린 시간 */
+.steps { border: 1px solid var(--border-default); border-radius: var(--r-xl); padding: var(--sp-2); gap: 2px; }
+.steps:empty { display: none; }
+.pstep { grid-template-columns: 18px minmax(0, 1fr) auto; align-items: start; gap: var(--sp-3);
+         padding: var(--sp-2) var(--sp-3); border-radius: var(--r-lg); }
+.pstep .mark { display: flex; align-items: center; height: calc(var(--tx-md) * 1.55); color: var(--fg-muted); }
+.pstep.active { background: var(--bg-inset); }
+.pstep.done .mark { color: var(--fg-muted); }
+.pstep.active .mark { color: var(--fg-default); }
+.pstep .t { font-size: var(--tx-sm); color: var(--fg-subtle); font-variant-numeric: tabular-nums; }
+.st { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6;
+      stroke-linecap: round; stroke-linejoin: round; overflow: visible; }
+.st .trk { opacity: 0.28; transition: opacity var(--dur-2) var(--ease-out); }
+.st .arc { opacity: 0; stroke-dasharray: 28 100; transform-box: fill-box; transform-origin: center; }
+.pstep.active .st .arc { opacity: 1; animation: spin 0.9s linear infinite; }
+.st .ok { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.pstep.done .st .trk { opacity: 1; }
+.pstep.done .st .ok { stroke-dashoffset: 0; transition: stroke-dashoffset var(--dur-3) var(--ease-out); }
+
+/* ── 결과 — 요약 줄(색 네모 + 이름 + 큰 숫자), 숫자는 처음 한 번 자리마다 굴러 선다 ── */
+.sumstrip { display: flex; flex-wrap: wrap; margin: var(--sp-3) 0 var(--sp-6); padding: 0;
+            border-top: 1px solid var(--border-default); border-bottom: 1px solid var(--border-default); }
+.sumstrip > div { flex: 1 1 120px; min-width: 0; padding: var(--sp-3) var(--sp-5) var(--sp-4);
+                  border-left: 1px solid var(--border-subtle); }
+.sumstrip > div:first-child { border-left: none; padding-left: 0; }
+.sumstrip dt { display: flex; align-items: center; gap: 6px; font-size: var(--tx-sm); color: var(--fg-muted);
+               white-space: nowrap; }
+.sumstrip dt::before { content: ""; flex: none; width: 8px; height: 8px; border-radius: var(--r-sm);
+                       background: var(--chart-pass); }
+.sumstrip .f dt::before { background: var(--chart-defect); }
+.sumstrip .x dt::before { background: var(--chart-infra); }
+.sumstrip .u dt::before { background: var(--chart-unv); }
+.sumstrip .r dt::before { display: none; }
+.sumstrip dd { margin: var(--sp-1) 0 0; font-size: var(--tx-2xl); font-weight: 700; letter-spacing: -0.02em;
+               line-height: 1.15; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.sumstrip .f.hot dd { color: var(--fail-fg); }
+.sumstrip .x.hot dd { color: var(--note-fg); }
+.dg { position: relative; display: inline-block; height: 1.15em; overflow: hidden; vertical-align: top;
+      -webkit-mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent);
+      mask-image: linear-gradient(to bottom, transparent, black 12%, black 88%, transparent); }
+.dg .ghost { visibility: hidden; }
+.dg .strip { position: absolute; left: 0; top: 0; width: 100%; display: flex; flex-direction: column;
+             text-align: center; }
+.dg .strip > span { display: block; height: 1.15em; line-height: 1.15; }
+.meter { margin-bottom: 0; }
+.head h1 mark { border-radius: var(--r-lg); }
+
+/* ── 좁은 화면 ─────────────────────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .stepper li + li::before { width: 14px; margin: 11px 2px 0; }
+  .stepper [data-step] { min-width: 40px; font-size: var(--tx-xs); }
+  .side-scroll > .panel:first-child > .field { grid-template-columns: minmax(0, 1fr); padding: var(--sp-4); }
+  .side-scroll > .panel:first-child > .field > label { padding: 0 0 6px; }
+  .side-scroll > .panel:first-child > .field > :not(label) { grid-column: 1; }
+  .panel > h1, .head h1 { font-size: var(--tx-2xl); }
+  /* 요약 줄은 두 칸씩 — 네 칸을 한 줄에 넣으면 '기획서와 다름' 이 두 줄로 끊긴다 */
+  .sumstrip { display: grid; grid-template-columns: 1fr 1fr; }
+  .sumstrip > div { padding: var(--sp-3) var(--sp-3) var(--sp-3) var(--sp-4); }
+  .sumstrip > div:nth-child(odd) { border-left: none; padding-left: 0; }
+  .sumstrip > div:nth-child(n+3) { border-top: 1px solid var(--border-subtle); }
+  .sumstrip dd { font-size: var(--tx-xl); }
+  /* 위 막대 오른쪽 꼬리표는 줄여서 남긴다 — 이름(Prova)을 덮지 않게 */
+  .topbar { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
+  .topbar .topright { justify-self: stretch; justify-content: flex-end; }
+  .topbar .topright, .topbar .chips { min-width: 0; overflow: hidden; }
+  .topbar .chips .chip { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+  .topbar .chips .chip .dot { display: inline-block; margin-right: 5px; vertical-align: middle; }
+}
+
+/* ── 동작 줄이기 — 바뀐 모습만 바로 ─────────────────────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  .stepper::before, .stepper li + li::before, .seg::before,
+  .case input[type=checkbox]::before, label.check input[type=checkbox]::before { transition: none !important; }
+  .pstep.active .st .arc { animation: none; stroke-dasharray: 100 0; opacity: 0.5; }
+}

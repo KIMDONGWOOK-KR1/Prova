@@ -31,11 +31,13 @@ try { var t = localStorage.getItem("prova-theme");
     <div class="chips" id="stageChips"></div>
     <button class="btn ghost quiet" id="themeBtn" type="button"></button>
   </div>
+  <!-- 번호 원 + 잇는 선. 지금 단계의 검은 원은 하나뿐이고 단계가 바뀌면 그 원이 옆으로
+       미끄러진다(app.js placeThumb) — 한 칸이 꺼지고 다른 칸이 켜지는 깜빡임 대신. -->
   <ol class="stepper" id="stepper" aria-label="진행 단계">
-    <li><button type="button" data-step="1">1 기획서</button></li>
-    <li><button type="button" data-step="2">2 항목 검토</button></li>
-    <li><span data-step="3">3 실행</span></li>
-    <li><span data-step="4">4 결과</span></li>
+    <li><button type="button" data-step="1"><i class="no">1</i><span class="lb">기획서</span></button></li>
+    <li><button type="button" data-step="2"><i class="no">2</i><span class="lb">항목 검토</span></button></li>
+    <li><span data-step="3"><i class="no">3</i><span class="lb">실행</span></span></li>
+    <li><span data-step="4"><i class="no">4</i><span class="lb">결과</span></span></li>
   </ol>
 </header>
 

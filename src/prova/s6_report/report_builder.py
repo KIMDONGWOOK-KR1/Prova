@@ -235,13 +235,13 @@ a { color:inherit; text-underline-offset:2px; }
 .topbar .name { font-size:var(--tx-xl); font-weight:660; letter-spacing:-0.03em; }
 .topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
                 display:flex; align-items:center; gap:var(--sp-3); }
-button.theme { font:inherit; font-size:12px; font-weight:650; padding:4px 12px; border-radius:var(--r-full);
+button.theme { font:inherit; font-size:12px; font-weight:650; padding:4px 12px; border-radius:var(--r-lg);
                border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
 button.theme:hover { border-color:var(--text); }
 button.theme:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 .result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
                flex-wrap:wrap; margin-bottom:var(--sp-4); }
-h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0;
+h1 { font-size:var(--tx-3xl); font-weight:700; letter-spacing:-0.03em; line-height:1.32; margin:0;
      word-break:keep-all; text-wrap:balance; }
 h1 mark { color:inherit; border-radius:var(--r-lg); padding:2px var(--sp-2);
           -webkit-box-decoration-break:clone; box-decoration-break:clone; }
@@ -250,11 +250,10 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 .result-head .cond { font-size:var(--tx-md); color:var(--muted); margin-top:var(--sp-1); }
 .actions { display:flex; gap:var(--sp-2); flex-wrap:wrap; }
 .btn { display:inline-flex; align-items:center; font:inherit; font-size:var(--tx-md); font-weight:650;
-       padding:9px var(--sp-5); border-radius:var(--r-full); border:1px solid transparent;
-       text-decoration:none; white-space:nowrap; cursor:pointer; transition:opacity .12s, transform .08s; }
+       padding:8px var(--sp-4); border-radius:var(--r-lg); border:1px solid transparent;
+       text-decoration:none; white-space:nowrap; cursor:pointer; transition:background-color .12s, opacity .12s; }
 .btn.primary { background:var(--text); color:var(--bg); }
-.btn:hover { transform:translateY(-1px); opacity:.85; }
-.btn:active { transform:translateY(1px); }
+.btn:hover { opacity:.88; }
 .btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 /* 비율 막대 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순. 숫자는 아래 한 줄이 글자로 말한다. */
 .chart { margin-bottom:var(--sp-5); }
@@ -278,7 +277,7 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 /* 틀린 곳 목록 — 한 줄에 번호 · 항목 이름 · 일어난 일 · 어긴 규칙. 번호는 아래 카드의 번호와 같다. */
 .flist { margin:var(--sp-8) 0 0; }
 .flist .cap { font-size:var(--tx-base); font-weight:650; padding-bottom:var(--sp-2);
-              border-bottom:2px solid var(--text); }
+              border-bottom:1px solid var(--text); }
 .flist.defect .cap { color:var(--fail); }
 .flist.infra .cap { color:var(--note-fg); }
 .flist.unv .cap { color:var(--muted); }
@@ -329,22 +328,21 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 @media (max-width:640px) { .frow { grid-template-columns:28px minmax(0,1fr); }
   .frow .what, .frow .rule { grid-column:2; } }
 .case { scroll-margin-top:16px; }
-button.copy { font:inherit; font-size:12px; font-weight:650; margin-left:auto; padding:5px 12px; border-radius:999px;
-              transition:border-color .12s, transform .08s;
-              border:1px solid var(--text); background:transparent; color:var(--text); cursor:pointer; }
-button.copy:hover { border-color:var(--text); transform:translateY(-1px); }
-button.copy:active { transform:translateY(1px); }
+button.copy { font:inherit; font-size:12px; font-weight:600; margin-left:auto; padding:5px 12px; border-radius:var(--r-lg);
+              transition:border-color .12s, background-color .12s;
+              border:1px solid var(--border-strong); background:var(--bg-surface); color:var(--text); cursor:pointer; }
+button.copy:hover { border-color:var(--muted); background:var(--bg-hover); }
 button.copy:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
 @media (prefers-reduced-motion: reduce) { button.copy, button.copy:hover, button.copy:active { transition:none; transform:none; } }
 /* 통과는 접어 둔다 — 확인할 것이 없는 줄이 실패와 같은 무게로 이어지지 않게. */
 details.passfold > summary { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:12px;
-                             border-bottom:2px solid var(--text); margin-top:var(--sp-8); }
+                             border-bottom:1px solid var(--text); margin-top:var(--sp-8); }
 details.passfold > summary::-webkit-details-marker { display:none; }
 details.passfold > summary h2 { border:none; margin:0; padding-bottom:8px; }
 details.passfold[open] .ms { visibility:hidden; }
 /* 섹션 머리 — 웹 UI 의 묶음 머리줄과 같은 크기, 아래 굵은 선. */
-h2 { font-size:var(--tx-base); font-weight:650; margin:var(--sp-8) 0 0; padding-bottom:var(--sp-2);
-     border-bottom:2px solid var(--text); }
+h2 { font-size:var(--tx-base); font-weight:700; margin:var(--sp-8) 0 0; padding-bottom:var(--sp-2);
+     border-bottom:1px solid var(--text); }
 /* 케이스는 상자가 아니라 줄이다 — 계획 화면의 목록과 같은 모양. */
 .case { border-bottom:1px solid var(--line); }
 .case > summary { padding:12px 0; cursor:pointer; display:flex; gap:8px;
