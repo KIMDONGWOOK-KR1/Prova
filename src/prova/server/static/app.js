@@ -547,8 +547,36 @@ $("newBtn").addEventListener("click", () => { if (!state.busy) showBlank(); });
     const rail = root.classList.toggle("side-rail");
     try { localStorage.setItem("prova-side", rail ? "rail" : "open"); } catch (e) { /* 저장은 덤 */ }
     say();
+    tip.hidden = true;
   });
   say();
+
+  // ⌘\ (맥) · Ctrl+\ (그 밖) 로 접고 편다 — 브라우저 단축키와 겹치지 않는 자리
+  const mac = /mac|iphone|ipad/i.test(navigator.userAgentData?.platform || navigator.platform || "");
+  tog.setAttribute("aria-keyshortcuts", mac ? "Meta+Backslash" : "Control+Backslash");
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "\\" && (mac ? e.metaKey : e.ctrlKey) && !e.altKey && !e.shiftKey) { e.preventDefault(); tog.click(); }
+  });
+
+  // 접힌 줄의 이름표 — 마우스는 0.5초 머문 뒤, 키보드 초점은 바로. 이름 + 단축키(있으면)
+  const tip = $("railTip");
+  const TIPS = [[$("homeLink"), "첫 화면으로", ""], [tog, "사이드바 펴기", mac ? "⌘\\" : "Ctrl \\"]];
+  let tipT = 0;
+  const showTip = (el, label, key) => {
+    if (!root.classList.contains("side-rail")) return;
+    tip.innerHTML = `${esc(label)}${key ? `<kbd class="kbd">${esc(key)}</kbd>` : ""}`;
+    tip.style.top = `${el.offsetTop + el.offsetHeight / 2}px`;   // .side 기준 — 화면 배율(zoom)과 상관없다
+    tip.hidden = false;
+    el.setAttribute("aria-describedby", "railTip");
+  };
+  const hideTip = (el) => { clearTimeout(tipT); tip.hidden = true; el.removeAttribute("aria-describedby"); };
+  TIPS.forEach(([el, label, key]) => {
+    el.addEventListener("pointerenter", () => { clearTimeout(tipT); tipT = setTimeout(() => showTip(el, label, key), 500); });
+    el.addEventListener("pointerleave", () => hideTip(el));
+    el.addEventListener("focus", () => { if (el.matches(":focus-visible")) showTip(el, label, key); });
+    el.addEventListener("blur", () => hideTip(el));
+    el.addEventListener("keydown", (e) => { if (e.key === "Escape") hideTip(el); });
+  });
 
   // 판 하나 — 보이는 목록에서 고른 줄이 딱 하나일 때만 쓴다. 여럿이면 줄마다 제 배경을 둔다.
   const pill = document.createElement("span");
@@ -2348,10 +2376,17 @@ function runKind(r) {
 
 async function loadRuns() {
   // 비어 있는 것과 아직 안 온 것을 구분해 준다. 빈 칸만 보이면 사람은 기록이 없는 줄 안다.
-  if (!$("runs").children.length) $("runs").innerHTML = `<p class="empty">불러오는 중…</p>`;
+  // 처음 그릴 때만 — 줄 모양의 회색 자리(움직이지 않는다). 다시 불러올 때는 있던 목록을 그대로 둔다.
+  if (!$("runs").children.length) {
+    $("runs").setAttribute("aria-busy", "true");
+    $("runs").innerHTML = `<p class="sr">기록을 불러오는 중</p><ul class="slist skel" aria-hidden="true">` +
+      [72, 56, 64].map((w) => `<li><span class="sk"><i style="width:${w}%"></i><i style="width:${w - 24}%"></i></span></li>`).join("") + `</ul>`;
+  }
   try {
     state.runs = (await api("/api/runs?limit=60")).runs;
+    $("runs").removeAttribute("aria-busy");
   } catch (e) {
+    $("runs").removeAttribute("aria-busy");
     $("runs").innerHTML = `<p class="empty">기록을 불러오지 못했어요. 서버가 켜져 있는지 확인해 주세요.</p>`;
     return;
   }
@@ -2380,9 +2415,16 @@ function renderRuns() {
     $("runs").innerHTML = `<p class="empty">아직 확인한 기록이 없어요.<br>첫 확인이 끝나면 여기에 쌓여요.</p>`;
     return;
   }
+  const q = (state.runFind || "").trim();
+  const hits = q ? runs.map((r) => [r, findRun(r, q)]).filter(([, m]) => m) : runs.map((r) => [r, null]);
+  if (q && !hits.length) {
+    $("runs").innerHTML = `<p class="empty">'${esc(q)}' 에 맞는 기록이 없어요.</p>`;
+    return;
+  }
+  const hit = new Map(hits);
   const current = $("project").value.trim();
   const groups = new Map();
-  runs.forEach((r) => {
+  hits.map(([r]) => r).forEach((r) => {
     const key = r.project || "";
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(r);
@@ -2390,16 +2432,104 @@ function renderRuns() {
   const order = [...groups.keys()].sort((a, b) => (b === current) - (a === current));
   $("runs").innerHTML = order.map((key) => {
     const list = groups.get(key);
-    const open = state.runsOpen[key];
+    const open = state.runsOpen[key] || !!q;   // 찾는 중에는 다 보인다
     const shown = open ? list : list.slice(0, RUNS_SHOWN);
-    return `<h4>${esc(key || "프로젝트 미지정")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
-      shown.map((r) => `<li><button class="sitem tall" type="button" data-run="${esc(r.run_id)}"
+    const m = hit.get(list[0]) || {};
+    return `<h4>${m.project ? markHits(key, m.project) : esc(key || "프로젝트 미지정")}<span class="ct">${list.length}회</span></h4><ul class="slist">` +
+      shown.map((r) => `<li><button class="sitem tall" type="button" data-run="${esc(r.run_id)}" tabindex="-1"
+          ${r.run_id === state.lastRun ? `aria-current="page"` : ""}
           title="${esc([`${r.target} · ${r.pass}/${r.total} 통과`, runWhere(r)].filter(Boolean).join("\n"))}">
-        <span class="two"><b>${esc(runTitle(r))}</b>
+        <span class="two"><b>${(hit.get(r) || {}).title ? markHits(runTitle(r), hit.get(r).title) : esc(runTitle(r))}</b>
         <span>${esc([r.round && `${r.round}차`, runAgo(r.created_at)].filter(Boolean).join(" · "))}</span></span>${runPill(r)}</button></li>`).join("") +
-      (list.length > RUNS_SHOWN ? `<li><button class="sitem more" type="button" data-more="${esc(key)}">${open
+      (list.length > RUNS_SHOWN && !q ? `<li><button class="sitem more" type="button" data-more="${esc(key)}" tabindex="-1">${open
         ? "접기" : `이전 기록 ${list.length - RUNS_SHOWN}개 더 보기`}</button></li>` : "") + `</ul>`;
   }).join("");
+  rovingRuns();
+  fadeLongTitles();
+}
+
+/* ── 기록 찾기 — 21st.dev(chatcn) ChatSidebar 에서 '목록 위 찾기 칸' 만 ─────────────────
+ * 글자가 순서대로 들어 있으면 맞는다(띄어 있어도: '회가' → 회원가입). 화면 이름·프로젝트·주소(호스트)에서 찾는다.
+ * 맞은 글자는 색 없이 굵게(<mark>). 칸은 돋보기나 '/' 로 열고, Esc 는 비우고 닫는다. */
+function fuzzyAt(text, q) {
+  const t = String(text || "").toLowerCase(), want = q.toLowerCase().replace(/\s+/g, "");
+  if (!want) return null;
+  const at = [];
+  let i = 0;
+  for (const ch of want) {
+    i = t.indexOf(ch, i);
+    if (i < 0) return null;
+    at.push(i++);
+  }
+  return at;
+}
+function findRun(r, q) {
+  const host = String(r.target || "").replace(/^https?:\/\//, "");
+  const title = fuzzyAt(runTitle(r), q), project = fuzzyAt(r.project || "", q), where = fuzzyAt(host, q);
+  return title || project || where ? { title, project } : null;
+}
+function markHits(text, at) {
+  const set = new Set(at);
+  return [...String(text)].map((ch, i) => set.has(i) ? `<mark>${esc(ch)}</mark>` : esc(ch)).join("");
+}
+function openFind(focus = true) {
+  $("findOpen").hidden = true;
+  const f = $("rfind").querySelector(".rfind-field");
+  f.hidden = false;
+  if (focus) $("findRuns").focus();
+}
+function closeFind() {
+  state.runFind = "";
+  $("findRuns").value = "";
+  $("rfind").querySelector(".rfind-field").hidden = true;
+  $("findOpen").hidden = false;
+  renderRuns();
+  $("findOpen").focus();
+}
+$("findOpen").addEventListener("click", () => openFind());
+$("findRuns").addEventListener("input", (e) => { state.runFind = e.target.value; renderRuns(); });
+$("findRuns").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") { e.preventDefault(); closeFind(); }
+  if (e.key === "ArrowDown") { e.preventDefault(); const b = $("runs").querySelector("[data-run]"); if (b) b.focus(); }
+});
+$("findRuns").addEventListener("blur", () => { if (!$("findRuns").value) setTimeout(() => {
+  if (document.activeElement !== $("findRuns") && !$("findRuns").value) {
+    $("rfind").querySelector(".rfind-field").hidden = true; $("findOpen").hidden = false; }
+}, 0); });
+// '/' — 글자를 넣는 칸에 있지 않을 때만, 첫 화면에서만
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "/" || e.metaKey || e.ctrlKey || e.altKey || document.body.dataset.view !== "form") return;
+  const a = document.activeElement;
+  if (a && (a.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName))) return;
+  if (document.documentElement.classList.contains("side-rail") || document.querySelector("dialog[open]")) return;
+  e.preventDefault();
+  openFind();
+});
+
+/* 기록 줄 사이는 ↑/↓ 로 옮긴다(목록 안에서 탭 한 번만 멈춘다 — roving tabindex). Enter 는 단추라 그대로 연다.
+ * Home/End 는 처음·끝. 마지막으로 연 기록은 aria-current="page". */
+function rovingRuns() {
+  const items = [...$("runs").querySelectorAll("button.sitem")];
+  if (!items.length) return;
+  const cur = items.find((b) => b.getAttribute("aria-current") === "page") || items[0];
+  items.forEach((b) => { b.tabIndex = b === cur ? 0 : -1; });
+}
+$("runs").addEventListener("keydown", (e) => {
+  const items = [...$("runs").querySelectorAll("button.sitem")];
+  const i = items.indexOf(document.activeElement);
+  if (i < 0) return;
+  const to = e.key === "ArrowDown" ? i + 1 : e.key === "ArrowUp" ? i - 1 : e.key === "Home" ? 0 : e.key === "End" ? items.length - 1 : null;
+  if (to === null) return;
+  e.preventDefault();
+  if (to < 0) { if (!$("rfind").querySelector(".rfind-field").hidden) $("findRuns").focus(); return; }
+  const next = items[Math.min(to, items.length - 1)];
+  items.forEach((b) => { b.tabIndex = b === next ? 0 : -1; });
+  next.focus();
+});
+
+// 긴 이름은 '…' 대신 오른쪽 끝을 흐리게 — 넘칠 때만 (판정 알약은 그대로 읽힌다)
+function fadeLongTitles() {
+  $("runs").querySelectorAll(".sitem .two > b").forEach((b) => b.classList.toggle("ovf", b.scrollWidth > b.clientWidth + 1));
 }
 
 // 방금 끝난 기록은 '12분 전' 처럼 — 한 시간이 넘으면 '오늘 17:57' (GitHub Actions 실행 목록처럼).
@@ -2595,6 +2725,7 @@ $("runs").addEventListener("click", (e) => {
 /** 지난 실행 하나를 결과 화면으로 연다 — 사이드바 기록 줄과 첫 화면 '지난 확인' 이 같이 쓴다. */
 function openRun(r) {
   if (!r || state.busy) return;
+  state.lastRun = r.run_id;
   state.plan = null;
   state.resKind = ""; state.resSel = "";
   showResult({ run_id: r.run_id, summary: r.summary, created_at: r.created_at,

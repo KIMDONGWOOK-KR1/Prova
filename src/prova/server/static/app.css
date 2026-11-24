@@ -115,6 +115,38 @@ a.brand:hover .mark { opacity: 0.8; }
 :root.side-rail .side-toggle .chev { transform: scaleX(-1); }
 :root.side-rail .side-panes, :root.side-rail .side-foot { opacity: 0; visibility: hidden; pointer-events: none; }
 
+/* 접힌 줄의 이름표 (app.js) — 줄 오른쪽에 붙는 작은 말풍선. 접힌 동안만 바깥으로 나올 수 있게 한다 */
+.side { position: relative; }
+:root.side-rail .side { overflow: visible; }
+.rail-tip { position: absolute; left: calc(100% + 8px); z-index: 30; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: var(--r-md);
+  background: var(--bg-raised); color: var(--fg-default); box-shadow: var(--shadow-control), 0 0 0 0.5px var(--sep);
+  font-size: var(--tx-xs); line-height: var(--lh-xs); white-space: nowrap; pointer-events: none; }
+.rail-tip[hidden] { display: none; }
+
+/* 기록 찾기 */
+.rfind { padding: 2px var(--sp-2) 0; }
+.rfind-open { color: var(--fg-muted); }
+.rfind-open .ic { stroke: currentColor; }
+.rfind-open .kbd { margin-left: auto; }
+.rfind-field { display: flex; align-items: center; gap: var(--sp-2); min-height: 32px; padding: 0 10px; border-radius: var(--r-sel);
+  background: var(--bg-raised); box-shadow: inset 0 0 0 0.5px var(--control-line); }
+.rfind-field[hidden] { display: none; }
+.rfind-field:focus-within { box-shadow: inset 0 0 0 0.5px var(--control-line), var(--focus-ring); }
+.rfind-field .ic { width: 16px; height: 16px; flex: none; fill: none; stroke: var(--fg-muted); stroke-width: 1.5; stroke-linecap: round; }
+.rfind-field input { flex: 1; min-width: 0; border: 0; background: none; font: inherit; font-size: var(--tx-md); color: var(--fg-default); outline: none; }
+#runs mark { background: none; color: var(--fg-default); font-weight: 600; }
+/* 긴 이름은 '…' 대신 오른쪽 끝을 흐리게(넘칠 때만, app.js fadeLongTitles) */
+.sitem .two > b.ovf { text-overflow: clip; -webkit-mask-image: linear-gradient(to right, black calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, black calc(100% - 28px), transparent); }
+/* 마지막으로 연 기록 */
+#runs .sitem[aria-current="page"] { background: var(--fill-hover); }
+/* 처음 불러오는 동안의 자리 — 움직이지 않는다 */
+.slist.skel li { padding: 8px 12px; }
+.slist.skel .sk { display: grid; gap: 6px; }
+.slist.skel .sk i { display: block; height: 10px; border-radius: var(--r-sm); background: var(--fill-selected); }
+.slist.skel .sk i + i { height: 8px; background: var(--fill-hover); }
+
 /* 고른 줄의 판 — 하나만 두고 고른 줄로 미끄러진다(app.js glidePill). 판이 있으면 줄 자체 배경은 끈다 */
 .side-pill { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; border-radius: var(--r-sel);
   background: var(--fill-selected); opacity: 0;
