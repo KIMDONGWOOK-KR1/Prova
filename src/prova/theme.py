@@ -32,6 +32,7 @@
 
 _DARK = """    --bg-canvas:  var(--gray-950);
     --bg-surface: #171718;
+    --bg-workspace: var(--gray-950);
     --bg-raised:  #1c1d1e;
     --bg-inset:   #0c0c0d;
     --bg-hover:   #222224;
@@ -93,6 +94,7 @@ _TOKENS_TEMPLATE = """
   --gray-350: #a7a8aa;
   --gray-400: #949597;
   --gray-500: #737375;
+  --gray-550: #6a6a6c;  /* 회색 일하는 면(gray-50) 위에서도 흐린 글자가 4.5:1 을 넘게 */
   --gray-600: #565658;
   --gray-700: #464749;
   --gray-800: #2b2c2e;
@@ -136,7 +138,7 @@ _TOKENS_TEMPLATE = """
   --sp-5: 20px; --sp-6: 24px; --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
 
   /* 모서리는 둘만 눈에 띈다 — 버튼·입력칸 6px(r-lg), 묶음 상자 8px(r-xl). 알약(r-full)은 점·꼬리표에만. */
-  --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-xl: 8px; --r-full: 999px;
+  --r-sm: 3px; --r-md: 4px; --r-lg: 6px; --r-xl: 8px; --r-card: 10px; --r-full: 999px;
 
   /* 글자 크기 — Apple HIG 의 macOS 글자 스타일에 맞춘다. xs 11 Subheadline · sm 12 Callout ·
      md 13 Body · base 15 Title 3 · lg 17 Title 2 · xl 22 Title 1 · 2xl/3xl 26 Large Title.
@@ -159,16 +161,20 @@ _TOKENS_TEMPLATE = """
 :root {
   --bg-canvas:  var(--gray-0);
   --bg-surface: var(--gray-0);
+  /* 웹 화면의 일하는 면 — 옅은 회색 위에 흰 카드를 올린다(21st.dev Themes 미리보기에서).
+     리포트 파일은 이 토큰을 쓰지 않는다 — 리포트는 흰 종이 한 장이다. */
+  --bg-workspace: var(--gray-50);
   --bg-raised:  var(--gray-0);
   --bg-inset:   var(--gray-50);
   --bg-hover:   var(--gray-100);
   --bg-active:  var(--gray-150);
 
   /* 글자 대비 — Apple HIG: 4.5:1 아래로 내려가지 않고, 작은 글자는 7:1 을 노린다.
-     muted 는 흰 바탕에서 7.3:1, subtle 은 4.7:1 (어둡게: 7.5:1 · 5.6:1). */
+     muted 는 흰 바탕에서 7.3:1, subtle 은 5.4:1 — 회색 일하는 면(gray-50) 위에서도 6.7:1 · 5.0:1
+     (어둡게: 7.5:1 · 5.6:1). */
   --fg-default: var(--gray-900);
   --fg-muted:   var(--gray-600);
-  --fg-subtle:  var(--gray-500);
+  --fg-subtle:  var(--gray-550);
   --fg-onaccent: var(--gray-0);
 
   --border-default: var(--gray-200);
@@ -177,7 +183,7 @@ _TOKENS_TEMPLATE = """
 
   /* 컨트롤 층(위쪽 바·도구 줄)의 반투명 재질 — Apple HIG Materials: 재질은 내용 위에 뜬 컨트롤에만,
      내용 층에는 쓰지 않는다. '투명도 줄이기'·'대비 높이기' 에서는 불투명으로 바뀐다(아래). */
-  --bg-bar: color-mix(in srgb, var(--bg-canvas) 82%, transparent);
+  --bg-bar: color-mix(in srgb, var(--bg-surface) 82%, transparent);
 
   /* 강조는 먹색이다 — 색은 판정(통과·기획서와 다름·실행 문제)과 알림에만 쓴다. */
   --accent-fg:     var(--gray-900);
@@ -246,7 +252,7 @@ __MORE_DARK__
 
 /* 투명도 줄이기(OS 설정) — 반투명 재질을 불투명으로 */
 @media (prefers-reduced-transparency: reduce) {
-  :root { --bg-bar: var(--bg-canvas); }
+  :root { --bg-bar: var(--bg-surface); }
 }
 
 /* ===========================================================================
@@ -270,14 +276,14 @@ _MORE_LIGHT = """    --fg-muted:   var(--gray-700);
     --border-default: var(--gray-400);
     --border-subtle:  var(--gray-300);
     --border-strong:  var(--gray-600);
-    --bg-bar: var(--bg-canvas);"""
+    --bg-bar: var(--bg-surface);"""
 
 _MORE_DARK = """    --fg-muted:   var(--gray-300);
     --fg-subtle:  var(--gray-350);
     --border-default: var(--gray-600);
     --border-subtle:  var(--gray-700);
     --border-strong:  var(--gray-500);
-    --bg-bar: var(--bg-canvas);"""
+    --bg-bar: var(--bg-surface);"""
 
 TOKENS_CSS = (_TOKENS_TEMPLATE.replace("__DARK__", _DARK)
               .replace("__MORE_LIGHT__", _MORE_LIGHT).replace("__MORE_DARK__", _MORE_DARK))
