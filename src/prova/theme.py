@@ -121,8 +121,9 @@ _TOKENS_TEMPLATE = """
   --gray-950: #1e1e1e;
 
   /* Apple HIG(Typography): 시스템 글꼴 — 맥에서는 SF Pro + Apple SD Gothic Neo. 키트도 SF Pro 다.
-     시스템 글꼴이 없는 곳(윈도)에서만 다음 글꼴로 넘어간다. */
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Pretendard",
+     시스템 글꼴이 없는 곳(윈도 등)에서는 함께 내주는 Pretendard Variable(/fonts, OFL)로 — Apple 글꼴은 라이선스상
+     내보낼 수 없어 가장 비슷한 것을 쓴다(hh 11-25). 맥은 앞의 글꼴로 다 그려지므로 파일을 받지 않는다. */
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Apple SD Gothic Neo", "Pretendard Variable", "Pretendard",
                "Segoe UI", "Malgun Gothic", system-ui, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas,
                "D2Coding", monospace;

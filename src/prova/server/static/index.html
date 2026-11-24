@@ -20,6 +20,17 @@
      저장 키(prova-theme)에 남겨, 웹 UI 와 모든 보고서가 같은 모드로 열린다(hh 11-25). 그리기 전에 붙여 깜빡임이 없다. -->
 <script>
 try { var t = localStorage.getItem("prova-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+// 글꼴 — 맥·iPhone·iPad 는 시스템 글꼴(SF·Apple SD Gothic Neo)을 쓰고, 그 밖(윈도 등)에서만 함께 내주는
+// Pretendard Variable(/fonts, OFL)을 붙인다. CSS 에 두면 맥에서도 브라우저가 2MB 파일을 받아 버려서 여기서 가른다.
+try {
+  var apple = /mac|iphone|ipad|ipod/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
+  if (!apple) {
+    var st = document.createElement("style");
+    st.textContent = '@font-face{font-family:"Pretendard Variable";font-style:normal;font-weight:45 920;font-display:swap;' +
+      'src:local("Pretendard Variable"),url("/fonts/PretendardVariable.woff2") format("woff2-variations"),url("/fonts/PretendardVariable.woff2") format("woff2")}';
+    document.head.appendChild(st);
+  }
+} catch (e) {}
 // 사이드바를 접어 둔 채 닫았으면 그대로 연다 — 그리기 전에 붙여서 펼쳤다 접히는 깜빡임이 없다
 try { if (localStorage.getItem("prova-side") === "rail") document.documentElement.classList.add("side-rail"); } catch (e) {}
 </script>
