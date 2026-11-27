@@ -118,7 +118,7 @@ def test_실행이_끝나면_적어_둔_것을_지운다(ui):
 
 def test_새로고침_뒤_내_작업이면_진행_화면으로_돌아간다(ui):
     _snap(ui)
-    kind = ui.evaluate("""() => {
+    ui.evaluate("""() => {
       window.__kind = null;
       resumeJob({ boot: 'b1', busy: true, job: { job_id: 'job-7', kind: 'run' } }).then(k => { window.__kind = k; });
     }""")
@@ -206,3 +206,49 @@ def test_다시_붙은_화면은_지난_항목의_걸린_시간을_지어내지_
     ui.evaluate("() => window.__release.on(['집계 통과 2 · 기획서와 다름 0 · 실행 문제 0'])")
     last = ui.evaluate("() => document.querySelector('#pCases tr:nth-child(2) .t').textContent")
     assert last.endswith("초")   # 다시 붙은 뒤에 끝난 항목은 잰 시간을 적는다
+
+
+# ── 끝난 것과 끊긴 것은 다르다 (리뷰에서 나온 것) ────────────────────────────────
+# 서버와 연결이 끊겨 따라가기를 그만둔 것은 작업이 끝난 것이 아니다. 그때 적어 둔 것을 지우면
+# 연결이 돌아온 뒤 새로고침해도 자기 작업을 '다른 창의 작업' 으로 안내한다.
+
+def test_연결이_끊겨_멈춘_것이면_적어_둔_것을_남긴다(ui):
+    ui.evaluate(f"() => {{ state.plan = {PLAN}; window.__done = startRun(); }}")
+    ui.wait_for_function("window.__release !== null")
+    ui.evaluate("""async () => {
+      window.__release.no(new ApiError('서버와 연결이 끊겼어요. 작업은 계속 돌고 있을 수 있어요.', 0));
+      await window.__done;
+    }""")
+    assert ui.evaluate("() => JSON.parse(sessionStorage.getItem(JOB_KEY)).job_id") == "job-7"
+    assert "연결이 끊겼어요" in ui.evaluate("() => $('formNote').innerText")
+
+
+def test_다시_붙은_뒤_연결이_끊겨도_남긴다(ui):
+    _snap(ui)
+    ui.evaluate("() => { window.__p = resumeJob({ boot: 'b1', busy: true, job: { job_id: 'job-7', kind: 'run' } }); }")
+    ui.wait_for_function("window.__release !== null")
+    ui.evaluate("async () => { window.__release.no(new ApiError('서버와 연결이 끊겼어요.', 0)); await window.__p; }")
+    assert ui.evaluate("() => sessionStorage.getItem(JOB_KEY)") is not None
+    assert ui.evaluate("() => state.busy") is False
+
+
+def test_멈춘_작업에_다시_붙으면_멈췄다고_알리고_지운다(ui):
+    _snap(ui)
+    ui.evaluate("() => { window.__p = resumeJob({ boot: 'b1', busy: false, job: null }); }")
+    ui.wait_for_function("window.__release !== null")
+    ui.evaluate("""async () => {
+      window.__release.no(new ApiError('실행을 멈췄습니다. 멈추기 전까지의 결과는 저장하지 않았습니다.', 500));
+      await window.__p;
+    }""")
+    assert "실행을 멈췄어요" in ui.evaluate("() => $('formNote').innerText")
+    assert ui.evaluate("() => sessionStorage.getItem(JOB_KEY)") is None
+
+
+def test_계획이_없는_실행_기록에는_붙지_않는다(ui):
+    """계획을 적지 못했으면(용량 초과 등) 진행 화면을 깔 수 없다 — '다른 창' 안내로 간다."""
+    ui.evaluate("""() => {
+      sessionStorage.setItem(JOB_KEY, JSON.stringify({ boot: 'b1', kind: 'run', job_id: 'job-7', plan: null }));
+      window.__p = resumeJob({ boot: 'b1', busy: true, job: { job_id: 'job-7', kind: 'run' } });
+    }""")
+    ui.wait_for_function("window.__release !== null")
+    assert "다른 창" in ui.evaluate("() => $('formNote').innerText")

@@ -1768,11 +1768,12 @@ async function replan() {
     });
     rememberJob("plan", job_id);
     await watchPlan(job_id);
+    forgetJob();
   } catch (err) {
+    if (!lostServer(err)) forgetJob();
     state.busy = false;
     showError("항목을 다시 만들지 못했어요", err.message);
   } finally {
-    forgetJob();
     state.busy = false;
     renderChrome();
   }
@@ -1825,10 +1826,11 @@ async function startRun() {
     });
     rememberJob("run", job_id);
     await watchRun(job_id);
+    forgetJob();
   } catch (err) {
+    if (!lostServer(err)) forgetJob();
     runFailed(err);
   } finally {
-    forgetJob();
     state.busy = false;
     renderChrome();
   }
@@ -1918,6 +1920,13 @@ function rememberedJob() {
 }
 
 /**
+ * 따라가기를 그만둔 까닭이 '서버와 연결이 끊겨서' 인가 (follow 의 연속 실패 상한, status 0).
+ * 그렇다면 작업은 끝난 것이 아니다 — 적어 둔 것을 남겨야 연결이 돌아온 뒤 새로고침으로 다시 붙는다.
+ * 지우면 자기가 시작한 작업을 '다른 창의 작업' 으로 안내하게 된다.
+ */
+const lostServer = (err) => !!err && err.status === 0;
+
+/**
  * 페이지가 열릴 때 한 번 — 이 탭이 시작한 작업이 서버에 남아 있으면 그 화면으로 돌아간다.
  *
  * 작업 번호는 서버를 띄울 때마다 job-1 부터 다시 세므로 서버 표식(boot)이 같을 때만 같은 작업이다.
@@ -1945,10 +1954,11 @@ async function resumeJob(st) {
       renderChrome();
       await watchPlan(snap.job_id);
     }
+    forgetJob();
   } catch (err) {
+    if (!lostServer(err)) forgetJob();
     if (snap.kind === "run") runFailed(err); else planFailed(err);
   } finally {
-    forgetJob();
     state.busy = false;
     renderChrome();
   }
@@ -2623,10 +2633,11 @@ $("planBtn").addEventListener("click", async () => {
     });
     rememberJob("plan", job_id);
     await watchPlan(job_id);
+    forgetJob();
   } catch (err) {
+    if (!lostServer(err)) forgetJob();
     planFailed(err);
   } finally {
-    forgetJob();
     state.busy = false;
     $("planBtn").disabled = false;
     renderChrome();
