@@ -21,8 +21,8 @@ uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미�
 | # | 보여 줄 것 | 명령 | 리허설 결과 (11-10) |
 |---|---|---|---|
 | 1 | 기획서와 다른 구현을 잡는다 | `uv run prova run --pdf fixtures/specs/login_spec.pdf --url http://localhost:8100/bad --backend replay` | 4 PASS · 6 FAIL(전부 기획서와 다름) |
-| 2 | 웹 UI — 자연어 요청 → 계획 승인 → 실행 | `uv run prova serve` → 백엔드 '실제 모델의 저장된 응답', 요청 "비밀번호 규칙이 제대로 걸리는지 확인해줘", 대상 `/bad` | 비밀번호 케이스 4개 선택 · 1 PASS · 3 FAIL |
-| 3 | 리포트 · 엑셀 | 1번 결과의 `runs/<id>/report.html` → '엑셀로 받기' | `report.xlsx` 생성 |
+| 2 | 웹 UI — 자연어 요청 → 계획 승인 → 실행 | `uv run prova serve` → '더 설정하기' 옆이 '저장된 응답' 인지 확인(기본값. 아니면 LLM 백엔드를 '저장된 모델 응답으로 읽기 — 서버 없이' 로), 요청 "비밀번호 규칙이 제대로 걸리는지 확인해줘", 대상 `/bad` | 비밀번호 케이스 4개 선택 · 1 PASS · 3 FAIL |
+| 3 | 리포트 · 엑셀 | 1번 결과의 `runs/<id>/report.html` → '엑셀 받기' | `report.xlsx` 생성 |
 | 4 | 기획서 개정판 — 무엇이 바뀌었나 | `uv run prova diff-spec --old fixtures/specs/login_spec.pdf --new fixtures/specs/revisions/login_spec_v2.pdf --backend replay` | 바뀐 것 2건(비밀번호 안내 문구, 로그인 버튼 이름) |
 | 5 | 바뀐 것이 사이트에 반영됐나 | `uv run prova run --pdf fixtures/specs/revisions/login_spec_v2.pdf --since fixtures/specs/login_spec.pdf --changed-only --url http://localhost:8100/good --backend replay` | 10 FAIL — 사이트는 옛 판이라 '로그인하기' 버튼을 못 찾음 8 · 기획서와 다름 2 |
 | 6 | 실제 접수가 일어나면 안 되는 사이트 (웹 UI 는 '쓰기 요청 막기' 체크박스) | `uv run prova run --pdf fixtures/specs/signup_spec.pdf --url http://localhost:8100/good --backend replay --dry-run` | 3 PASS · 14 확인 불가(쓰기 요청 막음) |
@@ -152,4 +152,7 @@ uv run uvicorn sut.app:app --port 8100 --reload --reload-dir sut   # 별 터미�
   깨끗하게 보이려면 `--run-id` 를 새로 주거나 `runs/` 의 리허설 폴더를 지운다.
 - replay 는 저장된 질문에만 답한다. 저장되지 않은 기획서는 "저장된 응답이 없다" 로 실패하고,
   저장되지 않은 요청 문장은 전체 실행으로 넘어간다 — 요청은 위 목록의 문장을 그대로 쓴다.
+- 웹 UI 의 기본 백엔드는 '저장된 응답'(replay)이다(`configs/default.yaml`, 2026-11-27). 브라우저에
+  지난번 '실제 모델' 선택이 남아 있어도 서버 기본값이 이긴다 — 시크릿 창·다른 PC 에서도 그대로 된다.
+- PDF 는 웹 UI 결과 화면의 'PDF 받기' 로만 만든다. CLI 에는 PDF 옵션이 없다(엑셀은 `export-xlsx`).
 - 실물 기획서·실물 사이트는 시연에 쓰지 않는다(비공개).

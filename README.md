@@ -52,7 +52,7 @@ flowchart LR
 - **못 찾은 것을 결함이라고 하지 않는다.** 요소를 못 찾았거나 페이지가 안 열린 것은 '실행 문제' 로 따로 센다.
 - **요소는 라벨·역할로 먼저 찾는다.** 화면 이미지로 찾는 모델은 그것이 실패한 자리에서만 쓴다 — 측정해 보니 더 느리고 없는 것을 지어냈다.
 
-Python 3.11 · Pydantic · Playwright · vLLM(OpenAI 호환) · FastAPI · LangGraph · pytest (테스트 1,801개).
+Python 3.11 · Pydantic · Playwright · vLLM(OpenAI 호환) · FastAPI · LangGraph · pytest (테스트 2,125개).
 폴더별 설명은 [docs/architecture.md](docs/architecture.md).
 
 ## 빨리 돌려보기
@@ -75,6 +75,8 @@ uv run prova serve      # 웹 UI — http://127.0.0.1:7007
 
 `/bad` 는 17개 중 4개가 FAIL 로 나온다 — 심어 둔 결함 4개 그대로다.
 `--backend replay` 를 쓰면 실제 모델이 냈던 응답을 그대로 재생한다(`fixtures/replay-cache`).
+`--backend` 를 생략하면 `configs/default.yaml` 의 값(지금은 `replay`)을 쓰고, 웹 UI 도 그 값으로 시작한다.
+모델 서버를 띄웠다면 `backend: vllm` 으로 바꾼다.
 
 ![실행 화면](docs/teaching/media/demo_bad.gif)
 

@@ -71,7 +71,7 @@
 
 | # | 계획서 목표 | 결과 | 근거 |
 |---|---|---|---|
-| 1 | 설계 정보 자동 추출 (Figma·PDF) | PDF: S1 골든 105/105(7B)·103/105(4B), 실물 기획서 엄격 82.2%. Figma: 결정적 추출 + 병합 모드 | `tests/test_s1_golden.py`, `docs/measurements/model-compare-qwen35-4b-2026-09-28.md`, 판단 16·17 |
+| 1 | 설계 정보 자동 추출 (Figma·PDF) | PDF: S1 골든 105/105(7B·4B — 4B 는 처음 103/105, 코드 보정 뒤 105/105), 실물 기획서 엄격 82.2%. Figma: 결정적 추출 + 병합 모드 | `tests/test_s1_golden.py`, `docs/measurements/model-compare-qwen35-4b-2026-09-28.md`, 판단 16·17 |
 | 2 | Vision 기반 GUI 요소 탐지 | 1차 selector + 2차 VLM. 2차 외부 화면 탐지 85.0%·적중 90.0%·없는 것을 있다고 함 0/20 | `vlm-iou-external-2026-09-29.md`, `grounding-selector-vs-vlm-2026-08-27.md` |
 | 3 | 테스트 케이스 자동 생성 (회원가입·로그인·검색) | 네 화면 + 흐름. 픽스처 케이스 196개가 모델을 바꿔도 같다 | README 결과 표, `scripts/dump_cases.py` |
 | 4 | 자연어 → 테스트 시나리오 | `--request`·웹 UI. 홀드아웃 B 9/10 | `request-selection-2026-08-22.md`, 판단 14 |
@@ -92,7 +92,7 @@
 | 4 | LangGraph 워크플로우 | `graph.py`, `nodes.py` | 기본 엔진은 pipeline, graph 는 같은 노드 배선(노트 06) |
 | 5 | 리포트 생성기 | `s6_report/`, `wording.py`, `spec_source.py` | HTML·JSON·엑셀, 원형차트, 이력·차수, 재현 절차(넣은 값), 기획서 근거(쪽·줄) |
 | 6 | 웹 데모 | `server/` (`prova serve`) | 업로드 → 계획 승인 → 실행 → 리포트. 기획서 고치기, 2차 경로, dry-run |
-| 7 | 성능 평가 자료 | `docs/measurements/` 17건 + 외부 기획서 16개 | 측정 스크립트 `scripts/` |
+| 7 | 성능 평가 자료 | `docs/measurements/` 측정 문서 20건 + 외부 기획서 16개 | 측정 스크립트 `scripts/` |
 
 계획에 없던 산출물: 개정판 비교(`diff-spec`·`--since`), dry-run, 모바일 크기, replay(오프라인 시연),
 세션 재사용(`prova login`), 대상 빌드 확인. 각 한 문단 — 판단 30~38 에서 옮긴다.
