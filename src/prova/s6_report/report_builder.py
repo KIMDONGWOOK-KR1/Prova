@@ -25,7 +25,9 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import re
+import shutil
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +61,11 @@ _PRINT_JS = """(function () {
     // 종이는 늘 밝은 화면이다 — 어두운 화면으로 보던 중이어도 검은 바탕으로 찍히지 않게.
     theme = root.getAttribute('data-theme'); root.setAttribute('data-theme', 'light');
     opened = [];
+    // 통과 케이스는 한 줄씩 목록으로 둔다 — 다 펼치면 같은 단계와 캡처가 케이스마다 되풀이된다.
     document.querySelectorAll('details:not([open])').forEach(function (d) {
+      if (d.classList.contains('case') && d.closest('.passfold')) return;
+      // 긴 단계의 접어 둔 앞 회차는 접힌 한 줄로 둔다 — 멈춘 회차는 늘 펼쳐져 있다.
+      if (d.parentNode.classList.contains('tr-grp')) return;
       d.open = true; opened.push(d);
     });
   });
@@ -72,26 +78,130 @@ _PRINT_JS = """(function () {
 
 # 밝게 / 어둡게 — 파일로 연 리포트에는 웹 UI 의 버튼이 없어 PC 설정을 따라 어둡게만 나왔다(2026-11-19).
 # 웹 UI 의 버튼과 같은 말·같은 저장 키(prova-theme)를 쓴다. 웹 UI 안에서는 위쪽 막대째 숨는다.
-THEME_BUTTON = "<button class='theme' id='themeBtn' type='button'></button>"
+# 2026-11-25 hh: 21st.dev 'Liquid Toggle' · 'Liquid Glass Theme Toggle' 의 움직임을 이 스위치에 옮겼다 —
+# 누르면 손잡이가 길어지고, 끌면 앞 끝이 먼저 가서 늘어났다가 반을 훌쩍 넘기면 반대쪽으로 넘어간다.
+# 물(WebGL)·유리 굴절·소리·떨어지는 물방울은 빼고, 색은 모두 토큰이다. 이름은 늘 '어둡게', 상태는 켬/끔.
+_SUN = ("<svg viewBox='0 0 16 16'><circle cx='8' cy='8' r='2.7'/>"
+        "<path d='M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9'/></svg>")
+_MOON = "<svg viewBox='0 0 16 16'><path d='M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z'/></svg>"
+THEME_BUTTON = ("<button class='theme' id='themeBtn' type='button' role='switch' aria-checked='false'>"
+                "<span class='tg' aria-hidden='true'><i class='tg-fill'></i>"
+                f"<i class='tg-ico sun'>{_SUN}</i><i class='tg-ico moon'>{_MOON}</i>"
+                f"<i class='tg-knob'><i class='k-sun'>{_SUN}</i><i class='k-moon'>{_MOON}</i></i></span>"
+                "<span>어둡게</span></button>")
+# 글자 로고 'prova' — 웹 UI 사이드바와 같은 선(index.html .wm). 색은 토큰(--accent-blue), 리터럴 없음. hh 11-25.
+_WORDMARK = ("<svg class='wm' viewBox='0 0 357.4 100' role='img' aria-label='Prova'>"
+             "<path fill-rule='evenodd' d='M10.1 100c-5.4-0.8-9.2-4.7-9.9-10.2c-0.1-1-0.2-14.6-0.2-39.3c0.1-41.9 0-38.4 1.4-41.2c4.1-8.3 15.9-9.4 21.5-2.1l0.8 1 1.4-1.1c14.9-12 38.8-7.8 49.5 8.6c4.5 6.8 6.4 13.7 6.4 22.5c0 14.8-7.2 27.9-18.9 34.5c-9.4 5.3-21 6.1-30.8 2.2c-2.2-0.9-5.8-3-7.1-4.2l-0.5-0.5-0.2 1.3c0 0.8-0.1 5.2-0.1 9.9c0 7.8 0 8.7-0.4 10.1c-1.4 5.6-7.2 9.4-12.9 8.5zM166.3 78.1c-7.4-1-15-4.5-20.3-9.1c-19.3-16.9-16.7-47.9 5.2-62.3c11.2-7.4 25.9-8.6 37-3c1.7 0.9 1.8 0.9 0.8 1.6c-0.8 0.6-3.2 3-4.5 4.6c-1.8 2.2-3.9 6-5.3 9.5c-0.4 0.9-0.7 1.6-0.7 1.6c0 0-0.8-0.1-1.6-0.3c-9.1-1.6-16.9 2.2-20.9 10.2c-5.2 10.2 0.4 22.8 11.5 26.1c2.2 0.7 6.8 0.8 9.2 0.2c8.1-1.9 14.3-9.9 14.3-18.4c0-4.9-1.4-8.8-4.7-12.6l-1.4-1.7 0.4-1.4c1.8-7.5 7.3-13.8 14.1-15.9c3.7-1.1 8.8-1.3 12.3-0.3c5.9 1.6 10.3 5.1 14.8 11.9c2.6 4.1 8 14.4 12.9 24.6c0.6 1.5 1.2 2.6 1.3 2.6c0.1 0 1-1.6 2-3.7c1-2 2.7-5.6 3.9-8c1.2-2.5 2.2-4.5 2.2-4.6c0-0.1 2.4-4.9 8.8-18.1l3-6.1 1.7-1.6c6.9-6.8 18.2-3.7 19.9 5.4c0.2 1.2 0.5 0.5-5.8 13.4c-2.9 5.9-4.9 9.9-8 16.4c-0.7 1.5-2.1 4.4-3.1 6.4c-1 2-2.7 5.5-3.8 7.9c-4.1 8.6-7.6 15.5-8.3 16.6c-3.8 5.6-11.4 7.9-17.8 5.4c-4.3-1.7-6.3-4-9-10.2c-1.9-4.3-3.5-8.1-4.8-11c-0.5-1.3-2.2-5.1-3.7-8.5c-1.4-3.4-3.2-7.5-3.9-9.1c-1.3-3.1-2.3-5-2.6-5c-0.1 0-0.2 2.7-0.3 6c-0.1 6.5-0.3 8.3-1.5 12.4c-3.9 13.4-14.6 23.9-28 27.3c-4 1-11.1 1.4-15.3 0.8zM308.6 78.1c-8-1-14.3-3.8-19.8-8.7c-18.1-16.3-16.4-47.9 3.4-62.4c8.4-6.2 20.1-8.5 30.2-5.9c4 1 7.6 2.8 10.3 5.2l1.8 1.7 1-1.3c1.5-2.2 4.4-4 7.3-4.6c6.3-1.4 12.5 2.3 14.3 8.4c0.6 1.8 0.7 55.8 0.2 58.4c-0.8 4.1-4.1 7.6-8.2 8.8c-1.9 0.6-5.6 0.5-7.3-0.1c-3.8-1.5-6.5-4.3-7.4-7.9c-0.2-0.5-0.3-1-0.3-1c0-0.1-0.7 0.6-1.6 1.5c-5.1 4.9-12.1 7.7-19.9 7.9c-1.8 0-3.6 0-4 0zM92.7 76.1c-4-1-7.3-4.3-8.4-8.4c-0.4-1.4-0.5-53.7-0.1-55.6c0.8-4.1 4-7.8 8.2-9.2c6-2.1 13.1 0.7 15.4 6.1l0.4 0.8 0.9-1c6-6.6 16.8-9.4 23.4-6.2c4.2 2 6.3 5.5 6 10c-0.2 3.6-1.7 6.1-4.9 8.2c-2.3 1.5-3.2 1.6-9.2 1.8c-5.2 0.1-5.3 0.1-7.1 0.7c-5 1.8-8.5 5.9-9.5 11.5c-0.2 0.9-0.3 6-0.4 17.1c-0.1 13.9-0.2 15.9-0.4 16.6c-1.6 3.9-4.5 6.6-8.3 7.6c-1.5 0.4-4.4 0.4-6 0zM319.6 56.9c6.6-1.4 11.9-6.3 13.9-13c0.8-2.5 0.8-7.1 0.1-9.6c-2.5-8.8-10.5-14.5-19.1-13.5c-7.5 0.8-13.3 5.8-15.5 13.3c-0.7 2.3-0.7 7.2 0 9.7c2.4 9 11.7 14.9 20.6 13.1zM43.1 56.5c3.8-0.6 6.6-1.9 9.4-4.6c7.9-7.3 7.9-19.3-0.1-26.6c-8.1-7.4-20.5-5.6-26.4 4c-2 3.2-2.7 6.5-2.5 10.7c0.4 10.1 9.8 18 19.6 16.5z'/></svg>")
+# 받기 단추의 그림 — 웹 UI 도구 막대의 ICON.download 와 같은 선 그림.
+_ICON_DOWNLOAD = ("<svg viewBox='0 0 16 16' aria-hidden='true'><path d='M8 2.5v8M5 7.5l3 3 3-3M3 13h10'/></svg>")
+# PDF 는 서버가 받을 때 만든다(/api/report/<실행>/pdf). 파일로 연 리포트(폴더째 받은 사람)에는 서버가 없어
+# 단추를 숨긴 채 둔다 — 서버가 준 주소(/runs/<실행>/report.html)로 열렸을 때만 보인다.
+_PDF_BTN_JS = r"""(function () {
+  var b = document.getElementById('pdfBtn');
+  var m = /\/runs\/([^/]+)\/report\.html$/.exec(location.pathname);
+  if (!b || !m || !/^https?:$/.test(location.protocol)) return;
+  b.href = '/api/report/' + m[1] + '/pdf'; b.hidden = false;
+})();"""
+
 _THEME_BTN_JS = """(function () {
   var btn = document.getElementById('themeBtn'), root = document.documentElement;
   if (!btn) return;
+  var knob = btn.querySelector('.tg-knob'), fill = btn.querySelector('.tg-fill');
+  var sun = btn.querySelector('.tg-ico.sun'), moon = btn.querySelector('.tg-ico.moon');
+  var ks = btn.querySelector('.k-sun'), km = btn.querySelector('.k-moon');
+  var still = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  var W = 46, PAD = 2, KW = 24, GROW = 6, TRAVEL = W - 2 * PAD - KW;
   function dark() {
     var set = root.getAttribute('data-theme');
     if (set === 'light' || set === 'dark') return set === 'dark';
     return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
-  function label() {
-    btn.textContent = dark() ? '밝게' : '어둡게';
-    btn.setAttribute('aria-label', dark() ? '밝은 화면으로 바꾸기' : '어두운 화면으로 바꾸기');
+  function setDark(on) {
+    root.setAttribute('data-theme', on ? 'dark' : 'light');
+    try { localStorage.setItem('prova-theme', on ? 'dark' : 'light'); } catch (e) {}
+    btn.setAttribute('aria-checked', String(on));
   }
-  btn.addEventListener('click', function () {
-    var next = dark() ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    try { localStorage.setItem('prova-theme', next); } catch (e) {}
-    label();
+  // 손잡이의 두 끝(L·R)이 따로 따라간다. 가는 쪽 끝이 빨라서 움직이는 동안만 늘어난다(임계 감쇠 — 넘치지 않는다).
+  // p 는 놓일 자리(0 밝게 · 1 어둡게), q 는 그림이 따라가는 값(해·달이 돌며 바뀐다).
+  var s = { L: { x: 0, v: 0 }, R: { x: 0, v: 0 }, p: 0, q: 0, press: false, drag: null, moved: false, raf: 0, last: 0 };
+  function goal() {
+    var l = PAD + s.p * TRAVEL, r = l + KW;
+    if (s.press) { if (s.p < 0.5) r += GROW; else l -= GROW; }   // 누르면 가운데 쪽으로 길어진다
+    return [l, r];
+  }
+  function paint() {
+    var l = s.L.x, r = Math.max(s.R.x, l + 12), q = s.q;
+    knob.style.width = (r - l) + 'px';
+    knob.style.transform = 'translateX(' + l + 'px)';
+    fill.style.width = (r + PAD) + 'px';
+    fill.style.opacity = Math.min(1, q * 1.4);
+    // 손잡이가 늘어나 덮기 시작하면 바탕의 해·달은 잘린 채 보이지 않게 먼저 사라진다
+    sun.style.opacity = q * Math.max(0, Math.min(1, (l - 16) / 4));
+    moon.style.opacity = (1 - q) * Math.max(0, Math.min(1, (30 - r) / 4));
+    ks.style.opacity = 1 - q; km.style.opacity = q;
+    ks.style.transform = 'rotate(' + (q * 90) + 'deg) scale(' + (1 - q * 0.5) + ')';
+    km.style.transform = 'rotate(' + ((q - 1) * 90) + 'deg) scale(' + (0.5 + q * 0.5) + ')';
+  }
+  function step(dt) {
+    var g = goal(), calm = true;
+    [[s.L, g[0], false], [s.R, g[1], true]].forEach(function (e) {
+      var b = e[0], x = e[1], lead = e[2] === (x > b.x), w = lead ? 34 : 22;
+      var off = b.x - x, slope = b.v + w * off, d = Math.exp(-w * dt);
+      b.x = x + (off + slope * dt) * d; b.v = (b.v - w * slope * dt) * d;
+      if (Math.abs(b.x - x) > 0.2 || Math.abs(b.v) > 2) calm = false;
+    });
+    s.q += (s.p - s.q) * Math.min(1, dt * 16);
+    if (Math.abs(s.p - s.q) > 0.003) calm = false; else s.q = s.p;
+    return calm;
+  }
+  function go() {
+    if (still && still.matches) {
+      var g = goal(); s.L.x = g[0]; s.R.x = g[1]; s.L.v = s.R.v = 0; s.q = s.p; paint(); return;
+    }
+    if (s.raf) return;
+    s.last = performance.now();
+    var tick = function (now) {
+      var dt = Math.min((now - s.last) / 1000, 1 / 30); s.last = now;
+      var calm = step(dt); paint();
+      s.raf = calm && !s.drag ? 0 : requestAnimationFrame(tick);
+    };
+    s.raf = requestAnimationFrame(tick);
+  }
+  function settle() { s.p = dark() ? 1 : 0; go(); }
+  btn.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    s.drag = { id: e.pointerId, x0: e.clientX, p0: s.p }; s.moved = false; s.press = true;
+    try { btn.setPointerCapture(e.pointerId); } catch (err) {}
+    go();
   });
-  label();
+  btn.addEventListener('pointermove', function (e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    var dx = e.clientX - s.drag.x0;
+    if (!s.moved && Math.abs(dx) > 3) s.moved = true;
+    if (!s.moved) return;
+    s.p = Math.max(0, Math.min(1, s.drag.p0 + dx / TRAVEL));
+    // 반을 훌쩍 넘기면 그 자리에서 넘어간다 — 되돌아 끌면 다시 넘어온다(0.68 · 0.32 로 사이를 둔다)
+    if (!dark() && s.p > 0.68) setDark(true); else if (dark() && s.p < 0.32) setDark(false);
+    go();
+  });
+  function end(e) {
+    if (!s.drag || s.drag.id !== e.pointerId) return;
+    s.drag = null; s.press = false; settle();
+  }
+  btn.addEventListener('pointerup', end);
+  btn.addEventListener('pointercancel', end);
+  btn.addEventListener('click', function () {      // 누름 · 스페이스 · 엔터
+    if (s.moved) { s.moved = false; return; }
+    setDark(!dark()); settle();
+  });
+  btn.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault(); setDark(e.key === 'ArrowRight'); settle();
+  });
+  s.p = s.q = dark() ? 1 : 0;
+  var g0 = goal(); s.L.x = g0[0]; s.R.x = g0[1];
+  btn.setAttribute('aria-checked', String(dark()));
+  paint();
 })();"""
 
 CATEGORY_LABELS = {
@@ -212,11 +322,16 @@ def save_json(report: TestReport, out_dir: Path) -> Path:
 # 색·간격·서체는 theme.TOKENS_CSS 가 유일한 출처다. 여기서 색을 새로 만들면
 # 웹 UI 안에 iframe 으로 떴을 때 같은 화면에 파란색이 두 가지가 된다.
 _CSS = TOKENS_CSS + """
+/* 리포트 글꼴 — 리포트 폴더의 fonts/ 에 함께 둔 Pretendard 가변 글꼴(save_html 이 복사한다). 받는 사람 PC 에
+   깔려 있으면 그것을 먼저 쓴다. 인터넷에서 내려받지 않는다 — 스크린샷처럼 폴더째 따라간다(디자인 기준 4번). */
+@font-face { font-family:"Pretendard Variable"; font-style:normal; font-weight:45 920; font-display:swap;
+             src:local("Pretendard Variable"), url("fonts/PretendardVariable.woff2") format("woff2-variations"),
+                 url("fonts/PretendardVariable.woff2") format("woff2"); }
 /* 검수 문서처럼 읽히게 한다 — 상자 대신 가는 선, 색은 판정에만 쓴다.
    기획자가 개발사에 그대로 보내는 문서라서 화면보다 종이에 가깝게 잡았다. */
 * { box-sizing:border-box; }
 body { margin:0; background:var(--bg); color:var(--text);
-       font-family:var(--font-sans); font-size:var(--tx-base); line-height:var(--lh-normal);
+       font-family:var(--font-doc); font-size:var(--tx-base); line-height:var(--lh-normal);
        -webkit-font-smoothing:antialiased; }
 a { color:inherit; text-underline-offset:2px; }
 /* 폭과 바깥 여백은 웹 UI 의 무대(.app)와 같다 — 파일로 열어도 같은 자리에 선다. */
@@ -227,43 +342,100 @@ a { color:inherit; text-underline-offset:2px; }
 /* 리포트 파일의 머리는 웹 UI 결과 화면과 같은 부품을 같은 순서로 쓴다 — 위쪽 막대, 결론 제목,
    비율 막대, 집계 한 줄. 기획자가 화면에서 본 것과 개발사에 보낸 파일이 같은 문서로 읽힌다.
    규칙은 app.css 의 .topbar · .result-head · .btn · .meter · .tally 와 값을 맞춘다. */
-.topbar { display:grid; grid-template-columns:1fr auto 1fr; align-items:center; gap:var(--sp-4);
-          padding:var(--sp-3) var(--sp-6); border-bottom:1px solid var(--line); font-size:var(--tx-md); }
+/* 위쪽 막대 — 웹 UI 의 창 도구 막대와 같은 재질(--bg-bar)·높이. 왼쪽 이름, 가운데 기획서 → 대상, 오른쪽 때. */
+.topbar { display:grid; grid-template-columns:auto minmax(0,1fr) auto; align-items:center; gap:var(--sp-4);
+          height:52px; padding:0 var(--sp-6); border-bottom:1px solid var(--sep); background:var(--bg-bar);
+          font-size:var(--tx-sm); line-height:var(--lh-sm); position:sticky; top:0; z-index:5;
+          -webkit-backdrop-filter:saturate(1.6) blur(20px); backdrop-filter:saturate(1.6) blur(20px); }
 .crumbs { display:flex; gap:var(--sp-2); align-items:center; min-width:0; color:var(--muted); }
 .crumbs > * { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .crumbs b { color:var(--text); font-weight:600; flex:none; max-width:100%; }
-.topbar .name { font-size:var(--tx-xl); font-weight:660; letter-spacing:-0.03em; }
+.topbar .name { order:-1; display:flex; align-items:center; align-self:stretch;
+                padding-right:var(--sp-4); border-right:1px solid var(--sep); }
+/* 글자 로고 18px — x-height 가운데가 막대 가운데에 오도록 조금 내린다 */
+.topbar .name .wm { display:block; width:64px; height:18px; margin-top:4px; fill:var(--accent-blue); }
 .topbar .when { justify-self:end; color:var(--muted); font-variant-numeric:tabular-nums;
-                display:flex; align-items:center; gap:var(--sp-3); }
-button.theme { font:inherit; font-size:12px; font-weight:650; padding:4px 12px; border-radius:var(--r-full);
-               border:1px solid var(--line); background:transparent; color:var(--text); cursor:pointer; }
-button.theme:hover { border-color:var(--text); }
-button.theme:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+                display:flex; align-items:center; gap:var(--sp-3); white-space:nowrap; }
+/* 어둡게 스위치 — 이름표 + 스위치(46×26). 켜진 쪽은 강조색이 손잡이 뒤를 따라 찬다.
+   움직임은 _THEME_BTN_JS. 아래 [aria-checked] 규칙은 스크립트가 그리기 전의 모습. */
+button.theme { display:inline-flex; align-items:center; gap:var(--sp-2); height:var(--ctl-md); padding:0 2px;
+               border:0; background:none; font:inherit; font-size:var(--tx-sm); font-weight:500; color:var(--text);
+               cursor:pointer; touch-action:pan-y; -webkit-user-select:none; user-select:none; }
+button.theme:focus-visible { outline:none; }
+button.theme:focus-visible .tg { box-shadow:var(--focus-ring); }
+.tg { position:relative; flex:none; width:46px; height:26px; border-radius:var(--r-full); overflow:hidden;
+      background:var(--fill-track); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
+.tg i { position:absolute; display:block; }
+.tg-fill { left:0; top:0; bottom:0; width:28px; border-radius:inherit; background:var(--accent-solid); opacity:0; }
+.tg-ico { top:6px; width:14px; height:14px; color:var(--fg-muted); }
+.tg-ico.sun { left:6px; color:var(--fg-onaccent); opacity:0; }
+.tg-ico.moon { right:6px; }
+.tg-knob { left:0; top:2px; width:24px; height:22px; border-radius:var(--r-full); background:var(--fg-onaccent);
+           box-shadow:var(--shadow-control); transform:translateX(2px); }
+.tg-knob > i { inset:0; margin:auto; width:14px; height:14px; }
+.tg-knob .k-sun { color:var(--fg-muted); }
+.tg-knob .k-moon { color:var(--accent-solid); opacity:0; }
+.tg svg { display:block; width:100%; height:100%; fill:none; stroke:currentColor; stroke-width:1.5;
+          stroke-linecap:round; stroke-linejoin:round; }
+button.theme[aria-checked='true'] .tg-knob { transform:translateX(20px); }
+button.theme[aria-checked='true'] .tg-fill { width:46px; opacity:1; }
+button.theme[aria-checked='true'] .tg-ico.sun, button.theme[aria-checked='true'] .k-moon { opacity:1; }
+button.theme[aria-checked='true'] .tg-ico.moon, button.theme[aria-checked='true'] .k-sun { opacity:0; }
 .result-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--sp-4);
-               flex-wrap:wrap; margin-bottom:var(--sp-4); }
-h1 { font-size:30px; font-weight:400; letter-spacing:-0.02em; line-height:1.35; margin:0;
+               flex-wrap:wrap; margin-bottom:var(--sp-5); }
+/* 결론 한 줄 — 웹 UI 결과 화면의 .verdict-line 과 같은 크기. 판정 부분은 바탕 없이 판정 색 글자. */
+h1 { font-size:var(--tx-xl); line-height:var(--lh-xl); font-weight:700; letter-spacing:-0.015em; margin:0;
      word-break:keep-all; text-wrap:balance; }
-h1 mark { color:inherit; border-radius:var(--r-lg); padding:2px var(--sp-2);
-          -webkit-box-decoration-break:clone; box-decoration-break:clone; }
-h1 mark.fail { background:var(--fail-bg); } h1 mark.infra { background:var(--note-bg); }
-h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass-bg); }
-.result-head .cond { font-size:var(--tx-md); color:var(--muted); margin-top:var(--sp-1); }
+h1 mark { background:none; padding:0; color:inherit; }
+h1 mark.fail { color:var(--fail-fg); } h1 mark.infra { color:var(--note-fg); }
+h1 mark.unv { color:var(--unv-fg); } h1 mark.pass { color:var(--pass-fg); }
+.result-head .cond { font-size:var(--tx-md); line-height:var(--lh-para); color:var(--muted); margin-top:6px; }
 .actions { display:flex; gap:var(--sp-2); flex-wrap:wrap; }
-.btn { display:inline-flex; align-items:center; font:inherit; font-size:var(--tx-md); font-weight:650;
-       padding:9px var(--sp-5); border-radius:var(--r-full); border:1px solid transparent;
-       text-decoration:none; white-space:nowrap; cursor:pointer; transition:opacity .12s, transform .08s; }
-.btn.primary { background:var(--text); color:var(--bg); }
-.btn:hover { transform:translateY(-1px); opacity:.85; }
-.btn:active { transform:translateY(1px); }
+.btn { display:inline-flex; align-items:center; gap:6px; font:inherit; font-size:var(--tx-md); font-weight:500;
+       height:var(--ctl-lg); padding:0 14px; border-radius:var(--r-full); border:0;
+       background:var(--bg-raised); color:var(--text); box-shadow:var(--shadow-control);
+       text-decoration:none; white-space:nowrap; cursor:pointer; transition:background-color var(--dur-1) var(--ease-out); }
+.btn svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.4; stroke-linecap:round; stroke-linejoin:round; }
+.btn:hover { background:var(--bg-hover); }
+.btn[hidden] { display:none; }
 .btn:focus-visible { outline:none; box-shadow:var(--focus-ring); }
-/* 비율 막대 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순. 숫자는 아래 한 줄이 글자로 말한다. */
-.chart { margin-bottom:var(--sp-5); }
-.meter { display:flex; gap:2px; height:6px; margin-bottom:var(--sp-2); }
-.meter i { display:block; height:100%; }
-.meter .defect { background:var(--chart-defect); } .meter .infra { background:var(--chart-infra); }
-.meter .unv { background:var(--chart-unv); } .meter .weak { background:var(--chart-weak); }
-.meter .pass { background:var(--chart-pass); }
-.tally { font-size:var(--tx-md); font-variant-numeric:tabular-nums; }
+/* 원형차트(도넛) + 이름표 — 결함 · 실행 문제 · 확인 불가 · 약한 확인 · 통과 순, 12시에서 시계 방향.
+   웹 UI 결과 화면(.donut)과 같은 그림이다. 숫자는 이름표와 아래 한 줄이 글자로 말한다. */
+/* 웹 UI 결과 화면의 숫자 칸(.tiles)과 같은 모양 — 도넛 칸 하나 + 판정마다 칸 하나. 칸은 묶음 상자
+   (3% 채움, 모서리 12). 이름표가 칸이 된다: 색 점 + 이름 위, 큰 수 아래, 비율은 수 옆에 작게. */
+.chart { display:grid; grid-template-columns:auto minmax(0,1fr); gap:var(--sp-3); margin-bottom:var(--sp-5); }
+.chart svg { flex:none; display:block; width:88px; height:88px; }
+.chart > svg { box-sizing:content-box; padding:14px var(--sp-5); border-radius:var(--r-card);
+               background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
+.chart text { text-anchor:middle; fill:var(--text); font-variant-numeric:tabular-nums; }
+/* 도넛은 132 칸 그림을 88px 로 줄여 놓는다 — 글자 크기는 그림 단위라 2/3 로 줄어든다(32→21px, 16→11px). */
+.chart .big { font-size:32px; font-weight:700; letter-spacing:-0.02em; }
+.chart .small { font-size:16px; fill:var(--muted); }
+.chart .track { stroke:var(--fill-track); }
+.chart .seg.defect { stroke:var(--chart-defect); } .chart .seg.infra { stroke:var(--chart-infra); }
+.chart .seg.unv { stroke:var(--chart-unv); } .chart .seg.weak { stroke:var(--chart-weak); }
+.chart .seg.pass { stroke:var(--chart-pass); }
+/* 이름표 칸들은 도넛 칸과 같은 줄, 집계 한 줄은 그 아래 전체 폭 */
+.chart .side { display:contents; }
+.chart .tally, .chart p.ms { grid-column:1 / -1; margin:0; }
+.legend li.zero b { color:var(--muted); }
+.legend { list-style:none; margin:0; padding:0; display:grid; gap:var(--sp-3);
+          grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); }
+.legend li { display:flex; flex-wrap:wrap; align-items:baseline; align-content:space-between; column-gap:6px;
+             padding:14px var(--sp-4) var(--sp-4); border-radius:var(--r-card);
+             background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover);
+             font-variant-numeric:tabular-nums; min-width:0; }
+.legend li > .swatch { align-self:center; flex:none; }
+/* 이름이 첫 줄을 다 쓴다 — 수와 비율은 둘째 줄로 내려간다 */
+.legend li > span:not(.ms) { flex:1 0 calc(100% - 14px); font-size:var(--tx-xs); line-height:var(--lh-xs);
+                             color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.legend b { margin-top:6px; font-size:var(--tx-2xl); line-height:36px; font-weight:700; letter-spacing:-0.02em; }
+.legend .ms { font-size:var(--tx-sm); color:var(--muted); }
+.swatch { width:8px; height:8px; border-radius:var(--r-full); }
+.swatch.defect { background:var(--chart-defect); } .swatch.infra { background:var(--chart-infra); }
+.swatch.unv { background:var(--chart-unv); } .swatch.weak { background:var(--chart-weak); }
+.swatch.pass { background:var(--chart-pass); }
+.tally { font-size:var(--tx-md); font-variant-numeric:tabular-nums; color:var(--muted); }
 .chart p { margin:var(--sp-1) 0 0; }
 /* 웹 UI 가 위쪽 막대·결론·숫자·같은 알림을 이미 보인다 — 한 화면에 두 번 나오지 않게 한다. */
 .embedded .topbar, .embedded .result-head, .embedded .chart, .embedded .dup,
@@ -278,7 +450,7 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 /* 틀린 곳 목록 — 한 줄에 번호 · 항목 이름 · 일어난 일 · 어긴 규칙. 번호는 아래 카드의 번호와 같다. */
 .flist { margin:var(--sp-8) 0 0; }
 .flist .cap { font-size:var(--tx-base); font-weight:650; padding-bottom:var(--sp-2);
-              border-bottom:2px solid var(--text); }
+              border-bottom:1px solid var(--text); }
 .flist.defect .cap { color:var(--fail); }
 .flist.infra .cap { color:var(--note-fg); }
 .flist.unv .cap { color:var(--muted); }
@@ -329,35 +501,37 @@ h1 mark.unv { background:var(--bg-inset); } h1 mark.pass { background:var(--pass
 @media (max-width:640px) { .frow { grid-template-columns:28px minmax(0,1fr); }
   .frow .what, .frow .rule { grid-column:2; } }
 .case { scroll-margin-top:16px; }
-button.copy { font:inherit; font-size:12px; font-weight:650; margin-left:auto; padding:5px 12px; border-radius:999px;
-              transition:border-color .12s, transform .08s;
-              border:1px solid var(--text); background:transparent; color:var(--text); cursor:pointer; }
-button.copy:hover { border-color:var(--text); transform:translateY(-1px); }
-button.copy:active { transform:translateY(1px); }
-button.copy:focus-visible { outline:2px solid var(--text); outline-offset:2px; }
+button.copy { font:inherit; font-size:var(--tx-sm); font-weight:500; margin-left:auto; height:var(--ctl-md); padding:0 12px;
+              border-radius:var(--r-full); transition:background-color var(--dur-1) var(--ease-out);
+              border:0; box-shadow:var(--shadow-control); background:var(--bg-raised); color:var(--text); cursor:pointer; }
+button.copy:hover { background:var(--bg-hover); }
+button.copy:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 @media (prefers-reduced-motion: reduce) { button.copy, button.copy:hover, button.copy:active { transition:none; transform:none; } }
 /* 통과는 접어 둔다 — 확인할 것이 없는 줄이 실패와 같은 무게로 이어지지 않게. */
 details.passfold > summary { list-style:none; cursor:pointer; display:flex; align-items:baseline; gap:12px;
-                             border-bottom:2px solid var(--text); margin-top:var(--sp-8); }
+                             border-bottom:1px solid var(--sep); margin-top:var(--sp-10); }
+details.passfold > summary:hover .ms { color:var(--text); }
+details.passfold > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); border-radius:var(--r-sm); }
 details.passfold > summary::-webkit-details-marker { display:none; }
 details.passfold > summary h2 { border:none; margin:0; padding-bottom:8px; }
 details.passfold[open] .ms { visibility:hidden; }
 /* 섹션 머리 — 웹 UI 의 묶음 머리줄과 같은 크기, 아래 굵은 선. */
-h2 { font-size:var(--tx-base); font-weight:650; margin:var(--sp-8) 0 0; padding-bottom:var(--sp-2);
-     border-bottom:2px solid var(--text); }
+h2 { font-size:var(--tx-base); line-height:var(--lh-title); font-weight:700; margin:var(--sp-10) 0 0;
+     padding-bottom:var(--sp-2); border-bottom:1px solid var(--sep); }
 /* 케이스는 상자가 아니라 줄이다 — 계획 화면의 목록과 같은 모양. */
 .case { border-bottom:1px solid var(--line); }
 .case > summary { padding:12px 0; cursor:pointer; display:flex; gap:8px;
                   align-items:center; list-style:none; }
 .case > summary::-webkit-details-marker { display:none; }
-.tag { font-size:11px; font-weight:650; padding:1px 7px; border-radius:var(--r-md);
-       white-space:nowrap; }
+/* 꼬리표 — 웹 UI 와 같은 알약(높이 20). 판정 꼬리표만 판정 색이고, 규칙 이름은 회색. */
+.tag { display:inline-block; height:20px; line-height:20px; padding:0 8px; border-radius:var(--r-full);
+       font-size:var(--tx-xs); font-weight:500; white-space:nowrap; vertical-align:middle; }
 .tag.PASS { background:var(--pass-bg); color:var(--pass); }
 .tag.FAIL { background:var(--fail-bg); color:var(--fail); }
-.tag.rule { background:var(--bg-inset); color:var(--text); }
-.tag.cat.defect { background:var(--fail-bg); color:var(--fail); }
+.tag.rule { background:var(--fill-hover); color:var(--muted); }
+.tag.cat.defect { background:var(--fail-bg); color:var(--fail-fg); font-weight:600; }
 /* 실행 문제는 보라다 — 비율 막대의 '실행 문제' 와 같은 색이어야 한다. */
-.tag.cat.infra { background:var(--note-bg); color:var(--note-fg); }
+.tag.cat.infra { background:var(--note-bg); color:var(--note-fg); font-weight:600; }
 .tag.cat.weak { background:var(--warn-bg); color:var(--warn-fg); }
 /* 확인 불가 — 결함(빨강)도 실행 문제(보라)도 아니다. 무채색 + 점선 테두리로 '판정 없음' 을 보인다. */
 .tag.cat.unv { background:var(--bg-inset); color:var(--text); box-shadow:inset 0 0 0 1px var(--line); }
@@ -366,16 +540,64 @@ h2 { font-size:var(--tx-base); font-weight:650; margin:var(--sp-8) 0 0; padding-
 .title { flex:1; }
 .ms { color:var(--muted); font-size:12px; font-variant-numeric:tabular-nums; }
 .body { padding:0 0 24px; }
+/* 화면 흐름 지도 — 흐름 실패 카드 맨 위. 웹 화면(app.css .flowmap)과 같은 모양이고 끊긴 곳만 판정 색 + 글자.
+   실선 = 요소를 눌러 옮김, 점선 = 주소로 바로 들어감(잇는 요소는 확인하지 않음). */
+.flowmap { list-style:none; margin:0 0 var(--sp-4); padding:var(--sp-3) 0; display:flex; align-items:center;
+           overflow-x:auto; }
+.fm-node { flex:none; position:relative; display:grid; gap:2px; min-width:104px; padding:var(--sp-2) var(--sp-3);
+           border:1px solid var(--border-strong); border-radius:var(--r-md); background:var(--card); }
+.fm-node b { font-size:13px; font-weight:640; white-space:nowrap; }
+.fm-node i, .fm-edge i { font-style:normal; font-size:11px; font-weight:600; }
+.fm-node:not(:first-child)::before, .fm-node:not(:last-child)::after { content:""; position:absolute; top:50%;
+           width:7px; height:7px; margin-top:-4px; border:1px solid var(--border-strong); border-radius:var(--r-full);
+           background:var(--card); }
+.fm-node:not(:first-child)::before { left:-4px; } .fm-node:not(:last-child)::after { right:-4px; }
+.fm-edge { flex:1 1 0; min-width:128px; max-width:240px; position:relative; display:grid; grid-template-rows:1fr 1fr;
+           justify-items:center; height:56px; padding:0 var(--sp-3); }
+.fm-edge::before { content:""; position:absolute; left:4px; right:5px; top:50%; border-top:1px solid var(--fg-subtle); }
+.fm-edge::after { content:""; position:absolute; right:6px; top:50%; width:6px; height:6px; margin-top:-3px;
+           border-top:1px solid var(--fg-subtle); border-right:1px solid var(--fg-subtle); transform:rotate(45deg); }
+/* 이동 방법은 선 위, 끊김 표시는 선 아래 — 바탕을 칠해 선을 끊지 않는다 */
+.fm-edge span { align-self:end; margin-bottom:5px; padding:0 var(--sp-2); font-size:12px; white-space:nowrap; }
+.fm-edge i { grid-row:2; align-self:start; margin-top:5px; }
+.fm-edge[data-via="url"]::before { border-top-style:dashed; }
+.fm-edge[data-via="url"] span { color:var(--muted); }
+.fm-node[data-state="ok"] i { color:var(--pass-fg); }
+.fm-node[data-state="unreached"] { border-style:dashed; border-color:var(--line); }
+.fm-node[data-state="unreached"] b, .fm-node[data-state="unreached"] i { color:var(--muted); font-weight:500; }
+.fm-edge[data-state="unreached"]::before, .fm-edge[data-state="unreached"]::after { border-color:var(--line); }
+/* 끊긴 곳 — 카드의 실패 분류와 같은 색(결함 빨강, 실행 문제 보라, 확인 불가 회색) */
+.flowmap { --fm-hit:var(--fail); --fm-hit-bg:var(--fail-bg); }
+.flowmap.infra { --fm-hit:var(--note-fg); --fm-hit-bg:var(--note-bg); }
+.flowmap.unv { --fm-hit:var(--text); --fm-hit-bg:var(--bg-inset); }
+.fm-node[data-state="broken"] { border-color:var(--fm-hit); background:var(--fm-hit-bg); }
+.fm-node[data-state="broken"] i, .fm-edge[data-state="broken"] span, .fm-edge[data-state="broken"] i { color:var(--fm-hit); }
+.fm-edge[data-state="broken"]::before { border-top:2px solid var(--fm-hit); margin-top:-1px; }
+.fm-edge[data-state="broken"][data-via="url"]::before { border-top-style:dashed; }
+.fm-edge[data-state="broken"]::after { border-color:var(--fm-hit); }
+@media (max-width:640px) {
+  .flowmap { flex-direction:column; align-items:stretch; overflow:visible; }
+  .fm-node::before, .fm-node::after { display:none; }
+  .fm-edge { min-width:0; max-width:none; height:auto; min-height:44px; justify-items:start;
+             grid-template-rows:none; align-content:center; padding:var(--sp-2) 0 var(--sp-2) var(--sp-8); }
+  .fm-edge span, .fm-edge i { grid-row:auto; align-self:auto; margin:0; padding:0; }
+  .fm-edge::before { left:var(--sp-5); right:auto; top:0; bottom:2px; border-top:0; border-left:1px solid var(--fg-subtle); }
+  .fm-edge[data-via="url"]::before { border-left-style:dashed; }
+  .fm-edge[data-state="broken"]::before { border-top:0; border-left:2px solid var(--fm-hit); margin:0 0 0 -1px; }
+  .fm-edge[data-state="broken"][data-via="url"]::before { border-left-style:dashed; }
+  .fm-edge[data-state="unreached"]::before { border-color:var(--line); }
+  .fm-edge::after { left:calc(var(--sp-5) - 3px); right:auto; top:auto; bottom:3px; transform:rotate(135deg); }
+}
 /* 실패 카드 — 대제목이 맨 위, 분류·규칙 꼬리표와 케이스 제목은 그 아래 작은 한 줄. */
 /* 번호는 왼쪽 칸에 따로 선다 — 제목·꼬리표·비교 칸이 같은 세로선에서 시작한다. */
-.case.failed > summary { flex-wrap:wrap; row-gap:6px; padding:24px 0 12px 36px; position:relative;
-                          align-items:baseline; }
-.case.failed > summary .no { position:absolute; left:0; top:27px; font-size:17px; line-height:1.4; }
+.case.failed > summary { flex-wrap:wrap; row-gap:8px; padding:var(--sp-6) 0 var(--sp-3) 36px; position:relative;
+                          align-items:center; }
+.case.failed > summary .no { position:absolute; left:0; top:var(--sp-6); font-size:var(--tx-lg); line-height:26px; }
 .case.failed > .body { padding-left:36px; }
 @media (max-width:640px) { .case.failed > .body { padding-left:0; } }
-.case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:17px; font-weight:650; line-height:1.4;
+.case .head { word-break:keep-all; flex:1 1 calc(100% - 160px); font-size:var(--tx-lg); font-weight:700; line-height:26px;
               letter-spacing:-0.01em; }
-.case.failed .title { color:var(--muted); font-size:13px; }
+.case.failed .title { color:var(--muted); font-size:var(--tx-sm); }
 table.kv { width:100%; border-collapse:collapse; margin-bottom:12px; }
 table.kv th { text-align:left; width:110px; vertical-align:top; color:var(--muted);
               font-weight:400; padding:5px 8px 5px 0; font-size:13px; }
@@ -385,59 +607,65 @@ table.kv code { font-family:var(--font-mono); font-size:12px; }
 .steps { width:100%; }
 .screens { margin:14px 0 4px; }
 .steps th, .steps td, .screens th, .screens td {
-  border-bottom:1px solid var(--line); padding:6px 16px 6px 0; text-align:left; }
-.steps th, .screens th { font-weight:400; font-size:12px; color:var(--muted);
-                         border-bottom-color:var(--border-strong); }
+  border-bottom:1px solid var(--sep); padding:7px 16px 7px 0; text-align:left; font-variant-numeric:tabular-nums; }
+.steps th, .screens th { font-weight:600; font-size:var(--tx-xs); color:var(--muted);
+                         border-bottom-color:var(--border-default); }
 .steps td.err { color:var(--fail); }
 .steps td.val { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
 /* 요약 줄 — 분류 꼬리표가 있으면 FAIL 은 겹치는 말이다. 소요 시간은 기획자가 읽지 않는다. */
 .case summary .tag.FAIL:has(+ .tag.cat) { display:none; }
 .case > summary .ms { display:none; }
 details.raw { margin-top:12px; overflow-x:auto; }
-details.raw > summary { cursor:pointer; color:var(--muted); font-size:13px; padding:6px 0; }
+details.raw > summary { cursor:pointer; color:var(--muted); font-size:var(--tx-sm); padding:6px 0; width:max-content; }
 details.raw > summary:hover { color:var(--text); }
 details.raw .url { font-size:12px; color:var(--muted); margin:6px 0 10px; }
 details.raw .url code { font-family:var(--font-mono); }
-h4 { font-size:12px; color:var(--muted); font-weight:650; margin:0 0 6px; }
+h4 { font-size:var(--tx-xs); line-height:var(--lh-xs); color:var(--muted); font-weight:600; margin:0 0 6px; }
 /* 기획서와 실제 화면을 나란히 — 이 도구가 하는 대조를 그대로 보여 준다.
    왼쪽 칸에 기대·근거·재현 절차, 오른쪽 칸에 관찰·판정한 화면·그때의 주소가 든다. */
-.cmp { display:grid; grid-template-columns:1fr 1fr; border:1px solid var(--line); border-radius:var(--r-lg);
-       margin:4px 0 16px; overflow:hidden; }
-.cmp > div { padding:14px 16px; min-width:0; }
-.cmp > .got { border-left:1px solid var(--line); }
-.cmp.FAIL > .got { background:var(--fail-bg); }
+/* 두 칸은 웹 UI 결과 화면의 '기대' · '실제' 상자와 같다 — 왼쪽 묶음 상자(3% 채움), 오른쪽은 판정 색 바탕.
+   선으로 가른 한 상자가 아니라 떨어진 두 상자다. */
+.cmp { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:var(--sp-3); margin:var(--sp-1) 0 var(--sp-4);
+       align-items:start; }
+.cmp > div { padding:14px var(--sp-4) var(--sp-4); min-width:0; border-radius:var(--r-card);
+             background:var(--fill-group); box-shadow:inset 0 0 0 0.5px var(--fill-hover); }
+.cmp.FAIL > .got { background:var(--fail-bg); box-shadow:none; }
 .cmp.infra > .got { background:var(--note-bg); }
-.cmp.unv > .got { background:var(--bg-inset); }
+.cmp.unv > .got { background:var(--fill-hover); }
 .cmp p { margin:0; word-break:break-word; }
-.cmp h4 + p { font-size:var(--tx-lg); line-height:1.5; word-break:keep-all; overflow-wrap:anywhere; }
-.cmp h4 ~ h4 { margin-top:18px; }
-.cmp.defect > .got > h4:first-child { color:var(--fail); }
+.cmp h4 + p { font-size:var(--tx-base); line-height:var(--lh-para); word-break:keep-all; overflow-wrap:anywhere; }
+.cmp h4 ~ h4 { margin-top:var(--sp-5); }
+.cmp.defect > .got > h4:first-child { color:var(--fail-fg); }
 .cmp.infra > .got > h4:first-child { color:var(--note-fg); }
 /* 기획서 근거 — 기획서 표의 그 줄을 표 모양 그대로 옮긴다. 판정에 쓴 칸만 진하게. */
-table.src { width:100%; margin-top:12px; border-collapse:collapse; font-size:12px; line-height:1.45; }
-table.src caption { text-align:left; color:var(--muted); padding-bottom:4px; }
-table.src caption b { font-weight:600; margin-right:6px; }
-table.src td { border:1px solid var(--line); padding:5px 7px; vertical-align:top; color:var(--muted);
+table.src { width:100%; margin-top:var(--sp-3); border-collapse:separate; border-spacing:0;
+            font-size:var(--tx-xs); line-height:var(--lh-xs); border-radius:var(--r-sel); overflow:hidden;
+            background:var(--bg-surface); box-shadow:inset 0 0 0 1px var(--border-default); }
+table.src caption { text-align:left; color:var(--muted); padding-bottom:6px; }
+table.src caption b { font-weight:600; color:var(--text); margin-right:6px; }
+table.src td { padding:6px 8px; vertical-align:top; color:var(--muted); border-left:1px solid var(--border-default);
                word-break:keep-all; overflow-wrap:break-word; }
-table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset); }
+table.src td:first-child { border-left:0; }
+table.src td.hit { color:var(--text); font-weight:600; background:var(--fill-hover); }
 @media (max-width:640px) { table.src, table.src caption, table.src tbody, table.src tr { display:block; }
   table.src td { display:inline-block; margin:0 -1px -1px 0; } }
-.cmp .src { font-size:13px; color:var(--muted); margin-top:10px; }
+.cmp .src { font-size:var(--tx-sm); line-height:var(--lh-sm); color:var(--muted); margin-top:10px; }
 .cmp .src b { font-weight:600; margin-right:6px; }
 .cmp code { font-family:var(--font-mono); font-size:12px; word-break:break-all; }
 @media (max-width:640px) { .cmp { grid-template-columns:1fr; }
   .cmp > .got { border-left:0; border-top:1px solid var(--line); } }
-.repro { margin:4px 0 0; padding-left:22px; font-size:var(--tx-md); color:var(--muted); }
+.repro { margin:var(--sp-1) 0 0; padding-left:22px; font-size:var(--tx-md); line-height:var(--lh-para); color:var(--muted); }
 .repro li { padding:1px 0; }
+.repro li::marker { font-variant-numeric:tabular-nums; }
 /* 여덟 단계 가운데 일곱은 케이스마다 같다 — 기획서를 어긴 단계만 진하게 둔다. */
 .repro li.broke { color:var(--text); font-weight:600; }
-.repro em.broke { font-size:11px; font-weight:650; background:var(--fail-bg); padding:1px 6px;
-                  border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
+.repro em.broke { font-size:var(--tx-2xs); font-weight:600; background:var(--fail-bg); padding:1px 7px;
+                  border-radius:var(--r-full); margin-left:4px; white-space:nowrap; }
 .repro .pre { font-size:11px; color:var(--muted); border:1px solid var(--line); border-radius:var(--r-sm); padding:0 5px; }
 .repro em { font-style:normal; font-size:13px; color:var(--fail); }
 /* 멈춘 단계 — 어긴 단계와 같은 무게. 꼬리표는 실행 문제의 색(보라)이다. 뒤의 단계는 실행하지 못했다. */
-.repro em.stop { font-size:11px; font-weight:650; color:var(--note-fg); background:var(--note-bg);
-                 padding:1px 6px; border-radius:var(--r-md); margin-left:4px; white-space:nowrap; }
+.repro em.stop { font-size:var(--tx-2xs); font-weight:600; color:var(--note-fg); background:var(--note-bg);
+                 padding:1px 7px; border-radius:var(--r-full); margin-left:4px; white-space:nowrap; }
 .repro li.todo { opacity:.55; }
 .repro-note { font-size:12px; color:var(--muted); margin:6px 0 0 22px; }
 /* 다시 돌릴 때의 요령처럼 판정을 바꾸지 않는 안내 — 상자 없이 작은 글씨. */
@@ -445,10 +673,10 @@ table.src td.hit { color:var(--text); font-weight:600; background:var(--bg-inset
 .smallnote b { color:var(--text); font-weight:600; }
 .smallnote + .warn, .smallnote + .heal, .smallnote + .gap { margin-top:32px; }
 /* 참고 — 실패·통과 케이스 아래의 압축판. 이름 한 칸, 내용 한 칸, 상자 없음. */
-h2.brief-h { margin-top:48px; }
-ul.brief { list-style:none; margin:0; padding:0; font-size:14px; line-height:1.6; }
+h2.brief-h { margin-top:var(--sp-12); }
+ul.brief { list-style:none; margin:0; padding:0; font-size:var(--tx-md); line-height:var(--lh-para); }
 ul.brief li { display:grid; grid-template-columns:200px minmax(0,1fr); gap:4px 16px; padding:10px 0;
-              border-bottom:1px solid var(--line); word-break:keep-all; color:var(--muted); }
+              border-bottom:1px solid var(--sep); word-break:keep-all; color:var(--muted); }
 ul.brief li > b { color:var(--text); font-weight:600; }
 ul.brief .nos a { color:inherit; }
 @media (max-width:640px) { ul.brief li { grid-template-columns:1fr; } }
@@ -457,29 +685,90 @@ details.pairfold > summary { cursor:pointer; font-size:14px; color:var(--muted);
 details.pairfold > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); }
 details.pairfold h2 { display:none; }
 .shots.last { margin-top:12px; }
-.shots.last a { display:block; width:100%; }
-.shots.last a > img { display:block; width:100%; height:auto; border-color:var(--border-strong); }
-.shots.last .cap { text-align:left; font-size:12px; }
+.shots.last a { display:block; width:max-content; max-width:100%; }
+/* 판정한 화면 — 칸 폭에 맞추되 높이는 240px 까지. 넘치면 줄여 담는다(누르면 원본). 오른쪽 칸만 길어져
+   왼쪽 기획서 칸 아래가 비던 것을 줄인다. */
+.shots.last a > img { display:block; width:auto; max-width:100%; height:auto; max-height:240px;
+                      border:1px solid var(--border-default); border-radius:var(--r-sel); }
+.shots.last .cap { text-align:left; font-size:var(--tx-xs); margin-top:6px; }
 .shots { display:flex; gap:10px; flex-wrap:wrap; margin-top:14px; }
 .shots a { display:block; cursor:zoom-in; text-decoration:none; }
-.shots img { height:150px; border:1px solid var(--line); border-radius:var(--r-sm);
+.shots img { height:120px; border:0; border-radius:var(--r-sel); box-shadow:inset 0 0 0 1px var(--border-default);
              background:var(--gray-0); display:block; }
 .shots .cap { font-size:11px; color:var(--muted); text-align:center; margin-top:3px; }
+/* 단계 되짚기 — 21st.dev Agent Trace 에서. 단계 한 줄, 시간 축 막대, 끄는 재생선. 색은 토큰만.
+   이름 칸 · 막대 칸 · 시간 칸. 재생선과 끄는 면은 막대 칸에만 겹친다. */
+.trace { --tr-hit:var(--fail); --gut:9.5rem; --msw:3.4rem; --gap:8px; }
+.trace.infra { --tr-hit:var(--note-fg); }
+.trace.unv { --tr-hit:var(--muted); }
+.tr-body { position:relative; margin-top:12px; }
+.tr-rows { list-style:none; margin:0; padding:0; }
+.tr-rows > li { display:grid; grid-template-columns:var(--gut) minmax(0,1fr) var(--msw); gap:var(--gap);
+                align-items:center; height:24px; font-size:var(--tx-xs); }
+.tr-name { font:inherit; color:var(--text); background:none; border:0; margin:0; padding:2px 6px 2px 2px;
+           text-align:left; cursor:pointer; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+           border-radius:var(--r-sm); transition:background-color .15s ease-out, color .15s ease-out; }
+.tr-name .n { display:inline-block; min-width:2.6em; color:var(--muted); font-variant-numeric:tabular-nums; }
+button.tr-name:hover, .tr-rows > li[data-on] .tr-name { background:var(--bg-inset); }
+.tr-rows > li[data-on] .tr-name { font-weight:600; }
+button.tr-name:focus-visible, .tr-scrub:focus-visible { outline:none; box-shadow:var(--focus-ring); }
+.tr-track { position:relative; height:100%; }
+.tr-bar { position:absolute; top:50%; height:8px; margin-top:-4px; min-width:3px; border-radius:4px;
+          background:var(--bg-inset); overflow:hidden; }
+.tr-bar > i { position:absolute; inset:0; transform-origin:left center; transform:scaleX(var(--p,1));
+              background:var(--muted); }
+.tr-rows > li.setup .tr-bar > i { background:var(--border-strong); }
+.tr-rows > li[data-fin='error'] .tr-bar > i, .tr-rows > li[data-state='error'] .tr-bar > i { background:var(--tr-hit); }
+.tr-ms { text-align:right; font-family:var(--font-mono); font-size:11px; color:var(--muted);
+         font-variant-numeric:tabular-nums; transition:opacity .15s ease-out; }
+.tr-rows > li[data-state='error'] .tr-ms { color:var(--tr-hit); font-weight:600; }
+.tr-rows > li[data-state='queued'] .tr-name, .tr-rows > li[data-state='skip'] .tr-name { color:var(--muted); }
+.tr-rows > li[data-state='queued'] .tr-ms { opacity:0; }
+.tr-rows > li[data-state='skip'] .tr-name { cursor:default; }
+.tr-head, .tr-scrub { position:absolute; top:0; bottom:0; left:calc(var(--gut) + var(--gap));
+                      right:calc(var(--msw) + var(--gap)); }
+.tr-head { pointer-events:none; }
+.tr-head > i { position:absolute; top:-6px; bottom:0; left:calc(var(--t,1) * 100%); width:1px; background:var(--text); }
+.tr-head > i::before { content:""; position:absolute; top:0; left:-3px; width:7px; height:7px;
+                       background:var(--text); transform:rotate(45deg); }
+.tr-scrub { cursor:ew-resize; touch-action:none; border-radius:var(--r-sm); }
+.tr-foot { display:flex; justify-content:space-between; font-family:var(--font-mono); font-size:11px;
+           color:var(--muted); margin:2px calc(var(--msw) + var(--gap)) 0 calc(var(--gut) + var(--gap)); }
+.tr-rows > li.broke .tr-name { color:var(--tr-hit); font-weight:600; }
+/* 긴 단계는 앞쪽 통과한 단계를 한 줄로 접는다(step_plan). 펼치면 회차마다 'N회째' 머리. */
+.tr-rows > li.tr-grp { display:block; height:auto; }
+.tr-grp > details > summary { display:grid; grid-template-columns:var(--gut) minmax(0,1fr) var(--msw); gap:var(--gap);
+                              align-items:center; height:24px; list-style:none; cursor:pointer; }
+.tr-grp > details > summary::-webkit-details-marker { display:none; }
+.tr-grp > details > summary .tr-name { cursor:pointer; display:flex; align-items:center; gap:4px; }
+.tr-grp > details > summary .n { color:var(--pass); }
+.tr-grp > details > summary:focus-visible { outline:none; box-shadow:var(--focus-ring); border-radius:var(--r-sm); }
+.tr-grp .chev { flex:none; width:6px; height:6px; margin-left:4px; border:solid var(--muted); border-width:0 1.5px 1.5px 0;
+                transform:rotate(-45deg); transition:transform .15s ease-out; }
+.tr-grp > details[open] .chev { transform:rotate(45deg); }
+/* 묶음 이름은 막대 칸까지 써서 잘리지 않게 — 접힌 구간의 시간은 오른쪽 합계가 말한다 */
+.tr-grp > details > summary .tr-name { grid-column:1 / 3; overflow:visible; }
+.tr-grp > details > summary .tr-track { display:none; }
+.tr-rows > li.tr-rnd { display:block; height:auto; padding:6px 0 0 2px; font-size:11px; color:var(--muted); }
+@media (max-width:640px) { .trace { --gut:7.5rem; } }
+@media print { .tr-head, .tr-scrub { display:none; } }
 /* 알림 상자 — 색 블록 하나, 테두리 없음. 종류는 색과 굵은 첫 줄이 함께 말한다. */
-.heal, .gap, .warn { border-radius:var(--r-xl); padding:var(--sp-3) var(--sp-4); margin-bottom:var(--sp-3);
-                     font-size:14px; line-height:1.6; }
-.warn b, .heal b, .gap b { font-size:var(--tx-lg); font-weight:620; }
+/* 웹 UI 의 알림 상자(.alert)와 같다 — 모서리 12, 바탕 색 한 겹, 테두리 없음. 숨기거나 접지 않는다. */
+.heal, .gap, .warn { border-radius:var(--r-card); padding:14px var(--sp-4); margin-bottom:var(--sp-3);
+                     font-size:var(--tx-md); line-height:var(--lh-para); }
+.warn b, .heal b, .gap b { font-size:var(--tx-md); font-weight:600; }
 /* 주의 알림의 세모 — 웹 UI 알림과 같은 그림. 색은 토큰으로 칠하고 그림은 가리개로만 쓴다. */
-.warn { position:relative; padding-left:46px; }
-.warn::before { content:""; position:absolute; left:16px; top:15px; width:18px; height:18px;
+.warn { position:relative; padding-left:44px; }
+.warn::before { content:""; position:absolute; left:16px; top:17px; width:16px; height:16px;
                 background:var(--warn-fg); -webkit-mask:var(--warn-icon) center / contain no-repeat;
                 mask:var(--warn-icon) center / contain no-repeat; }
 :root { --warn-icon:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-linejoin='round' stroke-linecap='round'%3E%3Cpath d='M8 2.2l6 10.6H2z' stroke-width='1.4'/%3E%3Cpath d='M8 6.4v3M8 11.2v.1' stroke-width='1.6'/%3E%3C/svg%3E"); }
 .heal { background:var(--note-bg); }
 .heal b { color:var(--note-fg); }
 .gap { background:var(--info-bg); }
+/* 주의 알림 — 웹 UI 의 .alert.warn 과 같은 옅은 주의 바탕. 세모는 주의 색. */
 .warn { background:var(--warn-bg); }
-.warn b { display:block; margin-bottom:4px; }
+.warn b { display:block; margin-bottom:2px; }
 .heal .why, .gap .why { color:var(--muted); margin:2px 0 8px; }
 .empty { color:var(--muted); padding:12px 0; }
 .screens td.n { text-align:right; font-variant-numeric:tabular-nums; }
@@ -494,7 +783,13 @@ h3.grp { font-size:13px; margin:20px 0 0; color:var(--muted); font-weight:650; }
   .topbar .name { order:-1; } .topbar .when > span, .crumbs span { display:none; } .crumbs { display:none; }
 }
 @media (prefers-reduced-motion: reduce) { .btn, .btn:hover, .btn:active { transition:none; transform:none; } }
-@media print { .actions, button.copy, button.theme { display:none; } .case { break-inside:avoid; } }
+/* 인쇄 — 실패 카드는 한 쪽보다 길 때가 많아 카드째 끊지 않으면 앞 쪽이 빈다. 카드 안의 덩어리만 지킨다
+   (PDF 받기도 같은 규칙, pdf_export._PDF_CSS). */
+@media print { .actions, button.copy, button.theme { display:none; }
+  .topbar { position:static; background:none; -webkit-backdrop-filter:none; backdrop-filter:none; }
+  h2, h3.grp, .case > summary, h4 { break-after:avoid; }
+  .chart, .warn, .cmp > div > p, table.src, .repro li, .trace, .shots.last, .shots a, .steps tr,
+  .case:not([open]) { break-inside:avoid; } }
 """
 
 
@@ -568,6 +863,73 @@ _THEME_JS = (
     'if(t==="light"||t==="dark")document.documentElement.setAttribute("data-theme",t)}'
     'catch(e){}'
 )
+
+# 실패 카드의 단계 되짚기(_trace_html). 시각 하나(t)에서 모든 줄의 찬 정도·상태·캡처를 정한다 —
+# 줄마다 따로 상태를 들고 있지 않다. 처음과 인쇄 때는 끝(t = 합계)이다.
+_TRACE_JS = r"""
+(function () {
+  document.querySelectorAll('.trace').forEach(function (tr) {
+    var total = +tr.dataset.total || 1;
+    var rows = Array.prototype.slice.call(tr.querySelectorAll('.tr-rows li[data-start]'));
+    var img = tr.querySelector('.shots img'), link = tr.querySelector('.shots a');
+    var cap = tr.querySelector('.shots .cap'), scrub = tr.querySelector('.tr-scrub');
+    if (!rows.length || !img || !scrub) return;
+    var endCap = cap.textContent, endShot = img.getAttribute('src'), on = null;
+    rows.forEach(function (r) { r.dataset.fin = r.dataset.state; });
+    function seek(v) {
+      var t = Math.max(0, Math.min(total, v)), at = 0;
+      tr.style.setProperty('--t', (t / total).toFixed(4));
+      rows.forEach(function (r, i) {
+        var s = +r.dataset.start, e = +r.dataset.end, d = e - s;
+        var p = d > 0 ? Math.max(0, Math.min(1, (t - s) / d)) : (t >= s ? 1 : 0);
+        r.style.setProperty('--p', p.toFixed(3));
+        r.dataset.state = (t < s || (p === 0 && d > 0)) ? 'queued' : p < 1 ? 'running' : r.dataset.fin;
+        if (t > s || (t === s && d === 0)) at = i;
+      });
+      var end = t >= total, k = at;
+      while (k > 0 && !rows[k].dataset.shot) k--;
+      var shot = end ? endShot : rows[k].dataset.shot, text = end ? endCap : rows[at].dataset.cap + ' 화면';
+      if (img.getAttribute('src') !== shot) { img.setAttribute('src', shot); link.setAttribute('href', shot); }
+      if (cap.textContent !== text) cap.textContent = text;
+      if (on) on.removeAttribute('data-on');
+      on = end ? null : rows[at]; if (on) on.setAttribute('data-on', '');
+      // 접어 둔 단계를 짚으면 그 묶음을 연다 — 짚은 줄이 늘 보여야 한다.
+      var fold = on && on.closest('details');
+      if (fold && !fold.open) fold.open = true;
+      scrub.setAttribute('aria-valuenow', String(Math.round(t)));
+      scrub.setAttribute('aria-valuetext', end ? '끝, 판정한 화면' : text);
+      tr.t = t;
+    }
+    function fromX(x) {
+      var b = scrub.getBoundingClientRect();
+      if (b.width > 0) seek((x - b.left) / b.width * total);
+    }
+    scrub.addEventListener('pointerdown', function (e) { scrub.setPointerCapture(e.pointerId); fromX(e.clientX); });
+    scrub.addEventListener('pointermove', function (e) { if (scrub.hasPointerCapture(e.pointerId)) fromX(e.clientX); });
+    scrub.addEventListener('pointerup', function (e) {
+      if (scrub.hasPointerCapture(e.pointerId)) scrub.releasePointerCapture(e.pointerId);
+    });
+    // 화살표는 단계 경계로 옮긴다 — 시간 몇 퍼센트씩보다 '다음 단계' 가 쓸모 있다.
+    var ends = rows.map(function (r) { return +r.dataset.end; });
+    scrub.addEventListener('keydown', function (e) {
+      var t = tr.t == null ? total : tr.t, n = null;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') n = ends.filter(function (x) { return x > t; })[0];
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') n = ends.filter(function (x) { return x < t; }).pop();
+      else if (e.key === 'Home') n = ends[0];
+      else if (e.key === 'End') n = total;
+      else return;
+      e.preventDefault();
+      if (n != null) seek(n);
+    });
+    rows.forEach(function (r) {
+      var b = r.querySelector('.tr-name');
+      if (b) b.addEventListener('click', function () { seek(+r.dataset.end); });
+    });
+    window.addEventListener('beforeprint', function () { seek(total); });
+  });
+})();
+"""
+
 
 _LIGHTBOX_JS = r"""
 (function () {
@@ -743,6 +1105,123 @@ def _shots_html(verdict: Verdict, last: bool = False) -> str:
     return f"<div class='shots'>{items}</div>"
 
 
+def step_period(steps) -> int:
+    """같은 단계 묶음이 처음부터 되풀이되는 가장 짧은 길이(2 ≤ p ≤ n/2). 없으면 0.
+
+    동작·대상만 본다 — 넣은 값(다른 이메일 등)은 회차마다 달라도 같은 단계다. 마지막 회차가
+    중간에 끝나도(멈춤) 된다. 웹 UI(app.js stepPeriod)와 같은 규칙이다.
+    """
+    sig = [f"{getattr(r, 'phase', '') or ''}|{getattr(r, 'action', '') or ''}|{getattr(r, 'target', '') or ''}"
+           for r in steps]
+    n = len(sig)
+    for p in range(2, n // 2 + 1):
+        if all(x == sig[i % p] for i, x in enumerate(sig)):
+            return p
+    return 0
+
+
+def step_plan(steps, stop: int) -> dict | None:
+    """긴 단계(9개 이상)에서 앞쪽 통과한 단계를 한 줄로 접을 계획. 8개 이하·접을 게 없으면 None.
+
+    `stop` 은 멈춘 단계의 자리(모두 통과면 -1). 되풀이면 멈춘 회차 앞의 회차를 '1–4회째 · 16단계 모두 통과' 로,
+    아니면 멈춘 단계 앞 3개만 남기고 '앞 단계 N개 통과', 모두 통과면 마지막 하나만 남기고 '단계 N개 모두 통과'.
+    웹 UI(app.js stepPlan)와 같은 규칙이다.
+    """
+    n = len(steps)
+    if n <= 8:
+        return None
+    p = step_period(steps)
+    if p:
+        at = (stop if stop >= 0 else n - 1) // p
+        if at < 1:
+            return None
+        return {"hide": at * p, "period": p,
+                "label": f"{f'1–{at}' if at > 1 else '1'}회째 · {at * p}단계 모두 통과"}
+    hide = stop - 3 if stop >= 0 else n - 1
+    if hide < 2:
+        return None
+    return {"hide": hide, "period": 0,
+            "label": f"앞 단계 {hide}개 통과" if stop >= 0 else f"단계 {hide}개 모두 통과"}
+
+
+def _trace_html(verdict: Verdict, kind: str, names: dict | None = None) -> str:
+    """실패 카드의 '판정한 화면' 자리 — 단계마다 걸린 시간을 한 축에 놓고, 끌면 그 단계 뒤 화면이 뜬다.
+
+    21st.dev Agent Trace 에서 가져온 것: 단계 하나가 한 줄, 시작·끝을 시간 축에 놓은 막대, 축을
+    끌면(재생 막대) 그 시각까지 끝난 만큼만 막대가 차고 그 단계 뒤 캡처로 바뀐다. 이름을 누르면
+    그 단계로 간다. 화살표 키는 단계 경계로 옮긴다. 버린 것: 자동 재생·반복, 토큰 수, 아이콘,
+    그림자 카드.
+
+    처음 모습은 끝난 실행이다 — 판정한 화면과 꽉 찬 막대. 스크립트가 없거나 인쇄할 때도 그 모습이다.
+    멈춘 뒤 하지 못한 단계는 막대 없이 '못 함' 으로 남긴다. 캡처가 두 장 미만이면 그릴 것이 없으니
+    예전처럼 판정한 화면 한 장만 둔다.
+    """
+    steps = verdict.step_results
+    shots = [r for r in steps if r.screenshot]
+    if len(steps) < 2 or len(shots) < 2:
+        return _shots_html(verdict, last=True)
+    total = max(1, sum(max(r.elapsed_ms, 0) for r in steps))
+    last = shots[-1]
+    # 재현 절차(_repro_html)가 '기획서를 어긴 단계' 로 진하게 두는 단계와 같은 줄을 짚는다.
+    broke = verdict.target_label if kind == "defect" and verdict.violates else None
+    names = names or {}
+
+    def what(action: str, target: str) -> str:
+        # 흐름 케이스의 화면 경계('signup 성공')는 기획서의 화면 이름으로 — 지도와 같은 말.
+        m = _FLOW_MARK.match(target or "")
+        if m and m.group(1) in names:
+            target = f"{names[m.group(1)]} {m.group(2)}"
+        return f"{target or ''} {ACTION_LABELS.get(action, action or '')}".strip()
+
+    rows, t = [], 0
+    stop = next((i for i, r in enumerate(steps) if r.status == "error"), len(steps) - 1)
+    plan = step_plan(steps, stop)
+    period = plan["period"] if plan else 0
+    for i, r in enumerate(steps):
+        dur = max(r.elapsed_ms, 0)
+        state = "error" if r.status == "error" else "done"
+        pre = "준비 " if r.phase == "setup" else ""
+        name = what(r.action, r.target)
+        hit = bool(broke) and r.phase != "setup" and r.target == broke and r.action != "click"
+        cls = " ".join(c for c in ("setup" if r.phase == "setup" else "", "broke" if hit else "") if c)
+        if period and i % period == 0:
+            rows.append(f"<li class='tr-rnd' aria-hidden='true'><span>{i // period + 1}회째</span></li>")
+        rows.append(
+            f"<li data-state='{state}' data-start='{t}' data-end='{t + dur}'"
+            f"{f' data-shot={chr(39)}{_esc(r.screenshot)}{chr(39)}' if r.screenshot else ''}"
+            f" data-cap='{_esc(pre)}{r.seq}단계 뒤' class='{cls}' style='--p:1'>"
+            f"<button type='button' class='tr-name'><span class='n'>{_esc(pre)}{r.seq}</span>{_esc(name)}</button>"
+            f"<span class='tr-track'><span class='tr-bar' style='left:{t / total * 100:.3f}%;"
+            f"width:{dur / total * 100:.3f}%'><i></i></span></span>"
+            f"<span class='tr-ms'>{dur}ms</span></li>")
+        t += dur
+        if plan and i == plan["hide"] - 1:
+            # 앞쪽 통과한 단계를 한 줄로 접는다 — 막대는 그 구간 전체. 인쇄에서도 접힌 채다.
+            inner = "".join(rows)
+            rows = [f"<li class='tr-grp'><details><summary><span class='tr-name'><span class='n'>✓</span>"
+                    f"{_esc(plan['label'])}<span class='chev' aria-hidden='true'></span></span>"
+                                        f"<span class='tr-ms'>{t}ms</span></summary>"
+                    f"<ol class='tr-rows' aria-label='접어 둔 단계 {plan['hide']}개'>{inner}</ol></details></li>"]
+    for k, p in enumerate(verdict.pending_steps or []):
+        pre = "준비 " if p.get("phase") == "setup" else ""
+        name = what(p.get("action") or "", p.get("target") or "")
+        rows.append(f"<li data-state='skip'><span class='tr-name'><span class='n'>·</span>{_esc(name)}</span>"
+                    f"<span class='tr-track'></span><span class='tr-ms'>못 함</span></li>")
+    cap = f"판정한 화면: {'준비 ' if last.phase == 'setup' else ''}{last.seq}단계 뒤, 누르면 크게 보기"
+    return (
+        f"<div class='trace {kind}' data-total='{total}' style='--t:1'>"
+        f"<div class='shots last'><a href='{_esc(last.screenshot)}' target='_blank'>"
+        f"<img src='{_esc(last.screenshot)}' alt='판정한 화면'>"
+        f"<div class='cap' aria-live='polite'>{_esc(cap)}</div></a></div>"
+        f"<div class='tr-body'><ol class='tr-rows' aria-label='단계별 걸린 시간'>{''.join(rows)}</ol>"
+        f"<div class='tr-head' aria-hidden='true'><i></i></div>"
+        f"<div class='tr-scrub' role='slider' tabindex='0' aria-label='단계 되짚기 — 끌거나 화살표 키로'"
+        f" aria-valuemin='0' aria-valuemax='{total}' aria-valuenow='{total}'"
+        f" aria-valuetext='끝, 판정한 화면'></div></div>"
+        f"<div class='tr-foot'><span>0</span><span>합계 {total}ms</span></div></div>"
+    )
+
+
 def is_weak_pass(verdict: Verdict) -> bool:
     """성공 조건 없이 '에러가 안 떴다' 만 보고 통과한 케이스인가 (WEAK_PASS_REASON).
 
@@ -758,7 +1237,7 @@ def is_weak_pass(verdict: Verdict) -> bool:
 
 @dataclass(frozen=True)
 class ChartSegment:
-    """비율 막대 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
+    """원형차트 한 조각. 이름은 케이스 카드의 꼬리표와 같은 말을 쓴다."""
 
     key: str
     label: str
@@ -789,23 +1268,65 @@ def chart_segments(verdicts: list[Verdict]) -> list[ChartSegment]:
     return [ChartSegment(k, labels[k], n) for k, n in counts.items() if n]
 
 
-def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
-    """비율 막대와 집계 한 줄 — 웹 UI 결과 화면의 막대(.meter · .tally)와 같은 모양이다.
+def _donut_svg(n: dict[str, int], labels: dict[str, str], size: int = 132) -> str:
+    """도넛 한 개. 외부 라이브러리 없이 SVG 를 문서에 넣는다 (file:// 로 열린다).
 
-    색은 토큰이고 이름과 수가 늘 아래 줄에 글자로 있다. 색만으로 뜻을 전하면 인쇄물과
+    조각 순서는 결함 → 실행 문제 → 확인 불가 → 약한 확인 → 통과, 12시에서 시계 방향.
+    조각이 하나면 틈을 두지 않는다 — 끊긴 고리가 뭔가 빠진 것처럼 보인다.
+    """
+    total = sum(n.values())
+    c = size / 2
+    width = 16.0
+    radius = c - width / 2 - 1
+    length = 2 * math.pi * radius
+    keys = [k for k in n if n[k]]
+    gap = 2.0 if len(keys) > 1 else 0.0
+    arcs, offset = [], 0.0
+    for k in keys:
+        arc = n[k] / total * length
+        drawn = max(arc - gap, 0.5)
+        tip = f"{labels[k]} {n[k]}건 ({n[k] / total:.0%})"
+        arcs.append(
+            f"<circle class='seg {k}' cx='{c:g}' cy='{c:g}' r='{radius:.2f}' fill='none' "
+            f"stroke-width='{width:g}' stroke-dasharray='{drawn:.2f} {length - drawn:.2f}' "
+            f"stroke-dashoffset='{-offset:.2f}'><title>{_esc(tip)}</title></circle>")
+        offset += arc
+    summary = ", ".join(f"{labels[k]} {n[k]}건" for k in keys)
+    return (
+        f"<svg viewBox='0 0 {size} {size}' width='{size}' height='{size}' role='img' "
+        f"aria-label='전체 {total}건 — {_esc(summary)}'>"
+        f"<circle class='track' cx='{c:g}' cy='{c:g}' r='{radius:.2f}' fill='none' stroke-width='{width:g}'/>"
+        f"<g transform='rotate(-90 {c:g} {c:g})'>{''.join(arcs)}</g>"
+        f"<text x='{c:g}' y='{c + 6:g}' class='big'>{total}</text>"
+        f"<text x='{c:g}' y='{c + 27:g}' class='small'>케이스</text></svg>")
+
+
+def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=None) -> str:
+    """원형차트(도넛)와 이름표, 집계 한 줄 — 웹 UI 결과 화면의 도넛(.donut)과 같은 그림이다.
+
+    2026-11-18 에 비율 막대로 바꿨다가 11-24 에 원형차트로 되돌렸다(디자인 담당 요청 —
+    검사 뒤 결과의 구성이 한눈에 보이던 것이 사라졌다).
+
+    색은 토큰이고 이름과 수가 늘 곁에 글자로 있다. 색만으로 뜻을 전하면 인쇄물과
     색각 이상 독자에게 조각이 구별되지 않는다. 조각에 들어가지 않는 것(실행하지 않은
-    것)은 조각으로 만들지 않고 글로 쓴다 — 막대의 합은 실행한 케이스뿐이어서, 이 줄이
-    없으면 온통 초록인 막대가 '전부 확인됨' 으로 읽힌다.
+    것)은 조각으로 만들지 않고 글로 쓴다 — 도넛의 합은 실행한 케이스뿐이어서, 이 줄이
+    없으면 온통 초록인 차트가 '전부 확인됨' 으로 읽힌다.
     """
     segments = {s.key: s for s in chart_segments(verdicts)}
     if not segments:
         return ""
     total = sum(s.count for s in segments.values())
-    n = {k: segments[k].count if k in segments else 0 for k in ("defect", "infra", "unv", "weak", "pass")}
-    # 결함이 맨 앞, 통과가 맨 뒤 — 웹 UI 의 막대와 같은 순서.
-    bars = "".join(
-        f"<i class='{k}' style='flex:{n[k]}' title='{_esc(segments[k].label)} {n[k]}건 ({n[k] / total:.0%})'></i>"
-        for k in n if n[k])
+    order = ("defect", "infra", "unv", "weak", "pass")
+    n = {k: segments[k].count if k in segments else 0 for k in order}
+    labels = {k: segments[k].label for k in segments}
+    # 이름표는 웹 UI 결과 화면의 숫자 칸과 같은 칸이다. 기획서와 다름·실행 문제·통과는 0 이어도 칸을 둔다
+    # — '없다' 도 읽는 사람이 찾는 답이다(아래 집계 줄과 같은 규칙). 0 인 칸은 흐린 글자.
+    names = {"defect": "기획서와 다름", "infra": "실행 문제", "unv": "확인 불가", "weak": "약한 확인", "pass": "통과"}
+    legend = "".join(
+        (f"<li><i class='swatch {k}'></i><span>{_esc(labels[k])}</span>"
+         f"<b>{n[k]}</b><span class='ms'>{n[k] / total:.0%}</span></li>") if n[k] else
+        (f"<li class='zero'><i class='swatch {k}'></i><span>{names[k]}</span><b>0</b></li>")
+        for k in order if n[k] or k in ("defect", "infra", "pass"))
     # 기획서와 다름·실행 문제는 0이어도 적는다 — '없다' 도 읽는 사람이 찾는 답이다 (웹 UI 와 같다).
     parts = [f"기획서와 다름 {n['defect']}", f"실행 문제 {n['infra']}"]
     if n["unv"]:
@@ -819,11 +1340,11 @@ def _chart_html(verdicts: list[Verdict], unchecked: int, excluded: int, rate=Non
     if excluded:
         outside.append(f"이번 실행에서 제외한 케이스 {excluded}건")
     note = (f"<p class='ms'>차트에 없는 것: {_esc(' · '.join(outside))}</p>" if outside else "")
-    summary = ", ".join(f"{s.label} {s.count}건" for s in segments.values())
     return (
         "<div class='chart'>"
-        f"<div class='meter' role='img' aria-label='전체 {total}건 — {_esc(summary)}'>{bars}</div>"
-        f"<div class='tally'>{_esc(' · '.join(parts))}</div>{note}</div>"
+        f"{_donut_svg(n, labels)}"
+        f"<div class='side'><ul class='legend'>{legend}</ul>"
+        f"<div class='tally'>{_esc(' · '.join(parts))}</div>{note}</div></div>"
     )
 
 
@@ -1033,8 +1554,104 @@ def _stuck_rows_html(items: list[Verdict], fails: list[Verdict], names: dict, nu
     return "".join(out)
 
 
+# 흐름 케이스의 확인 스텝 이름 — s2_case_generator.generator._flow_case 가 짓는다.
+# '<screen_id> 성공' 은 중간 화면의 성공 조건, '<screen_id> 도착' 은 눌러 옮긴 뒤 경로 확인.
+_FLOW_MARK = re.compile(r"^(\S+) (성공|도착)$")
+
+
+def flow_route(v: Verdict) -> dict | None:
+    """흐름 케이스의 스텝에서 화면 순서·이동 방법·끊긴 곳을 읽는다.
+
+    리포트에는 기획서의 흐름 표가 없다 — 대신 케이스 스텝에 화면 경계가 이름으로 남아
+    있다('signup 성공', 'login 도착'). 실행한 스텝(step_results)과 멈춘 뒤 남은 스텝
+    (pending_steps)을 이으면 흐름 전체가 나온다. 모양이 맞지 않으면 None — 지도를
+    그리지 않고 예전처럼 글로만 둔다(틀린 지도보다 없는 지도가 낫다).
+
+    돌려주는 것: screens(screen_id 순서), via(전이마다 누른 요소 이름, 주소 이동은 ""),
+    broken(("node"|"edge", 번호) 또는 None).
+    """
+    if not v.flow_id:
+        return None
+    steps = [(r.action, r.target or "", r.status) for r in v.step_results if r.phase == "test"]
+    steps += [(d.get("action") or "", d.get("target") or "", "pending")
+              for d in v.pending_steps if d.get("phase", "test") == "test"]
+    screens: list[str] = []
+    via: list[str] = []
+    broken = None
+    for i, (action, target, status) in enumerate(steps):
+        mark = _FLOW_MARK.match(target) if action == "assert" else None
+        if mark and mark.group(2) == "성공":
+            if status == "error" and broken is None:
+                broken = ("node", len(screens))
+            screens.append(mark.group(1))
+            via.append("")
+            continue
+        if mark and mark.group(2) == "도착":
+            if not via:
+                return None
+            prev = steps[i - 1]
+            via[-1] = prev[1] if prev[0] == "click" else ""
+            if status == "error" and broken is None:
+                broken = ("edge", len(via) - 1)
+            continue
+        if status == "error" and broken is None:
+            nxt = steps[i + 1] if i + 1 < len(steps) else ("", "", "")
+            arrive = nxt[0] == "assert" and nxt[1].endswith(" 도착")
+            # 이동 요소를 못 찾아 누르지 못했다 — 화면 안이 아니라 화면 사이에서 끊겼다.
+            broken = ("edge", len(via) - 1) if action == "click" and arrive and via else ("node", len(screens))
+    screens.append(v.screen_id)
+    if len(screens) < 2 or len(via) != len(screens) - 1:
+        return None
+    if v.verdict == "FAIL" and broken is None and not any(
+            r.status == "error" and r.phase == "setup" for r in v.step_results):
+        # 스텝은 다 지났는데 마지막 화면의 확인(케이스 기대)이 틀렸다.
+        broken = ("node", len(screens) - 1)
+    if v.verdict == "PASS":
+        broken = None
+    return {"screens": screens, "via": via, "broken": broken}
+
+
+def _flow_map_html(v: Verdict, names: dict) -> str:
+    """흐름 실패 카드 맨 위의 화면 흐름 지도 — 어느 화면, 어느 이동에서 끊겼는지.
+
+    21st.dev 'Interactive Workflow Blueprint' 의 노드·연결선 그림만 가져왔다(웹 화면의
+    app.js flowMap 과 같은 모양). 판정 색은 카드의 실패 분류(fail_kind)를 따르고 늘
+    글자('여기서 끊김')와 함께 쓴다.
+    """
+    route = flow_route(v)
+    if not route:
+        return ""
+    kind, at = route["broken"] or ("", -1)
+
+    def state(part: str, i: int) -> str:
+        if not route["broken"]:
+            return "ok" if v.verdict == "PASS" else ""
+        if part == kind and i == at:
+            return "broken"
+        # 끊긴 곳보다 앞은 지나왔고, 뒤는 가지 못했다. 끊긴 이동의 앞 화면(i == at)도 지나왔다.
+        before = i < at or (part == "node" and kind == "edge" and i == at)
+        return "ok" if before else "unreached"
+
+    say = {"ok": "통과", "broken": "여기서 끊김", "unreached": "가지 못함"}
+    parts = []
+    for i, sid in enumerate(route["screens"]):
+        if i:
+            st = state("edge", i - 1)
+            m = route["via"][i - 1]
+            label = f"'{_esc(m)}' 누름" if m else "주소로 이동"
+            note = f"<i>{say[st]}</i>" if st == "broken" else ""
+            parts.append(f"<li class='fm-edge' data-via='{'click' if m else 'url'}' data-state='{st}'>"
+                         f"<span>{label}</span>{note}</li>")
+        st = state("node", i)
+        parts.append(f"<li class='fm-node' data-state='{st}'><b>{_esc(names.get(sid) or sid)}</b>"
+                     f"{f'<i>{say[st]}</i>' if st else ''}</li>")
+    return (f"<ol class='flowmap {fail_kind(v) if v.verdict == 'FAIL' else ''}' aria-label='화면 흐름'>"
+            f"{''.join(parts)}</ol>")
+
+
 def _case_html(verdict: Verdict, open_by_default: bool,
-               revised: dict | None = None, target_url: str = "", no: int | None = None) -> str:
+               revised: dict | None = None, target_url: str = "", no: int | None = None,
+               names: dict | None = None) -> str:
     ev = verdict.evidence or {}
     # 이전 판 기획서와 비교해 바뀐 것을 건드리는 케이스 (prova.spec_revision). 판정이 아니라
     # '이 케이스가 새 판의 바뀐 곳을 본다' 는 표시다.
@@ -1104,7 +1721,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         copy = (f"<button class='copy' type='button' data-copy='{_esc(text)}'>"
                 "재현 절차 복사</button>")
 
-    shot = _shots_html(verdict, last=True) if failed else ""
+    shot = _trace_html(verdict, kind, names) if failed else ""
     no_tag = f"<span class='no {kind}'>{no}</span>" if failed and no else ""
     repro = _repro_html(verdict, verdict.target_label if kind == "defect" and verdict.violates else None)
 
@@ -1118,7 +1735,7 @@ def _case_html(verdict: Verdict, open_by_default: bool,
         # 대제목이 케이스 문장을 뒤집어 쓴 것이면('…입력해도 막히지 않습니다') 같은 문장을 또 쓰지 않는다.
         f"{'' if failed and verdict.plain and not_blocked_sentence(verdict.plain) else f'<span class=title>{_esc(verdict.plain or verdict.title)}</span>'}"
         f"<span class='ms'>{verdict.elapsed_ms}ms</span></summary>"
-        f"<div class='body'>"
+        f"<div class='body'>{_flow_map_html(verdict, names or {}) if verdict.flow_id else ''}"
         f"{_compare_html(verdict, kind, shot, repro)}{f'<table class=kv>{kv}</table>' if kv else ''}"
         f"{more}"
         f"</div></details>"
@@ -1187,7 +1804,8 @@ def _grouped_html(verdicts: list[Verdict], names: dict, open_by_default: bool,
     groups = _groups(verdicts, names)
 
     def card(v: Verdict) -> str:
-        return _case_html(v, open_by_default, revised, target_url, (numbers or {}).get(v.case_id))
+        return _case_html(v, open_by_default, revised, target_url, (numbers or {}).get(v.case_id),
+                          names)
 
     if len(groups) < 2:
         return "".join(card(v) for v in verdicts)
@@ -1830,13 +2448,13 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 <body>
 <header class="topbar">
 <div class="crumbs">{f"<b title='{_esc(report.spec_source)}'>{_esc(spec_name)}</b><span aria-hidden='true'>→</span>" if spec_name else ""}<span>{_esc(report.target_url)}</span></div>
-<div class="name">Prova</div>
+<div class="name">{_WORDMARK}</div>
 <div class="when"><span>검증 리포트 · {_esc(when)}</span>{THEME_BUTTON}</div>
 </header>
 <div class="wrap">
 <div class="result-head">
 <div><h1>{_conclusion(report.cases, total)}</h1>{f"<div class='cond'>{_esc(cond)}</div>" if cond else ""}</div>
-<div class="actions"><a class="btn primary" href="report.xlsx" download>엑셀 받기</a></div>
+<div class="actions"><a class="btn" href="report.xlsx" download>{_ICON_DOWNLOAD}엑셀 받기</a><a class="btn" id="pdfBtn" hidden download>{_ICON_DOWNLOAD}PDF 받기</a></div>
 </div>
 {chart_html}
 {f"<div class='warn'><b>{_esc(s['url_note'])}</b></div>" if s.get("url_note") else ""}
@@ -1853,7 +2471,7 @@ def render_html(report: TestReport, spec_figures: dict | None = None) -> str:
 {weak_note}
 {sel_html}
 {_brief_html(report, names, checked, fails, numbers, gaps, backend, pairs_html)}
-</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script></body></html>
+</div><script>{_LIGHTBOX_JS}</script><script>{_COPY_JS}</script><script>{_TRACE_JS}</script><script>{_PRINT_JS}</script><script>{_THEME_BTN_JS}</script><script>{_PDF_BTN_JS}</script></body></html>
 """
 
 
@@ -1884,9 +2502,25 @@ def fill_pending_from_plan(report: TestReport, run_dir: Path) -> None:
                             "value": x.get("value"), "phase": phase} for phase, x in rest]
 
 
+#: 리포트와 함께 두는 글꼴 — Pretendard 가변 글꼴과 그 라이선스(SIL OFL 1.1, 함께 보내야 한다).
+FONT_DIR = Path(__file__).parent / "fonts"
+FONT_FILES = ("PretendardVariable.woff2", "Pretendard-OFL.txt")
+
+
+def copy_fonts(out_dir: Path) -> None:
+    """리포트 폴더의 fonts/ 에 글꼴을 둔다. 이미 같은 크기의 파일이 있으면 두고 간다."""
+    dest = out_dir / "fonts"
+    dest.mkdir(parents=True, exist_ok=True)
+    for name in FONT_FILES:
+        src, dst = FONT_DIR / name, dest / name
+        if src.exists() and not (dst.exists() and dst.stat().st_size == src.stat().st_size):
+            shutil.copyfile(src, dst)
+
+
 def save_html(report: TestReport, out_dir: Path) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
     fill_pending_from_plan(report, out_dir)
+    copy_fonts(out_dir)
     path = out_dir / "report.html"
     path.write_text(render_html(report, build_spec_figures(report, out_dir)), encoding="utf-8")
     return path

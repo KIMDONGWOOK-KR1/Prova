@@ -26,23 +26,54 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import re
+
 from openpyxl import Workbook
 from openpyxl.cell.cell import ILLEGAL_CHARACTERS_RE
-from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
 from prova.models import TestReport, Verdict
-from prova.s6_report.report_builder import CATEGORY_LABELS, is_weak_pass
+from prova.s6_report.report_builder import CATEGORY_LABELS, _conclusion, is_weak_pass
+from prova.theme import light_value
 from prova.wording import reproduction_lines, source_sentence
 
 XLSX_NAME = "report.xlsx"
 
-_HEAD_FONT = Font(bold=True)
-_HEAD_FILL = PatternFill("solid", fgColor="E8EAED")
-_KIND_FILL = {
-    "기획서와 다름": PatternFill("solid", fgColor="FCE8E6"),
-    "실행 문제": PatternFill("solid", fgColor="FEF7E0"),
+
+def _rgb(token: str) -> str:
+    """토큰의 밝은 값을 엑셀 색(RRGGBB)으로 — 색은 theme.py 한 곳에서만 만든다 (웹 UI·리포트와 같은 값)."""
+    return light_value(token).lstrip("#").upper()
+
+
+def _fill(token: str) -> PatternFill:
+    return PatternFill("solid", fgColor=_rgb(token))
+
+
+# 꾸밈은 웹 UI·리포트와 같은 말을 쓴다 — 머리줄은 사이드바 회색, 줄 사이는 옅은 선, 판정 색은 판정 칸에만
+# 쓰고 늘 글자(PASS·기획서와 다름…)와 함께 둔다.
+_HEAD_FONT = Font(bold=True, color=_rgb("--fg-default"))
+_HEAD_FILL = _fill("--bg-sidebar")
+_HEAD_LINE = Border(bottom=Side(style="thin", color=_rgb("--border-strong")))
+_ROW_LINE = Border(bottom=Side(style="thin", color=_rgb("--border-default")))
+_LABEL_FONT = Font(color=_rgb("--fg-muted"))
+_NOTE_FONT = Font(color=_rgb("--fg-muted"), size=10)
+_LINK_FONT = Font(color=_rgb("--accent-fg"), underline="single")
+# 판정·구분 칸 — 바탕은 옅은 판정 색, 글자는 진한 판정 색(대비 4.5:1 이상, theme.py 의 값).
+_KIND_STYLE = {
+    "기획서와 다름": (_fill("--fail-bg"), Font(bold=True, color=_rgb("--fail-fg"))),
+    "실행 문제": (_fill("--note-bg"), Font(bold=True, color=_rgb("--note-fg"))),
+    "확인 불가": (_fill("--bg-inset"), Font(bold=True, color=_rgb("--unv-fg"))),
+    "약한 확인": (_fill("--warn-bg"), Font(color=_rgb("--warn-fg"))),
+    "통과": (None, Font(color=_rgb("--pass-fg"))),
 }
+_VERDICT_STYLE = {
+    "FAIL": (_fill("--fail-bg"), Font(bold=True, color=_rgb("--fail-fg"))),
+    "PASS": (None, Font(bold=True, color=_rgb("--pass-fg"))),
+}
+_TOP = Alignment(vertical="top", wrap_text=True)
+_CENTER_TOP = Alignment(vertical="top", horizontal="center")
+_NUMERIC = {"번호", "판정", "시간(초)", "유형"}
 
 CASE_COLUMNS = ["번호", "화면", "케이스 ID", "제목", "유형", "판정", "구분", "실패 원인",
                 "기대", "실제", "기획서 근거", "상세", "재현 절차", "URL", "스크린샷", "시간(초)", "개정"]
@@ -86,19 +117,46 @@ def _detail(v: Verdict) -> str:
 def _table(ws, columns: list[str], rows: list[list]) -> None:
     for c, name in enumerate(columns, 1):
         cell = _put(ws, 1, c, name)
-        cell.font, cell.fill = _HEAD_FONT, _HEAD_FILL
+        cell.font, cell.fill, cell.border = _HEAD_FONT, _HEAD_FILL, _HEAD_LINE
+        cell.alignment = Alignment(vertical="center", horizontal="center" if name in _NUMERIC else "left")
         ws.column_dimensions[get_column_letter(c)].width = _WIDTHS.get(name, 14)
+    ws.row_dimensions[1].height = 24
     kind_col = columns.index("구분") + 1 if "구분" in columns else None
+    verdict_col = columns.index("판정") + 1 if "판정" in columns else None
+    shot_col = columns.index("스크린샷") + 1 if "스크린샷" in columns else None
     for r, values in enumerate(rows, 2):
         for c, value in enumerate(values, 1):
-            _put(ws, r, c, value).alignment = Alignment(vertical="top", wrap_text=True)
-        if kind_col:
-            fill = _KIND_FILL.get(values[kind_col - 1])
-            if fill:
-                ws.cell(row=r, column=kind_col).fill = fill
+            cell = _put(ws, r, c, value)
+            cell.alignment = _CENTER_TOP if columns[c - 1] in _NUMERIC else _TOP
+            cell.border = _ROW_LINE
+        for col, styles in ((kind_col, _KIND_STYLE), (verdict_col, _VERDICT_STYLE)):
+            style = styles.get(values[col - 1]) if col else None
+            if style:
+                fill, font = style
+                cell = ws.cell(row=r, column=col)
+                cell.font = font
+                if fill:
+                    cell.fill = fill
+        # 스크린샷 칸은 실행 폴더 안의 그림 파일이다 — 엑셀을 그 폴더에 둔 채 누르면 열린다.
+        if shot_col and values[shot_col - 1]:
+            cell = ws.cell(row=r, column=shot_col)
+            cell.hyperlink, cell.font = str(values[shot_col - 1]), _LINK_FONT
+        if "시간(초)" in columns:
+            ws.cell(row=r, column=columns.index("시간(초)") + 1).number_format = "0.0"
     ws.freeze_panes = "A2"
     if rows:
         ws.auto_filter.ref = f"A1:{get_column_letter(len(columns))}{len(rows) + 1}"
+    _print_setup(ws, landscape=True)
+    ws.print_title_rows = "1:1"
+
+
+def _print_setup(ws, landscape: bool) -> None:
+    """A4 에 폭을 맞춰 찍는다 — 열이 많은 시트가 종이 여러 장에 가로로 흩어지지 않게."""
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.page_setup.orientation = "landscape" if landscape else "portrait"
+    ws.page_setup.fitToWidth, ws.page_setup.fitToHeight = 1, 0
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.print_options.horizontalCentered = False
 
 
 def _sources(v) -> str:
@@ -156,9 +214,12 @@ def _summary_sheet(ws, report: TestReport) -> None:
     backend = str(s.get("llm_backend") or "")
     lines: list[tuple] = [
         ("Prova 검증 리포트",),
+        # 결론 한 줄 — 웹 UI 결과 제목·리포트 첫 줄과 같은 말 (report_builder._conclusion).
+        (re.sub(r"<[^>]+>", "", _conclusion(report.cases, s.get("total", len(report.cases)))),),
         (),
+        ("실행 정보",),
         ("실행 ID", report.run_id),
-        ("실행 시각", report.created_at),
+        ("실행 시각", str(report.created_at or "")[:16].replace("T", " ")),
         ("대상 URL", report.target_url),
         ("설계 문서", report.spec_source),
         ("모델", backend),
@@ -171,6 +232,7 @@ def _summary_sheet(ws, report: TestReport) -> None:
         lines.append(("프로젝트", s["project"]))
     lines += [
         (),
+        ("결과",),
         ("전체", s.get("total", len(report.cases))),
         ("통과", s.get("pass", 0)),
         ("실패", s.get("fail", 0)),
@@ -218,21 +280,73 @@ def _summary_sheet(ws, report: TestReport) -> None:
         lines += [(names.get(k, k), n.get("total", 0), n.get("pass", 0), n.get("fail", 0))
                   for k, n in by_screen.items()]
 
+    sections = {"실행 정보", "결과", "주의", "화면별"}
+    counts = {"기획서와 다름": "--fail-fg", "실행 문제": "--note-fg", "약한 확인": "--warn-fg", "통과": "--pass-fg"}
+    section = ""
     for r, values in enumerate(lines, 1):
+        key = values[0] if values else None
+        if key in sections:
+            section = key
+        in_screens = section == "화면별"
         for c, value in enumerate(values, 1):
             cell = _put(ws, r, c, value)
-            if c == 1 and value:
-                cell.font = _HEAD_FONT
             if c == 2:
                 cell.alignment = Alignment(wrap_text=True, vertical="top")
-    ws["A1"].font = Font(bold=True, size=14)
+        if not values:
+            continue
+        if r == 1:
+            ws.cell(row=r, column=1).font = Font(bold=True, size=16, color=_rgb("--fg-default"))
+            ws.row_dimensions[r].height = 26
+        elif r == 2:
+            # 결론 — 판정 색 글자. 통과뿐이면 통과 색.
+            ws.cell(row=r, column=1).font = Font(
+                bold=True, size=13, color=_rgb("--pass-fg" if "모두 통과" in str(key) else "--fail-fg"
+                                               if "다릅니다" in str(key) else "--fg-default"))
+        elif key in sections:
+            # 묶음 머리 — 굵은 글씨와 아래 선. 화면별은 표라서 칸 이름까지 머리줄로 칠한다.
+            for c in range(1, 5):
+                cell = ws.cell(row=r, column=c)
+                cell.font, cell.border = _HEAD_FONT, _HEAD_LINE
+                if in_screens:
+                    cell.fill = _HEAD_FILL
+        elif in_screens:
+            for c in range(1, 5):
+                cell = ws.cell(row=r, column=c)
+                cell.border = _ROW_LINE
+                if c > 1:
+                    cell.alignment = Alignment(horizontal="left")
+            fail = ws.cell(row=r, column=4)
+            if isinstance(fail.value, int) and fail.value:
+                fail.font = Font(bold=True, color=_rgb("--fail-fg"))
+        elif key:
+            ws.cell(row=r, column=1).font = _LABEL_FONT
+            value = values[1] if len(values) > 1 else None
+            if key in counts and isinstance(value, int) and value:
+                ws.cell(row=r, column=2).font = Font(bold=True, color=_rgb(counts[key]))
+            if key == "통과율(%)":
+                ws.cell(row=r, column=2).number_format = "0.0"
+            if isinstance(value, (int, float)):
+                ws.cell(row=r, column=2).alignment = Alignment(horizontal="left", vertical="top")
+        elif section == "주의":
+            # 주의 — 웹 UI·리포트의 주의 알림과 같은 옅은 주의 바탕. 접거나 흐리게 두지 않는다.
+            cell = ws.cell(row=r, column=2)
+            cell.fill, cell.font = _fill("--warn-bg"), Font(color=_rgb("--fg-default"))
+        else:
+            # 이름 없는 줄은 앞 줄에 대한 덧말이다 — 작고 흐린 글씨.
+            ws.cell(row=r, column=2).font = _NOTE_FONT
     ws.column_dimensions["A"].width = 22
     ws.column_dimensions["B"].width = 80
+    ws.column_dimensions["C"].width = 10
+    ws.column_dimensions["D"].width = 10
+    ws.sheet_view.showGridLines = False
+    _print_setup(ws, landscape=False)
 
 
 def build_workbook(report: TestReport) -> Workbook:
     names = (report.summary or {}).get("screen_names") or {}
     wb = Workbook()
+    wb.properties.title = f"Prova 검증 리포트 · {report.run_id}"
+    wb.properties.creator = "Prova"
     summary = wb.active
     summary.title = "요약"
     _summary_sheet(summary, report)
@@ -242,7 +356,7 @@ def build_workbook(report: TestReport) -> Workbook:
     if rows:
         _table(defects, DEFECT_COLUMNS, rows)
     else:
-        _put(defects, 1, 1, "기획서와 다른 케이스가 없습니다.")
+        _put(defects, 1, 1, "기획서와 다른 케이스가 없습니다.").font = Font(color=_rgb("--pass-fg"), bold=True)
         defects.column_dimensions["A"].width = 40
     return wb
 

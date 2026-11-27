@@ -4,164 +4,271 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Prova — 설계 문서 기반 QA 에이전트</title>
+<title>Prova</title>
 <!--
   외부 자원을 불러오지 않는다. 리포트가 폐쇄망에서 열려야 한다는 원칙과 같다 —
   CDN 폰트도 아이콘도 없고, 아이콘은 인라인 SVG 다.
 
   tokens.css 는 서버가 theme.py 에서 만들어 준다. 색을 여기서 만들면 리포트와
   두 벌로 갈라진다.
+
+  화면 틀은 macOS 앱이다(2026-11-24, Apple macOS 27 UI Kit): 왼쪽에 띄운 사이드바, 위에 도구 막대,
+  오른쪽이 내용. 사이드바는 지금 단계의 목록을 보여 준다 — 1 실행 기록, 2 규칙 종류,
+  3 진행 단계, 4 판정별 묶음.
 -->
-<!-- 고른 화면 모드를 첫 그림 전에 건다. app.js 에서 하면 어두웠다 밝아지며 깜빡인다. -->
+<!-- 화면 모드 — 처음엔 OS 설정을 따른다. 사이드바 아래 '어둡게' 스위치를 한 번 바꾸면 그 값을 보고서와 같은
+     저장 키(prova-theme)에 남겨, 웹 UI 와 모든 보고서가 같은 모드로 열린다(hh 11-25). 그리기 전에 붙여 깜빡임이 없다. -->
 <script>
-try { var t = localStorage.getItem("prova-theme");
-      if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t);
+try { var t = localStorage.getItem("prova-theme"); if (t === "light" || t === "dark") document.documentElement.setAttribute("data-theme", t); } catch (e) {}
+// 글꼴 — 맥·iPhone·iPad 는 시스템 글꼴(SF·Apple SD Gothic Neo)을 쓰고, 그 밖(윈도 등)에서만 함께 내주는
+// Pretendard Variable(/fonts, OFL)을 붙인다. CSS 에 두면 맥에서도 브라우저가 2MB 파일을 받아 버려서 여기서 가른다.
+try {
+  var apple = /mac|iphone|ipad|ipod/i.test((navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || "");
+  if (!apple) {
+    var st = document.createElement("style");
+    st.textContent = '@font-face{font-family:"Pretendard Variable";font-style:normal;font-weight:45 920;font-display:swap;' +
+      'src:local("Pretendard Variable"),url("/fonts/PretendardVariable.woff2") format("woff2-variations"),url("/fonts/PretendardVariable.woff2") format("woff2")}';
+    document.head.appendChild(st);
+  }
 } catch (e) {}
+// 사이드바를 접어 둔 채 닫았으면 그대로 연다 — 그리기 전에 붙여서 펼쳤다 접히는 깜빡임이 없다
+try { if (localStorage.getItem("prova-side") === "rail") document.documentElement.classList.add("side-rail"); } catch (e) {}
 </script>
+<link rel="icon" type="image/svg+xml" href='data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"%3E%3Cpath fill="%231d9bf0" fill-rule="evenodd" d="M35.1 96.3c-5.5-0.4-7.2-2.3-5.5-6.2c0.6-1.4 2.6-5.6 2.9-6.2c0.1-0.2 0.3-0.6 0.4-0.9l0.2-0.4-0.8 0c-4 0.4-7.6 0.6-8.3 0.6c-2.9 0-5.5-1.4-7.1-3.8c-1-1.5-1.3-2.5-1.6-5c-0.3-3.5-0.6-7.5-1-11c-0.1-2-0.3-4.1-0.4-4.7c0-0.6-0.1-1.9-0.2-3c-0.1-1-0.3-3.4-0.5-5.3c-0.3-3-0.7-7.9-1.5-16.9c-0.3-3.8-1.2-13.2-1.3-14.7c-0.1-1.6-0.1-3.3 0-4.1c0.7-3 2.8-5.5 5.5-6.5c1.2-0.5 2.1-0.6 13.5-1.5c3.4-0.3 5.2-0.5 9.3-0.9c1.5-0.1 3.9-0.3 5.2-0.4c1.3-0.1 2.9-0.3 3.5-0.3c1.8-0.2 9.9-1 12.3-1.2c5.4-0.5 6.4-0.1 10.1 3.6c4.7 4.7 16.9 17.1 17.5 17.7c2.2 2.4 2.7 4.5 2.3 9c-0.4 3.1-0.9 8.9-1.2 11.6c-0.1 1.6-0.4 4.2-0.6 6c-0.4 4.8-0.9 9.4-1 10.1c0 0.4-0.1 1.6-0.2 2.6c-0.1 1-0.3 3.1-0.5 4.6c-0.3 3-0.5 4-1.2 5.3c-1.1 2.2-3.4 3.9-5.7 4.4c-0.4 0.1-3 0.4-5.7 0.6c-2.7 0.3-4.9 0.5-4.9 0.5c-0.1 0.1 0.1 0.5 1 2.4c1 2.2 1.3 2.9 1.4 2.9c0 0 0.4-0.3 0.9-0.6c3.4-2.3 6.7-2.8 8.4-1.1c0.5 0.5 0.7 1.1 0.7 2c-0.1 2-2.2 4.1-6.6 6.6c-4.8 2.8-6.8 3.1-8.7 1.3c-0.9-0.9-2.3-4.2-4.3-10.1c-0.4-1.4-0.8-2.6-0.9-2.6c0-0.1-2.1 0.1-8.6 0.5c-6.1 0.5-7.5 0.6-9.3 0.7l-1.9 0.1-0.4 0.7c-0.5 1.2-2.6 6-2.6 6.2c0 0.1 0.1 0.1 0.4 0.1c1.3 0 3.2 0.5 4.4 1.1c3.3 1.6 2.9 4.7-0.6 5.8c-1.3 0.4-4.7 0.6-6.8 0.4zM80.7 29.6l4.6-0.1-0.2-0.2c-0.4-0.6-21.1-21.4-21.4-21.6c-0.2-0.1-0.2 0.5-0.4 6.9c-0.1 7.2-0.1 7.6 0.1 8.7c0.9 3.4 4 5.9 7.9 6.4c0.4 0 1.6 0 2.7 0c1.1 0 4.1-0.1 6.7-0.1z"/%3E%3Cpath fill="%23ffffff" fill-rule="evenodd" d="M37.2 64.4c-3.3-0.5-6.1-2.6-7.9-5.9c-4.8-8.9 0.1-21.9 9.5-25c7.1-2.4 13.4 2.2 14.4 10.5c1.1 8.4-3.9 17.4-11.1 19.9c-1.5 0.5-3.5 0.7-4.9 0.5zM62 63.4c-4.8-0.8-7.7-4.7-7.2-9.7c0.7-6.6 6.3-12.7 13.2-14.5c1.4-0.3 4.2-0.4 5.5-0.1c6 1.6 7.8 8.5 3.9 15.3c-2.5 4.3-7.1 7.9-11.6 8.8c-1.2 0.2-3 0.3-3.8 0.2zM76.2 52.9c2.9-1.3 3.7-5.4 1.5-7.1c-3-2.3-7.3 2-5.8 5.6c0.7 1.6 2.6 2.3 4.3 1.5zM49.7 50.6c1.3-0.5 2.6-2.1 2.8-3.6c0.6-2.8-0.9-4.9-3.3-4.9c-1.1 0-1.8 0.3-2.8 1.2c-3.3 3.4-0.9 8.9 3.3 7.3z"/%3E%3C/svg%3E'>
 <link rel="stylesheet" href="/static/tokens.css">
 <link rel="stylesheet" href="/static/app.css">
 </head>
-<body>
+<body data-step="1" data-view="form">
 
-<!-- 상단 한 줄 — 이름, 지금 다루는 기획서와 주소, 그리고 네 단계 중 어디인지. -->
-<header class="topbar">
-  <b class="name">Prova</b>
-  <div class="crumbs" id="crumbs"></div>
-  <div class="topright">
-    <div class="chips" id="stageChips"></div>
-    <button class="btn ghost quiet" id="themeBtn" type="button"></button>
-  </div>
-  <ol class="stepper" id="stepper" aria-label="진행 단계">
-    <li><button type="button" data-step="1">1 기획서</button></li>
-    <li><button type="button" data-step="2">2 항목 검토</button></li>
-    <li><span data-step="3">3 실행</span></li>
-    <li><span data-step="4">4 결과</span></li>
-  </ol>
-</header>
-
-<div class="app">
+<div class="win">
 
   <!-- ═══ 사이드바 ═══════════════════════════════════════════════════ -->
-  <aside class="side">
+  <aside class="side" aria-label="목록">
+    <!-- 로고 — 펼치면 글자 로고(prova), 접으면 심볼(두 눈의 걷는 문서). 색은 CSS 토큰(accent-blue · fg-onaccent).
+         둘이 같은 자리에 겹쳐 있고 접기·펴기 때 서로 흐려지며 바뀐다(app.css). 원본: ~/Desktop/prova/patches/brand -->
+    <div class="side-head">
+      <a class="brand" id="homeLink" href="/" aria-label="Prova 첫 화면">
+        <svg class="wm" viewBox="0 0 357.4 100" aria-hidden="true"><path fill-rule="evenodd" d="M10.1 100c-5.4-0.8-9.2-4.7-9.9-10.2c-0.1-1-0.2-14.6-0.2-39.3c0.1-41.9 0-38.4 1.4-41.2c4.1-8.3 15.9-9.4 21.5-2.1l0.8 1 1.4-1.1c14.9-12 38.8-7.8 49.5 8.6c4.5 6.8 6.4 13.7 6.4 22.5c0 14.8-7.2 27.9-18.9 34.5c-9.4 5.3-21 6.1-30.8 2.2c-2.2-0.9-5.8-3-7.1-4.2l-0.5-0.5-0.2 1.3c0 0.8-0.1 5.2-0.1 9.9c0 7.8 0 8.7-0.4 10.1c-1.4 5.6-7.2 9.4-12.9 8.5zM166.3 78.1c-7.4-1-15-4.5-20.3-9.1c-19.3-16.9-16.7-47.9 5.2-62.3c11.2-7.4 25.9-8.6 37-3c1.7 0.9 1.8 0.9 0.8 1.6c-0.8 0.6-3.2 3-4.5 4.6c-1.8 2.2-3.9 6-5.3 9.5c-0.4 0.9-0.7 1.6-0.7 1.6c0 0-0.8-0.1-1.6-0.3c-9.1-1.6-16.9 2.2-20.9 10.2c-5.2 10.2 0.4 22.8 11.5 26.1c2.2 0.7 6.8 0.8 9.2 0.2c8.1-1.9 14.3-9.9 14.3-18.4c0-4.9-1.4-8.8-4.7-12.6l-1.4-1.7 0.4-1.4c1.8-7.5 7.3-13.8 14.1-15.9c3.7-1.1 8.8-1.3 12.3-0.3c5.9 1.6 10.3 5.1 14.8 11.9c2.6 4.1 8 14.4 12.9 24.6c0.6 1.5 1.2 2.6 1.3 2.6c0.1 0 1-1.6 2-3.7c1-2 2.7-5.6 3.9-8c1.2-2.5 2.2-4.5 2.2-4.6c0-0.1 2.4-4.9 8.8-18.1l3-6.1 1.7-1.6c6.9-6.8 18.2-3.7 19.9 5.4c0.2 1.2 0.5 0.5-5.8 13.4c-2.9 5.9-4.9 9.9-8 16.4c-0.7 1.5-2.1 4.4-3.1 6.4c-1 2-2.7 5.5-3.8 7.9c-4.1 8.6-7.6 15.5-8.3 16.6c-3.8 5.6-11.4 7.9-17.8 5.4c-4.3-1.7-6.3-4-9-10.2c-1.9-4.3-3.5-8.1-4.8-11c-0.5-1.3-2.2-5.1-3.7-8.5c-1.4-3.4-3.2-7.5-3.9-9.1c-1.3-3.1-2.3-5-2.6-5c-0.1 0-0.2 2.7-0.3 6c-0.1 6.5-0.3 8.3-1.5 12.4c-3.9 13.4-14.6 23.9-28 27.3c-4 1-11.1 1.4-15.3 0.8zM308.6 78.1c-8-1-14.3-3.8-19.8-8.7c-18.1-16.3-16.4-47.9 3.4-62.4c8.4-6.2 20.1-8.5 30.2-5.9c4 1 7.6 2.8 10.3 5.2l1.8 1.7 1-1.3c1.5-2.2 4.4-4 7.3-4.6c6.3-1.4 12.5 2.3 14.3 8.4c0.6 1.8 0.7 55.8 0.2 58.4c-0.8 4.1-4.1 7.6-8.2 8.8c-1.9 0.6-5.6 0.5-7.3-0.1c-3.8-1.5-6.5-4.3-7.4-7.9c-0.2-0.5-0.3-1-0.3-1c0-0.1-0.7 0.6-1.6 1.5c-5.1 4.9-12.1 7.7-19.9 7.9c-1.8 0-3.6 0-4 0zM92.7 76.1c-4-1-7.3-4.3-8.4-8.4c-0.4-1.4-0.5-53.7-0.1-55.6c0.8-4.1 4-7.8 8.2-9.2c6-2.1 13.1 0.7 15.4 6.1l0.4 0.8 0.9-1c6-6.6 16.8-9.4 23.4-6.2c4.2 2 6.3 5.5 6 10c-0.2 3.6-1.7 6.1-4.9 8.2c-2.3 1.5-3.2 1.6-9.2 1.8c-5.2 0.1-5.3 0.1-7.1 0.7c-5 1.8-8.5 5.9-9.5 11.5c-0.2 0.9-0.3 6-0.4 17.1c-0.1 13.9-0.2 15.9-0.4 16.6c-1.6 3.9-4.5 6.6-8.3 7.6c-1.5 0.4-4.4 0.4-6 0zM319.6 56.9c6.6-1.4 11.9-6.3 13.9-13c0.8-2.5 0.8-7.1 0.1-9.6c-2.5-8.8-10.5-14.5-19.1-13.5c-7.5 0.8-13.3 5.8-15.5 13.3c-0.7 2.3-0.7 7.2 0 9.7c2.4 9 11.7 14.9 20.6 13.1zM43.1 56.5c3.8-0.6 6.6-1.9 9.4-4.6c7.9-7.3 7.9-19.3-0.1-26.6c-8.1-7.4-20.5-5.6-26.4 4c-2 3.2-2.7 6.5-2.5 10.7c0.4 10.1 9.8 18 19.6 16.5z"/></svg></a>
+      <!-- 접기·펴기 — 펼친 상태: 판 모양 단추(사이드바 숨기기). 접힌 상태: 이 단추가 심볼이 되고, 올리거나 초점이 가면
+           판 모양으로 바뀐다(ChatGPT 의 접힌 사이드바처럼). 누르면 편다. 접힌 상태의 첫 화면 길은 아래 '+' 단추. -->
+      <button class="side-toggle" id="sideToggle" type="button" aria-controls="sidePanes" aria-expanded="true" aria-label="사이드바 숨기기">
+        <svg class="ic-panel" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/><path class="chev" d="M15.5 10l-2 2 2 2"/></svg>
+        <svg class="sym" viewBox="0 0 100 100" aria-hidden="true"><path class="body" fill-rule="evenodd" d="M35.1 96.3c-5.5-0.4-7.2-2.3-5.5-6.2c0.6-1.4 2.6-5.6 2.9-6.2c0.1-0.2 0.3-0.6 0.4-0.9l0.2-0.4-0.8 0c-4 0.4-7.6 0.6-8.3 0.6c-2.9 0-5.5-1.4-7.1-3.8c-1-1.5-1.3-2.5-1.6-5c-0.3-3.5-0.6-7.5-1-11c-0.1-2-0.3-4.1-0.4-4.7c0-0.6-0.1-1.9-0.2-3c-0.1-1-0.3-3.4-0.5-5.3c-0.3-3-0.7-7.9-1.5-16.9c-0.3-3.8-1.2-13.2-1.3-14.7c-0.1-1.6-0.1-3.3 0-4.1c0.7-3 2.8-5.5 5.5-6.5c1.2-0.5 2.1-0.6 13.5-1.5c3.4-0.3 5.2-0.5 9.3-0.9c1.5-0.1 3.9-0.3 5.2-0.4c1.3-0.1 2.9-0.3 3.5-0.3c1.8-0.2 9.9-1 12.3-1.2c5.4-0.5 6.4-0.1 10.1 3.6c4.7 4.7 16.9 17.1 17.5 17.7c2.2 2.4 2.7 4.5 2.3 9c-0.4 3.1-0.9 8.9-1.2 11.6c-0.1 1.6-0.4 4.2-0.6 6c-0.4 4.8-0.9 9.4-1 10.1c0 0.4-0.1 1.6-0.2 2.6c-0.1 1-0.3 3.1-0.5 4.6c-0.3 3-0.5 4-1.2 5.3c-1.1 2.2-3.4 3.9-5.7 4.4c-0.4 0.1-3 0.4-5.7 0.6c-2.7 0.3-4.9 0.5-4.9 0.5c-0.1 0.1 0.1 0.5 1 2.4c1 2.2 1.3 2.9 1.4 2.9c0 0 0.4-0.3 0.9-0.6c3.4-2.3 6.7-2.8 8.4-1.1c0.5 0.5 0.7 1.1 0.7 2c-0.1 2-2.2 4.1-6.6 6.6c-4.8 2.8-6.8 3.1-8.7 1.3c-0.9-0.9-2.3-4.2-4.3-10.1c-0.4-1.4-0.8-2.6-0.9-2.6c0-0.1-2.1 0.1-8.6 0.5c-6.1 0.5-7.5 0.6-9.3 0.7l-1.9 0.1-0.4 0.7c-0.5 1.2-2.6 6-2.6 6.2c0 0.1 0.1 0.1 0.4 0.1c1.3 0 3.2 0.5 4.4 1.1c3.3 1.6 2.9 4.7-0.6 5.8c-1.3 0.4-4.7 0.6-6.8 0.4zM80.7 29.6l4.6-0.1-0.2-0.2c-0.4-0.6-21.1-21.4-21.4-21.6c-0.2-0.1-0.2 0.5-0.4 6.9c-0.1 7.2-0.1 7.6 0.1 8.7c0.9 3.4 4 5.9 7.9 6.4c0.4 0 1.6 0 2.7 0c1.1 0 4.1-0.1 6.7-0.1z"/><path class="eyes" fill-rule="evenodd" d="M37.2 64.4c-3.3-0.5-6.1-2.6-7.9-5.9c-4.8-8.9 0.1-21.9 9.5-25c7.1-2.4 13.4 2.2 14.4 10.5c1.1 8.4-3.9 17.4-11.1 19.9c-1.5 0.5-3.5 0.7-4.9 0.5zM62 63.4c-4.8-0.8-7.7-4.7-7.2-9.7c0.7-6.6 6.3-12.7 13.2-14.5c1.4-0.3 4.2-0.4 5.5-0.1c6 1.6 7.8 8.5 3.9 15.3c-2.5 4.3-7.1 7.9-11.6 8.8c-1.2 0.2-3 0.3-3.8 0.2zM76.2 52.9c2.9-1.3 3.7-5.4 1.5-7.1c-3-2.3-7.3 2-5.8 5.6c0.7 1.6 2.6 2.3 4.3 1.5zM49.7 50.6c1.3-0.5 2.6-2.1 2.8-3.6c0.6-2.8-0.9-4.9-3.3-4.9c-1.1 0-1.8 0.3-2.8 1.2c-3.3 3.4-0.9 8.9 3.3 7.3z"/></svg></button>
+      <button class="rail-new" id="railNew" type="button" aria-label="새 확인">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+    </div>
+    <div class="side-panes" id="sidePanes">
 
-    <div class="side-scroll">
+    <!-- 1 기획서 — 새 확인과 실행 기록 -->
+    <nav class="side-pane" data-pane="form" aria-label="실행 기록">
+      <ul class="slist">
+        <li><button class="sitem" id="newBtn" type="button" aria-current="true">
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9"/></svg>새 확인</button></li>
+      </ul>
+      <!-- 기록 찾기 — 돋보기를 누르거나 '/' 로 칸이 열린다. Esc 는 비우고 닫는다 (app.js runFind) -->
+      <div class="rfind" id="rfind">
+        <button class="sitem rfind-open" id="findOpen" type="button" aria-keyshortcuts="/" aria-controls="findRuns">
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4l3 3"/></svg>기록 찾기<kbd class="kbd" aria-hidden="true">/</kbd></button>
+        <label class="rfind-field" hidden><span class="sr">기록 찾기 — 화면 이름·프로젝트·주소</span>
+          <svg class="ic" viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4l3 3"/></svg>
+          <input type="search" id="findRuns" placeholder="화면·프로젝트·주소" spellcheck="false" autocomplete="off"></label>
+      </div>
+      <div id="runs" aria-label="실행 기록 목록"></div>
+    </nav>
 
-      <!-- 꼭 정해야 하는 것만 위에 둔다 — 기획서와 주소, 그리고 [계획 만들기].
-           가끔 쓰는 설정은 아래 '실행 옵션' 에 접혀 있다. -->
-      <section class="panel">
-        <h1>기획서대로 만들어졌는지 확인합니다</h1>
-        <p class="lede">기획서와 사이트 주소만 있으면 됩니다. 테스트 코드는 쓰지 않습니다.</p>
+    <!-- 2 항목 검토 — 규칙 종류·화면으로 거르기 (app.js renderSidePlan) -->
+    <nav class="side-pane" data-pane="plan" id="sidePlan" aria-label="항목 거르기"></nav>
 
-        <div class="field">
-          <label for="pdf">기획서</label>
-          <select id="pdf"></select>
-          <button class="btn ghost quiet" id="uploadBtn" type="button">＋ PDF/JSON 올리기</button>
-          <input type="file" id="upload" accept="application/pdf,application/json" class="sr">
-        </div>
-
-        <div class="field">
-          <label for="url">검사할 사이트 주소</label>
-          <input type="url" id="url" value="http://localhost:8100/bad"
-                 placeholder="http://localhost:8100/good" spellcheck="false">
-          <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
-          <div class="variant" id="variantRow">
-            <span class="hint">예시 사이트 넣기</span>
-            <div class="seg" role="group" aria-label="예시 사이트">
-              <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
-              <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label for="projectPick">프로젝트 (선택)</label>
-          <select id="projectPick"></select>
-          <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
-          <input type="hidden" id="project" value="">
-          <div class="newproj" id="projectNewRow" hidden>
-            <input type="text" id="projectNew" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
-                   aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off"
-                   maxlength="60">
-            <button class="btn ghost" id="projectAdd" type="button">추가</button>
-          </div>
-          <div class="hint err" id="projectErr" role="alert" hidden></div>
-          <div class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어집니다.</div>
-        </div>
-
-        <div class="field">
-          <label for="request">무엇을 확인할까요 (선택)</label>
-          <textarea id="request" placeholder="예) 회원가입이 잘 되는지 확인해줘&#10;비워 두면 전체 케이스를 실행합니다"></textarea>
-        </div>
-        <div class="go">
-          <button class="btn primary" id="planBtn" type="button">확인할 항목 뽑기</button>
-          <span class="hint">바로 실행되지 않습니다. 뽑은 항목을 먼저 보여드립니다.</span>
-        </div>
-      </section>
-
-      <details class="panel opts" id="opts">
-        <summary><span>실행 옵션</span><span class="now" id="optsNow"></span></summary>
-
-        <div class="field">
-          <label for="backend">기획서 읽는 방식</label>
-          <select id="backend">
-            <option value="mock">연습용 — 저장된 정답 사용 (예시 기획서 전용)</option>
-            <option value="vllm">실제 모델로 읽기 — 모델 서버 필요</option>
-            <option value="replay">저장된 모델 응답으로 읽기 — 서버 없이</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="figma">Figma 자료 함께 읽기 (선택)</label>
-          <select id="figma">
-            <option value="">없음 — 기획서만</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="screenUrls">화면별 주소 (기획서에 경로가 없을 때)</label>
-          <textarea id="screenUrls" rows="3" spellcheck="false"
-                    placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
-          <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
-          <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않습니다
-            (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적습니다.</div>
-        </div>
-
-        <div class="field">
-          <label class="check" for="vlm">
-            <input type="checkbox" id="vlm"> 화면 이미지로 찾기
-          </label>
-          <div class="hint">요소를 찾지 못한 케이스가 나왔을 때 켭니다 · 모델 서버 필요.
-            좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둡니다.</div>
-        </div>
-
-        <div class="field">
-          <label class="check" for="dryRun">
-            <input type="checkbox" id="dryRun"> 쓰기 요청 막기
-          </label>
-          <div class="hint">실제 접수·가입이 일어나면 안 되는 사이트에서 켭니다 · 저장·제출 요청을
-            막고 로그인만 통과시킵니다. 막은 케이스는 결과를 못 봐 '확인 불가' 가 됩니다.</div>
-        </div>
-      </details>
-
-      <section class="panel">
-        <h2>실행 기록</h2>
-        <div class="runs" id="runs"></div>
-      </section>
-
+    <!-- 3 실행 · 기획서 읽는 중 — 단계 (app.js pushProgress) -->
+    <div class="side-pane" data-pane="busy">
+      <h4>단계</h4>
+      <div class="psteps" id="pSteps"></div>
     </div>
 
-    <!-- 설정이 길어도 스크롤하지 않고 누를 수 있게 스크롤 영역 밖에 둔다. -->
-    <div class="side-action">
-      <button class="btn primary block" id="planBtn" type="button">계획 만들기</button>
-      <div class="chips" id="chips"></div>
+    <!-- 4 결과 — 판정별로 거르기 (app.js renderSideResult) -->
+    <nav class="side-pane" data-pane="result" id="sideResult" aria-label="결과 거르기"></nav>
+
     </div>
+    <!-- 아래 줄 — 왼쪽 기록 수·주소, 오른쪽 '어둡게' 스위치(보고서와 같은 스위치). 접힌 줄에서는 해·달 단추 하나 -->
+    <div class="side-bottom">
+      <div class="side-foot" id="sideFoot"></div>
+      <button class="theme" id="themeBtn" type="button" role="switch" aria-checked="false" aria-label="어둡게"><span class="tg" aria-hidden="true"><i class="tg-fill"></i><i class="tg-ico sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="tg-ico moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i><i class="tg-knob"><i class="k-sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="k-moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i></i></span><span class="tg-lb">어둡게</span><span class="tg-mini" aria-hidden="true"><i class="m-sun"><svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.7"/><path d="M8 1.9v1.3M8 12.8v1.3M1.9 8h1.3M12.8 8h1.3M3.7 3.7l.9.9M11.4 11.4l.9.9M3.7 12.3l.9-.9M11.4 4.6l.9-.9"/></svg></i><i class="m-moon"><svg viewBox="0 0 16 16"><path d="M13 9.7A5.3 5.3 0 1 1 6.3 3a4.2 4.2 0 0 0 6.7 6.7Z"/></svg></i></span></button>
+    </div>
+    <!-- 접힌 줄의 단추 이름표 (app.js railTip) -->
+    <div class="rail-tip" id="railTip" role="tooltip" hidden></div>
   </aside>
 
-  <!-- ═══ 메인 ═══════════════════════════════════════════════════════ -->
-  <main class="main">
+  <!-- ═══ 내용 ═══════════════════════════════════════════════════════ -->
+  <!-- tabindex=-1: 누른 단추가 다음 단계 화면에 없으면 초점을 여기로 옮긴다 -->
+  <main class="main" tabindex="-1">
 
-    <div class="stage" id="stage"></div>
+    <header class="bar">
+      <div class="ttl"><h1 id="barTitle">새 확인</h1><small id="barSub"></small></div>
+      <!-- 네 단계 = 경로 세그먼트. 지금 단계의 흰 판은 하나뿐이고 단계가 바뀌면 그 판이 옆으로
+           미끄러진다(app.js placeThumb). 가 본 단계만 누를 수 있다. -->
+      <ol class="path" id="stepper" aria-label="진행 단계">
+        <li><button type="button" data-step="1"><b class="no">1</b><span class="lb" data-label="기획서">기획서</span></button></li>
+        <li><button type="button" data-step="2"><b class="no">2</b><span class="lb" data-label="항목 검토">항목 검토</span></button></li>
+        <li><span data-step="3"><b class="no">3</b><span class="lb" data-label="실행">실행</span></span></li>
+        <li><button type="button" data-step="4"><b class="no">4</b><span class="lb" data-label="결과">결과</span></button></li>
+      </ol>
+      <div class="bar-actions">
+        <!-- 1단계에서만 보인다. 파일 창을 연다 — HIG: 끝에 말줄임 -->
+        <div class="glass" data-for="form">
+          <button id="uploadBtn" type="button">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M3 10v2.5h10V10"/></svg>
+            <span>기획서 올리기…</span></button>
+        </div>
+        <div class="acts" id="barActions"></div>
+      </div>
+      <input type="file" id="upload" accept="application/pdf,application/json" class="sr" tabindex="-1">
+    </header>
 
+    <!-- 단계가 바뀌면 화면 읽기 프로그램에 알린다 (app.js stepChanged) -->
+    <p class="sr" id="stepSay" aria-live="polite"></p>
+
+    <div class="content">
+
+      <!-- ── 1 기획서 ── 시작 화면. 할 일은 둘(기획서·주소)이고 버튼은 그 바로 아래 하나.
+           가끔 쓰는 설정(프로젝트·요청·실행 옵션)은 '더 설정하기' 에 접어 두되 지금 값은 접힌 채로 보인다. -->
+      <section class="pane-form" id="paneForm">
+        <div class="scroll">
+          <div class="form-col">
+            <h2 class="hero-t">기획서대로 만들어졌는지<br>직접 눌러 보고 알려 드려요</h2>
+            <p class="lede">기획서 PDF와 사이트 주소만 있으면 돼요. 테스트 코드는 쓰지 않아요.</p>
+
+            <div id="formNote"></div>
+
+            <div class="start" id="dropZone">
+              <div class="srow">
+                <span class="sno" aria-hidden="true">1</span>
+                <div class="sbody">
+                  <label class="slbl" for="pdf">기획서</label>
+                  <div class="doc">
+                    <span class="fthumb" aria-hidden="true"><i></i><i></i><i></i><i></i><b>PDF</b></span>
+                    <div class="doc-body">
+                      <span class="pop wide"><select id="pdf"></select></span>
+                      <small class="hint" id="docMeta"></small>
+                    </div>
+                  </div>
+                  <!-- 끌어 놓는 자리 (21st.dev File Upload) — 파일을 끌고 오면 문서 카드 셋이 벌어진다. 상자 전체가 받는다(app.js dropToUpload). -->
+                  <div class="drop" id="dropArea">
+                    <span class="fan" aria-hidden="true">
+                      <span class="fcard l"><i></i><i></i><i></i></span>
+                      <span class="fcard r"><i></i><i></i><i></i></span>
+                      <span class="fcard c"><i></i><i></i><i></i><b>PDF</b></span>
+                    </span>
+                    <span class="drop-say">
+                      <b class="idle">새 기획서를 여기로 끌어다 놓거나</b>
+                      <b class="over" aria-hidden="true">놓으면 올라가요</b>
+                      <small>기획서 PDF · Figma 응답 JSON</small>
+                    </span>
+                    <button type="button" class="btn sm" id="dropPick">파일 고르기</button>
+                  </div>
+                  <!-- 올린 파일 한 줄 (21st.dev Attachment States) — 올리는 중 · 올림 · 못 올림 -->
+                  <div class="attach" id="attach"></div>
+                </div>
+              </div>
+              <div class="srow">
+                <span class="sno" aria-hidden="true">2</span>
+                <div class="sbody">
+                  <label class="slbl" for="url">검사할 사이트 주소</label>
+                  <div class="ctl">
+                    <span class="urlf"><svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c1.8 1.7 2.7 3.8 2.7 6.2S9.8 12.5 8 14.2M8 1.8C6.2 3.5 5.3 5.6 5.3 8s.9 4.5 2.7 6.2"/></svg>
+                      <input type="url" id="url" class="field big" value="http://localhost:8100/bad"
+                             placeholder="예) http://localhost:3000" spellcheck="false" autocomplete="url"></span>
+                    <!-- 예시 기획서를 골랐을 때만 보인다 (app.js syncVariant) — 실제 사이트를 넣는 사람에게는 뜻이 없다. -->
+                    <div class="seg" id="variantRow" role="group" aria-label="예시 사이트">
+                      <button type="button" id="segGood" aria-pressed="false" title="기획서대로 만든 예시">기획서대로</button>
+                      <button type="button" id="segBad" aria-pressed="true" title="결함을 일부러 심은 예시">결함 있음</button>
+                    </div>
+                  </div>
+                  <div class="hint err" id="urlErr" role="alert" hidden></div>
+                </div>
+              </div>
+              <div class="sfoot">
+                <span class="hint">바로 실행하지 않아요. 뽑은 항목을 먼저 보여 드려요.</span>
+                <button class="btn primary lg" id="planBtn" type="button">확인할 항목 뽑기<kbd class="kbd" aria-hidden="true">⌘↵</kbd></button>
+              </div>
+            </div>
+
+            <!-- 처음 쓰는 사람 — 예시 기획서와 예시 사이트로 한 번에 (예시가 있을 때만, app.js syncTry) -->
+            <p class="try" id="tryRow" hidden>처음이신가요?
+              <button type="button" class="link" id="tryBtn">예시 기획서로 먼저 해 보기</button>
+              <span class="hint">회원가입 화면 기획서와 결함을 일부러 심은 예시 사이트로 1분 안에 끝나요.</span></p>
+
+            <details class="opts" id="opts">
+              <summary><span class="chev" aria-hidden="true"></span>더 설정하기<span class="now" id="optsNow"></span></summary>
+              <div class="gbox">
+                <div class="row">
+                  <label class="lbl" for="projectPick">프로젝트<small>선택</small></label>
+                  <div class="ctl">
+                    <span class="pop wide"><select id="projectPick"></select></span>
+                    <span class="hint">같은 이름으로 다시 돌리면 대상 주소가 바뀌어도 1차·2차로 이어져요.</span>
+                    <!-- 고른 프로젝트 이름을 담는 자리. 사람은 위 목록과 아래 '추가' 줄로만 바꾼다. -->
+                    <input type="hidden" id="project" value="">
+                    <div class="newproj" id="projectNewRow" hidden>
+                      <input type="text" id="projectNew" class="field" placeholder="새 프로젝트 이름 — 예) A사 1차 납품"
+                             aria-label="새 프로젝트 이름" spellcheck="false" autocomplete="off" maxlength="60">
+                      <button class="btn sm" id="projectAdd" type="button">추가</button>
+                    </div>
+                    <div class="hint err" id="projectErr" role="alert" hidden></div>
+                  </div>
+                </div>
+                <div class="row top">
+                  <label class="lbl" for="request">무엇을 확인할까요<small>선택</small></label>
+                  <div class="ctl">
+                    <textarea id="request" class="field area" rows="2"
+                              placeholder="예) 회원가입이 잘 되는지 확인해 줘 — 비워 두면 전체 항목을 실행해요"></textarea>
+                  </div>
+                </div>
+                <div class="row">
+                  <label class="lbl" for="backend">기획서 읽는 방식</label>
+                  <div class="ctl"><span class="pop wide"><select id="backend">
+                    <option value="mock">연습용 — 저장된 정답 사용 (예시 기획서 전용)</option>
+                    <option value="vllm">실제 모델로 읽기 — 모델 서버 필요</option>
+                    <option value="replay">저장된 모델 응답으로 읽기 — 서버 없이</option>
+                  </select></span></div>
+                </div>
+                <div class="row">
+                  <label class="lbl" for="figma">Figma 자료 함께 읽기<small>선택</small></label>
+                  <div class="ctl"><span class="pop wide"><select id="figma">
+                    <option value="">없음 — 기획서만</option>
+                  </select></span></div>
+                </div>
+                <div class="row top">
+                  <label class="lbl" for="screenUrls">화면별 주소<small>기획서에 경로가 없을 때</small></label>
+                  <div class="ctl">
+                    <textarea id="screenUrls" class="field area" rows="3" spellcheck="false"
+                              placeholder="한 줄에 하나씩 — 화면 이름=/경로&#10;예) 로그인=/login"></textarea>
+                    <div class="hint err" id="screenUrlsErr" role="alert" hidden></div>
+                    <div class="hint">기획서에 화면 경로가 적혀 있지 않으면 그 화면은 확인할 항목을 만들지 않아요
+                      (지어낸 경로로 돌지 않게). 화면 이름은 기획서의 페이지명 그대로 적어 주세요.</div>
+                  </div>
+                </div>
+                <div class="row top">
+                  <label class="check" for="vlm"><input type="checkbox" id="vlm">
+                    <span>화면 이미지로 찾기<small>요소를 찾지 못한 항목이 나왔을 때 켜요 · 모델 서버 필요.
+                      좌표를 누르는 방식이라 틀리면 뒤 판정이 거짓이 되므로 기본은 꺼 둬요.</small></span></label>
+                </div>
+                <div class="row top">
+                  <label class="check" for="dryRun"><input type="checkbox" id="dryRun">
+                    <span>쓰기 요청 막기<small>실제 접수·가입이 일어나면 안 되는 사이트에서 켜요 · 저장·제출 요청을
+                      막고 로그인만 통과시켜요. 막은 항목은 결과를 못 봐 '확인 불가' 가 돼요.</small></span></label>
+                </div>
+              </div>
+            </details>
+
+            <!-- 넓은 화면에서만 — 고른 기획서의 지난 확인 결과, 처음이면 네 단계 설명 (app.js renderRecap) -->
+            <aside class="recap" id="recap" aria-label="고른 기획서의 지난 확인"></aside>
+          </div>
+        </div>
+      </section>
+
+      <!-- ── 2·3·4 ── 단계마다 app.js 가 그린다 -->
+      <div class="stage" id="stage"></div>
+
+    </div>
   </main>
 </div>
 

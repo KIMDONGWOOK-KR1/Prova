@@ -48,6 +48,8 @@ from prova.llm.vllm_backend import DEFAULT_BASE_URL, DEFAULT_MODEL
 from prova.vlm.qwen_vl import QwenVLClient
 
 STATIC = Path(__file__).parent / "static"
+# 보고서가 함께 보내는 Pretendard(SIL OFL 1.1). 웹 UI 도 같은 파일을 쓴다 — 두 벌 두지 않는다.
+FONTS = Path(__file__).resolve().parents[1] / "s6_report" / "fonts"
 UPLOADS = Path("uploads")
 RUNS = Path("runs")
 EXAMPLE_SPECS = Path("fixtures/specs")
@@ -215,6 +217,20 @@ def tokens() -> Response:
     리포트도 같은 문자열을 인라인하므로, 색을 만드는 곳이 하나로 유지된다.
     """
     return Response(TOKENS_CSS, media_type="text/css")
+
+
+# 웹 UI 글꼴 — 맥은 시스템 글꼴(SF·Apple SD Gothic Neo)이 먼저라 받지 않는다. 윈도 등에서만 쓰인다.
+# 이름이 정해진 두 파일만 내준다(경로를 받지 않는다). 내용이 바뀌지 않는 파일이라 오래 캐시한다.
+_FONT_FILES = {"PretendardVariable.woff2": "font/woff2", "Pretendard-OFL.txt": "text/plain; charset=utf-8"}
+
+
+@app.get("/fonts/{name}")
+def font_file(name: str) -> FileResponse:
+    kind = _FONT_FILES.get(name)
+    if kind is None or not (FONTS / name).is_file():
+        raise HTTPException(404, "없는 글꼴 파일입니다.")
+    return FileResponse(FONTS / name, media_type=kind,
+                        headers={"Cache-Control": "public, max-age=31536000, immutable"})
 
 
 @app.get("/api/state")
