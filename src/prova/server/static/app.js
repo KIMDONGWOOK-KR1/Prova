@@ -2172,12 +2172,21 @@ async function loadReport(out, base) {
   renderFlist();
 }
 
-/** 통과 못 한 항목만 골라 같은 조건으로 다시 — 고친 뒤 확인할 때 17건을 다 기다리지 않는다. */
-function retryFailed() {
+/**
+ * 통과 못 한 항목만 골라 같은 조건으로 다시 — 고친 뒤 확인할 때 17건을 다 기다리지 않는다.
+ * 실패분 선택은 이 실행 한 번만이다. 끝나면(멈추거나 실패해도) 사용자가 골라 둔 선택으로 돌린다 —
+ * 그러지 않으면 이어서 누른 '다시 실행' 이 실패분만 돌고 검토 화면의 나머지 체크가 풀려 있었다.
+ */
+async function retryFailed() {
   if (!state.plan || !state.report) return;
   const failed = new Set(state.report.cases.filter((c) => c.verdict !== "PASS").map((c) => c.case_id));
+  const before = new Map(state.plan.cases.map((c) => [c, c.selected]));
   state.plan.cases.forEach((c) => { c.selected = failed.has(c.case_id); });
-  startRun();
+  try {
+    await startRun();
+  } finally {
+    before.forEach((sel, c) => { c.selected = sel; });
+  }
 }
 
 /**
