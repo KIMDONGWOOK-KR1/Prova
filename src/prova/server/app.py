@@ -244,8 +244,12 @@ def state() -> dict:
             figmas += sorted(str(p).replace("\\", "/") for p in d.glob("*.json")
                              if not p.name.endswith(".golden.json"))
     cfg = _config()
+    job = runner.active
     return {
-        "busy": runner.busy,
+        "busy": job is not None,
+        # 새로고침한 화면이 자기 작업에 다시 붙는 데 쓴다 (app.js resumeJob)
+        "boot": runner.boot,
+        "job": {"job_id": job.job_id, "kind": job.kind} if job else None,
         "specs": specs,
         "spec_groups": groups,
         "projects": _project_names(groups),

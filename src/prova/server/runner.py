@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import threading
 import traceback
+import uuid
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
 
@@ -75,6 +76,9 @@ class JobRunner:
         self._jobs: dict[str, Job] = {}
         self._active: Optional[str] = None
         self._seq = 0
+        # 이 실행기(서버 프로세스)의 표식. 작업 번호는 서버를 띄울 때마다 job-1 부터 다시 세므로,
+        # 새로고침한 화면이 적어 둔 번호가 '그 작업' 인지는 표식이 같을 때만 믿는다.
+        self.boot = uuid.uuid4().hex
 
     # -- 조회 ---------------------------------------------------------------
 
@@ -92,6 +96,12 @@ class JobRunner:
     def busy(self) -> bool:
         with self._lock:
             return self._active is not None
+
+    @property
+    def active(self) -> Optional[Job]:
+        """지금 도는 작업. 없으면 None — 새로고침한 화면이 다시 붙을 작업을 찾는 데 쓴다."""
+        with self._lock:
+            return self._jobs.get(self._active) if self._active else None
 
     # -- 실행 ---------------------------------------------------------------
 

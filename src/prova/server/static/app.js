@@ -921,7 +921,8 @@ function settleRow(t) {
   row.classList.add("done");
   row.cells[0].innerHTML = vmark(kind);
   const sec = (Date.now() - prog.t0) / 1000;
-  row.querySelector(".t").textContent = `${sec.toFixed(sec < 10 ? 1 : 0)}초`;
+  // 새로고침 뒤 다시 붙으면 지난 항목들이 한 묶음으로 와서 걸린 시간을 알 수 없다 — '0.0초' 라고 적지 않는다.
+  row.querySelector(".t").textContent = prog.replay ? "" : `${sec.toFixed(sec < 10 ? 1 : 0)}초`;
   prog.row = null;
 }
 
@@ -1765,15 +1766,13 @@ async function replan() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...form(), doc }),
     });
-    state.plan = await follow(job_id, pushProgress);
-    resetPlanView();
-    state.busy = false;
-    showPlan();
-    notifyDone(`항목 ${state.plan.cases.length}개 뽑음`);
+    rememberJob("plan", job_id);
+    await watchPlan(job_id);
   } catch (err) {
     state.busy = false;
     showError("항목을 다시 만들지 못했어요", err.message);
   } finally {
+    forgetJob();
     state.busy = false;
     renderChrome();
   }
@@ -1824,47 +1823,153 @@ async function startRun() {
                              // 고친 추출 결과로 만든 계획이면 그 문서로 실행한다 (spec_edits)
                              doc: (state.plan.spec_edits || []).length ? state.plan.doc : null }),
     });
-    const stop = $("pStop");
-    if (stop) {
-      stop.hidden = false;
-      stop.onclick = async () => {
-        // 멈추면 그때까지 확인한 것도 저장하지 않는다(runner.py) — 되돌릴 수 없으니 한 번 묻는다.
-        const done = Number($("pBar") && $("pBar").value) || 0;
-        const ok = await confirmDialog({
-          title: "실행을 멈출까요?",
-          // 한 문장에 한 줄. '지금' 은 '확인 중인' 과 겹쳐 뺐다. 확인한 건수가 있으면 그것도 버려진다는 것을 말한다.
-          body: [done ? `확인한 ${done}건도 저장하지 않아요.` : "이번 실행 결과는 저장하지 않아요.",
-                 "확인 중인 항목이 끝나면 멈춰요."],
-          keep: "계속 실행", go: "멈추기",
-        });
-        if (!ok || !stop.isConnected) return;  // 묻는 사이 실행이 끝났으면 할 일이 없다
-        busyButton(stop, "지금 항목이 끝나면 멈춰요");
-        try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
-      };
-    }
-    const out = await follow(job_id, pushProgress);
-    finishProgress();
-    state.busy = false;
-    state.resKind = ""; state.resSel = "";
-    showResult(out);
-    loadRuns();
-    const d = (out.summary && (out.summary.defects ?? out.summary.fail)) || 0;
-    notifyDone(d ? `✕ ${d}건 다름 · 결과 나옴` : "✓ 결과 나옴");
+    rememberJob("run", job_id);
+    await watchRun(job_id);
   } catch (err) {
-    state.busy = false;
-    if (err.status === 409) {
-      // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
-      // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
-      showError("실행을 시작하지 않았어요", err.message);
-    } else if (err.message.startsWith("실행을 멈췄습니다")) {
-      showError("실행을 멈췄어요", "같은 항목으로 다시 돌리려면 위의 '2 항목 검토' 를 눌러 주세요.");
-    } else {
-      showError("실행 실패", err.message);
-    }
+    runFailed(err);
   } finally {
+    forgetJob();
     state.busy = false;
     renderChrome();
   }
+}
+
+/**
+ * 실행 작업 하나를 끝까지 따라가 결과를 보인다 — 방금 시작한 것이든, 새로고침 뒤 다시 붙은 것이든.
+ * 진행 화면(showProgress)은 부르는 쪽이 먼저 깔아 둔다. startedAt 은 다시 붙을 때만 준다.
+ */
+async function watchRun(job_id, startedAt) {
+  const stop = $("pStop");
+  if (stop) {
+    stop.hidden = false;
+    stop.onclick = async () => {
+      // 멈추면 그때까지 확인한 것도 저장하지 않는다(runner.py) — 되돌릴 수 없으니 한 번 묻는다.
+      const done = Number($("pBar") && $("pBar").value) || 0;
+      const ok = await confirmDialog({
+        title: "실행을 멈출까요?",
+        // 한 문장에 한 줄. '지금' 은 '확인 중인' 과 겹쳐 뺐다. 확인한 건수가 있으면 그것도 버려진다는 것을 말한다.
+        body: [done ? `확인한 ${done}건도 저장하지 않아요.` : "이번 실행 결과는 저장하지 않아요.",
+               "확인 중인 항목이 끝나면 멈춰요."],
+        keep: "계속 실행", go: "멈추기",
+      });
+      if (!ok || !stop.isConnected) return;  // 묻는 사이 실행이 끝났으면 할 일이 없다
+      busyButton(stop, "지금 항목이 끝나면 멈춰요");
+      try { await api(`/api/job/${job_id}/cancel`, { method: "POST" }); } catch (e) { /* 이미 끝났다 */ }
+    };
+  }
+  // 다시 붙은 화면은 지난 메시지를 한꺼번에 받아 시계가 '지금' 에서 출발한다 — 시작한 때로 되돌린다.
+  // 그러지 않으면 '0:01 지남 · 건당 0.2초 · 곧 끝나요' 처럼 걸린 시간과 남은 시간이 터무니없이 짧게 나온다.
+  // 첫 항목이 시작한 때는 서버가 알려 주지 않아 작업을 시작한 때로 본다(건당 시간이 조금 길게 잡힌다).
+  if (startedAt) runClock.start = startedAt;
+  let replay = !!startedAt;  // 다시 붙은 뒤 첫 묶음은 지난 메시지다
+  const out = await follow(job_id, (messages) => {
+    if (prog) prog.replay = replay;
+    pushProgress(messages);
+    if (prog) prog.replay = false;
+    replay = false;
+    if (startedAt && runClock.first > startedAt) { runClock.first = startedAt; clockTick(); }
+  });
+  finishProgress();
+  state.busy = false;
+  state.resKind = ""; state.resSel = "";
+  showResult(out);
+  loadRuns();
+  const d = (out.summary && (out.summary.defects ?? out.summary.fail)) || 0;
+  notifyDone(d ? `✕ ${d}건 다름 · 결과 나옴` : "✓ 결과 나옴");
+}
+
+function runFailed(err) {
+  state.busy = false;
+  if (err.status === 409) {
+    // 409 는 셋이다 — 이미 실행 중, 대상 빌드가 낡음, 2차 경로 서버 없음.
+    // 이유는 서버가 말한다. 한 문구로 뭉치면 낡은 대상을 '실행 중' 으로 안내한다.
+    showError("실행을 시작하지 않았어요", err.message);
+  } else if (err.message.startsWith("실행을 멈췄습니다")) {
+    showError("실행을 멈췄어요", "같은 항목으로 다시 돌리려면 위의 '2 항목 검토' 를 눌러 주세요.");
+  } else {
+    showError("실행 실패", err.message);
+  }
+}
+
+// ── 새로고침 뒤 다시 붙기 ───────────────────────────────────────────────────
+//
+// 실행 중에 새로고침하면 첫 화면만 나오고, 다시 누르면 "이미 실행 중이에요" 만 떴다(2026-11-27 점검).
+// 작업은 서버에서 끝까지 돌고 진행 메시지도 처음부터 다시 읽을 수 있는데(runner.py), 화면이 작업
+// 번호와 계획을 잊었다. 시작할 때 이 탭에 적어 두고(sessionStorage — 탭마다 따로, 탭을 닫으면 없어진다),
+// 다시 열리면 그 작업에 다시 붙는다.
+
+const JOB_KEY = "prova.job.v1";
+
+function rememberJob(kind, job_id) {
+  try {
+    sessionStorage.setItem(JOB_KEY, JSON.stringify({
+      boot: state.boot, kind, job_id, started: Date.now(),
+      plan: kind === "run" ? state.plan : null,
+    }));
+  } catch (e) { /* 저장이 막혔거나 계획이 너무 크다 — 새로고침하면 '다른 창의 작업' 안내로 간다 */ }
+}
+
+function forgetJob() {
+  try { sessionStorage.removeItem(JOB_KEY); } catch (e) { /* 저장은 덤 */ }
+}
+
+function rememberedJob() {
+  try { return JSON.parse(sessionStorage.getItem(JOB_KEY)); } catch (e) { return null; }
+}
+
+/**
+ * 페이지가 열릴 때 한 번 — 이 탭이 시작한 작업이 서버에 남아 있으면 그 화면으로 돌아간다.
+ *
+ * 작업 번호는 서버를 띄울 때마다 job-1 부터 다시 세므로 서버 표식(boot)이 같을 때만 같은 작업이다.
+ * 새로고침하는 사이 끝난 작업도 서버에 남아 있으니 결과를 바로 받는다. 이 탭이 시작하지 않은
+ * 작업이 돌고 있으면 붙지 않고(계획을 모른다) 진행 중이라는 것만 알린다.
+ *
+ * @returns {Promise<"mine"|"other"|"none">} 무엇을 했는지 — 끝까지 따라간 뒤에 풀린다.
+ */
+async function resumeJob(st) {
+  const snap = rememberedJob();
+  const mine = snap && snap.job_id && snap.boot === st.boot && (snap.kind === "plan" || snap.plan);
+  if (!mine) {
+    forgetJob();
+    return st.job ? watchOther(st.job) : "none";
+  }
+  state.busy = true;
+  try {
+    if (snap.kind === "run") {
+      state.plan = snap.plan;
+      showProgress("실행 중", []);
+      renderChrome();
+      await watchRun(snap.job_id, snap.started);
+    } else {
+      showProgress("기획서를 읽는 중", []);
+      renderChrome();
+      await watchPlan(snap.job_id);
+    }
+  } catch (err) {
+    if (snap.kind === "run") runFailed(err); else planFailed(err);
+  } finally {
+    forgetJob();
+    state.busy = false;
+    renderChrome();
+  }
+  return "mine";
+}
+
+/** 다른 창이 시작한 작업 — 끝날 때까지 시작 버튼을 잠그고 알린다. 끝나면 기록 목록을 다시 읽는다. */
+async function watchOther(job) {
+  state.busy = true;
+  showBlank();
+  renderChrome();
+  const note = $("formNote");
+  note.innerHTML = alertBox("info", "다른 창에서 시작한 작업이 진행 중이에요",
+    "끝나면 왼쪽 실행 기록에 나타나요. 그때까지 여기서는 새로 시작할 수 없어요.");
+  const mark = note.firstElementChild;
+  try { await follow(job.job_id, () => {}); } catch (e) { /* 실패하거나 멈춘 것도 끝난 것이다 */ }
+  state.busy = false;
+  if (mark && mark.isConnected) mark.remove();  // 그사이 다른 안내가 올라왔으면 건드리지 않는다
+  renderChrome();
+  loadRuns();
+  return "other";
 }
 
 // ── 4 결과 ─────────────────────────────────────────────────────────────────
@@ -2516,24 +2621,35 @@ $("planBtn").addEventListener("click", async () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form()),
     });
-    state.plan = await follow(job_id, pushProgress);
-    resetPlanView();
-    state.busy = false;
-    showPlan();
-    notifyDone(`항목 ${state.plan.cases.length}개 뽑음`);
+    rememberJob("plan", job_id);
+    await watchPlan(job_id);
   } catch (err) {
-    state.busy = false;
-    if (err.status === 409) {
-      showError("이미 실행 중이에요", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
-    } else {
-      showError("확인할 항목을 만들지 못했어요", err.message);
-    }
+    planFailed(err);
   } finally {
+    forgetJob();
     state.busy = false;
     $("planBtn").disabled = false;
     renderChrome();
   }
 });
+
+/** 항목 뽑기 작업을 끝까지 따라가 항목 검토로 넘어간다 — 방금 시작한 것이든, 다시 붙은 것이든. */
+async function watchPlan(job_id) {
+  state.plan = await follow(job_id, pushProgress);
+  resetPlanView();
+  state.busy = false;
+  showPlan();
+  notifyDone(`항목 ${state.plan.cases.length}개 뽑음`);
+}
+
+function planFailed(err) {
+  state.busy = false;
+  if (err.status === 409) {
+    showError("이미 실행 중이에요", "지금 도는 작업이 끝난 뒤 다시 눌러 주세요.");
+  } else {
+    showError("확인할 항목을 만들지 못했어요", err.message);
+  }
+}
 
 // ── 실행 기록 (1단계 사이드바) ─────────────────────────────────────────────
 
@@ -3428,8 +3544,10 @@ document.addEventListener("keydown", (e) => {
 // ── 시작 ───────────────────────────────────────────────────────────────────
 
 async function boot() {
+  let st;
   try {
-    const st = await api("/api/state");
+    st = await api("/api/state");
+    state.boot = st.boot;
     state.serverBackend = st.backend;
     const saved = loadSettings();
     state.specGroups = st.spec_groups || [];
@@ -3469,6 +3587,8 @@ async function boot() {
   renderChrome();
   showBlank();
   loadRuns();
+  // 새로고침 전에 이 탭이 시작한 작업이 있으면 그 화면으로 돌아간다. 다른 창의 작업이면 알리기만 한다.
+  resumeJob(st);
 }
 
 boot();

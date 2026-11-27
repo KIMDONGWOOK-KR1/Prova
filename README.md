@@ -52,7 +52,7 @@ flowchart LR
 - **못 찾은 것을 결함이라고 하지 않는다.** 요소를 못 찾았거나 페이지가 안 열린 것은 '실행 문제' 로 따로 센다.
 - **요소는 라벨·역할로 먼저 찾는다.** 화면 이미지로 찾는 모델은 그것이 실패한 자리에서만 쓴다 — 측정해 보니 더 느리고 없는 것을 지어냈다.
 
-Python 3.11 · Pydantic · Playwright · vLLM(OpenAI 호환) · FastAPI · LangGraph · pytest (테스트 2,125개).
+Python 3.11 · Pydantic · Playwright · vLLM(OpenAI 호환) · FastAPI · LangGraph · pytest (테스트 2,137개).
 폴더별 설명은 [docs/architecture.md](docs/architecture.md).
 
 ## 빨리 돌려보기
