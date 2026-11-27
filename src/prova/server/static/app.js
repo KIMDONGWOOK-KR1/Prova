@@ -46,6 +46,17 @@ const ICON = {
 // 닫기(×)는 넣지 않는다 — 디자인 기준 1번 '알림 상자는 숨기거나 접지 않는다'.
 const ALERT_SAY = { fail: ["alert", "오류"], warn: ["status", "주의"], info: ["status", "참고"] };
 
+/**
+ * 처음 보일 백엔드 — 지난번 선택과 서버 기본값 가운데 하나.
+ * 서버 기본값이 연습용(mock)이면 서버의 뜻이 우선이다. 서버 기본값이 실제 모델이 아닌데
+ * 지난번 선택이 '실제 모델' 이면 그것도 버린다 — 모델 서버 없이 띄운 화면이 첫 버튼에서 실패한다.
+ */
+function pickBackend(saved, server) {
+  if (!saved || server === "mock") return server;
+  if (saved === "vllm" && server !== "vllm") return server;
+  return saved;
+}
+
 function alertBox(kind, title, why) {
   const [role, say] = ALERT_SAY[kind] || ALERT_SAY.info;
   why = oneSentencePerLine(why);
@@ -679,9 +690,12 @@ function showBlank() {
   renderRunsFoot();
 }
 
+/** 서버가 줄을 나눠 보낸 안내는 그 줄대로 — 한 줄로 붙으면 '…로그인 기획서의 말로 다시 쓰거나…' 처럼 읽혔다. */
+const escLines = (s) => esc(s).replace(/\r?\n\s*/g, "<br>");
+
 function showError(title, message) {
   showBlank();
-  $("formNote").innerHTML = alertBox("fail", esc(title), esc(message));
+  $("formNote").innerHTML = alertBox("fail", esc(title), escLines(message));
 }
 
 // ── 진행 (기획서 읽는 중 · 실행 중) ──────────────────────────────────────────
@@ -2440,6 +2454,17 @@ function stepsHead(steps) {
   return `실행한 단계 ${n} · ${p}단계 × ${full}회${rest ? ` + ${rest}단계` : ""}`;
 }
 
+/**
+ * '끝난 주소' 에 적을 경로 — 웹 주소일 때만. 요청이 막히면 브라우저는 내부 오류 페이지
+ * (chrome-error://chromewebdata/)에 서고, 그 경로 '/' 를 주소처럼 보이면 첫 화면으로 간 것으로 읽힌다.
+ */
+function endPath(url) {
+  try {
+    const u = new URL(url);
+    return /^https?:$/.test(u.protocol) ? u.pathname : "";
+  } catch (e) { return ""; }
+}
+
 /** 오른쪽 상세 — 기대·실제, 기획서 원문, 마지막 화면과 실행한 단계. 리포트 파일을 열지 않아도 원인을 본다. */
 function renderDetail(c) {
   const box = $("detail");
@@ -2450,7 +2475,7 @@ function renderDetail(c) {
   const steps = c.step_results || [];
   const shotStep = steps.find((st) => st.screenshot === ev.screenshot);
   const lines = actualLines(c);
-  const where = (() => { try { return ev.url ? new URL(ev.url).pathname : ""; } catch (e) { return ""; } })();
+  const where = endPath(ev.url);
   const src = (c.spec_sources || []).map((s) => ({ page: s.page, kind: s.table ? "표" : "본문", quote: s.quote }));
   const names = (state.result.summary && state.result.summary.screen_names) || {};
   const head = { pass: "실제 — 통과", defect: "실제 — 기획서와 다름", unv: "실제 — 확인 불가",
@@ -3427,15 +3452,17 @@ async function boot() {
     // 고른 사람이 모르는 채 계속 mock 으로 돌지 않게.
     // 서버를 연습용 설정(configs/demo.yaml)으로 띄웠다면 그 뜻이 우선이다 — 지난번에
     // 고른 '실제 모델' 이 남아 있으면 모델 서버 없이 띄운 데모가 바로 실패한다.
-    if (saved.backend && saved.backend !== st.backend && st.backend !== "mock") {
-      $("backend").value = saved.backend;
+    // 모델 서버 없이 도는 기본값(replay)도 같다 — 지난번 '실제 모델' 만 덮지 못한다(2026-11-27).
+    const backend = pickBackend(saved.backend, st.backend);
+    if (backend !== st.backend) {
+      $("backend").value = backend;
       $("backend").closest(".ctl").insertAdjacentHTML("beforeend",
         `<div class="hint">지난번 선택이에요 — 서버 기본값은 ${esc(st.backend)}</div>`);
     }
   } catch (err) {
     // 여기서 조용히 실패하면 화면이 죽은 채로 남는다.
     showBlank();
-    $("formNote").innerHTML = alertBox("fail", "서버에 연결하지 못했어요", esc(err.message));
+    $("formNote").innerHTML = alertBox("fail", "서버에 연결하지 못했어요", escLines(err.message));
     return;
   }
   syncVariant();

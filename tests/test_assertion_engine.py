@@ -521,3 +521,33 @@ class TestPlaceholdersMatch:
         v = verify(self.case({"이메일": "A"}), steps_ok(),
                    state(placeholders={"이메일": "A"}))
         assert v.evidence["screen_placeholders"] == {"이메일": "A"}
+
+
+class TestBlockedPageUrl:
+    """요청이 막히거나 실패하면 브라우저는 내부 오류 페이지(chrome-error://…)에 선다.
+
+    2026-11-27 점검: '쓰기 요청 막기' 결과 화면의 '실제' 칸에 '현재 chrome-error://chromewebdata/'
+    가 그대로 보였다. 사용자가 고칠 수 있는 주소가 아니다 — 사람 말로 바꿔 적는다.
+    """
+
+    BLOCKED = "chrome-error://chromewebdata/"
+
+    def test_정상_처리_확인은_내부_주소를_보이지_않는다(self):
+        case = positive_case(Expectation(type="toast_or_redirect", value="가입이 완료되었습니다",
+                                         url_contains="/welcome"))
+        v = verify(case, steps_ok(), state(url=self.BLOCKED))
+        assert v.verdict == "FAIL"
+        assert "chrome-error" not in v.evidence["actual"]
+        assert "미이동 (페이지가 열리지 않음)" in v.evidence["actual"]
+
+    def test_이동_확인도_내부_주소를_보이지_않는다(self):
+        case = positive_case(Expectation(type="redirect", url_contains="/welcome"))
+        v = verify(case, steps_ok(), state(url=self.BLOCKED))
+        assert v.verdict == "FAIL"
+        assert "chrome-error" not in v.evidence["actual"]
+        assert "페이지가 열리지 않음" in v.evidence["actual"]
+
+    def test_보통_주소는_그대로_적는다(self):
+        case = positive_case(Expectation(type="redirect", url_contains="/welcome"))
+        v = verify(case, steps_ok(), state(url="http://h/good/signup"))
+        assert "현재 http://h/good/signup" in v.evidence["actual"]

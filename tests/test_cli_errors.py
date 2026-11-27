@@ -115,3 +115,62 @@ def test_로그인_화면에_닿지_않으면_한_줄로_알린다(tmp_path):
     ])
     assert result.exit_code == 2
     assert "연결할 수 없습니다" in result.output
+
+
+# ── PDF 가 아닌 파일 (2026-11-27 점검) ───────────────────────────────────────────
+# `--pdf README.md` 가 PdfminerException traceback 을 쏟았다. 파일이 있는지만 보고 넘겼다.
+
+@pytest.fixture
+def not_a_pdf(tmp_path):
+    path = tmp_path / "기획서.pdf"
+    path.write_text("# 이것은 PDF 가 아니다\n", encoding="utf-8")
+    return path
+
+
+def test_PDF_가_아닌_파일은_한_줄로_알린다(tmp_path, not_a_pdf):
+    result = runner.invoke(app, [
+        "run", "--pdf", str(not_a_pdf), "--url", "http://localhost:8100/good",
+        "--backend", "mock", "--runs-root", str(tmp_path / "runs"),
+    ])
+    assert result.exit_code == 2
+    assert "PDF 로 읽을 수 없는 파일입니다" in result.output
+    assert not_a_pdf.name in result.output
+    assert "Traceback" not in result.output
+    assert result.exception is None or isinstance(result.exception, SystemExit)
+
+
+def test_이전_판이_PDF_가_아니어도_같다(tmp_path, not_a_pdf):
+    result = runner.invoke(app, [
+        "run", "--pdf", "fixtures/specs/login_spec.pdf", "--since", str(not_a_pdf),
+        "--url", "http://localhost:8100/good", "--backend", "mock",
+        "--runs-root", str(tmp_path / "runs"),
+    ])
+    assert result.exit_code == 2
+    assert "PDF 로 읽을 수 없는 파일입니다" in result.output
+
+
+def test_diff_spec_도_같다(not_a_pdf):
+    result = runner.invoke(app, ["diff-spec", "--old", "fixtures/specs/login_spec.pdf",
+                                 "--new", str(not_a_pdf), "--backend", "mock"])
+    assert result.exit_code == 2
+    assert "PDF 로 읽을 수 없는 파일입니다" in result.output
+
+
+def test_파서도_같은_말로_알린다(not_a_pdf):
+    """웹 UI 는 CLI 를 거치지 않는다 — 파서가 직접 사람 말로 알려야 화면에 영어 예외가 안 뜬다."""
+    from prova.s1_spec_extractor.pdf_parser import NotPdfError, parse_pdf
+
+    with pytest.raises(NotPdfError, match="PDF 로 읽을 수 없는 파일입니다"):
+        parse_pdf(not_a_pdf)
+
+
+def test_기본_설정은_모델_서버_없이_뜬다():
+    """GPU 반납(2026-11-13) 뒤 기본 백엔드는 저장된 응답(replay)이다.
+
+    기본이 vllm 이면 처음 여는 브라우저에서 '항목 뽑기' 가 연결 오류로 멈춘다(2026-11-27 점검).
+    """
+    import yaml
+    from pathlib import Path
+
+    cfg = yaml.safe_load(Path("configs/default.yaml").read_text(encoding="utf-8"))
+    assert cfg["llm"]["backend"] == "replay"

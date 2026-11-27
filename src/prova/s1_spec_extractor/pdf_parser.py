@@ -1501,6 +1501,30 @@ def _figure_and_panel_lines(target, panel_x: float) -> list[tuple[str, float]]:
     return out
 
 
+class NotPdfError(ValueError):
+    """PDF 로 열리지 않는 파일. 메시지는 사용자에게 그대로 보인다(CLI·웹 UI)."""
+
+
+def open_pdf(path: str | Path):
+    """pdfplumber 로 연다. 열리지 않으면 사람 말로 알린다.
+
+    `--pdf README.md` 가 `PdfminerException: No /Root object!` traceback 을 쏟았다(2026-11-27 점검).
+    확장자가 아니라 실제로 열어 본다 — 이름만 .pdf 인 파일도 같은 말로 알린다.
+    """
+    path = Path(path)
+    try:
+        return pdfplumber.open(str(path))
+    except Exception as exc:  # noqa: BLE001 — pdfminer 는 깨진 파일에 여러 예외를 낸다
+        raise NotPdfError(
+            f"PDF 로 읽을 수 없는 파일입니다: {path.name}\n"
+            "  기획서를 PDF 로 저장한 파일인지 확인하세요 (파일이 깨졌거나 다른 형식입니다).") from exc
+
+
+def ensure_pdf(path: str | Path) -> None:
+    """실행을 시작하기 전에 PDF 로 열리는지만 본다 (CLI 가 옵션 검사 단계에서 쓴다)."""
+    open_pdf(path).close()
+
+
 def parse_pdf(path: str | Path) -> ParsedDocument:
     """PDF를 페이지별 본문 텍스트 + 표로 분해한다."""
     path = Path(path)
@@ -1508,7 +1532,7 @@ def parse_pdf(path: str | Path) -> ParsedDocument:
         raise FileNotFoundError(f"PDF를 찾을 수 없습니다: {path}")
 
     doc = ParsedDocument(source=str(path))
-    with pdfplumber.open(str(path)) as pdf:
+    with open_pdf(path) as pdf:
         for i, page in enumerate(pdf.pages, 1):
             body_lines = _extract_body_lines(page)
             doc.pages.append(ParsedPage(

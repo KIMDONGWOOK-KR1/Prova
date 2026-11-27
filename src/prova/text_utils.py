@@ -96,6 +96,18 @@ def strip_cid(text: Optional[str]) -> str:
     return _CID.sub(" ", text)
 
 
+def where_now(url: Optional[str]) -> str:
+    """판정 사유에 적는 '지금 서 있는 곳'.
+
+    요청이 막히거나 실패하면 브라우저는 내부 페이지(chrome-error://chromewebdata/, about:blank)에
+    선다. 사용자가 열어 보거나 고칠 수 있는 주소가 아니므로 그대로 적지 않는다 — '쓰기 요청 막기'
+    결과 화면에 '현재 chrome-error://chromewebdata/' 가 보였다(2026-11-27 점검).
+    """
+    if not url or url.startswith(("chrome-error:", "about:")):
+        return "페이지가 열리지 않음"
+    return f"현재 {url}"
+
+
 def normalize_ws(text: Optional[str]) -> str:
     """(cid:NNN) 을 걷어내고 개행·탭·연속 공백을 단일 공백으로 정리한다.
 

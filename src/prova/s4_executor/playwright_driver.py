@@ -54,7 +54,7 @@ from prova.s3_grounder.dom_locator import (
     select_from_disclosure,
 )
 from prova.route_params import has_placeholder, is_route
-from prova.text_utils import contains_loose, loosen
+from prova.text_utils import contains_loose, loosen, where_now
 
 
 @dataclass
@@ -150,7 +150,7 @@ def arrival_check(page, expected: Expectation) -> tuple[bool, str]:
         ok = ok and arrived
         reasons.append(
             f"경로 {expected.url_contains!r} "
-            + ("이동 확인" if arrived else f"미이동 (현재 {page.url})")
+            + ("이동 확인" if arrived else f"미이동 ({where_now(page.url)})")
         )
     if expected.value:
         try:

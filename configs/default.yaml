@@ -8,7 +8,13 @@
 # 배선했다. 아래 '아직 없는 것' 에 무엇을 왜 안 두는지 적어 둔다.
 
 llm:
-  backend: vllm          # vllm | mock
+  # vllm | replay | mock
+  #   vllm   — 실제 모델 서버(base_url)로 읽는다. 사내 GPU 에 모델을 띄웠다면 이 값으로 바꾼다.
+  #   replay — 실제 모델이 냈던 응답을 다시 쓴다(fixtures/replay-cache). 모델 서버가 필요 없다.
+  #   mock   — 저장소 예시 기획서 전용 연습 모드 (configs/demo.yaml).
+  # GPU 반납(2026-11-13) 뒤 기본은 replay 다. vllm 이 기본이면 모델 서버 없는 PC 에서 웹 UI 를
+  # 처음 열었을 때 첫 버튼이 연결 오류로 멈춘다(2026-11-27 점검). CLI 는 --backend 로 덮는다.
+  backend: replay
   base_url: http://localhost:8000/v1
   # serve_vllm.sh 의 --served-model-name. 같은 서버가 VLM(--vlm)도 맡는다.
   model: qwen3.5-4b-awq

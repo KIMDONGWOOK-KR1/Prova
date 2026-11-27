@@ -34,7 +34,7 @@ from typing import Optional
 from prova.models import Expectation, StepResult, TestCase, Verdict
 from prova.s2_case_generator.rule_expander import RULE_LABELS
 from prova.s3_grounder.dom_locator import CollectionCount, CollectionTexts
-from prova.text_utils import contains_loose, normalize_ws
+from prova.text_utils import contains_loose, normalize_ws, where_now
 from prova.wording import expectation_sentence, rule_subject
 
 
@@ -252,7 +252,7 @@ def _judge_redirect(expected: Expectation, state: PageState) -> tuple[bool, str]
     target = expected.url_contains or expected.value
     if target and target in state.url:
         return True, f"URL 이동 확인: {state.url}"
-    return False, f"기대 경로 {target!r} 로 이동하지 않음 (현재 {state.url})"
+    return False, f"기대 경로 {target!r} 로 이동하지 않음 ({where_now(state.url)})"
 
 
 #: 성공 조건에서 경로·문구를 하나도 못 찾아 '에러가 안 떴다' 만 보고 통과시킨 사유.
@@ -270,7 +270,7 @@ def _judge_toast_or_redirect(expected: Expectation, state: PageState) -> tuple[b
     if expected.url_contains:
         ok = expected.url_contains in state.url
         checks.append((ok, f"경로 {expected.url_contains!r} " + ("이동 확인" if ok
-                                                                 else f"미이동 (현재 {state.url})")))
+                                                                 else f"미이동 ({where_now(state.url)})")))
     if expected.value:
         ok = contains_loose(state.text, expected.value)
         checks.append((ok, f"문구 {expected.value!r} " + ("노출 확인" if ok else "미노출")))

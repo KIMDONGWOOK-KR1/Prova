@@ -42,6 +42,16 @@ def _verify_sut_build(url: str) -> str:
     return check.state
 
 
+def _check_pdf(path: Path) -> None:
+    """PDF 로 열리는 파일인지 실행 전에 본다 — 아니면 traceback 대신 한 덩어리로 알린다."""
+    from prova.s1_spec_extractor.pdf_parser import NotPdfError, ensure_pdf
+
+    try:
+        ensure_pdf(path)
+    except NotPdfError as exc:
+        _fail(str(exc))
+
+
 def _fail(message: str, code: int = 2) -> NoReturn:
     """사용자가 고칠 수 있는 문제를 빨간 글씨 한 덩어리로 알리고 끝낸다.
 
@@ -132,7 +142,7 @@ def run(
              "사용자가 준다. 반복 지정."),
     backend: Optional[str] = typer.Option(
         None, "--backend",
-        help="vllm | mock | replay. 생략하면 설정 파일 값(기본 vllm — GPU 서버 필요). "
+        help="vllm | mock | replay. 생략하면 설정 파일 값(기본 replay — 모델 서버 없이 돈다. vllm 은 GPU 서버 필요). "
              "mock 은 GPU 없이 도는 연습용이고 fixtures/specs/ 의 기획서에서만 동작한다. "
              "replay 는 모델 서버 없이 전에 vllm 으로 받은 응답(캐시)을 다시 쓴다"),
     config: Path = typer.Option(DEFAULT_CONFIG, "--config", help="설정 파일 경로"),
@@ -349,6 +359,8 @@ def run(
 
     if pdf and not pdf.exists():
         _fail(f"설계 문서를 찾을 수 없습니다: {pdf}")
+    if pdf:
+        _check_pdf(pdf)
     if dry_run and (engine == "graph" or plan_only):
         _fail("--dry-run 은 pipeline 엔진의 한 번에 실행에서만 동작합니다 "
               "(--plan-only·graph 와 함께 쓸 수 없습니다).")
@@ -359,6 +371,7 @@ def run(
             _fail("--since 는 --pdf(이번 판 기획서)와 함께 씁니다.")
         if not since.exists():
             _fail(f"이전 판 기획서를 찾을 수 없습니다: {since}")
+        _check_pdf(since)
         if engine == "graph" or plan_only:
             _fail("--since 는 pipeline 엔진의 한 번에 실행에서만 동작합니다 "
                   "(--plan-only·graph 와 함께 쓸 수 없습니다).")
@@ -678,6 +691,7 @@ def diff_spec(
     for path in (old, new):
         if not path.exists():
             _fail(f"기획서를 찾을 수 없습니다: {path}")
+        _check_pdf(path)
     cfg = _load_config(config)
     backend = backend or cfg.get("llm", {}).get("backend", "vllm")
     before = _read_spec(old, backend, cfg, no_cache, "이전 판")
